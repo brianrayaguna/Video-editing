@@ -256,6 +256,9 @@ def test_liquid_decision_handles_typed_questions_and_boxes(tmp_path: Path) -> No
     )
 
     assert seen_payload["model"] == "d1.2-ultra"
+    assert isinstance(seen_payload["questions"], dict)
+    assert "face_box" in seen_payload["questions"]
+    assert seen_payload["questions"]["face_box"]["type"] == "box"  # type: ignore[index]
     assert len(seen_payload["images"]) == 1  # type: ignore[arg-type]
     boxes = extract_spatial_boxes(result.answers["face_box"])
     assert len(boxes) == 1

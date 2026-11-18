@@ -40,7 +40,6 @@ def _encode_image(img: ImageInput) -> dict[str, str]:
 def _question_to_payload(q: DecisionQuestion) -> dict[str, Any]:
     q_type = "number" if q.question_type == "number_range" else q.question_type
     item: dict[str, Any] = {
-        "name": q.name,
         "type": q_type,
         "instructions": q.instructions,
     }
@@ -126,10 +125,16 @@ class LiquidDecisionProvider:
         validate_decision_batch(questions, imgs)
         api_key = require_api_key(self._options, "LIQUID_API_KEY", self.provider_name)
 
+        q_map: dict[str, dict[str, Any]] = {}
+        for q in questions:
+            if q.name in q_map:
+                raise ValueError(f"Duplicate question name in batch: {q.name!r}")
+            q_map[q.name] = _question_to_payload(q)
+
         body: dict[str, Any] = {
             "model": self._model,
             "state": state,
-            "questions": [_question_to_payload(q) for q in questions],
+            "questions": q_map,
         }
         if imgs:
             body["images"] = [_encode_image(img) for img in imgs]
