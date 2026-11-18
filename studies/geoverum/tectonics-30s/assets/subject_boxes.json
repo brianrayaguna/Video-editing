@@ -1,0 +1,11 @@
+{
+  "basemap_tectonics_30s": [
+    {
+      "top": 0.32,
+      "bottom": 0.62,
+      "left": 0.22,
+      "right": 0.78,
+      "label": "map_landmass_primary"
+    }
+  ]
+}

@@ -2,16 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vedit.local/contracts/brand_style_policy.schema.json",
   "title": "BrandStylePolicy",
-  "description": "Adaptive multi-reference brand editing policy defining temporal pacing curves, conditional grammar triggers, hard guardrails, multimodal exemplars, and calibration state.",
+  "description": "Runtime brand editing policy consumed by planner and verifier: temporal soft priors, hard guardrails, calibration, and provenance. Advisory grammar_triggers and exemplar_bank live in editorial_playbook.json, not on this runtime contract.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "brand_id",
     "soft_priors",
-    "grammar_triggers",
     "hard_guardrails",
-    "exemplar_bank",
     "provenance"
   ],
   "properties": {
@@ -128,21 +126,6 @@
         }
       }
     },
-    "grammar_triggers": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["trigger_id", "condition", "action", "weight"],
-        "properties": {
-          "trigger_id": { "type": "string" },
-          "condition": { "type": "string" },
-          "action": { "type": "string" },
-          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
-          "rationale": { "type": "string" }
-        }
-      }
-    },
     "hard_guardrails": {
       "type": "object",
       "additionalProperties": false,
@@ -163,25 +146,6 @@
         "banned_transitions": { "type": "array", "items": { "type": "string" } },
         "banned_patterns": { "type": "array", "items": { "type": "string" } },
         "avoid_heavy_css_blur": { "type": "boolean" }
-      }
-    },
-    "exemplar_bank": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["exemplar_id", "source_video_id", "role", "start_s", "end_s", "notes"],
-        "properties": {
-          "exemplar_id": { "type": "string" },
-          "source_video_id": { "type": "string" },
-          "role": { "type": "string", "enum": ["hook", "proof", "data_callout", "broll_bridge", "climax", "outro"] },
-          "start_s": { "type": "number", "minimum": 0 },
-          "end_s": { "type": "number", "minimum": 0 },
-          "keyframe_path": { "type": "string" },
-          "hyperframes_pattern": { "type": "string" },
-          "measured_metrics": { "type": "object" },
-          "notes": { "type": "string" }
-        }
       }
     },
     "calibration": {

@@ -1,0 +1,346 @@
+{
+  "source_hash": "1e004d0cf8bf2028bf3222cde01bf8eabcf9544f349fc8af3af4520e9e0431c6",
+  "provider": "manual_caption_ledger",
+  "model": "ref_tectonics_shot0_schedule",
+  "language": "id",
+  "duration_s": 30.0,
+  "text": "Turki dan India terpisah km, tidak berbagi perbatasan, bahkan berada di kawasan Namun hubungan keduanya kini Penyebab utamanya adalah Pakistan. Pakistan dalam isu Kashmir Ketegangan makin terasa setelah konflik India-Pakistan pada 2025 ketika pesawat nirawak buatan Turki dilaporkan India tidak membalas dengan",
+  "words": [
+    {
+      "text": "Turki",
+      "start_s": 0.233,
+      "end_s": 0.57,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "dan",
+      "start_s": 0.6,
+      "end_s": 0.937,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "India",
+      "start_s": 0.967,
+      "end_s": 1.304,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "terpisah",
+      "start_s": 1.333,
+      "end_s": 1.67,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "km",
+      "start_s": 1.7,
+      "end_s": 2.459,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "tidak",
+      "start_s": 2.525,
+      "end_s": 3.284,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "berbagi",
+      "start_s": 3.35,
+      "end_s": 4.109,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "perbatasan",
+      "start_s": 4.175,
+      "end_s": 4.934,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "bahkan",
+      "start_s": 5.0,
+      "end_s": 5.46,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "berada",
+      "start_s": 5.5,
+      "end_s": 5.96,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "di",
+      "start_s": 6.0,
+      "end_s": 6.46,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "kawasan",
+      "start_s": 6.5,
+      "end_s": 6.96,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Namun",
+      "start_s": 7.0,
+      "end_s": 8.15,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "hubungan",
+      "start_s": 8.25,
+      "end_s": 9.4,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "keduanya",
+      "start_s": 9.5,
+      "end_s": 10.65,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "kini",
+      "start_s": 10.75,
+      "end_s": 11.9,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Penyebab",
+      "start_s": 12.5,
+      "end_s": 13.075,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "utamanya",
+      "start_s": 13.125,
+      "end_s": 13.7,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "adalah",
+      "start_s": 13.75,
+      "end_s": 14.325,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Pakistan",
+      "start_s": 14.375,
+      "end_s": 14.95,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Pakistan",
+      "start_s": 16.0,
+      "end_s": 16.69,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "dalam",
+      "start_s": 16.75,
+      "end_s": 17.44,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "isu",
+      "start_s": 17.5,
+      "end_s": 18.19,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Kashmir",
+      "start_s": 18.25,
+      "end_s": 18.94,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Ketegangan",
+      "start_s": 19.667,
+      "end_s": 20.089,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "makin",
+      "start_s": 20.125,
+      "end_s": 20.547,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "terasa",
+      "start_s": 20.583,
+      "end_s": 21.005,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "setelah",
+      "start_s": 21.042,
+      "end_s": 21.464,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "konflik",
+      "start_s": 21.5,
+      "end_s": 22.267,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "India-Pakistan",
+      "start_s": 22.333,
+      "end_s": 23.1,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "pada",
+      "start_s": 23.167,
+      "end_s": 23.934,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "2025",
+      "start_s": 24.5,
+      "end_s": 24.845,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "ketika",
+      "start_s": 24.875,
+      "end_s": 25.22,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "pesawat",
+      "start_s": 25.25,
+      "end_s": 25.595,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "nirawak",
+      "start_s": 25.625,
+      "end_s": 25.97,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "buatan",
+      "start_s": 26.0,
+      "end_s": 26.613,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "Turki",
+      "start_s": 26.667,
+      "end_s": 27.28,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "dilaporkan",
+      "start_s": 27.333,
+      "end_s": 27.946,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "India",
+      "start_s": 28.0,
+      "end_s": 28.46,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "tidak",
+      "start_s": 28.5,
+      "end_s": 28.96,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "membalas",
+      "start_s": 29.0,
+      "end_s": 29.46,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    },
+    {
+      "text": "dengan",
+      "start_s": 29.5,
+      "end_s": 29.96,
+      "speaker": null,
+      "confidence": 0.9,
+      "is_filler": false
+    }
+  ]
+}

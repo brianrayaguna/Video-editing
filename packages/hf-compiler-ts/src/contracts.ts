@@ -75,6 +75,8 @@ export interface OverlayCompositionOp {
   timeline_duration_s: number;
   transparent: boolean;
   safe_band?: SafeBand;
+  template_id?: string;
+  variables?: Record<string, unknown>;
   props: Record<string, unknown>;
 }
 

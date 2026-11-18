@@ -341,7 +341,7 @@ def main() -> int:
     font_sg = root / "assets" / "geo" / "fonts" / "SpaceGrotesk-Variable.ttf"
     font_ab = root / "assets" / "geo" / "fonts" / "ArchivoBlack-Regular.ttf"
     transcript_path = root / "assets" / "audio" / "sulawesi_transcript.json"
-    policy_path = root / "profiles" / "geoverum" / "brand_style_policy.json"
+    policy_path = root / "profiles" / "brands" / "geoverum" / "brand_style_policy.json"
 
     assets.extend(
         [

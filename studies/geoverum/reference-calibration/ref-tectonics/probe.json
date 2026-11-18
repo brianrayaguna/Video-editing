@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "path": "ref_tectonics.mp4",
+  "sha256": "c9ca22bcb18c2756947fa21796e1bc270dbb78a0872fcf6fa08342d554c4a8b6",
+  "file_bytes": 5358015,
+  "container": {
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration_s": 65.266667,
+    "bit_rate": 656753
+  },
+  "video": {
+    "present": true,
+    "codec": "h264",
+    "width": 480,
+    "height": 854,
+    "fps": 30.0,
+    "is_cfr": true,
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "frame_count_est": 1958
+  },
+  "audio": {
+    "present": true,
+    "codec": "aac",
+    "sample_rate_hz": 44100,
+    "channels": 2,
+    "integrated_lufs": -10.5,
+    "lra": 1.7,
+    "true_peak_dbtp": 1.8,
+    "silence_intervals": [],
+    "silence_ratio": 0.0
+  },
+  "shots": [
+    {
+      "shot_index": 0,
+      "start_s": 0.0,
+      "end_s": 33.8,
+      "duration_s": 33.8,
+      "confidence": 1.0
+    },
+    {
+      "shot_index": 1,
+      "start_s": 33.8,
+      "end_s": 65.267,
+      "duration_s": 31.467,
+      "confidence": 0.184
+    }
+  ],
+  "shot_stats": {
+    "count": 2,
+    "asl_p25_s": 32.05,
+    "asl_p50_s": 32.633,
+    "asl_p75_s": 33.217,
+    "cuts_per_min": 0.919
+  },
+  "visual": {
+    "sampled_frames": 131,
+    "palette": [
+      {
+        "hex": "#636148",
+        "share": 0.14,
+        "lab_l": 40.728,
+        "lab_a": -3.579,
+        "lab_b": 14.386
+      },
+      {
+        "hex": "#7B765E",
+        "share": 0.136,
+        "lab_l": 49.438,
+        "lab_a": -2.14,
+        "lab_b": 14.088
+      },
+      {
+        "hex": "#061C29",
+        "share": 0.132,
+        "lab_l": 9.356,
+        "lab_a": -3.754,
+        "lab_b": -11.084
+      },
+      {
+        "hex": "#010E1A",
+        "share": 0.119,
+        "lab_l": 3.46,
+        "lab_a": -0.526,
+        "lab_b": -8.77
+      },
+      {
+        "hex": "#596245",
+        "share": 0.113,
+        "lab_l": 39.89,
+        "lab_a": -8.919,
+        "lab_b": 15.062
+      }
+    ],
+    "palette_entropy": 4.428,
+    "mean_luminance": 85.393,
+    "band_luminance": {
+      "upper": 89.575,
+      "center": 94.625,
+      "lower_third": 66.255
+    },
+    "mean_sharpness": 61.478,
+    "black_intervals": [],
+    "keyframes": [
+      {
+        "timestamp_s": 17.0,
+        "shot_index": 0,
+        "path": "studies/geoverum/reference-calibration/ref-tectonics/keyframes/shot_0000.jpg",
+        "luma_lower_third": 48.493,
+        "sharpness": 66.228
+      },
+      {
+        "timestamp_s": 49.5,
+        "shot_index": 1,
+        "path": "studies/geoverum/reference-calibration/ref-tectonics/keyframes/shot_0001.jpg",
+        "luma_lower_third": 18.526,
+        "sharpness": 54.847
+      }
+    ]
+  },
+  "timing_ms": {
+    "hash_ms": 17,
+    "ffprobe_ms": 127,
+    "stream_analyze_ms": 1546,
+    "total_ms": 1674
+  }
+}

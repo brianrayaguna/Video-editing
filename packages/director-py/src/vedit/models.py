@@ -153,7 +153,7 @@ class HardGuardrails(StrictModel):
 class StyleExemplar(StrictModel):
     exemplar_id: str
     source_video_id: str
-    role: Literal["hook", "proof", "data_callout", "broll_bridge", "climax", "outro"]
+    role: Literal["hook", "setup", "proof", "data_callout", "broll_bridge", "climax", "outro"]
     start_s: float = Field(ge=0.0)
     end_s: float = Field(ge=0.0)
     keyframe_path: str | None = None
@@ -176,16 +176,57 @@ class BrandProvenance(StrictModel):
 
 
 class BrandStylePolicy(StrictModel):
+    """Runtime brand policy for planner/verifier.
+
+    Advisory grammar triggers and exemplars belong in `EditorialPlaybook`, not
+    on this runtime object.
+    """
+
     schema_version: Literal["1.0"] = "1.0"
     brand_id: str = Field(min_length=1)
     display_name: str | None = None
     editorial_identity: str | None = None
     soft_priors: SoftPriors
-    grammar_triggers: list[GrammarTrigger]
     hard_guardrails: HardGuardrails
-    exemplar_bank: list[StyleExemplar]
-    calibration: StyleCalibration | None = None
     provenance: BrandProvenance
+    calibration: StyleCalibration | None = None
+
+
+class EditorialPlaybook(StrictModel):
+    """Advisory directing playbook. Not executed by planner/verifier/compile."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    brand_id: str = Field(min_length=1)
+    schema_note: str | None = None
+    grammar_triggers: list[GrammarTrigger] = Field(default_factory=list)
+    exemplar_bank: list[StyleExemplar] = Field(default_factory=list)
+
+
+class BrandTemplateVariable(StrictModel):
+    id: str = Field(min_length=1)
+    type: Literal["string", "number", "boolean", "color", "image", "enum"]
+    label: str | None = None
+    default: Any | None = None
+    enum_values: list[str] | None = None
+    min: float | None = None
+    max: float | None = None
+    token_ref: str | None = None
+
+
+class BrandTemplateEntry(StrictModel):
+    template_id: str = Field(min_length=1)
+    composition_path: str = Field(min_length=1)
+    description: str | None = None
+    safe_band: Literal[
+        "lower_third", "upper_safe", "center_safe", "dynamic_away_from_subject"
+    ] | None = None
+    variables: list[BrandTemplateVariable] = Field(default_factory=list)
+
+
+class BrandTemplateCatalog(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    brand_id: str = Field(min_length=1)
+    templates: list[BrandTemplateEntry] = Field(min_length=1)
 
 
 class BoundingBox(StrictModel):
@@ -229,6 +270,8 @@ class OverlayCompositionOp(StrictModel):
     safe_band: Literal[
         "lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"
     ] = "lower_third"
+    template_id: str | None = None
+    variables: dict[str, Any] = Field(default_factory=dict)
     props: dict[str, Any] = Field(default_factory=dict)
 
 

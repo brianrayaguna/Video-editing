@@ -14,9 +14,10 @@ It is designed for automated pipelines and AI directing clients to edit real foo
 | [`packages/cloud-modal`](packages/cloud-modal) | Python / Modal (Optional) | Optional serverless worker image and entrypoint for offloading headless Chromium / HyperFrames `BeginFrame` renders to Modal. |
 | [`contracts`](contracts) | JSON Schema (Draft 2020-12) | Shared cross-runtime contracts (`brand_style_policy`, `edit_plan`, `media_probe`, `platform_target`, `transcript`). |
 | [`profiles/platforms`](profiles/platforms) | JSON | Delivery mastering presets for YouTube (`16:9` 1080p/4K), Shorts, Reels, and TikTok (`9:16` 1080p). |
-| [`profiles/<brand_id>`](profiles) | JSON / Markdown | Brand-specific editing policies (`brand_style_policy.json`), visual tokens, and exemplar references (decoupled from core engine code). |
+| [`profiles/brands/<brand_id>`](profiles/brands) | JSON / Markdown | Brand runtime policies, optional advisory playbooks, and craft docs (decoupled from core engine code). See [`profiles/README.md`](profiles/README.md). |
 | [`tools/geo-assets`](tools/geo-assets) | Python / Node.js | Deterministic open-licensed geospatial asset fetcher, SHA-256 manifest verifier (`assets/geo/MANIFEST.json`), build-time tile grader, and local offline XYZ tile server. |
 | [`studies/<brand_id>`](DESIGN.md) | HyperFrames HTML/GSAP | Isolated component studies and production compositions governed by [`DESIGN.md`](DESIGN.md). |
+| [`workspace/`](workspace/README.md) | Local scratch | Active edit jobs (probes, plans, renders, masters). Gitignored except the README. |
 
 For detailed pipeline invariants, visual craft standards, and design rationale, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`DESIGN.md`](DESIGN.md), and [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -25,7 +26,7 @@ For detailed pipeline invariants, visual craft standards, and design rationale, 
 Rendering and mastering run **locally by default**. Cloud execution is strictly optional:
 
 - **Local Rendering & Mastering (Default):** Compile motion projects with `vedit compile`, render locally via HyperFrames and `FFmpeg`, assemble hybrid deliverables with `vedit master` (including two-pass `-14.0 LUFS` loudness normalization), and verify output compliance with `vedit audit`. No cloud account is required.
-- **Optional Cloud Offload (`Modal`):** Use `vedit cloud render` (`packages/cloud-modal`) when you want to offload heavy headless Chromium renders to serverless workers (for example, on memory-constrained hosts or for parallel batch rendering).
+- **Optional Cloud Offload (`Modal`):** Use `vedit cloud render` (`packages/cloud-modal`) when you want to offload heavy headless Chromium renders to serverless workers (for example, on memory-constrained hosts or for parallel batch rendering). Geoverum study runbook: [`studies/geoverum/MODAL_PRODUCTION_WORKFLOW.md`](studies/geoverum/MODAL_PRODUCTION_WORKFLOW.md).
 
 ## End-to-End Pipeline & CLI Reference
 
@@ -33,7 +34,7 @@ All CLI commands are exposed through `vedit` (installed in `packages/director-py
 
 - **Media Analysis & Brand Profiling**
   - `vedit probe hash` / `vedit probe analyze` — Compute content-addressed hashes and extract deterministic visual/audio telemetry.
-  - `vedit brand analyze` / `vedit brand exemplars` — Extract `BrandStylePolicy` profiles from reference videos and inspect exemplar palettes/typography.
+  - `vedit brand analyze` / `vedit brand exemplars` / `vedit brand validate` — Synthesize runtime policy + advisory playbook, query playbook exemplars, validate brand trees.
 - **Directing & Media Operations**
   - `vedit transcribe` — Generate word-level transcripts via the configured `TranscriptionPort`.
   - `vedit decide` — Run omnimodal edit decisioning against probe telemetry, transcripts, and brand policy.

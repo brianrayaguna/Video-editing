@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from vedit.contracts import find_repo_root, load_platform_targets, validate_against_contract
+import json
+
+import pytest
+from pydantic import ValidationError
+
+from vedit.contracts import (
+    find_repo_root,
+    load_platform_targets,
+    validate_against_contract,
+    validate_all_brand_trees,
+    validate_brand_tree,
+)
 from vedit.models import (
     BrandStylePolicy,
+    EditorialPlaybook,
     EditPlan,
     NormalizedTranscript,
     PlatformTarget,
@@ -29,7 +41,61 @@ def test_all_platform_presets_validate_against_schema_and_model() -> None:
         assert model.video.color_space == "bt709"
 
 
-def test_brand_style_policy_round_trip() -> None:
+def test_geoverum_brand_template_catalog_validates() -> None:
+    path = find_repo_root() / "profiles" / "brands" / "geoverum" / "templates" / "catalog.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    errors = validate_against_contract(
+        payload,
+        "brand_template.schema.json",
+        repo_root=find_repo_root(),
+    )
+    assert errors == []
+    assert payload["brand_id"] == "geoverum"
+    assert len(payload["templates"]) >= 1
+
+
+def test_geoverum_runtime_policy_omits_advisory_fields() -> None:
+    """Checked-in Geoverum policy is runtime-only; playbook holds advisory fields."""
+    path = find_repo_root() / "profiles" / "brands" / "geoverum" / "brand_style_policy.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert "grammar_triggers" not in payload
+    assert "exemplar_bank" not in payload
+    model = BrandStylePolicy.model_validate(payload)
+    assert "grammar_triggers" not in BrandStylePolicy.model_fields
+    assert "exemplar_bank" not in BrandStylePolicy.model_fields
+    errors = validate_against_contract(
+        model.model_dump(exclude_none=True),
+        "brand_style_policy.schema.json",
+        repo_root=find_repo_root(),
+    )
+    assert errors == []
+
+
+def test_geoverum_editorial_playbook_validates() -> None:
+    path = find_repo_root() / "profiles" / "brands" / "geoverum" / "editorial_playbook.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    errors = validate_against_contract(
+        payload,
+        "editorial_playbook.schema.json",
+        repo_root=find_repo_root(),
+    )
+    assert errors == []
+    playbook = EditorialPlaybook.model_validate(payload)
+    assert playbook.brand_id == "geoverum"
+    assert len(playbook.grammar_triggers) >= 1
+    assert len(playbook.exemplar_bank) >= 1
+
+
+def test_geoverum_brand_tree_validates() -> None:
+    root = find_repo_root()
+    result = validate_brand_tree(root / "profiles" / "brands" / "geoverum", repo_root=root)
+    assert result["brand_id"] == "geoverum"
+    assert result["playbook"] is not None
+    assert result["templates"] is not None
+    assert validate_all_brand_trees(repo_root=root)
+
+
+def test_brand_style_policy_rejects_advisory_fields() -> None:
     sample = {
         "schema_version": "1.0",
         "brand_id": "sample-creator",
@@ -102,16 +168,91 @@ def test_brand_style_policy_round_trip() -> None:
             "banned_patterns": ["bouncy_emoji_captions"],
             "avoid_heavy_css_blur": True,
         },
-        "exemplar_bank": [
-            {
-                "exemplar_id": "ex-hook-01",
-                "source_video_id": "ref-01",
-                "role": "hook",
-                "start_s": 0.0,
-                "end_s": 3.2,
-                "notes": "Cold open claim with 1.08x punch-in at 1.6s and lower-third stat badge.",
-            }
-        ],
+        "calibration": {
+            "accepted_overrides": 0,
+            "rejected_patterns": [],
+        },
+        "provenance": {
+            "reference_video_count": 3,
+            "reference_hashes": ["deadbeef12345678"],
+            "confidence": 0.86,
+        },
+    }
+    with pytest.raises(ValidationError):
+        BrandStylePolicy.model_validate(sample)
+    errors = validate_against_contract(
+        sample,
+        "brand_style_policy.schema.json",
+        repo_root=find_repo_root(),
+    )
+    assert errors
+
+
+def test_brand_style_policy_round_trip() -> None:
+    sample = {
+        "schema_version": "1.0",
+        "brand_id": "sample-creator",
+        "display_name": "Sample Creator",
+        "editorial_identity": (
+            "Analytical tech storytelling with brisk hooks and breathing body shots."
+        ),
+        "soft_priors": {
+            "temporal_curve": [
+                {
+                    "section": "hook",
+                    "asl_p25_s": 0.9,
+                    "asl_p50_s": 1.4,
+                    "asl_p75_s": 1.9,
+                    "cuts_per_min_range": [28, 45],
+                    "energy_target": 0.85,
+                    "preferred_transitions": ["hard_cut", "j_cut"],
+                },
+                {
+                    "section": "body",
+                    "asl_p25_s": 2.1,
+                    "asl_p50_s": 3.2,
+                    "asl_p75_s": 4.8,
+                    "cuts_per_min_range": [12, 22],
+                    "energy_target": 0.55,
+                    "preferred_transitions": ["hard_cut", "l_cut"],
+                },
+            ],
+            "visual_tokens": {
+                "palette_roles": {
+                    "ground": "#0D1117",
+                    "ink": "#F0F6FC",
+                    "accent": "#2F81F7",
+                },
+                "typography": {
+                    "display_family": "Space Grotesk",
+                    "body_family": "Inter",
+                    "caption_case": "sentence",
+                    "max_words_per_caption_group": 5,
+                    "default_caption_band": "dynamic_away_from_subject",
+                },
+                "motion_style": {
+                    "easing_feel": "snappy_ease_out",
+                    "entrance_ms_range": [160, 280],
+                    "punch_in_scale_range": [1.06, 1.12],
+                },
+            },
+            "audio_style": {
+                "bgm_moods": ["minimal_pulse", "focused_electronic"],
+                "bpm_range": [105, 128],
+                "ducking_strength": 0.8,
+                "sfx_policy": "selective_transitions",
+            },
+        },
+        "hard_guardrails": {
+            "min_shot_duration_s": 0.7,
+            "max_uninterrupted_hold_s": 9.0,
+            "no_cut_within_keyword_ms": 180,
+            "never_overlap_subject_boxes": True,
+            "min_wcag_contrast": 4.5,
+            "banned_transitions": ["spin_3d", "star_wipe"],
+            "banned_patterns": ["bouncy_emoji_captions"],
+            "avoid_heavy_css_blur": True,
+        },
         "calibration": {
             "accepted_overrides": 0,
             "rejected_patterns": [],
@@ -195,6 +336,8 @@ def test_transcript_and_edit_plan_contracts() -> None:
                 "timeline_duration_s": 0.85,
                 "transparent": True,
                 "safe_band": "lower_third",
+                "template_id": "caption_rail",
+                "variables": {"text": "Halo semua.", "fg_color": "#F0F6FC", "bg_color": "#0D1117"},
                 "props": {"text": "Halo semua."},
             }
         ],
@@ -215,6 +358,7 @@ def test_transcript_and_edit_plan_contracts() -> None:
         "verifier_passed": True,
     }
     p_model = EditPlan.model_validate(plan_data)
+    assert p_model.overlay_compositions[0].template_id == "caption_rail"
     p_errors = validate_against_contract(
         p_model.model_dump(exclude_none=True),
         "edit_plan.schema.json",

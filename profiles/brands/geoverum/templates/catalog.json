@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "geoverum",
+  "templates": [
+    {
+      "template_id": "caption_rail",
+      "composition_path": "studies/geoverum/captions/compositions/caption-rail.html",
+      "description": "Sentence-case narrative caption chip. Layout locked; only text and timing props vary.",
+      "safe_band": "lower_third",
+      "variables": [
+        { "id": "text", "type": "string", "label": "Caption phrase" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" }
+      ]
+    },
+    {
+      "template_id": "broadcast_bug",
+      "composition_path": "studies/geoverum/branding/compositions/top-bug.html",
+      "description": "Unboxed Geoverum meridian mark. No pill, no status dot.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "opacity", "type": "number", "min": 0.78, "max": 0.86, "default": 0.84 },
+        {
+          "id": "aspect",
+          "type": "enum",
+          "enum_values": ["9x16", "16x9"],
+          "default": "9x16"
+        }
+      ]
+    },
+    {
+      "template_id": "distance_metric",
+      "composition_path": "studies/geoverum/labels-lines/compositions/labels-lines-scene.html",
+      "description": "Tabular ±KM bracket between two territories in open water.",
+      "safe_band": "dynamic_away_from_subject",
+      "variables": [
+        { "id": "label", "type": "string", "default": "±20 KM" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "region_highlight",
+      "composition_path": "studies/geoverum/region-highlight/compositions/region-highlight-scene.html",
+      "description": "Terrain-preserving landmass tint with unified exterior coastline.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "fill_color", "type": "color", "token_ref": "palette_roles.secondary_accent", "default": "#C2412D" },
+        { "id": "rim_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "stagger_gap_s", "type": "number", "min": 0.6, "max": 1.2, "default": 0.65 }
+      ]
+    },
+    {
+      "template_id": "amber_fact_card",
+      "composition_path": "studies/geoverum/captions/compositions/caption-rail.html",
+      "description": "Long-form numbered chapter plate. Amber surface, abyssal ink; layout locked to .fact-card.",
+      "safe_band": "lower_third",
+      "variables": [
+        { "id": "text", "type": "string", "label": "Numbered fact title" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "tabular_metric",
+      "composition_path": "studies/geoverum/labels-lines/compositions/labels-lines-scene.html",
+      "description": "Archivo Black tabular metric beside live B-roll (elevation, capacity, length).",
+      "safe_band": "dynamic_away_from_subject",
+      "variables": [
+        { "id": "label", "type": "string", "default": "5.150 MW" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    }
+  ]
+}

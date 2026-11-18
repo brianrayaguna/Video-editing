@@ -14,6 +14,9 @@
       background: transparent;
       font-family: 'Space Grotesk', sans-serif;
     }
+    /* 9:16 default — top-center wordmark.
+       For 16:9 long-form, add class `bug-landscape` on #top-bug-clip to park a
+       compact mark at top-right (see branding/SPEC.md). */
     #top-bug-clip {
       position: absolute;
       top: 72px;
@@ -22,6 +25,16 @@
       display: flex;
       justify-content: center;
       pointer-events: none;
+    }
+    #top-bug-clip.bug-landscape {
+      top: 28px;
+      left: auto;
+      right: 36px;
+      width: auto;
+      justify-content: flex-end;
+    }
+    #top-bug-clip.bug-landscape .bug-text {
+      display: none; /* mark-only; avoid competing with landscape B-roll */
     }
     #top-bug-inner {
       display: flex;

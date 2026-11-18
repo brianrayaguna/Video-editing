@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0",
+  "path": "/Users/brianrayaguna/Documents/Editing/studies/geoverum/tectonics-30s/assets/basemap-tectonics-30s.mp4",
+  "sha256": "94adfe24ae949933f8c12f6d17113ceedd6f3ef8023addcb01347e5713948cf4",
+  "file_bytes": 182352289,
+  "container": {
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration_s": 30.0,
+    "bit_rate": 48627277
+  },
+  "video": {
+    "present": true,
+    "codec": "h264",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "is_cfr": true,
+    "pixel_format": "yuvj420p",
+    "color_space": "bt709",
+    "color_primaries": null,
+    "color_trc": null,
+    "frame_count_est": 900
+  },
+  "audio": {
+    "present": false,
+    "codec": null,
+    "sample_rate_hz": null,
+    "channels": null,
+    "integrated_lufs": null,
+    "lra": null,
+    "true_peak_dbtp": null,
+    "silence_intervals": [],
+    "silence_ratio": 0.0
+  },
+  "shots": [
+    {
+      "shot_index": 0,
+      "start_s": 0.0,
+      "end_s": 30.0,
+      "duration_s": 30.0,
+      "confidence": 1.0
+    }
+  ],
+  "shot_stats": {
+    "count": 1,
+    "asl_p25_s": 30.0,
+    "asl_p50_s": 30.0,
+    "asl_p75_s": 30.0,
+    "cuts_per_min": 0.0
+  },
+  "visual": {
+    "sampled_frames": 60,
+    "palette": [
+      {
+        "hex": "#052234",
+        "share": 0.284,
+        "lab_l": 12.192,
+        "lab_a": -3.251,
+        "lab_b": -14.736
+      },
+      {
+        "hex": "#01171B",
+        "share": 0.12,
+        "lab_l": 6.249,
+        "lab_a": -5.554,
+        "lab_b": -5.797
+      },
+      {
+        "hex": "#001014",
+        "share": 0.077,
+        "lab_l": 3.785,
+        "lab_a": -3.505,
+        "lab_b": -3.932
+      },
+      {
+        "hex": "#233620",
+        "share": 0.047,
+        "lab_l": 20.328,
+        "lab_a": -12.909,
+        "lab_b": 11.092
+      },
+      {
+        "hex": "#3B4931",
+        "share": 0.034,
+        "lab_l": 29.334,
+        "lab_a": -10.765,
+        "lab_b": 12.603
+      }
+    ],
+    "palette_entropy": 4.545,
+    "mean_luminance": 70.115,
+    "band_luminance": {
+      "upper": 32.755,
+      "center": 110.691,
+      "lower_third": 35.503
+    },
+    "mean_sharpness": 39.889,
+    "black_intervals": [],
+    "keyframes": [
+      {
+        "timestamp_s": 15.0,
+        "shot_index": 0,
+        "path": "/Users/brianrayaguna/Documents/Editing/studies/geoverum/tectonics-30s/assets/keyframes/shot_0000.jpg",
+        "luma_lower_third": 36.045,
+        "sharpness": 40.602
+      }
+    ]
+  },
+  "timing_ms": {
+    "hash_ms": 550,
+    "ffprobe_ms": 58,
+    "stream_analyze_ms": 4066,
+    "total_ms": 4617
+  }
+}

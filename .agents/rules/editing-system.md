@@ -21,5 +21,21 @@ These rules govern all media pipelines, composition compilers, and provider inte
 - Compile native Linux `x86_64` binaries (`vedit-probe`) directly inside the cloud container image build; never copy macOS ARM64 binaries into Linux containers.
 - Keep `@hyperframes/core` and `@hyperframes/producer` pinned explicitly across `packages/hf-compiler-ts` and cloud container images.
 
+## 4b. MapLibre A-Roll Bake (Local Cartography)
+- Basemap / shot A-roll baking is **local** (MapLibre + Puppeteer + offline tiles). Modal does **not** bake satellite beds; it composites HyperFrames overlays onto pre-baked A-roll and masters audio.
+- Before writing or copying any MapLibre frame loop, read [`tools/geo-assets/README.md`](../../tools/geo-assets/README.md). The production-proven bake contract lives there and in `render_sulawesi_shots.mjs`.
+- **Required knobs for continuous or multi-shot MapLibre bakes on the directing host:**
+  - Intermediate frames: **JPEG** (quality ≈ 92), not full-resolution PNG sequences
+  - Tile idle: poll ≈ **20 ms**, timeout ≈ **1500 ms** (not a 9 s default)
+  - Chromium GL on **Darwin**: `--use-gl=angle` **without** forced SwiftShader; reserve SwiftShader for Linux/CI/cloud CPU workers only
+  - Resume/skip existing valid frames unless `REBAKE=1`
+  - Pre-warm tiles at each camera keyframe before the full frame loop when using multi-beat `KEYFRAMES_JSON`
+- Do not treat a generic helper filename as authoritative if a production study baker already encodes faster, verified knobs. Prefer the production-proven pattern; then align shared helpers to it.
+- Never use source-encode remasters (`bake_and_render.mjs` PNG overlays on reference MP4) as the Geoverum production master path. Native beds + `EditPlan` → `vedit compile` → `vedit cloud render` → `vedit audit`.
+
 ## 5. Brand Style Policy Semantics
-- Treat `BrandStylePolicy` as a flexible editorial policy combining section-conditioned pacing priors (`hook`, `setup`, `body`, `escalation`, `climax`, `outro`), conditional trigger grammar, hard negative guardrails, and a multimodal exemplar bank—never as a rigid shot-length template.
+- Runtime `BrandStylePolicy` (`profiles/brands/<brand_id>/brand_style_policy.json`) carries section-conditioned pacing priors, visual/audio soft tokens, hard guardrails, and calibration/provenance. Planner and verifier consume those fields only—never treat the policy as a rigid shot-length template.
+- Advisory `grammar_triggers` / `exemplar_bank` live only in `editorial_playbook.json` (`contracts/editorial_playbook.schema.json`). Do not put them on runtime policy. Do not imply the engine executes trigger DSLs.
+- Optional `templates/catalog.json` binds approved compositions via typed variables (`template_id` on EditPlan overlays). Unknown variables fail verification.
+- Brand craft documents (`CRAFT.md`) stay under `profiles/brands/<brand_id>/`. Engine-wide composition rules stay in `DESIGN.md`.
+- Validate with `vedit contracts validate` (platforms + brand trees) or `vedit brand validate`.

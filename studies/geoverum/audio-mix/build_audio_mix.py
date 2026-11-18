@@ -130,7 +130,7 @@ def main() -> int:
     impact_path = root / "assets" / "audio" / "sfx_d0ba83c3-79f2-4fd0-aa3b-6bf95f741f2a_high.wav"
     font_sg = root / "assets" / "geo" / "fonts" / "SpaceGrotesk-Variable.ttf"
     transcript_path = root / "assets" / "audio" / "sulawesi_transcript.json"
-    policy_path = root / "profiles" / "geoverum" / "brand_style_policy.json"
+    policy_path = root / "profiles" / "brands" / "geoverum" / "brand_style_policy.json"
 
     boxes_path = root / "studies" / "geoverum" / "pilot-sulawesi" / "assets" / "subject_boxes.json"
     subject_boxes = json.loads(boxes_path.read_text(encoding="utf-8")) if boxes_path.is_file() else {}

@@ -25,13 +25,6 @@ assets/geo/fonts/
 assets/geo/flags/
 assets/geo/icons/
 assets/geo/vendor/
-studies/**/renders/
-studies/**/frames-*/
-studies/**/_frames/
-studies/**/hf_project/
-studies/**/plan_v2/
-studies/**/edit_plan.json
-studies/**/assets/shots/
 assets/audio/
 *.mp4
 *.mov
@@ -39,3 +32,31 @@ assets/audio/
 *.wav
 *.mp3
 *.m4a
+
+# Study / bake ephemera (regenerable)
+studies/**/renders/
+studies/**/frames-*/
+studies/**/_frames/
+studies/**/hf_project/
+studies/**/plan_v2/
+studies/**/edit_plan.json
+studies/**/assets/shots/
+studies/**/contact/
+studies/**/contact-full/
+studies/**/contact-maps/
+studies/**/craft-samples/
+studies/**/event-frames/
+studies/**/caption-frames/
+studies/**/keyframes/
+studies/**/visual-pass/caption-crops/
+studies/**/visual-pass/section-grids/
+studies/**/visual-pass/map-keyframes/
+studies/**/assets/qa_*.jpg
+studies/**/assets/*.mp4
+studies/**/assets/*.wav
+studies/**/*.log
+
+# Active local edit jobs (keep README only in git)
+workspace/*
+!workspace/README.md
+!workspace/.gitkeep

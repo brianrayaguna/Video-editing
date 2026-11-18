@@ -1,0 +1,3878 @@
+{
+  "schema_version": "1.0",
+  "path": "ref_ethiopia_toba.mp4",
+  "sha256": "0719155d7f16d20cd16819b696657c022d0e2bb4c255fe5d8f6aadf64cbaa686",
+  "file_bytes": 129214517,
+  "container": {
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration_s": 1587.0855,
+    "bit_rate": 651329
+  },
+  "video": {
+    "present": true,
+    "codec": "h264",
+    "width": 854,
+    "height": 480,
+    "fps": 29.97,
+    "is_cfr": true,
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "frame_count_est": 47565
+  },
+  "audio": {
+    "present": true,
+    "codec": "aac",
+    "sample_rate_hz": 44100,
+    "channels": 2,
+    "integrated_lufs": -9.1,
+    "lra": 4.1,
+    "true_peak_dbtp": 6.2,
+    "silence_intervals": [],
+    "silence_ratio": 0.0
+  },
+  "shots": [
+    {
+      "shot_index": 0,
+      "start_s": 0.0,
+      "end_s": 21.421,
+      "duration_s": 21.421,
+      "confidence": 1.0
+    },
+    {
+      "shot_index": 1,
+      "start_s": 21.421,
+      "end_s": 23.624,
+      "duration_s": 2.202,
+      "confidence": 0.21
+    },
+    {
+      "shot_index": 2,
+      "start_s": 23.624,
+      "end_s": 40.741,
+      "duration_s": 17.117,
+      "confidence": 0.17
+    },
+    {
+      "shot_index": 3,
+      "start_s": 40.741,
+      "end_s": 60.861,
+      "duration_s": 20.12,
+      "confidence": 0.28
+    },
+    {
+      "shot_index": 4,
+      "start_s": 60.861,
+      "end_s": 64.398,
+      "duration_s": 3.537,
+      "confidence": 0.207
+    },
+    {
+      "shot_index": 5,
+      "start_s": 64.398,
+      "end_s": 68.569,
+      "duration_s": 4.171,
+      "confidence": 0.24
+    },
+    {
+      "shot_index": 6,
+      "start_s": 68.569,
+      "end_s": 71.271,
+      "duration_s": 2.703,
+      "confidence": 0.146
+    },
+    {
+      "shot_index": 7,
+      "start_s": 71.271,
+      "end_s": 94.761,
+      "duration_s": 23.49,
+      "confidence": 0.187
+    },
+    {
+      "shot_index": 8,
+      "start_s": 94.761,
+      "end_s": 104.037,
+      "duration_s": 9.276,
+      "confidence": 0.235
+    },
+    {
+      "shot_index": 9,
+      "start_s": 104.037,
+      "end_s": 108.275,
+      "duration_s": 4.238,
+      "confidence": 0.18
+    },
+    {
+      "shot_index": 10,
+      "start_s": 108.275,
+      "end_s": 110.978,
+      "duration_s": 2.703,
+      "confidence": 0.168
+    },
+    {
+      "shot_index": 11,
+      "start_s": 110.978,
+      "end_s": 113.647,
+      "duration_s": 2.669,
+      "confidence": 0.168
+    },
+    {
+      "shot_index": 12,
+      "start_s": 113.647,
+      "end_s": 115.916,
+      "duration_s": 2.269,
+      "confidence": 0.151
+    },
+    {
+      "shot_index": 13,
+      "start_s": 115.916,
+      "end_s": 117.451,
+      "duration_s": 1.535,
+      "confidence": 0.144
+    },
+    {
+      "shot_index": 14,
+      "start_s": 117.451,
+      "end_s": 119.252,
+      "duration_s": 1.802,
+      "confidence": 0.175
+    },
+    {
+      "shot_index": 15,
+      "start_s": 119.252,
+      "end_s": 121.321,
+      "duration_s": 2.069,
+      "confidence": 0.209
+    },
+    {
+      "shot_index": 16,
+      "start_s": 121.321,
+      "end_s": 128.528,
+      "duration_s": 7.207,
+      "confidence": 0.361
+    },
+    {
+      "shot_index": 17,
+      "start_s": 128.528,
+      "end_s": 129.796,
+      "duration_s": 1.268,
+      "confidence": 0.132
+    },
+    {
+      "shot_index": 18,
+      "start_s": 129.796,
+      "end_s": 132.633,
+      "duration_s": 2.836,
+      "confidence": 0.188
+    },
+    {
+      "shot_index": 19,
+      "start_s": 132.633,
+      "end_s": 144.645,
+      "duration_s": 12.012,
+      "confidence": 0.193
+    },
+    {
+      "shot_index": 20,
+      "start_s": 144.645,
+      "end_s": 161.428,
+      "duration_s": 16.783,
+      "confidence": 0.124
+    },
+    {
+      "shot_index": 21,
+      "start_s": 161.428,
+      "end_s": 164.064,
+      "duration_s": 2.636,
+      "confidence": 0.173
+    },
+    {
+      "shot_index": 22,
+      "start_s": 164.064,
+      "end_s": 172.773,
+      "duration_s": 8.709,
+      "confidence": 0.21
+    },
+    {
+      "shot_index": 23,
+      "start_s": 172.773,
+      "end_s": 177.611,
+      "duration_s": 4.838,
+      "confidence": 0.305
+    },
+    {
+      "shot_index": 24,
+      "start_s": 177.611,
+      "end_s": 179.713,
+      "duration_s": 2.102,
+      "confidence": 0.221
+    },
+    {
+      "shot_index": 25,
+      "start_s": 179.713,
+      "end_s": 186.386,
+      "duration_s": 6.673,
+      "confidence": 0.347
+    },
+    {
+      "shot_index": 26,
+      "start_s": 186.386,
+      "end_s": 191.091,
+      "duration_s": 4.705,
+      "confidence": 0.247
+    },
+    {
+      "shot_index": 27,
+      "start_s": 191.091,
+      "end_s": 195.262,
+      "duration_s": 4.171,
+      "confidence": 0.244
+    },
+    {
+      "shot_index": 28,
+      "start_s": 195.262,
+      "end_s": 198.065,
+      "duration_s": 2.803,
+      "confidence": 0.152
+    },
+    {
+      "shot_index": 29,
+      "start_s": 198.065,
+      "end_s": 201.201,
+      "duration_s": 3.136,
+      "confidence": 0.194
+    },
+    {
+      "shot_index": 30,
+      "start_s": 201.201,
+      "end_s": 204.404,
+      "duration_s": 3.203,
+      "confidence": 0.174
+    },
+    {
+      "shot_index": 31,
+      "start_s": 204.404,
+      "end_s": 206.306,
+      "duration_s": 1.902,
+      "confidence": 0.192
+    },
+    {
+      "shot_index": 32,
+      "start_s": 206.306,
+      "end_s": 212.946,
+      "duration_s": 6.64,
+      "confidence": 0.153
+    },
+    {
+      "shot_index": 33,
+      "start_s": 212.946,
+      "end_s": 220.954,
+      "duration_s": 8.008,
+      "confidence": 0.224
+    },
+    {
+      "shot_index": 34,
+      "start_s": 220.954,
+      "end_s": 235.335,
+      "duration_s": 14.381,
+      "confidence": 0.17
+    },
+    {
+      "shot_index": 35,
+      "start_s": 235.335,
+      "end_s": 239.673,
+      "duration_s": 4.338,
+      "confidence": 0.191
+    },
+    {
+      "shot_index": 36,
+      "start_s": 239.673,
+      "end_s": 241.541,
+      "duration_s": 1.869,
+      "confidence": 0.18
+    },
+    {
+      "shot_index": 37,
+      "start_s": 241.541,
+      "end_s": 243.243,
+      "duration_s": 1.702,
+      "confidence": 0.183
+    },
+    {
+      "shot_index": 38,
+      "start_s": 243.243,
+      "end_s": 251.618,
+      "duration_s": 8.375,
+      "confidence": 0.176
+    },
+    {
+      "shot_index": 39,
+      "start_s": 251.618,
+      "end_s": 255.355,
+      "duration_s": 3.737,
+      "confidence": 0.233
+    },
+    {
+      "shot_index": 40,
+      "start_s": 255.355,
+      "end_s": 266.533,
+      "duration_s": 11.178,
+      "confidence": 0.23
+    },
+    {
+      "shot_index": 41,
+      "start_s": 266.533,
+      "end_s": 267.868,
+      "duration_s": 1.335,
+      "confidence": 0.129
+    },
+    {
+      "shot_index": 42,
+      "start_s": 267.868,
+      "end_s": 269.069,
+      "duration_s": 1.201,
+      "confidence": 0.13
+    },
+    {
+      "shot_index": 43,
+      "start_s": 269.069,
+      "end_s": 270.27,
+      "duration_s": 1.201,
+      "confidence": 0.144
+    },
+    {
+      "shot_index": 44,
+      "start_s": 270.27,
+      "end_s": 282.349,
+      "duration_s": 12.079,
+      "confidence": 0.173
+    },
+    {
+      "shot_index": 45,
+      "start_s": 282.349,
+      "end_s": 285.652,
+      "duration_s": 3.303,
+      "confidence": 0.187
+    },
+    {
+      "shot_index": 46,
+      "start_s": 285.652,
+      "end_s": 288.955,
+      "duration_s": 3.303,
+      "confidence": 0.206
+    },
+    {
+      "shot_index": 47,
+      "start_s": 288.955,
+      "end_s": 303.403,
+      "duration_s": 14.448,
+      "confidence": 0.198
+    },
+    {
+      "shot_index": 48,
+      "start_s": 303.403,
+      "end_s": 309.709,
+      "duration_s": 6.306,
+      "confidence": 0.122
+    },
+    {
+      "shot_index": 49,
+      "start_s": 309.709,
+      "end_s": 317.184,
+      "duration_s": 7.474,
+      "confidence": 0.181
+    },
+    {
+      "shot_index": 50,
+      "start_s": 317.184,
+      "end_s": 321.354,
+      "duration_s": 4.171,
+      "confidence": 0.137
+    },
+    {
+      "shot_index": 51,
+      "start_s": 321.354,
+      "end_s": 355.488,
+      "duration_s": 34.134,
+      "confidence": 0.23
+    },
+    {
+      "shot_index": 52,
+      "start_s": 355.488,
+      "end_s": 370.303,
+      "duration_s": 14.815,
+      "confidence": 0.236
+    },
+    {
+      "shot_index": 53,
+      "start_s": 370.303,
+      "end_s": 373.607,
+      "duration_s": 3.303,
+      "confidence": 0.315
+    },
+    {
+      "shot_index": 54,
+      "start_s": 373.607,
+      "end_s": 391.558,
+      "duration_s": 17.951,
+      "confidence": 0.298
+    },
+    {
+      "shot_index": 55,
+      "start_s": 391.558,
+      "end_s": 401.668,
+      "duration_s": 10.11,
+      "confidence": 0.203
+    },
+    {
+      "shot_index": 56,
+      "start_s": 401.668,
+      "end_s": 407.24,
+      "duration_s": 5.572,
+      "confidence": 0.174
+    },
+    {
+      "shot_index": 57,
+      "start_s": 407.24,
+      "end_s": 409.943,
+      "duration_s": 2.703,
+      "confidence": 0.201
+    },
+    {
+      "shot_index": 58,
+      "start_s": 409.943,
+      "end_s": 412.545,
+      "duration_s": 2.603,
+      "confidence": 0.17
+    },
+    {
+      "shot_index": 59,
+      "start_s": 412.545,
+      "end_s": 418.318,
+      "duration_s": 5.772,
+      "confidence": 0.216
+    },
+    {
+      "shot_index": 60,
+      "start_s": 418.318,
+      "end_s": 421.388,
+      "duration_s": 3.07,
+      "confidence": 0.121
+    },
+    {
+      "shot_index": 61,
+      "start_s": 421.388,
+      "end_s": 423.924,
+      "duration_s": 2.536,
+      "confidence": 0.199
+    },
+    {
+      "shot_index": 62,
+      "start_s": 423.924,
+      "end_s": 436.403,
+      "duration_s": 12.479,
+      "confidence": 0.257
+    },
+    {
+      "shot_index": 63,
+      "start_s": 436.403,
+      "end_s": 440.14,
+      "duration_s": 3.737,
+      "confidence": 0.319
+    },
+    {
+      "shot_index": 64,
+      "start_s": 440.14,
+      "end_s": 442.776,
+      "duration_s": 2.636,
+      "confidence": 0.263
+    },
+    {
+      "shot_index": 65,
+      "start_s": 442.776,
+      "end_s": 444.611,
+      "duration_s": 1.835,
+      "confidence": 0.174
+    },
+    {
+      "shot_index": 66,
+      "start_s": 444.611,
+      "end_s": 456.489,
+      "duration_s": 11.879,
+      "confidence": 0.176
+    },
+    {
+      "shot_index": 67,
+      "start_s": 456.489,
+      "end_s": 457.324,
+      "duration_s": 0.834,
+      "confidence": 0.213
+    },
+    {
+      "shot_index": 68,
+      "start_s": 457.324,
+      "end_s": 458.858,
+      "duration_s": 1.535,
+      "confidence": 0.218
+    },
+    {
+      "shot_index": 69,
+      "start_s": 458.858,
+      "end_s": 461.294,
+      "duration_s": 2.436,
+      "confidence": 0.337
+    },
+    {
+      "shot_index": 70,
+      "start_s": 461.294,
+      "end_s": 463.563,
+      "duration_s": 2.269,
+      "confidence": 0.238
+    },
+    {
+      "shot_index": 71,
+      "start_s": 463.563,
+      "end_s": 464.03,
+      "duration_s": 0.467,
+      "confidence": 0.204
+    },
+    {
+      "shot_index": 72,
+      "start_s": 464.03,
+      "end_s": 464.431,
+      "duration_s": 0.4,
+      "confidence": 0.139
+    },
+    {
+      "shot_index": 73,
+      "start_s": 464.431,
+      "end_s": 464.831,
+      "duration_s": 0.4,
+      "confidence": 0.141
+    },
+    {
+      "shot_index": 74,
+      "start_s": 464.831,
+      "end_s": 466.533,
+      "duration_s": 1.702,
+      "confidence": 0.138
+    },
+    {
+      "shot_index": 75,
+      "start_s": 466.533,
+      "end_s": 468.501,
+      "duration_s": 1.969,
+      "confidence": 0.266
+    },
+    {
+      "shot_index": 76,
+      "start_s": 468.501,
+      "end_s": 475.909,
+      "duration_s": 7.407,
+      "confidence": 0.181
+    },
+    {
+      "shot_index": 77,
+      "start_s": 475.909,
+      "end_s": 479.245,
+      "duration_s": 3.337,
+      "confidence": 0.158
+    },
+    {
+      "shot_index": 78,
+      "start_s": 479.245,
+      "end_s": 482.048,
+      "duration_s": 2.803,
+      "confidence": 0.217
+    },
+    {
+      "shot_index": 79,
+      "start_s": 482.048,
+      "end_s": 484.651,
+      "duration_s": 2.603,
+      "confidence": 0.256
+    },
+    {
+      "shot_index": 80,
+      "start_s": 484.651,
+      "end_s": 486.753,
+      "duration_s": 2.102,
+      "confidence": 0.202
+    },
+    {
+      "shot_index": 81,
+      "start_s": 486.753,
+      "end_s": 489.189,
+      "duration_s": 2.436,
+      "confidence": 0.205
+    },
+    {
+      "shot_index": 82,
+      "start_s": 489.189,
+      "end_s": 491.391,
+      "duration_s": 2.202,
+      "confidence": 0.201
+    },
+    {
+      "shot_index": 83,
+      "start_s": 491.391,
+      "end_s": 492.792,
+      "duration_s": 1.401,
+      "confidence": 0.211
+    },
+    {
+      "shot_index": 84,
+      "start_s": 492.792,
+      "end_s": 494.16,
+      "duration_s": 1.368,
+      "confidence": 0.126
+    },
+    {
+      "shot_index": 85,
+      "start_s": 494.16,
+      "end_s": 495.228,
+      "duration_s": 1.068,
+      "confidence": 0.195
+    },
+    {
+      "shot_index": 86,
+      "start_s": 495.228,
+      "end_s": 497.564,
+      "duration_s": 2.336,
+      "confidence": 0.263
+    },
+    {
+      "shot_index": 87,
+      "start_s": 497.564,
+      "end_s": 499.432,
+      "duration_s": 1.869,
+      "confidence": 0.232
+    },
+    {
+      "shot_index": 88,
+      "start_s": 499.432,
+      "end_s": 502.302,
+      "duration_s": 2.87,
+      "confidence": 0.279
+    },
+    {
+      "shot_index": 89,
+      "start_s": 502.302,
+      "end_s": 503.737,
+      "duration_s": 1.435,
+      "confidence": 0.244
+    },
+    {
+      "shot_index": 90,
+      "start_s": 503.737,
+      "end_s": 506.506,
+      "duration_s": 2.769,
+      "confidence": 0.226
+    },
+    {
+      "shot_index": 91,
+      "start_s": 506.506,
+      "end_s": 514.748,
+      "duration_s": 8.242,
+      "confidence": 0.242
+    },
+    {
+      "shot_index": 92,
+      "start_s": 514.748,
+      "end_s": 519.285,
+      "duration_s": 4.538,
+      "confidence": 0.192
+    },
+    {
+      "shot_index": 93,
+      "start_s": 519.285,
+      "end_s": 523.089,
+      "duration_s": 3.804,
+      "confidence": 0.173
+    },
+    {
+      "shot_index": 94,
+      "start_s": 523.089,
+      "end_s": 524.19,
+      "duration_s": 1.101,
+      "confidence": 0.278
+    },
+    {
+      "shot_index": 95,
+      "start_s": 524.19,
+      "end_s": 525.825,
+      "duration_s": 1.635,
+      "confidence": 0.173
+    },
+    {
+      "shot_index": 96,
+      "start_s": 525.825,
+      "end_s": 527.827,
+      "duration_s": 2.002,
+      "confidence": 0.179
+    },
+    {
+      "shot_index": 97,
+      "start_s": 527.827,
+      "end_s": 531.398,
+      "duration_s": 3.57,
+      "confidence": 0.177
+    },
+    {
+      "shot_index": 98,
+      "start_s": 531.398,
+      "end_s": 534.334,
+      "duration_s": 2.936,
+      "confidence": 0.165
+    },
+    {
+      "shot_index": 99,
+      "start_s": 534.334,
+      "end_s": 538.138,
+      "duration_s": 3.804,
+      "confidence": 0.249
+    },
+    {
+      "shot_index": 100,
+      "start_s": 538.138,
+      "end_s": 540.573,
+      "duration_s": 2.436,
+      "confidence": 0.21
+    },
+    {
+      "shot_index": 101,
+      "start_s": 540.573,
+      "end_s": 542.208,
+      "duration_s": 1.635,
+      "confidence": 0.262
+    },
+    {
+      "shot_index": 102,
+      "start_s": 542.208,
+      "end_s": 549.349,
+      "duration_s": 7.14,
+      "confidence": 0.315
+    },
+    {
+      "shot_index": 103,
+      "start_s": 549.349,
+      "end_s": 551.284,
+      "duration_s": 1.935,
+      "confidence": 0.357
+    },
+    {
+      "shot_index": 104,
+      "start_s": 551.284,
+      "end_s": 552.786,
+      "duration_s": 1.501,
+      "confidence": 0.249
+    },
+    {
+      "shot_index": 105,
+      "start_s": 552.786,
+      "end_s": 557.157,
+      "duration_s": 4.371,
+      "confidence": 0.184
+    },
+    {
+      "shot_index": 106,
+      "start_s": 557.157,
+      "end_s": 560.627,
+      "duration_s": 3.47,
+      "confidence": 0.276
+    },
+    {
+      "shot_index": 107,
+      "start_s": 560.627,
+      "end_s": 587.754,
+      "duration_s": 27.127,
+      "confidence": 0.168
+    },
+    {
+      "shot_index": 108,
+      "start_s": 587.754,
+      "end_s": 592.358,
+      "duration_s": 4.605,
+      "confidence": 0.196
+    },
+    {
+      "shot_index": 109,
+      "start_s": 592.358,
+      "end_s": 596.83,
+      "duration_s": 4.471,
+      "confidence": 0.248
+    },
+    {
+      "shot_index": 110,
+      "start_s": 596.83,
+      "end_s": 599.799,
+      "duration_s": 2.97,
+      "confidence": 0.131
+    },
+    {
+      "shot_index": 111,
+      "start_s": 599.799,
+      "end_s": 601.901,
+      "duration_s": 2.102,
+      "confidence": 0.25
+    },
+    {
+      "shot_index": 112,
+      "start_s": 601.901,
+      "end_s": 606.072,
+      "duration_s": 4.171,
+      "confidence": 0.177
+    },
+    {
+      "shot_index": 113,
+      "start_s": 606.072,
+      "end_s": 607.907,
+      "duration_s": 1.835,
+      "confidence": 0.281
+    },
+    {
+      "shot_index": 114,
+      "start_s": 607.907,
+      "end_s": 611.678,
+      "duration_s": 3.77,
+      "confidence": 0.226
+    },
+    {
+      "shot_index": 115,
+      "start_s": 611.678,
+      "end_s": 615.949,
+      "duration_s": 4.271,
+      "confidence": 0.147
+    },
+    {
+      "shot_index": 116,
+      "start_s": 615.949,
+      "end_s": 620.453,
+      "duration_s": 4.505,
+      "confidence": 0.277
+    },
+    {
+      "shot_index": 117,
+      "start_s": 620.453,
+      "end_s": 623.656,
+      "duration_s": 3.203,
+      "confidence": 0.184
+    },
+    {
+      "shot_index": 118,
+      "start_s": 623.656,
+      "end_s": 626.926,
+      "duration_s": 3.27,
+      "confidence": 0.288
+    },
+    {
+      "shot_index": 119,
+      "start_s": 626.926,
+      "end_s": 631.264,
+      "duration_s": 4.338,
+      "confidence": 0.196
+    },
+    {
+      "shot_index": 120,
+      "start_s": 631.264,
+      "end_s": 634.601,
+      "duration_s": 3.337,
+      "confidence": 0.172
+    },
+    {
+      "shot_index": 121,
+      "start_s": 634.601,
+      "end_s": 636.302,
+      "duration_s": 1.702,
+      "confidence": 0.153
+    },
+    {
+      "shot_index": 122,
+      "start_s": 636.302,
+      "end_s": 642.609,
+      "duration_s": 6.306,
+      "confidence": 0.473
+    },
+    {
+      "shot_index": 123,
+      "start_s": 642.609,
+      "end_s": 644.711,
+      "duration_s": 2.102,
+      "confidence": 0.189
+    },
+    {
+      "shot_index": 124,
+      "start_s": 644.711,
+      "end_s": 648.181,
+      "duration_s": 3.47,
+      "confidence": 0.261
+    },
+    {
+      "shot_index": 125,
+      "start_s": 648.181,
+      "end_s": 649.516,
+      "duration_s": 1.335,
+      "confidence": 0.158
+    },
+    {
+      "shot_index": 126,
+      "start_s": 649.516,
+      "end_s": 651.217,
+      "duration_s": 1.702,
+      "confidence": 0.173
+    },
+    {
+      "shot_index": 127,
+      "start_s": 651.217,
+      "end_s": 654.921,
+      "duration_s": 3.704,
+      "confidence": 0.2
+    },
+    {
+      "shot_index": 128,
+      "start_s": 654.921,
+      "end_s": 658.892,
+      "duration_s": 3.971,
+      "confidence": 0.233
+    },
+    {
+      "shot_index": 129,
+      "start_s": 658.892,
+      "end_s": 661.027,
+      "duration_s": 2.135,
+      "confidence": 0.267
+    },
+    {
+      "shot_index": 130,
+      "start_s": 661.027,
+      "end_s": 663.229,
+      "duration_s": 2.202,
+      "confidence": 0.203
+    },
+    {
+      "shot_index": 131,
+      "start_s": 663.229,
+      "end_s": 667.901,
+      "duration_s": 4.671,
+      "confidence": 0.249
+    },
+    {
+      "shot_index": 132,
+      "start_s": 667.901,
+      "end_s": 669.869,
+      "duration_s": 1.969,
+      "confidence": 0.279
+    },
+    {
+      "shot_index": 133,
+      "start_s": 669.869,
+      "end_s": 672.005,
+      "duration_s": 2.135,
+      "confidence": 0.147
+    },
+    {
+      "shot_index": 134,
+      "start_s": 672.005,
+      "end_s": 673.873,
+      "duration_s": 1.869,
+      "confidence": 0.122
+    },
+    {
+      "shot_index": 135,
+      "start_s": 673.873,
+      "end_s": 674.941,
+      "duration_s": 1.068,
+      "confidence": 0.192
+    },
+    {
+      "shot_index": 136,
+      "start_s": 674.941,
+      "end_s": 678.678,
+      "duration_s": 3.737,
+      "confidence": 0.417
+    },
+    {
+      "shot_index": 137,
+      "start_s": 678.678,
+      "end_s": 682.482,
+      "duration_s": 3.804,
+      "confidence": 0.248
+    },
+    {
+      "shot_index": 138,
+      "start_s": 682.482,
+      "end_s": 688.655,
+      "duration_s": 6.173,
+      "confidence": 0.2
+    },
+    {
+      "shot_index": 139,
+      "start_s": 688.655,
+      "end_s": 692.058,
+      "duration_s": 3.403,
+      "confidence": 0.126
+    },
+    {
+      "shot_index": 140,
+      "start_s": 692.058,
+      "end_s": 693.76,
+      "duration_s": 1.702,
+      "confidence": 0.18
+    },
+    {
+      "shot_index": 141,
+      "start_s": 693.76,
+      "end_s": 696.529,
+      "duration_s": 2.769,
+      "confidence": 0.166
+    },
+    {
+      "shot_index": 142,
+      "start_s": 696.529,
+      "end_s": 698.231,
+      "duration_s": 1.702,
+      "confidence": 0.218
+    },
+    {
+      "shot_index": 143,
+      "start_s": 698.231,
+      "end_s": 700.6,
+      "duration_s": 2.369,
+      "confidence": 0.185
+    },
+    {
+      "shot_index": 144,
+      "start_s": 700.6,
+      "end_s": 703.303,
+      "duration_s": 2.703,
+      "confidence": 0.127
+    },
+    {
+      "shot_index": 145,
+      "start_s": 703.303,
+      "end_s": 705.171,
+      "duration_s": 1.869,
+      "confidence": 0.175
+    },
+    {
+      "shot_index": 146,
+      "start_s": 705.171,
+      "end_s": 707.106,
+      "duration_s": 1.935,
+      "confidence": 0.205
+    },
+    {
+      "shot_index": 147,
+      "start_s": 707.106,
+      "end_s": 709.842,
+      "duration_s": 2.736,
+      "confidence": 0.206
+    },
+    {
+      "shot_index": 148,
+      "start_s": 709.842,
+      "end_s": 712.979,
+      "duration_s": 3.136,
+      "confidence": 0.206
+    },
+    {
+      "shot_index": 149,
+      "start_s": 712.979,
+      "end_s": 716.983,
+      "duration_s": 4.004,
+      "confidence": 0.174
+    },
+    {
+      "shot_index": 150,
+      "start_s": 716.983,
+      "end_s": 721.654,
+      "duration_s": 4.671,
+      "confidence": 0.225
+    },
+    {
+      "shot_index": 151,
+      "start_s": 721.654,
+      "end_s": 724.023,
+      "duration_s": 2.369,
+      "confidence": 0.18
+    },
+    {
+      "shot_index": 152,
+      "start_s": 724.023,
+      "end_s": 726.793,
+      "duration_s": 2.769,
+      "confidence": 0.232
+    },
+    {
+      "shot_index": 153,
+      "start_s": 726.793,
+      "end_s": 728.628,
+      "duration_s": 1.835,
+      "confidence": 0.185
+    },
+    {
+      "shot_index": 154,
+      "start_s": 728.628,
+      "end_s": 731.497,
+      "duration_s": 2.87,
+      "confidence": 0.233
+    },
+    {
+      "shot_index": 155,
+      "start_s": 731.497,
+      "end_s": 735.702,
+      "duration_s": 4.204,
+      "confidence": 0.166
+    },
+    {
+      "shot_index": 156,
+      "start_s": 735.702,
+      "end_s": 737.67,
+      "duration_s": 1.969,
+      "confidence": 0.176
+    },
+    {
+      "shot_index": 157,
+      "start_s": 737.67,
+      "end_s": 739.672,
+      "duration_s": 2.002,
+      "confidence": 0.226
+    },
+    {
+      "shot_index": 158,
+      "start_s": 739.672,
+      "end_s": 741.04,
+      "duration_s": 1.368,
+      "confidence": 0.207
+    },
+    {
+      "shot_index": 159,
+      "start_s": 741.04,
+      "end_s": 743.576,
+      "duration_s": 2.536,
+      "confidence": 0.223
+    },
+    {
+      "shot_index": 160,
+      "start_s": 743.576,
+      "end_s": 745.178,
+      "duration_s": 1.602,
+      "confidence": 0.214
+    },
+    {
+      "shot_index": 161,
+      "start_s": 745.178,
+      "end_s": 748.047,
+      "duration_s": 2.87,
+      "confidence": 0.183
+    },
+    {
+      "shot_index": 162,
+      "start_s": 748.047,
+      "end_s": 751.05,
+      "duration_s": 3.003,
+      "confidence": 0.187
+    },
+    {
+      "shot_index": 163,
+      "start_s": 751.05,
+      "end_s": 757.156,
+      "duration_s": 6.106,
+      "confidence": 0.218
+    },
+    {
+      "shot_index": 164,
+      "start_s": 757.156,
+      "end_s": 766.599,
+      "duration_s": 9.443,
+      "confidence": 0.26
+    },
+    {
+      "shot_index": 165,
+      "start_s": 766.599,
+      "end_s": 770.036,
+      "duration_s": 3.437,
+      "confidence": 0.169
+    },
+    {
+      "shot_index": 166,
+      "start_s": 770.036,
+      "end_s": 772.538,
+      "duration_s": 2.503,
+      "confidence": 0.137
+    },
+    {
+      "shot_index": 167,
+      "start_s": 772.538,
+      "end_s": 775.241,
+      "duration_s": 2.703,
+      "confidence": 0.142
+    },
+    {
+      "shot_index": 168,
+      "start_s": 775.241,
+      "end_s": 807.173,
+      "duration_s": 31.932,
+      "confidence": 0.308
+    },
+    {
+      "shot_index": 169,
+      "start_s": 807.173,
+      "end_s": 841.674,
+      "duration_s": 34.501,
+      "confidence": 0.275
+    },
+    {
+      "shot_index": 170,
+      "start_s": 841.674,
+      "end_s": 847.814,
+      "duration_s": 6.139,
+      "confidence": 0.255
+    },
+    {
+      "shot_index": 171,
+      "start_s": 847.814,
+      "end_s": 849.716,
+      "duration_s": 1.902,
+      "confidence": 0.216
+    },
+    {
+      "shot_index": 172,
+      "start_s": 849.716,
+      "end_s": 853.686,
+      "duration_s": 3.971,
+      "confidence": 0.352
+    },
+    {
+      "shot_index": 173,
+      "start_s": 853.686,
+      "end_s": 855.588,
+      "duration_s": 1.902,
+      "confidence": 0.293
+    },
+    {
+      "shot_index": 174,
+      "start_s": 855.588,
+      "end_s": 863.229,
+      "duration_s": 7.641,
+      "confidence": 0.282
+    },
+    {
+      "shot_index": 175,
+      "start_s": 863.229,
+      "end_s": 870.436,
+      "duration_s": 7.207,
+      "confidence": 0.219
+    },
+    {
+      "shot_index": 176,
+      "start_s": 870.436,
+      "end_s": 877.143,
+      "duration_s": 6.707,
+      "confidence": 0.152
+    },
+    {
+      "shot_index": 177,
+      "start_s": 877.143,
+      "end_s": 882.215,
+      "duration_s": 5.072,
+      "confidence": 0.231
+    },
+    {
+      "shot_index": 178,
+      "start_s": 882.215,
+      "end_s": 889.355,
+      "duration_s": 7.14,
+      "confidence": 0.606
+    },
+    {
+      "shot_index": 179,
+      "start_s": 889.355,
+      "end_s": 891.09,
+      "duration_s": 1.735,
+      "confidence": 0.371
+    },
+    {
+      "shot_index": 180,
+      "start_s": 891.09,
+      "end_s": 894.527,
+      "duration_s": 3.437,
+      "confidence": 0.263
+    },
+    {
+      "shot_index": 181,
+      "start_s": 894.527,
+      "end_s": 902.168,
+      "duration_s": 7.641,
+      "confidence": 0.136
+    },
+    {
+      "shot_index": 182,
+      "start_s": 902.168,
+      "end_s": 927.226,
+      "duration_s": 25.058,
+      "confidence": 0.227
+    },
+    {
+      "shot_index": 183,
+      "start_s": 927.226,
+      "end_s": 933.166,
+      "duration_s": 5.939,
+      "confidence": 0.208
+    },
+    {
+      "shot_index": 184,
+      "start_s": 933.166,
+      "end_s": 938.671,
+      "duration_s": 5.505,
+      "confidence": 0.141
+    },
+    {
+      "shot_index": 185,
+      "start_s": 938.671,
+      "end_s": 941.274,
+      "duration_s": 2.603,
+      "confidence": 0.2
+    },
+    {
+      "shot_index": 186,
+      "start_s": 941.274,
+      "end_s": 946.112,
+      "duration_s": 4.838,
+      "confidence": 0.172
+    },
+    {
+      "shot_index": 187,
+      "start_s": 946.112,
+      "end_s": 947.747,
+      "duration_s": 1.635,
+      "confidence": 0.297
+    },
+    {
+      "shot_index": 188,
+      "start_s": 947.747,
+      "end_s": 952.185,
+      "duration_s": 4.438,
+      "confidence": 0.339
+    },
+    {
+      "shot_index": 189,
+      "start_s": 952.185,
+      "end_s": 954.153,
+      "duration_s": 1.969,
+      "confidence": 0.353
+    },
+    {
+      "shot_index": 190,
+      "start_s": 954.153,
+      "end_s": 959.926,
+      "duration_s": 5.772,
+      "confidence": 0.182
+    },
+    {
+      "shot_index": 191,
+      "start_s": 959.926,
+      "end_s": 966.866,
+      "duration_s": 6.94,
+      "confidence": 0.23
+    },
+    {
+      "shot_index": 192,
+      "start_s": 966.866,
+      "end_s": 972.071,
+      "duration_s": 5.205,
+      "confidence": 0.137
+    },
+    {
+      "shot_index": 193,
+      "start_s": 972.071,
+      "end_s": 983.282,
+      "duration_s": 11.211,
+      "confidence": 0.22
+    },
+    {
+      "shot_index": 194,
+      "start_s": 983.282,
+      "end_s": 990.523,
+      "duration_s": 7.241,
+      "confidence": 0.201
+    },
+    {
+      "shot_index": 195,
+      "start_s": 990.523,
+      "end_s": 994.26,
+      "duration_s": 3.737,
+      "confidence": 0.192
+    },
+    {
+      "shot_index": 196,
+      "start_s": 994.26,
+      "end_s": 1008.708,
+      "duration_s": 14.448,
+      "confidence": 0.267
+    },
+    {
+      "shot_index": 197,
+      "start_s": 1008.708,
+      "end_s": 1011.143,
+      "duration_s": 2.436,
+      "confidence": 0.587
+    },
+    {
+      "shot_index": 198,
+      "start_s": 1011.143,
+      "end_s": 1015.147,
+      "duration_s": 4.004,
+      "confidence": 0.38
+    },
+    {
+      "shot_index": 199,
+      "start_s": 1015.147,
+      "end_s": 1018.417,
+      "duration_s": 3.27,
+      "confidence": 0.382
+    },
+    {
+      "shot_index": 200,
+      "start_s": 1018.417,
+      "end_s": 1022.255,
+      "duration_s": 3.837,
+      "confidence": 0.515
+    },
+    {
+      "shot_index": 201,
+      "start_s": 1022.255,
+      "end_s": 1041.541,
+      "duration_s": 19.286,
+      "confidence": 0.503
+    },
+    {
+      "shot_index": 202,
+      "start_s": 1041.541,
+      "end_s": 1046.512,
+      "duration_s": 4.972,
+      "confidence": 0.183
+    },
+    {
+      "shot_index": 203,
+      "start_s": 1046.512,
+      "end_s": 1050.85,
+      "duration_s": 4.338,
+      "confidence": 0.202
+    },
+    {
+      "shot_index": 204,
+      "start_s": 1050.85,
+      "end_s": 1057.523,
+      "duration_s": 6.673,
+      "confidence": 0.128
+    },
+    {
+      "shot_index": 205,
+      "start_s": 1057.523,
+      "end_s": 1075.942,
+      "duration_s": 18.418,
+      "confidence": 0.2
+    },
+    {
+      "shot_index": 206,
+      "start_s": 1075.942,
+      "end_s": 1082.882,
+      "duration_s": 6.94,
+      "confidence": 0.529
+    },
+    {
+      "shot_index": 207,
+      "start_s": 1082.882,
+      "end_s": 1103.402,
+      "duration_s": 20.52,
+      "confidence": 0.217
+    },
+    {
+      "shot_index": 208,
+      "start_s": 1103.402,
+      "end_s": 1106.472,
+      "duration_s": 3.07,
+      "confidence": 0.245
+    },
+    {
+      "shot_index": 209,
+      "start_s": 1106.472,
+      "end_s": 1111.477,
+      "duration_s": 5.005,
+      "confidence": 0.14
+    },
+    {
+      "shot_index": 210,
+      "start_s": 1111.477,
+      "end_s": 1118.517,
+      "duration_s": 7.04,
+      "confidence": 0.232
+    },
+    {
+      "shot_index": 211,
+      "start_s": 1118.517,
+      "end_s": 1135.001,
+      "duration_s": 16.483,
+      "confidence": 0.152
+    },
+    {
+      "shot_index": 212,
+      "start_s": 1135.001,
+      "end_s": 1140.873,
+      "duration_s": 5.873,
+      "confidence": 0.531
+    },
+    {
+      "shot_index": 213,
+      "start_s": 1140.873,
+      "end_s": 1147.546,
+      "duration_s": 6.673,
+      "confidence": 0.227
+    },
+    {
+      "shot_index": 214,
+      "start_s": 1147.546,
+      "end_s": 1168.367,
+      "duration_s": 20.821,
+      "confidence": 0.227
+    },
+    {
+      "shot_index": 215,
+      "start_s": 1168.367,
+      "end_s": 1175.941,
+      "duration_s": 7.574,
+      "confidence": 0.267
+    },
+    {
+      "shot_index": 216,
+      "start_s": 1175.941,
+      "end_s": 1179.278,
+      "duration_s": 3.337,
+      "confidence": 0.308
+    },
+    {
+      "shot_index": 217,
+      "start_s": 1179.278,
+      "end_s": 1182.682,
+      "duration_s": 3.403,
+      "confidence": 0.288
+    },
+    {
+      "shot_index": 218,
+      "start_s": 1182.682,
+      "end_s": 1185.985,
+      "duration_s": 3.303,
+      "confidence": 0.245
+    },
+    {
+      "shot_index": 219,
+      "start_s": 1185.985,
+      "end_s": 1195.995,
+      "duration_s": 10.01,
+      "confidence": 0.156
+    },
+    {
+      "shot_index": 220,
+      "start_s": 1195.995,
+      "end_s": 1198.564,
+      "duration_s": 2.569,
+      "confidence": 0.222
+    },
+    {
+      "shot_index": 221,
+      "start_s": 1198.564,
+      "end_s": 1202.568,
+      "duration_s": 4.004,
+      "confidence": 0.207
+    },
+    {
+      "shot_index": 222,
+      "start_s": 1202.568,
+      "end_s": 1206.939,
+      "duration_s": 4.371,
+      "confidence": 0.212
+    },
+    {
+      "shot_index": 223,
+      "start_s": 1206.939,
+      "end_s": 1211.243,
+      "duration_s": 4.304,
+      "confidence": 0.156
+    },
+    {
+      "shot_index": 224,
+      "start_s": 1211.243,
+      "end_s": 1213.279,
+      "duration_s": 2.035,
+      "confidence": 0.323
+    },
+    {
+      "shot_index": 225,
+      "start_s": 1213.279,
+      "end_s": 1215.414,
+      "duration_s": 2.135,
+      "confidence": 0.135
+    },
+    {
+      "shot_index": 226,
+      "start_s": 1215.414,
+      "end_s": 1219.251,
+      "duration_s": 3.837,
+      "confidence": 0.167
+    },
+    {
+      "shot_index": 227,
+      "start_s": 1219.251,
+      "end_s": 1224.957,
+      "duration_s": 5.706,
+      "confidence": 0.177
+    },
+    {
+      "shot_index": 228,
+      "start_s": 1224.957,
+      "end_s": 1232.364,
+      "duration_s": 7.407,
+      "confidence": 0.288
+    },
+    {
+      "shot_index": 229,
+      "start_s": 1232.364,
+      "end_s": 1251.05,
+      "duration_s": 18.685,
+      "confidence": 0.262
+    },
+    {
+      "shot_index": 230,
+      "start_s": 1251.05,
+      "end_s": 1260.292,
+      "duration_s": 9.243,
+      "confidence": 0.189
+    },
+    {
+      "shot_index": 231,
+      "start_s": 1260.292,
+      "end_s": 1265.931,
+      "duration_s": 5.639,
+      "confidence": 0.264
+    },
+    {
+      "shot_index": 232,
+      "start_s": 1265.931,
+      "end_s": 1270.102,
+      "duration_s": 4.171,
+      "confidence": 0.243
+    },
+    {
+      "shot_index": 233,
+      "start_s": 1270.102,
+      "end_s": 1272.304,
+      "duration_s": 2.202,
+      "confidence": 0.259
+    },
+    {
+      "shot_index": 234,
+      "start_s": 1272.304,
+      "end_s": 1282.548,
+      "duration_s": 10.244,
+      "confidence": 0.285
+    },
+    {
+      "shot_index": 235,
+      "start_s": 1282.548,
+      "end_s": 1288.587,
+      "duration_s": 6.039,
+      "confidence": 0.17
+    },
+    {
+      "shot_index": 236,
+      "start_s": 1288.587,
+      "end_s": 1295.461,
+      "duration_s": 6.874,
+      "confidence": 0.264
+    },
+    {
+      "shot_index": 237,
+      "start_s": 1295.461,
+      "end_s": 1302.902,
+      "duration_s": 7.441,
+      "confidence": 0.291
+    },
+    {
+      "shot_index": 238,
+      "start_s": 1302.902,
+      "end_s": 1310.509,
+      "duration_s": 7.608,
+      "confidence": 0.252
+    },
+    {
+      "shot_index": 239,
+      "start_s": 1310.509,
+      "end_s": 1316.148,
+      "duration_s": 5.639,
+      "confidence": 0.135
+    },
+    {
+      "shot_index": 240,
+      "start_s": 1316.148,
+      "end_s": 1326.258,
+      "duration_s": 10.11,
+      "confidence": 0.293
+    },
+    {
+      "shot_index": 241,
+      "start_s": 1326.258,
+      "end_s": 1333.933,
+      "duration_s": 7.674,
+      "confidence": 0.223
+    },
+    {
+      "shot_index": 242,
+      "start_s": 1333.933,
+      "end_s": 1362.494,
+      "duration_s": 28.562,
+      "confidence": 0.23
+    },
+    {
+      "shot_index": 243,
+      "start_s": 1362.494,
+      "end_s": 1369.935,
+      "duration_s": 7.441,
+      "confidence": 0.155
+    },
+    {
+      "shot_index": 244,
+      "start_s": 1369.935,
+      "end_s": 1388.754,
+      "duration_s": 18.819,
+      "confidence": 0.193
+    },
+    {
+      "shot_index": 245,
+      "start_s": 1388.754,
+      "end_s": 1421.186,
+      "duration_s": 32.432,
+      "confidence": 0.37
+    },
+    {
+      "shot_index": 246,
+      "start_s": 1421.186,
+      "end_s": 1427.493,
+      "duration_s": 6.306,
+      "confidence": 0.142
+    },
+    {
+      "shot_index": 247,
+      "start_s": 1427.493,
+      "end_s": 1436.535,
+      "duration_s": 9.042,
+      "confidence": 0.129
+    },
+    {
+      "shot_index": 248,
+      "start_s": 1436.535,
+      "end_s": 1455.487,
+      "duration_s": 18.952,
+      "confidence": 0.155
+    },
+    {
+      "shot_index": 249,
+      "start_s": 1455.487,
+      "end_s": 1473.105,
+      "duration_s": 17.618,
+      "confidence": 0.27
+    },
+    {
+      "shot_index": 250,
+      "start_s": 1473.105,
+      "end_s": 1478.277,
+      "duration_s": 5.172,
+      "confidence": 0.255
+    },
+    {
+      "shot_index": 251,
+      "start_s": 1478.277,
+      "end_s": 1485.384,
+      "duration_s": 7.107,
+      "confidence": 0.183
+    },
+    {
+      "shot_index": 252,
+      "start_s": 1485.384,
+      "end_s": 1491.523,
+      "duration_s": 6.139,
+      "confidence": 0.479
+    },
+    {
+      "shot_index": 253,
+      "start_s": 1491.523,
+      "end_s": 1501.1,
+      "duration_s": 9.576,
+      "confidence": 0.175
+    },
+    {
+      "shot_index": 254,
+      "start_s": 1501.1,
+      "end_s": 1516.015,
+      "duration_s": 14.915,
+      "confidence": 0.213
+    },
+    {
+      "shot_index": 255,
+      "start_s": 1516.015,
+      "end_s": 1526.725,
+      "duration_s": 10.711,
+      "confidence": 0.167
+    },
+    {
+      "shot_index": 256,
+      "start_s": 1526.725,
+      "end_s": 1529.528,
+      "duration_s": 2.803,
+      "confidence": 0.218
+    },
+    {
+      "shot_index": 257,
+      "start_s": 1529.528,
+      "end_s": 1530.829,
+      "duration_s": 1.301,
+      "confidence": 0.289
+    },
+    {
+      "shot_index": 258,
+      "start_s": 1530.829,
+      "end_s": 1537.836,
+      "duration_s": 7.007,
+      "confidence": 0.183
+    },
+    {
+      "shot_index": 259,
+      "start_s": 1537.836,
+      "end_s": 1542.374,
+      "duration_s": 4.538,
+      "confidence": 0.196
+    },
+    {
+      "shot_index": 260,
+      "start_s": 1542.374,
+      "end_s": 1545.077,
+      "duration_s": 2.703,
+      "confidence": 0.274
+    },
+    {
+      "shot_index": 261,
+      "start_s": 1545.077,
+      "end_s": 1547.613,
+      "duration_s": 2.536,
+      "confidence": 0.223
+    },
+    {
+      "shot_index": 262,
+      "start_s": 1547.613,
+      "end_s": 1554.253,
+      "duration_s": 6.64,
+      "confidence": 0.176
+    },
+    {
+      "shot_index": 263,
+      "start_s": 1554.253,
+      "end_s": 1562.995,
+      "duration_s": 8.742,
+      "confidence": 0.225
+    },
+    {
+      "shot_index": 264,
+      "start_s": 1562.995,
+      "end_s": 1566.198,
+      "duration_s": 3.203,
+      "confidence": 0.313
+    },
+    {
+      "shot_index": 265,
+      "start_s": 1566.198,
+      "end_s": 1567.633,
+      "duration_s": 1.435,
+      "confidence": 0.307
+    },
+    {
+      "shot_index": 266,
+      "start_s": 1567.633,
+      "end_s": 1573.172,
+      "duration_s": 5.539,
+      "confidence": 0.19
+    },
+    {
+      "shot_index": 267,
+      "start_s": 1573.172,
+      "end_s": 1577.076,
+      "duration_s": 3.904,
+      "confidence": 0.185
+    },
+    {
+      "shot_index": 268,
+      "start_s": 1577.076,
+      "end_s": 1587.086,
+      "duration_s": 10.01,
+      "confidence": 0.502
+    }
+  ],
+  "shot_stats": {
+    "count": 269,
+    "asl_p25_s": 2.369,
+    "asl_p50_s": 3.804,
+    "asl_p75_s": 6.94,
+    "cuts_per_min": 10.132
+  },
+  "visual": {
+    "sampled_frames": 3174,
+    "palette": [
+      {
+        "hex": "#080907",
+        "share": 0.069,
+        "lab_l": 2.422,
+        "lab_a": -0.678,
+        "lab_b": 0.549
+      },
+      {
+        "hex": "#7F765F",
+        "share": 0.039,
+        "lab_l": 49.87,
+        "lab_a": -0.495,
+        "lab_b": 13.96
+      },
+      {
+        "hex": "#181916",
+        "share": 0.039,
+        "lab_l": 8.626,
+        "lab_a": -1.143,
+        "lab_b": 1.712
+      },
+      {
+        "hex": "#665E48",
+        "share": 0.038,
+        "lab_l": 40.066,
+        "lab_a": -0.779,
+        "lab_b": 13.899
+      },
+      {
+        "hex": "#4E4632",
+        "share": 0.031,
+        "lab_l": 30.143,
+        "lab_a": -0.37,
+        "lab_b": 13.507
+      }
+    ],
+    "palette_entropy": 6.606,
+    "mean_luminance": 104.64,
+    "band_luminance": {
+      "upper": 111.587,
+      "center": 110.401,
+      "lower_third": 88.89
+    },
+    "mean_sharpness": 71.521,
+    "black_intervals": [
+      {
+        "start_s": 1313.0117,
+        "end_s": 1313.645667,
+        "duration_s": 0.633967
+      },
+      {
+        "start_s": 1314.179533,
+        "end_s": 1314.546567,
+        "duration_s": 0.367033
+      }
+    ],
+    "keyframes": [
+      {
+        "timestamp_s": 10.5,
+        "shot_index": 0,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0000.jpg",
+        "luma_lower_third": 109.14,
+        "sharpness": 83.535
+      },
+      {
+        "timestamp_s": 22.5,
+        "shot_index": 1,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0001.jpg",
+        "luma_lower_third": 97.79,
+        "sharpness": 57.113
+      },
+      {
+        "timestamp_s": 32.0,
+        "shot_index": 2,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0002.jpg",
+        "luma_lower_third": 52.665,
+        "sharpness": 42.716
+      },
+      {
+        "timestamp_s": 51.0,
+        "shot_index": 3,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0003.jpg",
+        "luma_lower_third": 45.942,
+        "sharpness": 43.168
+      },
+      {
+        "timestamp_s": 62.5,
+        "shot_index": 4,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0004.jpg",
+        "luma_lower_third": 37.991,
+        "sharpness": 58.418
+      },
+      {
+        "timestamp_s": 66.5,
+        "shot_index": 5,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0005.jpg",
+        "luma_lower_third": 46.852,
+        "sharpness": 46.269
+      },
+      {
+        "timestamp_s": 70.0,
+        "shot_index": 6,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0006.jpg",
+        "luma_lower_third": 40.507,
+        "sharpness": 52.609
+      },
+      {
+        "timestamp_s": 83.0,
+        "shot_index": 7,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0007.jpg",
+        "luma_lower_third": 77.441,
+        "sharpness": 65.749
+      },
+      {
+        "timestamp_s": 99.5,
+        "shot_index": 8,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0008.jpg",
+        "luma_lower_third": 88.842,
+        "sharpness": 108.658
+      },
+      {
+        "timestamp_s": 106.0,
+        "shot_index": 9,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0009.jpg",
+        "luma_lower_third": 114.772,
+        "sharpness": 144.8
+      },
+      {
+        "timestamp_s": 109.5,
+        "shot_index": 10,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0010.jpg",
+        "luma_lower_third": 78.134,
+        "sharpness": 62.284
+      },
+      {
+        "timestamp_s": 112.5,
+        "shot_index": 11,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0011.jpg",
+        "luma_lower_third": 107.694,
+        "sharpness": 138.794
+      },
+      {
+        "timestamp_s": 115.0,
+        "shot_index": 12,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0012.jpg",
+        "luma_lower_third": 91.029,
+        "sharpness": 122.91
+      },
+      {
+        "timestamp_s": 116.5,
+        "shot_index": 13,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0013.jpg",
+        "luma_lower_third": 81.729,
+        "sharpness": 46.946
+      },
+      {
+        "timestamp_s": 118.5,
+        "shot_index": 14,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0014.jpg",
+        "luma_lower_third": 90.426,
+        "sharpness": 51.159
+      },
+      {
+        "timestamp_s": 120.5,
+        "shot_index": 15,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0015.jpg",
+        "luma_lower_third": 67.249,
+        "sharpness": 66.442
+      },
+      {
+        "timestamp_s": 125.0,
+        "shot_index": 16,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0016.jpg",
+        "luma_lower_third": 183.654,
+        "sharpness": 70.134
+      },
+      {
+        "timestamp_s": 129.0,
+        "shot_index": 17,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0017.jpg",
+        "luma_lower_third": 58.973,
+        "sharpness": 75.899
+      },
+      {
+        "timestamp_s": 131.0,
+        "shot_index": 18,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0018.jpg",
+        "luma_lower_third": 97.614,
+        "sharpness": 65.185
+      },
+      {
+        "timestamp_s": 138.5,
+        "shot_index": 19,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0019.jpg",
+        "luma_lower_third": 63.0,
+        "sharpness": 82.608
+      },
+      {
+        "timestamp_s": 153.0,
+        "shot_index": 20,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0020.jpg",
+        "luma_lower_third": 60.935,
+        "sharpness": 65.565
+      },
+      {
+        "timestamp_s": 162.5,
+        "shot_index": 21,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0021.jpg",
+        "luma_lower_third": 73.501,
+        "sharpness": 139.696
+      },
+      {
+        "timestamp_s": 168.5,
+        "shot_index": 22,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0022.jpg",
+        "luma_lower_third": 77.571,
+        "sharpness": 144.098
+      },
+      {
+        "timestamp_s": 175.0,
+        "shot_index": 23,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0023.jpg",
+        "luma_lower_third": 184.666,
+        "sharpness": 129.934
+      },
+      {
+        "timestamp_s": 178.5,
+        "shot_index": 24,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0024.jpg",
+        "luma_lower_third": 138.419,
+        "sharpness": 46.407
+      },
+      {
+        "timestamp_s": 183.0,
+        "shot_index": 25,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0025.jpg",
+        "luma_lower_third": 87.051,
+        "sharpness": 177.084
+      },
+      {
+        "timestamp_s": 188.5,
+        "shot_index": 26,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0026.jpg",
+        "luma_lower_third": 76.512,
+        "sharpness": 69.983
+      },
+      {
+        "timestamp_s": 193.0,
+        "shot_index": 27,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0027.jpg",
+        "luma_lower_third": 89.753,
+        "sharpness": 58.068
+      },
+      {
+        "timestamp_s": 196.5,
+        "shot_index": 28,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0028.jpg",
+        "luma_lower_third": 91.332,
+        "sharpness": 89.945
+      },
+      {
+        "timestamp_s": 199.5,
+        "shot_index": 29,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0029.jpg",
+        "luma_lower_third": 87.614,
+        "sharpness": 87.046
+      },
+      {
+        "timestamp_s": 203.0,
+        "shot_index": 30,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0030.jpg",
+        "luma_lower_third": 125.343,
+        "sharpness": 45.24
+      },
+      {
+        "timestamp_s": 205.5,
+        "shot_index": 31,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0031.jpg",
+        "luma_lower_third": 145.573,
+        "sharpness": 61.826
+      },
+      {
+        "timestamp_s": 209.5,
+        "shot_index": 32,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0032.jpg",
+        "luma_lower_third": 156.428,
+        "sharpness": 101.773
+      },
+      {
+        "timestamp_s": 217.0,
+        "shot_index": 33,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0033.jpg",
+        "luma_lower_third": 95.367,
+        "sharpness": 87.65
+      },
+      {
+        "timestamp_s": 228.0,
+        "shot_index": 34,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0034.jpg",
+        "luma_lower_third": 91.264,
+        "sharpness": 98.741
+      },
+      {
+        "timestamp_s": 237.5,
+        "shot_index": 35,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0035.jpg",
+        "luma_lower_third": 79.794,
+        "sharpness": 97.755
+      },
+      {
+        "timestamp_s": 240.5,
+        "shot_index": 36,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0036.jpg",
+        "luma_lower_third": 112.829,
+        "sharpness": 86.453
+      },
+      {
+        "timestamp_s": 242.5,
+        "shot_index": 37,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0037.jpg",
+        "luma_lower_third": 84.786,
+        "sharpness": 26.953
+      },
+      {
+        "timestamp_s": 247.5,
+        "shot_index": 38,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0038.jpg",
+        "luma_lower_third": 52.317,
+        "sharpness": 88.074
+      },
+      {
+        "timestamp_s": 253.5,
+        "shot_index": 39,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0039.jpg",
+        "luma_lower_third": 62.696,
+        "sharpness": 106.533
+      },
+      {
+        "timestamp_s": 261.0,
+        "shot_index": 40,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0040.jpg",
+        "luma_lower_third": 26.784,
+        "sharpness": 31.364
+      },
+      {
+        "timestamp_s": 267.0,
+        "shot_index": 41,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0041.jpg",
+        "luma_lower_third": 102.095,
+        "sharpness": 64.857
+      },
+      {
+        "timestamp_s": 268.5,
+        "shot_index": 42,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0042.jpg",
+        "luma_lower_third": 69.301,
+        "sharpness": 76.062
+      },
+      {
+        "timestamp_s": 269.5,
+        "shot_index": 43,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0043.jpg",
+        "luma_lower_third": 83.735,
+        "sharpness": 86.712
+      },
+      {
+        "timestamp_s": 276.5,
+        "shot_index": 44,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0044.jpg",
+        "luma_lower_third": 64.429,
+        "sharpness": 58.557
+      },
+      {
+        "timestamp_s": 284.0,
+        "shot_index": 45,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0045.jpg",
+        "luma_lower_third": 53.979,
+        "sharpness": 72.222
+      },
+      {
+        "timestamp_s": 287.5,
+        "shot_index": 46,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0046.jpg",
+        "luma_lower_third": 110.778,
+        "sharpness": 75.516
+      },
+      {
+        "timestamp_s": 296.0,
+        "shot_index": 47,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0047.jpg",
+        "luma_lower_third": 73.395,
+        "sharpness": 74.192
+      },
+      {
+        "timestamp_s": 306.5,
+        "shot_index": 48,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0048.jpg",
+        "luma_lower_third": 25.254,
+        "sharpness": 21.794
+      },
+      {
+        "timestamp_s": 313.5,
+        "shot_index": 49,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0049.jpg",
+        "luma_lower_third": 29.248,
+        "sharpness": 27.947
+      },
+      {
+        "timestamp_s": 319.5,
+        "shot_index": 50,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0050.jpg",
+        "luma_lower_third": 25.858,
+        "sharpness": 38.998
+      },
+      {
+        "timestamp_s": 338.5,
+        "shot_index": 51,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0051.jpg",
+        "luma_lower_third": 75.734,
+        "sharpness": 69.516
+      },
+      {
+        "timestamp_s": 363.0,
+        "shot_index": 52,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0052.jpg",
+        "luma_lower_third": 67.914,
+        "sharpness": 53.586
+      },
+      {
+        "timestamp_s": 372.0,
+        "shot_index": 53,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0053.jpg",
+        "luma_lower_third": 122.84,
+        "sharpness": 78.087
+      },
+      {
+        "timestamp_s": 382.5,
+        "shot_index": 54,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0054.jpg",
+        "luma_lower_third": 64.776,
+        "sharpness": 66.78
+      },
+      {
+        "timestamp_s": 396.5,
+        "shot_index": 55,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0055.jpg",
+        "luma_lower_third": 56.749,
+        "sharpness": 49.801
+      },
+      {
+        "timestamp_s": 404.5,
+        "shot_index": 56,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0056.jpg",
+        "luma_lower_third": 52.417,
+        "sharpness": 43.668
+      },
+      {
+        "timestamp_s": 408.5,
+        "shot_index": 57,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0057.jpg",
+        "luma_lower_third": 84.357,
+        "sharpness": 114.249
+      },
+      {
+        "timestamp_s": 411.0,
+        "shot_index": 58,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0058.jpg",
+        "luma_lower_third": 67.729,
+        "sharpness": 135.564
+      },
+      {
+        "timestamp_s": 415.5,
+        "shot_index": 59,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0059.jpg",
+        "luma_lower_third": 29.695,
+        "sharpness": 31.798
+      },
+      {
+        "timestamp_s": 420.0,
+        "shot_index": 60,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0060.jpg",
+        "luma_lower_third": 40.132,
+        "sharpness": 30.89
+      },
+      {
+        "timestamp_s": 422.5,
+        "shot_index": 61,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0061.jpg",
+        "luma_lower_third": 62.686,
+        "sharpness": 36.363
+      },
+      {
+        "timestamp_s": 430.0,
+        "shot_index": 62,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0062.jpg",
+        "luma_lower_third": 103.11,
+        "sharpness": 67.369
+      },
+      {
+        "timestamp_s": 438.5,
+        "shot_index": 63,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0063.jpg",
+        "luma_lower_third": 59.053,
+        "sharpness": 87.043
+      },
+      {
+        "timestamp_s": 441.5,
+        "shot_index": 64,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0064.jpg",
+        "luma_lower_third": 68.054,
+        "sharpness": 82.68
+      },
+      {
+        "timestamp_s": 443.5,
+        "shot_index": 65,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0065.jpg",
+        "luma_lower_third": 87.934,
+        "sharpness": 132.703
+      },
+      {
+        "timestamp_s": 450.5,
+        "shot_index": 66,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0066.jpg",
+        "luma_lower_third": 75.916,
+        "sharpness": 76.205
+      },
+      {
+        "timestamp_s": 457.0,
+        "shot_index": 67,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0067.jpg",
+        "luma_lower_third": 70.553,
+        "sharpness": 155.469
+      },
+      {
+        "timestamp_s": 458.0,
+        "shot_index": 68,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0068.jpg",
+        "luma_lower_third": 127.788,
+        "sharpness": 32.955
+      },
+      {
+        "timestamp_s": 460.0,
+        "shot_index": 69,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0069.jpg",
+        "luma_lower_third": 81.654,
+        "sharpness": 102.043
+      },
+      {
+        "timestamp_s": 462.5,
+        "shot_index": 70,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0070.jpg",
+        "luma_lower_third": 68.953,
+        "sharpness": 77.243
+      },
+      {
+        "timestamp_s": 464.0,
+        "shot_index": 71,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0071.jpg",
+        "luma_lower_third": 98.188,
+        "sharpness": 118.538
+      },
+      {
+        "timestamp_s": 464.0,
+        "shot_index": 72,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0072.jpg",
+        "luma_lower_third": 98.188,
+        "sharpness": 118.538
+      },
+      {
+        "timestamp_s": 464.5,
+        "shot_index": 73,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0073.jpg",
+        "luma_lower_third": 84.93,
+        "sharpness": 118.114
+      },
+      {
+        "timestamp_s": 465.5,
+        "shot_index": 74,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0074.jpg",
+        "luma_lower_third": 87.56,
+        "sharpness": 139.931
+      },
+      {
+        "timestamp_s": 467.5,
+        "shot_index": 75,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0075.jpg",
+        "luma_lower_third": 62.887,
+        "sharpness": 106.537
+      },
+      {
+        "timestamp_s": 472.0,
+        "shot_index": 76,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0076.jpg",
+        "luma_lower_third": 48.168,
+        "sharpness": 67.304
+      },
+      {
+        "timestamp_s": 477.5,
+        "shot_index": 77,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0077.jpg",
+        "luma_lower_third": 97.427,
+        "sharpness": 140.246
+      },
+      {
+        "timestamp_s": 480.5,
+        "shot_index": 78,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0078.jpg",
+        "luma_lower_third": 57.698,
+        "sharpness": 31.793
+      },
+      {
+        "timestamp_s": 483.5,
+        "shot_index": 79,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0079.jpg",
+        "luma_lower_third": 87.917,
+        "sharpness": 49.326
+      },
+      {
+        "timestamp_s": 485.5,
+        "shot_index": 80,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0080.jpg",
+        "luma_lower_third": 55.958,
+        "sharpness": 124.017
+      },
+      {
+        "timestamp_s": 488.0,
+        "shot_index": 81,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0081.jpg",
+        "luma_lower_third": 104.544,
+        "sharpness": 99.139
+      },
+      {
+        "timestamp_s": 490.5,
+        "shot_index": 82,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0082.jpg",
+        "luma_lower_third": 74.408,
+        "sharpness": 147.152
+      },
+      {
+        "timestamp_s": 492.0,
+        "shot_index": 83,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0083.jpg",
+        "luma_lower_third": 44.99,
+        "sharpness": 81.228
+      },
+      {
+        "timestamp_s": 493.5,
+        "shot_index": 84,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0084.jpg",
+        "luma_lower_third": 109.084,
+        "sharpness": 39.855
+      },
+      {
+        "timestamp_s": 494.5,
+        "shot_index": 85,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0085.jpg",
+        "luma_lower_third": 89.539,
+        "sharpness": 86.083
+      },
+      {
+        "timestamp_s": 496.5,
+        "shot_index": 86,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0086.jpg",
+        "luma_lower_third": 108.159,
+        "sharpness": 61.207
+      },
+      {
+        "timestamp_s": 498.5,
+        "shot_index": 87,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0087.jpg",
+        "luma_lower_third": 38.586,
+        "sharpness": 52.993
+      },
+      {
+        "timestamp_s": 501.0,
+        "shot_index": 88,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0088.jpg",
+        "luma_lower_third": 72.551,
+        "sharpness": 44.365
+      },
+      {
+        "timestamp_s": 503.0,
+        "shot_index": 89,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0089.jpg",
+        "luma_lower_third": 51.863,
+        "sharpness": 61.89
+      },
+      {
+        "timestamp_s": 505.0,
+        "shot_index": 90,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0090.jpg",
+        "luma_lower_third": 126.389,
+        "sharpness": 39.255
+      },
+      {
+        "timestamp_s": 510.5,
+        "shot_index": 91,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0091.jpg",
+        "luma_lower_third": 94.61,
+        "sharpness": 70.082
+      },
+      {
+        "timestamp_s": 517.0,
+        "shot_index": 92,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0092.jpg",
+        "luma_lower_third": 78.052,
+        "sharpness": 42.554
+      },
+      {
+        "timestamp_s": 521.0,
+        "shot_index": 93,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0093.jpg",
+        "luma_lower_third": 100.315,
+        "sharpness": 90.658
+      },
+      {
+        "timestamp_s": 523.5,
+        "shot_index": 94,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0094.jpg",
+        "luma_lower_third": 93.145,
+        "sharpness": 29.442
+      },
+      {
+        "timestamp_s": 525.0,
+        "shot_index": 95,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0095.jpg",
+        "luma_lower_third": 143.027,
+        "sharpness": 20.744
+      },
+      {
+        "timestamp_s": 527.0,
+        "shot_index": 96,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0096.jpg",
+        "luma_lower_third": 114.367,
+        "sharpness": 26.062
+      },
+      {
+        "timestamp_s": 529.5,
+        "shot_index": 97,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0097.jpg",
+        "luma_lower_third": 99.87,
+        "sharpness": 79.594
+      },
+      {
+        "timestamp_s": 533.0,
+        "shot_index": 98,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0098.jpg",
+        "luma_lower_third": 97.333,
+        "sharpness": 95.969
+      },
+      {
+        "timestamp_s": 536.0,
+        "shot_index": 99,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0099.jpg",
+        "luma_lower_third": 25.071,
+        "sharpness": 59.996
+      },
+      {
+        "timestamp_s": 539.5,
+        "shot_index": 100,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0100.jpg",
+        "luma_lower_third": 78.21,
+        "sharpness": 137.489
+      },
+      {
+        "timestamp_s": 541.5,
+        "shot_index": 101,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0101.jpg",
+        "luma_lower_third": 86.743,
+        "sharpness": 158.771
+      },
+      {
+        "timestamp_s": 546.0,
+        "shot_index": 102,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0102.jpg",
+        "luma_lower_third": 183.705,
+        "sharpness": 126.896
+      },
+      {
+        "timestamp_s": 550.5,
+        "shot_index": 103,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0103.jpg",
+        "luma_lower_third": 96.486,
+        "sharpness": 193.372
+      },
+      {
+        "timestamp_s": 552.0,
+        "shot_index": 104,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0104.jpg",
+        "luma_lower_third": 75.016,
+        "sharpness": 119.127
+      },
+      {
+        "timestamp_s": 555.0,
+        "shot_index": 105,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0105.jpg",
+        "luma_lower_third": 87.357,
+        "sharpness": 73.529
+      },
+      {
+        "timestamp_s": 559.0,
+        "shot_index": 106,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0106.jpg",
+        "luma_lower_third": 44.139,
+        "sharpness": 41.081
+      },
+      {
+        "timestamp_s": 574.0,
+        "shot_index": 107,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0107.jpg",
+        "luma_lower_third": 52.008,
+        "sharpness": 68.235
+      },
+      {
+        "timestamp_s": 590.0,
+        "shot_index": 108,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0108.jpg",
+        "luma_lower_third": 47.734,
+        "sharpness": 93.518
+      },
+      {
+        "timestamp_s": 594.5,
+        "shot_index": 109,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0109.jpg",
+        "luma_lower_third": 51.057,
+        "sharpness": 73.474
+      },
+      {
+        "timestamp_s": 598.5,
+        "shot_index": 110,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0110.jpg",
+        "luma_lower_third": 24.737,
+        "sharpness": 20.473
+      },
+      {
+        "timestamp_s": 601.0,
+        "shot_index": 111,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0111.jpg",
+        "luma_lower_third": 91.863,
+        "sharpness": 64.747
+      },
+      {
+        "timestamp_s": 604.0,
+        "shot_index": 112,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0112.jpg",
+        "luma_lower_third": 15.892,
+        "sharpness": 54.518
+      },
+      {
+        "timestamp_s": 607.0,
+        "shot_index": 113,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0113.jpg",
+        "luma_lower_third": 100.789,
+        "sharpness": 88.633
+      },
+      {
+        "timestamp_s": 610.0,
+        "shot_index": 114,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0114.jpg",
+        "luma_lower_third": 56.853,
+        "sharpness": 109.159
+      },
+      {
+        "timestamp_s": 614.0,
+        "shot_index": 115,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0115.jpg",
+        "luma_lower_third": 46.482,
+        "sharpness": 50.963
+      },
+      {
+        "timestamp_s": 618.0,
+        "shot_index": 116,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0116.jpg",
+        "luma_lower_third": 136.762,
+        "sharpness": 82.558
+      },
+      {
+        "timestamp_s": 622.0,
+        "shot_index": 117,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0117.jpg",
+        "luma_lower_third": 51.718,
+        "sharpness": 49.872
+      },
+      {
+        "timestamp_s": 625.5,
+        "shot_index": 118,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0118.jpg",
+        "luma_lower_third": 82.635,
+        "sharpness": 125.296
+      },
+      {
+        "timestamp_s": 629.0,
+        "shot_index": 119,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0119.jpg",
+        "luma_lower_third": 90.802,
+        "sharpness": 105.998
+      },
+      {
+        "timestamp_s": 633.0,
+        "shot_index": 120,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0120.jpg",
+        "luma_lower_third": 33.816,
+        "sharpness": 32.685
+      },
+      {
+        "timestamp_s": 635.5,
+        "shot_index": 121,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0121.jpg",
+        "luma_lower_third": 49.618,
+        "sharpness": 60.058
+      },
+      {
+        "timestamp_s": 639.5,
+        "shot_index": 122,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0122.jpg",
+        "luma_lower_third": 187.056,
+        "sharpness": 118.977
+      },
+      {
+        "timestamp_s": 643.5,
+        "shot_index": 123,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0123.jpg",
+        "luma_lower_third": 71.346,
+        "sharpness": 66.486
+      },
+      {
+        "timestamp_s": 646.5,
+        "shot_index": 124,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0124.jpg",
+        "luma_lower_third": 102.134,
+        "sharpness": 55.678
+      },
+      {
+        "timestamp_s": 649.0,
+        "shot_index": 125,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0125.jpg",
+        "luma_lower_third": 65.473,
+        "sharpness": 41.585
+      },
+      {
+        "timestamp_s": 650.5,
+        "shot_index": 126,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0126.jpg",
+        "luma_lower_third": 57.035,
+        "sharpness": 97.764
+      },
+      {
+        "timestamp_s": 653.0,
+        "shot_index": 127,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0127.jpg",
+        "luma_lower_third": 65.777,
+        "sharpness": 59.266
+      },
+      {
+        "timestamp_s": 657.0,
+        "shot_index": 128,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0128.jpg",
+        "luma_lower_third": 75.849,
+        "sharpness": 72.06
+      },
+      {
+        "timestamp_s": 660.0,
+        "shot_index": 129,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0129.jpg",
+        "luma_lower_third": 79.947,
+        "sharpness": 51.419
+      },
+      {
+        "timestamp_s": 662.0,
+        "shot_index": 130,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0130.jpg",
+        "luma_lower_third": 101.142,
+        "sharpness": 83.872
+      },
+      {
+        "timestamp_s": 665.5,
+        "shot_index": 131,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0131.jpg",
+        "luma_lower_third": 89.307,
+        "sharpness": 89.46
+      },
+      {
+        "timestamp_s": 669.0,
+        "shot_index": 132,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0132.jpg",
+        "luma_lower_third": 53.317,
+        "sharpness": 85.694
+      },
+      {
+        "timestamp_s": 671.0,
+        "shot_index": 133,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0133.jpg",
+        "luma_lower_third": 43.019,
+        "sharpness": 61.526
+      },
+      {
+        "timestamp_s": 673.0,
+        "shot_index": 134,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0134.jpg",
+        "luma_lower_third": 55.624,
+        "sharpness": 77.429
+      },
+      {
+        "timestamp_s": 674.5,
+        "shot_index": 135,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0135.jpg",
+        "luma_lower_third": 45.626,
+        "sharpness": 65.174
+      },
+      {
+        "timestamp_s": 677.0,
+        "shot_index": 136,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0136.jpg",
+        "luma_lower_third": 200.017,
+        "sharpness": 13.772
+      },
+      {
+        "timestamp_s": 680.5,
+        "shot_index": 137,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0137.jpg",
+        "luma_lower_third": 138.42,
+        "sharpness": 17.534
+      },
+      {
+        "timestamp_s": 685.5,
+        "shot_index": 138,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0138.jpg",
+        "luma_lower_third": 145.484,
+        "sharpness": 29.454
+      },
+      {
+        "timestamp_s": 690.5,
+        "shot_index": 139,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0139.jpg",
+        "luma_lower_third": 117.243,
+        "sharpness": 125.937
+      },
+      {
+        "timestamp_s": 693.0,
+        "shot_index": 140,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0140.jpg",
+        "luma_lower_third": 103.388,
+        "sharpness": 111.556
+      },
+      {
+        "timestamp_s": 695.0,
+        "shot_index": 141,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0141.jpg",
+        "luma_lower_third": 67.212,
+        "sharpness": 54.758
+      },
+      {
+        "timestamp_s": 697.5,
+        "shot_index": 142,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0142.jpg",
+        "luma_lower_third": 113.13,
+        "sharpness": 99.078
+      },
+      {
+        "timestamp_s": 699.5,
+        "shot_index": 143,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0143.jpg",
+        "luma_lower_third": 96.39,
+        "sharpness": 104.478
+      },
+      {
+        "timestamp_s": 702.0,
+        "shot_index": 144,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0144.jpg",
+        "luma_lower_third": 115.571,
+        "sharpness": 126.095
+      },
+      {
+        "timestamp_s": 704.0,
+        "shot_index": 145,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0145.jpg",
+        "luma_lower_third": 58.98,
+        "sharpness": 111.538
+      },
+      {
+        "timestamp_s": 706.0,
+        "shot_index": 146,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0146.jpg",
+        "luma_lower_third": 83.829,
+        "sharpness": 120.598
+      },
+      {
+        "timestamp_s": 708.5,
+        "shot_index": 147,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0147.jpg",
+        "luma_lower_third": 89.308,
+        "sharpness": 120.357
+      },
+      {
+        "timestamp_s": 711.5,
+        "shot_index": 148,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0148.jpg",
+        "luma_lower_third": 147.473,
+        "sharpness": 101.877
+      },
+      {
+        "timestamp_s": 715.0,
+        "shot_index": 149,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0149.jpg",
+        "luma_lower_third": 117.568,
+        "sharpness": 160.179
+      },
+      {
+        "timestamp_s": 719.5,
+        "shot_index": 150,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0150.jpg",
+        "luma_lower_third": 80.247,
+        "sharpness": 73.174
+      },
+      {
+        "timestamp_s": 723.0,
+        "shot_index": 151,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0151.jpg",
+        "luma_lower_third": 73.093,
+        "sharpness": 100.085
+      },
+      {
+        "timestamp_s": 725.5,
+        "shot_index": 152,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0152.jpg",
+        "luma_lower_third": 102.959,
+        "sharpness": 140.06
+      },
+      {
+        "timestamp_s": 727.5,
+        "shot_index": 153,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0153.jpg",
+        "luma_lower_third": 66.055,
+        "sharpness": 137.475
+      },
+      {
+        "timestamp_s": 730.0,
+        "shot_index": 154,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0154.jpg",
+        "luma_lower_third": 103.199,
+        "sharpness": 178.508
+      },
+      {
+        "timestamp_s": 733.5,
+        "shot_index": 155,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0155.jpg",
+        "luma_lower_third": 59.496,
+        "sharpness": 57.63
+      },
+      {
+        "timestamp_s": 736.5,
+        "shot_index": 156,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0156.jpg",
+        "luma_lower_third": 14.675,
+        "sharpness": 43.348
+      },
+      {
+        "timestamp_s": 738.5,
+        "shot_index": 157,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0157.jpg",
+        "luma_lower_third": 64.043,
+        "sharpness": 54.867
+      },
+      {
+        "timestamp_s": 740.5,
+        "shot_index": 158,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0158.jpg",
+        "luma_lower_third": 97.19,
+        "sharpness": 127.337
+      },
+      {
+        "timestamp_s": 742.5,
+        "shot_index": 159,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0159.jpg",
+        "luma_lower_third": 110.28,
+        "sharpness": 102.016
+      },
+      {
+        "timestamp_s": 744.5,
+        "shot_index": 160,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0160.jpg",
+        "luma_lower_third": 158.984,
+        "sharpness": 87.337
+      },
+      {
+        "timestamp_s": 746.5,
+        "shot_index": 161,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0161.jpg",
+        "luma_lower_third": 106.496,
+        "sharpness": 81.518
+      },
+      {
+        "timestamp_s": 749.5,
+        "shot_index": 162,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0162.jpg",
+        "luma_lower_third": 124.366,
+        "sharpness": 46.75
+      },
+      {
+        "timestamp_s": 754.0,
+        "shot_index": 163,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0163.jpg",
+        "luma_lower_third": 49.204,
+        "sharpness": 24.033
+      },
+      {
+        "timestamp_s": 762.0,
+        "shot_index": 164,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0164.jpg",
+        "luma_lower_third": 58.408,
+        "sharpness": 110.7
+      },
+      {
+        "timestamp_s": 768.5,
+        "shot_index": 165,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0165.jpg",
+        "luma_lower_third": 17.882,
+        "sharpness": 19.405
+      },
+      {
+        "timestamp_s": 771.5,
+        "shot_index": 166,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0166.jpg",
+        "luma_lower_third": 109.885,
+        "sharpness": 21.0
+      },
+      {
+        "timestamp_s": 774.0,
+        "shot_index": 167,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0167.jpg",
+        "luma_lower_third": 41.179,
+        "sharpness": 20.014
+      },
+      {
+        "timestamp_s": 791.0,
+        "shot_index": 168,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0168.jpg",
+        "luma_lower_third": 53.9,
+        "sharpness": 69.318
+      },
+      {
+        "timestamp_s": 824.5,
+        "shot_index": 169,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0169.jpg",
+        "luma_lower_third": 82.875,
+        "sharpness": 68.534
+      },
+      {
+        "timestamp_s": 844.5,
+        "shot_index": 170,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0170.jpg",
+        "luma_lower_third": 76.017,
+        "sharpness": 68.56
+      },
+      {
+        "timestamp_s": 849.0,
+        "shot_index": 171,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0171.jpg",
+        "luma_lower_third": 175.802,
+        "sharpness": 61.833
+      },
+      {
+        "timestamp_s": 851.5,
+        "shot_index": 172,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0172.jpg",
+        "luma_lower_third": 120.46,
+        "sharpness": 58.39
+      },
+      {
+        "timestamp_s": 854.5,
+        "shot_index": 173,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0173.jpg",
+        "luma_lower_third": 69.454,
+        "sharpness": 39.128
+      },
+      {
+        "timestamp_s": 859.5,
+        "shot_index": 174,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0174.jpg",
+        "luma_lower_third": 76.629,
+        "sharpness": 67.702
+      },
+      {
+        "timestamp_s": 867.0,
+        "shot_index": 175,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0175.jpg",
+        "luma_lower_third": 114.376,
+        "sharpness": 31.413
+      },
+      {
+        "timestamp_s": 874.0,
+        "shot_index": 176,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0176.jpg",
+        "luma_lower_third": 71.533,
+        "sharpness": 54.588
+      },
+      {
+        "timestamp_s": 879.5,
+        "shot_index": 177,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0177.jpg",
+        "luma_lower_third": 207.246,
+        "sharpness": 123.336
+      },
+      {
+        "timestamp_s": 886.0,
+        "shot_index": 178,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0178.jpg",
+        "luma_lower_third": 79.808,
+        "sharpness": 31.433
+      },
+      {
+        "timestamp_s": 890.0,
+        "shot_index": 179,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0179.jpg",
+        "luma_lower_third": 179.332,
+        "sharpness": 60.269
+      },
+      {
+        "timestamp_s": 893.0,
+        "shot_index": 180,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0180.jpg",
+        "luma_lower_third": 117.645,
+        "sharpness": 19.337
+      },
+      {
+        "timestamp_s": 898.5,
+        "shot_index": 181,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0181.jpg",
+        "luma_lower_third": 85.535,
+        "sharpness": 72.124
+      },
+      {
+        "timestamp_s": 914.5,
+        "shot_index": 182,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0182.jpg",
+        "luma_lower_third": 76.73,
+        "sharpness": 66.78
+      },
+      {
+        "timestamp_s": 930.0,
+        "shot_index": 183,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0183.jpg",
+        "luma_lower_third": 117.547,
+        "sharpness": 45.595
+      },
+      {
+        "timestamp_s": 936.0,
+        "shot_index": 184,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0184.jpg",
+        "luma_lower_third": 79.005,
+        "sharpness": 57.709
+      },
+      {
+        "timestamp_s": 940.0,
+        "shot_index": 185,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0185.jpg",
+        "luma_lower_third": 80.541,
+        "sharpness": 57.811
+      },
+      {
+        "timestamp_s": 943.5,
+        "shot_index": 186,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0186.jpg",
+        "luma_lower_third": 124.702,
+        "sharpness": 44.338
+      },
+      {
+        "timestamp_s": 947.0,
+        "shot_index": 187,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0187.jpg",
+        "luma_lower_third": 102.349,
+        "sharpness": 48.551
+      },
+      {
+        "timestamp_s": 950.0,
+        "shot_index": 188,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0188.jpg",
+        "luma_lower_third": 125.365,
+        "sharpness": 99.741
+      },
+      {
+        "timestamp_s": 953.0,
+        "shot_index": 189,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0189.jpg",
+        "luma_lower_third": 36.017,
+        "sharpness": 46.816
+      },
+      {
+        "timestamp_s": 957.0,
+        "shot_index": 190,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0190.jpg",
+        "luma_lower_third": 157.117,
+        "sharpness": 61.433
+      },
+      {
+        "timestamp_s": 963.5,
+        "shot_index": 191,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0191.jpg",
+        "luma_lower_third": 104.154,
+        "sharpness": 27.724
+      },
+      {
+        "timestamp_s": 969.5,
+        "shot_index": 192,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0192.jpg",
+        "luma_lower_third": 70.766,
+        "sharpness": 89.63
+      },
+      {
+        "timestamp_s": 977.5,
+        "shot_index": 193,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0193.jpg",
+        "luma_lower_third": 96.727,
+        "sharpness": 80.403
+      },
+      {
+        "timestamp_s": 987.0,
+        "shot_index": 194,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0194.jpg",
+        "luma_lower_third": 82.759,
+        "sharpness": 65.339
+      },
+      {
+        "timestamp_s": 992.5,
+        "shot_index": 195,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0195.jpg",
+        "luma_lower_third": 36.801,
+        "sharpness": 90.394
+      },
+      {
+        "timestamp_s": 1001.5,
+        "shot_index": 196,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0196.jpg",
+        "luma_lower_third": 85.265,
+        "sharpness": 70.291
+      },
+      {
+        "timestamp_s": 1010.0,
+        "shot_index": 197,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0197.jpg",
+        "luma_lower_third": 201.528,
+        "sharpness": 144.073
+      },
+      {
+        "timestamp_s": 1013.0,
+        "shot_index": 198,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0198.jpg",
+        "luma_lower_third": 138.515,
+        "sharpness": 41.037
+      },
+      {
+        "timestamp_s": 1017.0,
+        "shot_index": 199,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0199.jpg",
+        "luma_lower_third": 17.233,
+        "sharpness": 5.016
+      },
+      {
+        "timestamp_s": 1020.5,
+        "shot_index": 200,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0200.jpg",
+        "luma_lower_third": 182.866,
+        "sharpness": 46.675
+      },
+      {
+        "timestamp_s": 1032.0,
+        "shot_index": 201,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0201.jpg",
+        "luma_lower_third": 107.103,
+        "sharpness": 71.259
+      },
+      {
+        "timestamp_s": 1044.0,
+        "shot_index": 202,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0202.jpg",
+        "luma_lower_third": 66.63,
+        "sharpness": 58.369
+      },
+      {
+        "timestamp_s": 1048.5,
+        "shot_index": 203,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0203.jpg",
+        "luma_lower_third": 92.984,
+        "sharpness": 23.408
+      },
+      {
+        "timestamp_s": 1054.0,
+        "shot_index": 204,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0204.jpg",
+        "luma_lower_third": 81.94,
+        "sharpness": 60.823
+      },
+      {
+        "timestamp_s": 1066.5,
+        "shot_index": 205,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0205.jpg",
+        "luma_lower_third": 91.388,
+        "sharpness": 23.854
+      },
+      {
+        "timestamp_s": 1079.5,
+        "shot_index": 206,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0206.jpg",
+        "luma_lower_third": 80.721,
+        "sharpness": 68.792
+      },
+      {
+        "timestamp_s": 1093.0,
+        "shot_index": 207,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0207.jpg",
+        "luma_lower_third": 123.023,
+        "sharpness": 43.338
+      },
+      {
+        "timestamp_s": 1105.0,
+        "shot_index": 208,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0208.jpg",
+        "luma_lower_third": 113.338,
+        "sharpness": 27.073
+      },
+      {
+        "timestamp_s": 1109.0,
+        "shot_index": 209,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0209.jpg",
+        "luma_lower_third": 75.609,
+        "sharpness": 89.359
+      },
+      {
+        "timestamp_s": 1115.0,
+        "shot_index": 210,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0210.jpg",
+        "luma_lower_third": 74.61,
+        "sharpness": 67.929
+      },
+      {
+        "timestamp_s": 1127.0,
+        "shot_index": 211,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0211.jpg",
+        "luma_lower_third": 116.818,
+        "sharpness": 38.007
+      },
+      {
+        "timestamp_s": 1138.0,
+        "shot_index": 212,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0212.jpg",
+        "luma_lower_third": 64.458,
+        "sharpness": 59.758
+      },
+      {
+        "timestamp_s": 1144.0,
+        "shot_index": 213,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0213.jpg",
+        "luma_lower_third": 82.818,
+        "sharpness": 52.846
+      },
+      {
+        "timestamp_s": 1158.0,
+        "shot_index": 214,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0214.jpg",
+        "luma_lower_third": 46.377,
+        "sharpness": 29.815
+      },
+      {
+        "timestamp_s": 1172.0,
+        "shot_index": 215,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0215.jpg",
+        "luma_lower_third": 100.726,
+        "sharpness": 50.693
+      },
+      {
+        "timestamp_s": 1177.5,
+        "shot_index": 216,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0216.jpg",
+        "luma_lower_third": 29.907,
+        "sharpness": 22.758
+      },
+      {
+        "timestamp_s": 1181.0,
+        "shot_index": 217,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0217.jpg",
+        "luma_lower_third": 63.271,
+        "sharpness": 52.589
+      },
+      {
+        "timestamp_s": 1184.5,
+        "shot_index": 218,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0218.jpg",
+        "luma_lower_third": 49.337,
+        "sharpness": 31.366
+      },
+      {
+        "timestamp_s": 1191.0,
+        "shot_index": 219,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0219.jpg",
+        "luma_lower_third": 37.874,
+        "sharpness": 23.129
+      },
+      {
+        "timestamp_s": 1197.5,
+        "shot_index": 220,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0220.jpg",
+        "luma_lower_third": 84.096,
+        "sharpness": 51.928
+      },
+      {
+        "timestamp_s": 1200.5,
+        "shot_index": 221,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0221.jpg",
+        "luma_lower_third": 90.754,
+        "sharpness": 73.447
+      },
+      {
+        "timestamp_s": 1205.0,
+        "shot_index": 222,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0222.jpg",
+        "luma_lower_third": 82.442,
+        "sharpness": 52.357
+      },
+      {
+        "timestamp_s": 1209.0,
+        "shot_index": 223,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0223.jpg",
+        "luma_lower_third": 66.797,
+        "sharpness": 30.438
+      },
+      {
+        "timestamp_s": 1212.5,
+        "shot_index": 224,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0224.jpg",
+        "luma_lower_third": 66.533,
+        "sharpness": 54.633
+      },
+      {
+        "timestamp_s": 1214.5,
+        "shot_index": 225,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0225.jpg",
+        "luma_lower_third": 34.476,
+        "sharpness": 29.934
+      },
+      {
+        "timestamp_s": 1217.5,
+        "shot_index": 226,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0226.jpg",
+        "luma_lower_third": 69.517,
+        "sharpness": 65.034
+      },
+      {
+        "timestamp_s": 1222.0,
+        "shot_index": 227,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0227.jpg",
+        "luma_lower_third": 28.639,
+        "sharpness": 23.665
+      },
+      {
+        "timestamp_s": 1228.5,
+        "shot_index": 228,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0228.jpg",
+        "luma_lower_third": 88.202,
+        "sharpness": 44.99
+      },
+      {
+        "timestamp_s": 1241.5,
+        "shot_index": 229,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0229.jpg",
+        "luma_lower_third": 84.361,
+        "sharpness": 32.915
+      },
+      {
+        "timestamp_s": 1255.5,
+        "shot_index": 230,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0230.jpg",
+        "luma_lower_third": 28.256,
+        "sharpness": 22.737
+      },
+      {
+        "timestamp_s": 1263.0,
+        "shot_index": 231,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0231.jpg",
+        "luma_lower_third": 76.835,
+        "sharpness": 69.236
+      },
+      {
+        "timestamp_s": 1268.0,
+        "shot_index": 232,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0232.jpg",
+        "luma_lower_third": 67.451,
+        "sharpness": 101.544
+      },
+      {
+        "timestamp_s": 1271.0,
+        "shot_index": 233,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0233.jpg",
+        "luma_lower_third": 72.76,
+        "sharpness": 55.602
+      },
+      {
+        "timestamp_s": 1277.5,
+        "shot_index": 234,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0234.jpg",
+        "luma_lower_third": 67.019,
+        "sharpness": 51.218
+      },
+      {
+        "timestamp_s": 1285.5,
+        "shot_index": 235,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0235.jpg",
+        "luma_lower_third": 33.519,
+        "sharpness": 42.936
+      },
+      {
+        "timestamp_s": 1292.0,
+        "shot_index": 236,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0236.jpg",
+        "luma_lower_third": 29.05,
+        "sharpness": 26.292
+      },
+      {
+        "timestamp_s": 1299.0,
+        "shot_index": 237,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0237.jpg",
+        "luma_lower_third": 202.897,
+        "sharpness": 129.487
+      },
+      {
+        "timestamp_s": 1306.5,
+        "shot_index": 238,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0238.jpg",
+        "luma_lower_third": 135.647,
+        "sharpness": 147.117
+      },
+      {
+        "timestamp_s": 1313.5,
+        "shot_index": 239,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0239.jpg",
+        "luma_lower_third": 13.641,
+        "sharpness": 4.408
+      },
+      {
+        "timestamp_s": 1321.0,
+        "shot_index": 240,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0240.jpg",
+        "luma_lower_third": 82.29,
+        "sharpness": 90.568
+      },
+      {
+        "timestamp_s": 1330.0,
+        "shot_index": 241,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0241.jpg",
+        "luma_lower_third": 84.366,
+        "sharpness": 79.222
+      },
+      {
+        "timestamp_s": 1348.0,
+        "shot_index": 242,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0242.jpg",
+        "luma_lower_third": 123.617,
+        "sharpness": 164.604
+      },
+      {
+        "timestamp_s": 1366.0,
+        "shot_index": 243,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0243.jpg",
+        "luma_lower_third": 204.325,
+        "sharpness": 149.699
+      },
+      {
+        "timestamp_s": 1379.5,
+        "shot_index": 244,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0244.jpg",
+        "luma_lower_third": 90.503,
+        "sharpness": 16.615
+      },
+      {
+        "timestamp_s": 1405.0,
+        "shot_index": 245,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0245.jpg",
+        "luma_lower_third": 97.858,
+        "sharpness": 70.926
+      },
+      {
+        "timestamp_s": 1424.5,
+        "shot_index": 246,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0246.jpg",
+        "luma_lower_third": 112.438,
+        "sharpness": 112.268
+      },
+      {
+        "timestamp_s": 1432.0,
+        "shot_index": 247,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0247.jpg",
+        "luma_lower_third": 83.6,
+        "sharpness": 89.818
+      },
+      {
+        "timestamp_s": 1446.0,
+        "shot_index": 248,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0248.jpg",
+        "luma_lower_third": 90.571,
+        "sharpness": 84.974
+      },
+      {
+        "timestamp_s": 1464.5,
+        "shot_index": 249,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0249.jpg",
+        "luma_lower_third": 122.735,
+        "sharpness": 79.574
+      },
+      {
+        "timestamp_s": 1475.5,
+        "shot_index": 250,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0250.jpg",
+        "luma_lower_third": 206.598,
+        "sharpness": 109.673
+      },
+      {
+        "timestamp_s": 1482.0,
+        "shot_index": 251,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0251.jpg",
+        "luma_lower_third": 160.059,
+        "sharpness": 83.112
+      },
+      {
+        "timestamp_s": 1488.5,
+        "shot_index": 252,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0252.jpg",
+        "luma_lower_third": 119.156,
+        "sharpness": 35.204
+      },
+      {
+        "timestamp_s": 1496.5,
+        "shot_index": 253,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0253.jpg",
+        "luma_lower_third": 147.73,
+        "sharpness": 75.617
+      },
+      {
+        "timestamp_s": 1508.5,
+        "shot_index": 254,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0254.jpg",
+        "luma_lower_third": 128.977,
+        "sharpness": 75.829
+      },
+      {
+        "timestamp_s": 1521.5,
+        "shot_index": 255,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0255.jpg",
+        "luma_lower_third": 88.987,
+        "sharpness": 82.072
+      },
+      {
+        "timestamp_s": 1528.0,
+        "shot_index": 256,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0256.jpg",
+        "luma_lower_third": 102.343,
+        "sharpness": 128.03
+      },
+      {
+        "timestamp_s": 1530.0,
+        "shot_index": 257,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0257.jpg",
+        "luma_lower_third": 81.044,
+        "sharpness": 170.256
+      },
+      {
+        "timestamp_s": 1534.5,
+        "shot_index": 258,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0258.jpg",
+        "luma_lower_third": 85.32,
+        "sharpness": 60.088
+      },
+      {
+        "timestamp_s": 1540.0,
+        "shot_index": 259,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0259.jpg",
+        "luma_lower_third": 73.166,
+        "sharpness": 106.113
+      },
+      {
+        "timestamp_s": 1543.5,
+        "shot_index": 260,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0260.jpg",
+        "luma_lower_third": 133.999,
+        "sharpness": 133.459
+      },
+      {
+        "timestamp_s": 1546.5,
+        "shot_index": 261,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0261.jpg",
+        "luma_lower_third": 73.612,
+        "sharpness": 100.736
+      },
+      {
+        "timestamp_s": 1551.0,
+        "shot_index": 262,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0262.jpg",
+        "luma_lower_third": 86.029,
+        "sharpness": 80.76
+      },
+      {
+        "timestamp_s": 1558.5,
+        "shot_index": 263,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0263.jpg",
+        "luma_lower_third": 121.32,
+        "sharpness": 99.56
+      },
+      {
+        "timestamp_s": 1564.5,
+        "shot_index": 264,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0264.jpg",
+        "luma_lower_third": 133.706,
+        "sharpness": 131.951
+      },
+      {
+        "timestamp_s": 1567.0,
+        "shot_index": 265,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0265.jpg",
+        "luma_lower_third": 81.819,
+        "sharpness": 163.368
+      },
+      {
+        "timestamp_s": 1570.5,
+        "shot_index": 266,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0266.jpg",
+        "luma_lower_third": 69.337,
+        "sharpness": 92.767
+      },
+      {
+        "timestamp_s": 1575.0,
+        "shot_index": 267,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0267.jpg",
+        "luma_lower_third": 135.236,
+        "sharpness": 168.348
+      },
+      {
+        "timestamp_s": 1582.0,
+        "shot_index": 268,
+        "path": "studies/geoverum/reference-calibration/ref-ethiopia-toba/keyframes/shot_0268.jpg",
+        "luma_lower_third": 95.342,
+        "sharpness": 60.281
+      }
+    ]
+  },
+  "timing_ms": {
+    "hash_ms": 423,
+    "ffprobe_ms": 59,
+    "stream_analyze_ms": 30676,
+    "total_ms": 31100
+  }
+}

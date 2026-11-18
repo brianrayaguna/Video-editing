@@ -22,7 +22,12 @@ MOTION:  Pin & badge entrances: scale(0.92) -> 1.0, opacity 0 -> 1 over 0.20s (e
          locked at stalk foot (`center bottom`); non-uniform staggers (`0ms -> 150ms -> 250ms`);
          Convergence flow arrows: `stroke-dashoffset` draw-on over 0.56s (power2.inOut) with arrowheads
          entering on route completion (final 15% overlap handoff).
+INFLUENCE: Foreign circular flag pins may mark presence/influence inside a third country,
+         anchored at geographic coordinates with the same stalk/medallion system.
+         One pin family only; max one foreign-flag signal per beat.
+
 BANNED:  - Hand-drawn custom pin shapes or emoji glyphs
+         - Thematic raster props (dollar bills, soldiers, drones-as-toys) — use Material Symbols
          - Mixing multiple icon packs or varying stroke weights across markers
          - Translucent overlapping circles creating dark onion-skin seams
          - Animating markers from scale(0) or floating after settle

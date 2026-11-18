@@ -63,3 +63,104 @@ def load_platform_targets(repo_root: Path | None = None) -> dict[str, dict[str, 
             raise ValueError(f"Platform preset {file_path.name} failed contract check: {errors}")
         results[payload["platform_id"]] = payload
     return results
+
+
+def load_brand_template_catalog(
+    path: Path,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Load and validate a brand template catalog JSON file."""
+    root = repo_root or find_repo_root()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    errors = validate_against_contract(payload, "brand_template.schema.json", repo_root=root)
+    if errors:
+        raise ValueError(f"Brand template catalog {path} failed contract check: {errors}")
+    return payload
+
+
+def validate_brand_tree(
+    brand_dir: Path,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Validate runtime policy plus optional playbook/catalog under one brand directory."""
+    root = repo_root or find_repo_root()
+    brand_dir = brand_dir.resolve()
+    if not brand_dir.is_dir():
+        raise FileNotFoundError(f"Brand directory not found: {brand_dir}")
+
+    policy_path = brand_dir / "brand_style_policy.json"
+    if not policy_path.is_file():
+        raise FileNotFoundError(f"Missing runtime policy: {policy_path}")
+
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    errors = validate_against_contract(policy, "brand_style_policy.schema.json", repo_root=root)
+    if errors:
+        raise ValueError(f"{policy_path.name} failed contract check: {errors}")
+    if "grammar_triggers" in policy or "exemplar_bank" in policy:
+        raise ValueError(
+            f"{policy_path.name} must not include advisory grammar_triggers/exemplar_bank; "
+            "store those in editorial_playbook.json"
+        )
+
+    brand_id = str(policy["brand_id"])
+    policy_rel = (
+        str(policy_path.relative_to(root))
+        if policy_path.is_relative_to(root)
+        else str(policy_path)
+    )
+    validated: dict[str, Any] = {
+        "brand_id": brand_id,
+        "policy": policy_rel,
+        "playbook": None,
+        "templates": None,
+    }
+
+    playbook_path = brand_dir / "editorial_playbook.json"
+    if playbook_path.is_file():
+        playbook = json.loads(playbook_path.read_text(encoding="utf-8"))
+        playbook_errors = validate_against_contract(
+            playbook, "editorial_playbook.schema.json", repo_root=root
+        )
+        if playbook_errors:
+            raise ValueError(f"{playbook_path.name} failed contract check: {playbook_errors}")
+        if playbook.get("brand_id") != brand_id:
+            raise ValueError(
+                f"Playbook brand_id {playbook.get('brand_id')!r} != policy brand_id {brand_id!r}"
+            )
+        validated["playbook"] = (
+            str(playbook_path.relative_to(root))
+            if playbook_path.is_relative_to(root)
+            else str(playbook_path)
+        )
+
+    catalog_path = brand_dir / "templates" / "catalog.json"
+    if catalog_path.is_file():
+        catalog = load_brand_template_catalog(catalog_path, repo_root=root)
+        if catalog.get("brand_id") != brand_id:
+            raise ValueError(
+                f"Template catalog brand_id {catalog.get('brand_id')!r} "
+                f"!= policy brand_id {brand_id!r}"
+            )
+        validated["templates"] = (
+            str(catalog_path.relative_to(root))
+            if catalog_path.is_relative_to(root)
+            else str(catalog_path)
+        )
+
+    return validated
+
+
+def validate_all_brand_trees(repo_root: Path | None = None) -> list[dict[str, Any]]:
+    """Validate every brand directory under `profiles/brands/`."""
+    root = repo_root or find_repo_root()
+    brands_root = root / "profiles" / "brands"
+    if not brands_root.is_dir():
+        return []
+    results: list[dict[str, Any]] = []
+    for brand_dir in sorted(p for p in brands_root.iterdir() if p.is_dir()):
+        if not (brand_dir / "brand_style_policy.json").is_file():
+            continue
+        results.append(validate_brand_tree(brand_dir, repo_root=root))
+    return results

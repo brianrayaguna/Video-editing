@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "path": "studies/geoverum/reference-calibration/ref-batam/source.mp4",
+  "sha256": "f0d083936286f88bf0db36580e8cebe3bba4aa51f33df07dc45968674adc3530",
+  "file_bytes": 22568468,
+  "container": {
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration_s": 51.95,
+    "bit_rate": 3475413
+  },
+  "video": {
+    "present": true,
+    "codec": "h264",
+    "width": 720,
+    "height": 1280,
+    "fps": 60.0,
+    "is_cfr": true,
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "frame_count_est": 3117
+  },
+  "audio": {
+    "present": true,
+    "codec": "aac",
+    "sample_rate_hz": 44100,
+    "channels": 2,
+    "integrated_lufs": -9.1,
+    "lra": 1.9,
+    "true_peak_dbtp": null,
+    "silence_intervals": [],
+    "silence_ratio": 0.0
+  },
+  "shots": [
+    {
+      "shot_index": 0,
+      "start_s": 0.0,
+      "end_s": 11.2,
+      "duration_s": 11.2,
+      "confidence": 1.0
+    },
+    {
+      "shot_index": 1,
+      "start_s": 11.2,
+      "end_s": 51.95,
+      "duration_s": 40.75,
+      "confidence": 0.176
+    }
+  ],
+  "shot_stats": {
+    "count": 2,
+    "asl_p25_s": 18.588,
+    "asl_p50_s": 25.975,
+    "asl_p75_s": 33.363,
+    "cuts_per_min": 1.155
+  },
+  "visual": {
+    "sampled_frames": 104,
+    "palette": [
+      {
+        "hex": "#06262F",
+        "share": 0.343,
+        "lab_l": 13.422,
+        "lab_a": -8.142,
+        "lab_b": -8.914
+      },
+      {
+        "hex": "#384D2C",
+        "share": 0.093,
+        "lab_l": 30.194,
+        "lab_a": -15.226,
+        "lab_b": 17.021
+      },
+      {
+        "hex": "#516241",
+        "share": 0.074,
+        "lab_l": 39.382,
+        "lab_a": -12.872,
+        "lab_b": 16.658
+      },
+      {
+        "hex": "#000B14",
+        "share": 0.06,
+        "lab_l": 2.672,
+        "lab_a": -1.209,
+        "lab_b": -5.47
+      },
+      {
+        "hex": "#051C26",
+        "share": 0.049,
+        "lab_l": 8.906,
+        "lab_a": -4.843,
+        "lab_b": -9.453
+      }
+    ],
+    "palette_entropy": 4.122,
+    "mean_luminance": 59.803,
+    "band_luminance": {
+      "upper": 75.167,
+      "center": 58.111,
+      "lower_third": 48.94
+    },
+    "mean_sharpness": 48.442,
+    "black_intervals": [],
+    "keyframes": [
+      {
+        "timestamp_s": 5.5,
+        "shot_index": 0,
+        "path": "studies/geoverum/reference-calibration/ref-batam/keyframes/shot_0000.jpg",
+        "luma_lower_third": 42.33,
+        "sharpness": 54.442
+      },
+      {
+        "timestamp_s": 31.5,
+        "shot_index": 1,
+        "path": "studies/geoverum/reference-calibration/ref-batam/keyframes/shot_0001.jpg",
+        "luma_lower_third": 69.653,
+        "sharpness": 41.842
+      }
+    ]
+  },
+  "timing_ms": {
+    "hash_ms": 69,
+    "ffprobe_ms": 84,
+    "stream_analyze_ms": 2698,
+    "total_ms": 2782
+  }
+}

@@ -38,6 +38,12 @@ BANNED:  - Colored borders around subtitle chips
          - Word-by-word bouncy karaoke pop/scale on documentary narration
          - Two caption groups visible on the same frame
          - Misspelled Indonesian words (corrected reference typo "semenajung" -> "semenanjung")
+         - Shouty full-width yellow all-caps bars covering the focal subject
+
+LONGFORM (16:9 optional fact card, not a running subtitle):
+         Amber plate `#F5C542` + ink `#03161F`, Space Grotesk/Archivo Black, form `NN. Judul fakta singkat`,
+         lower-third safe, one card per chapter beat, opacity fade 100–180ms; never simultaneous with
+         the narrative caption rail on the same frame ("Say it once").
 QA:      Verify all 9 caption groups on contact sheet (f025, f065, f105, f140, f175, f220, f270, f300 gap, f325, f355);
          confirm p50 group duration = 1.43s (within target 0.95s-1.45s), WCAG contrast >= 11:1,
          and EBU R128 integrated loudness -14.0 +/- 0.5 LUFS.

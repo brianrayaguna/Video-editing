@@ -16,17 +16,26 @@ from vedit.analyzers.brand_analyzer import (
     ExemplarRole,
     ReferenceVideoSample,
     query_exemplars,
-    synthesize_brand_policy,
+    synthesize_brand_artifacts,
 )
 from vedit.analyzers.media_probe import ProbeOptions, hash_media, probe_media
 from vedit.compiler.hf_bridge import compile_edit_plan
-from vedit.contracts import find_repo_root, load_platform_targets, load_schema
+from vedit.contracts import (
+    find_repo_root,
+    load_brand_template_catalog,
+    load_platform_targets,
+    load_schema,
+    validate_all_brand_trees,
+    validate_brand_tree,
+)
 from vedit.director.planner import build_edit_plan
 from vedit.director.verifier import verify_edit_plan
 from vedit.mastering.ffmpeg_master import assemble_hybrid_deliverable
 from vedit.mastering.qc_audit import audit_mastered_deliverable
 from vedit.models import (
     BrandStylePolicy,
+    BrandTemplateCatalog,
+    EditorialPlaybook,
     EditPlan,
     MediaProbeResult,
     NormalizedTranscript,
@@ -49,7 +58,9 @@ contracts_app = typer.Typer(help="Validate JSON Schemas and platform mastering p
 providers_app = typer.Typer(help="Inspect and configure capability providers.")
 platforms_app = typer.Typer(help="List validated platform mastering targets.")
 probe_app = typer.Typer(help="Fast deterministic media hashing, shot & CIELAB analysis.")
-brand_app = typer.Typer(help="Synthesize BrandStylePolicy and query style exemplars.")
+brand_app = typer.Typer(
+    help="Synthesize brand policy/playbook, validate brand trees, query exemplars."
+)
 director_app = typer.Typer(help="Assemble and verify EditPlan specifications.")
 cloud_app = typer.Typer(help="Submit distributed renders and mastering jobs to Modal.com.")
 
@@ -69,7 +80,7 @@ def contracts_validate(
     json_output: JsonOption = False,
     repo_root: Annotated[Path | None, typer.Option("--repo-root", hidden=True)] = None,
 ) -> None:
-    """Validate all JSON Schemas in `contracts/` and presets in `profiles/platforms/`."""
+    """Validate contracts, platform presets, and brand trees under `profiles/`."""
     root = repo_root or find_repo_root()
     schema_files = sorted((root / "contracts").glob("*.schema.json"))
     loaded_schemas: list[str] = []
@@ -78,16 +89,20 @@ def contracts_validate(
         loaded_schemas.append(schema_path.name)
 
     platforms = load_platform_targets(repo_root=root)
+    brands = validate_all_brand_trees(repo_root=root)
     result = {
         "ok": True,
         "schemas": loaded_schemas,
         "platforms_validated": sorted(platforms.keys()),
+        "brands_validated": [entry["brand_id"] for entry in brands],
+        "brand_trees": brands,
     }
     if json_output:
         typer.echo(json.dumps(result, indent=2))
     else:
         typer.echo(
-            f"Validated {len(loaded_schemas)} schemas and {len(platforms)} platform targets."
+            f"Validated {len(loaded_schemas)} schemas, {len(platforms)} platform targets, "
+            f"and {len(brands)} brand tree(s)."
         )
 
 
@@ -363,13 +378,17 @@ def brand_analyze_cmd(
         list[Path], typer.Option("--probe-file", help="MediaProbeResult JSON path(s).")
     ],
     output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Optional output JSON path.")
+        Path | None, typer.Option("--output", "-o", help="Runtime BrandStylePolicy JSON path.")
+    ] = None,
+    playbook_out: Annotated[
+        Path | None,
+        typer.Option("--playbook-out", help="Advisory EditorialPlaybook JSON path."),
     ] = None,
     use_decision: Annotated[
         bool, typer.Option("--use-decision", help="Enrich with configured DecisionPort.")
     ] = False,
 ) -> None:
-    """Synthesize a validated BrandStylePolicy from one or more reference MediaProbeResult JSONs."""
+    """Synthesize runtime BrandStylePolicy and advisory EditorialPlaybook from probes."""
     samples: list[ReferenceVideoSample] = []
     for p_path in probe_files:
         probe = MediaProbeResult.model_validate_json(p_path.read_text(encoding="utf-8"))
@@ -378,30 +397,75 @@ def brand_analyze_cmd(
     decision_port = (
         build_default_registry().resolve("decision") if use_decision else None
     )
-    policy = synthesize_brand_policy(brand_id, samples, decision_port=decision_port)
-    payload = policy.model_dump_json(indent=2, exclude_none=True)
+    synthesized = synthesize_brand_artifacts(brand_id, samples, decision_port=decision_port)
+    policy_payload = synthesized.policy.model_dump(exclude_none=True)
+    playbook_payload = synthesized.playbook.model_dump(exclude_none=True)
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(payload, encoding="utf-8")
-    typer.echo(payload)
+        output.write_text(json.dumps(policy_payload, indent=2) + "\n", encoding="utf-8")
+    if playbook_out is not None:
+        playbook_out.parent.mkdir(parents=True, exist_ok=True)
+        playbook_out.write_text(json.dumps(playbook_payload, indent=2) + "\n", encoding="utf-8")
+    typer.echo(
+        json.dumps({"policy": policy_payload, "playbook": playbook_payload}, indent=2)
+    )
+
+
+@brand_app.command("validate")
+def brand_validate_cmd(
+    brand_dir: Annotated[
+        Path | None,
+        typer.Option("--brand-dir", help="Brand directory under profiles/brands/<id>."),
+    ] = None,
+    json_output: JsonOption = False,
+    repo_root: Annotated[Path | None, typer.Option("--repo-root", hidden=True)] = None,
+) -> None:
+    """Validate one brand tree or all trees under profiles/brands/."""
+    root = repo_root or find_repo_root()
+    if brand_dir is not None:
+        results = [validate_brand_tree(brand_dir, repo_root=root)]
+    else:
+        results = validate_all_brand_trees(repo_root=root)
+    payload = {"ok": True, "brands": results}
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        for entry in results:
+            typer.echo(
+                f"{entry['brand_id']}: policy={entry['policy']} "
+                f"playbook={entry['playbook']} templates={entry['templates']}"
+            )
 
 
 @brand_app.command("exemplars")
 def brand_exemplars_cmd(
-    policy_file: Annotated[Path, typer.Argument(help="Path to BrandStylePolicy JSON.")],
+    playbook_file: Annotated[Path, typer.Argument(help="Path to editorial_playbook.json.")],
     role: Annotated[ExemplarRole | None, typer.Option("--role")] = None,
     min_duration_s: Annotated[float | None, typer.Option("--min-duration-s")] = None,
     max_duration_s: Annotated[float | None, typer.Option("--max-duration-s")] = None,
 ) -> None:
-    """Query matching exemplars from a BrandStylePolicy exemplar_bank."""
-    policy = BrandStylePolicy.model_validate_json(policy_file.read_text(encoding="utf-8"))
+    """Query matching exemplars from an EditorialPlaybook exemplar_bank."""
+    playbook = EditorialPlaybook.model_validate_json(playbook_file.read_text(encoding="utf-8"))
     items = query_exemplars(
-        policy,
+        playbook,
         role=role,
         min_duration_s=min_duration_s,
         max_duration_s=max_duration_s,
     )
     typer.echo(json.dumps([item.model_dump(exclude_none=True) for item in items], indent=2))
+
+
+def _load_optional_template_catalog(
+    template_catalog: Path | None,
+    brand_dir: Path | None,
+) -> BrandTemplateCatalog | None:
+    if template_catalog is not None:
+        return BrandTemplateCatalog.model_validate(load_brand_template_catalog(template_catalog))
+    if brand_dir is not None:
+        catalog_path = brand_dir / "templates" / "catalog.json"
+        if catalog_path.is_file():
+            return BrandTemplateCatalog.model_validate(load_brand_template_catalog(catalog_path))
+    return None
 
 
 @director_app.command("plan")
@@ -412,6 +476,12 @@ def director_plan_cmd(
     job_id: Annotated[str, typer.Option("--job-id")] = "job_local",
     project_id: Annotated[str, typer.Option("--project-id")] = "proj_local",
     transcript_file: Annotated[Path | None, typer.Option("--transcript-file")] = None,
+    brand_dir: Annotated[
+        Path | None, typer.Option("--brand-dir", help="Brand dir for templates/catalog.json.")
+    ] = None,
+    template_catalog: Annotated[
+        Path | None, typer.Option("--template-catalog", help="Brand template catalog JSON.")
+    ] = None,
     render_strategy: Annotated[
         Literal["hybrid", "full_hf"], typer.Option("--strategy")
     ] = "hybrid",
@@ -432,6 +502,7 @@ def director_plan_cmd(
         if transcript_file is not None
         else None
     )
+    catalog = _load_optional_template_catalog(template_catalog, brand_dir)
     decision_port = build_default_registry().resolve("decision") if use_decision else None
     plan, report = build_edit_plan(
         job_id=job_id,
@@ -442,6 +513,7 @@ def director_plan_cmd(
         transcript=transcript,
         decision_port=decision_port,
         render_strategy=render_strategy,
+        template_catalog=catalog,
     )
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -460,6 +532,12 @@ def director_verify_cmd(
     policy_file: Annotated[Path, typer.Option("--policy-file", help="BrandStylePolicy JSON path.")],
     platform_id: Annotated[str, typer.Option("--platform", help="Target platform preset ID.")],
     transcript_file: Annotated[Path | None, typer.Option("--transcript-file")] = None,
+    brand_dir: Annotated[
+        Path | None, typer.Option("--brand-dir", help="Brand dir for templates/catalog.json.")
+    ] = None,
+    template_catalog: Annotated[
+        Path | None, typer.Option("--template-catalog", help="Brand template catalog JSON.")
+    ] = None,
 ) -> None:
     """Verify an EditPlan deterministically against BrandStylePolicy and PlatformTarget."""
     platforms = load_platform_targets()
@@ -473,7 +551,14 @@ def director_verify_cmd(
         if transcript_file is not None
         else None
     )
-    report = verify_edit_plan(plan, policy, platform_target, transcript=transcript)
+    catalog = _load_optional_template_catalog(template_catalog, brand_dir)
+    report = verify_edit_plan(
+        plan,
+        policy,
+        platform_target,
+        transcript=transcript,
+        template_catalog=catalog,
+    )
     typer.echo(json.dumps(report.to_dict(), indent=2))
     if not report.passed:
         raise typer.Exit(code=1)

@@ -1,4 +1,8 @@
-"""Multi-reference BrandStylePolicy synthesis, exemplar indexing, and calibration helpers."""
+"""Multi-reference BrandStylePolicy synthesis, editorial playbook aids, and calibration.
+
+Runtime policies carry soft priors, hard guardrails, calibration, and provenance.
+Advisory grammar triggers and exemplars are emitted separately as EditorialPlaybook.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ from vedit.models import (
     AudioStyleTokens,
     BrandProvenance,
     BrandStylePolicy,
+    EditorialPlaybook,
     GrammarTrigger,
     HardGuardrails,
     MediaProbeResult,
@@ -37,7 +42,9 @@ from vedit.models import (
 from vedit.ports.decision import DecisionPort, DecisionQuestion, ImageInput, validate_decision_batch
 
 SectionName = Literal["hook", "setup", "body", "escalation", "climax", "outro"]
-ExemplarRole = Literal["hook", "proof", "data_callout", "broll_bridge", "climax", "outro"]
+ExemplarRole = Literal[
+    "hook", "setup", "proof", "data_callout", "broll_bridge", "climax", "outro"
+]
 
 _SECTION_BOUNDS: tuple[tuple[SectionName, float, float, float], ...] = (
     ("hook", 0.00, 0.12, 0.72),
@@ -77,6 +84,14 @@ class ReferenceVideoSample:
     notes: str | None = None
 
 
+@dataclass(slots=True)
+class BrandSynthesisResult:
+    """Runtime policy plus optional advisory playbook from one synthesis pass."""
+
+    policy: BrandStylePolicy
+    playbook: EditorialPlaybook
+
+
 def _classify_section(mid_ratio: float) -> SectionName:
     for name, lo, hi, _ in _SECTION_BOUNDS:
         if lo <= mid_ratio < hi:
@@ -102,7 +117,6 @@ def _weighted_palette(samples: Sequence[ReferenceVideoSample]) -> tuple[PaletteR
     mean_luma = sum(lum * w for lum, w in weighted_lumas) / total_dur
     dark_brand = mean_luma <= 132.0
 
-    # Pick ground by tonal fit (darkest dominant neutral for dark themes, lightest for light).
     candidates_sorted = sorted(
         color_weights.items(),
         key=lambda kv: (
@@ -267,6 +281,39 @@ def _build_exemplars(
     return exemplars
 
 
+def _default_grammar_triggers() -> list[GrammarTrigger]:
+    return [
+        GrammarTrigger(
+            trigger_id="quantified_claim_data_card",
+            condition="speech.contains_number_or_metric and speech.duration_s >= 1.5",
+            action="overlay.spawn(kind='data_card', band='dynamic_away_from_subject')",
+            weight=0.88,
+            rationale="Anchor spoken statistics with a legible, contrasting metric card.",
+        ),
+        GrammarTrigger(
+            trigger_id="hook_opening_callout",
+            condition="timeline.section == 'hook' and timeline.t_s <= 2.5",
+            action="overlay.spawn(kind='kinetic_callout', band='upper_safe')",
+            weight=0.84,
+            rationale="Establish subject context early inside platform-safe top band.",
+        ),
+        GrammarTrigger(
+            trigger_id="long_hold_visual_refresh",
+            condition="shot.hold_s >= 0.75 * hard_guardrails.max_uninterrupted_hold_s",
+            action="video.insert_broll_or_punch_in(scale=1.08)",
+            weight=0.76,
+            rationale="Prevent visual fatigue on extended spoken segments.",
+        ),
+        GrammarTrigger(
+            trigger_id="clause_pause_cut_anchor",
+            condition="audio.silence_gap_s >= 0.30",
+            action="timeline.prefer_cut_boundary()",
+            weight=0.92,
+            rationale="Align visual transitions cleanly between speech phrases.",
+        ),
+    ]
+
+
 def _apply_decision_enrichment(
     samples: Sequence[ReferenceVideoSample],
     decision_port: DecisionPort,
@@ -344,15 +391,15 @@ def _apply_decision_enrichment(
     return motion, cap_case, tone, 0.88
 
 
-def synthesize_brand_policy(
+def synthesize_brand_artifacts(
     brand_id: str,
     samples: Sequence[ReferenceVideoSample],
     *,
     display_name: str | None = None,
     decision_port: DecisionPort | None = None,
     validate_contract: bool = True,
-) -> BrandStylePolicy:
-    """Synthesize a schema-valid `BrandStylePolicy` from 1+ reference video probes."""
+) -> BrandSynthesisResult:
+    """Synthesize runtime policy and advisory playbook from reference probes."""
     if not samples:
         raise ValueError("At least one ReferenceVideoSample is required to build BrandStylePolicy.")
 
@@ -408,37 +455,6 @@ def synthesize_brand_policy(
     min_shot = max(0.35, round(min(sec.asl_p25_s for sec in temporal_curve) * 0.6, 3))
     max_hold = max(4.0, round(max(sec.asl_p75_s for sec in temporal_curve) * 2.2, 3))
 
-    triggers = [
-        GrammarTrigger(
-            trigger_id="quantified_claim_data_card",
-            condition="speech.contains_number_or_metric and speech.duration_s >= 1.5",
-            action="overlay.spawn(kind='data_card', band='dynamic_away_from_subject')",
-            weight=0.88,
-            rationale="Anchor spoken statistics with a legible, contrasting metric card.",
-        ),
-        GrammarTrigger(
-            trigger_id="hook_opening_callout",
-            condition="timeline.section == 'hook' and timeline.t_s <= 2.5",
-            action="overlay.spawn(kind='kinetic_callout', band='upper_safe')",
-            weight=0.84,
-            rationale="Establish subject context early inside platform-safe top band.",
-        ),
-        GrammarTrigger(
-            trigger_id="long_hold_visual_refresh",
-            condition="shot.hold_s >= 0.75 * hard_guardrails.max_uninterrupted_hold_s",
-            action="video.insert_broll_or_punch_in(scale=1.08)",
-            weight=0.76,
-            rationale="Prevent visual fatigue on extended spoken segments.",
-        ),
-        GrammarTrigger(
-            trigger_id="clause_pause_cut_anchor",
-            condition="audio.silence_gap_s >= 0.30",
-            action="timeline.prefer_cut_boundary()",
-            weight=0.92,
-            rationale="Align visual transitions cleanly between speech phrases.",
-        ),
-    ]
-
     policy = BrandStylePolicy(
         brand_id=brand_id,
         display_name=display_name or brand_id.replace("_", " ").replace("-", " ").title(),
@@ -468,7 +484,6 @@ def synthesize_brand_policy(
                 sfx_policy=sfx_policy,
             ),
         ),
-        grammar_triggers=triggers,
         hard_guardrails=HardGuardrails(
             min_shot_duration_s=min_shot,
             max_uninterrupted_hold_s=max_hold,
@@ -479,7 +494,6 @@ def synthesize_brand_policy(
             banned_patterns=["heavy_css_blur_glass"],
             avoid_heavy_css_blur=True,
         ),
-        exemplar_bank=_build_exemplars(samples, motion_default),
         calibration=StyleCalibration(
             accepted_overrides=0,
             rejected_patterns=[],
@@ -493,27 +507,65 @@ def synthesize_brand_policy(
         ),
     )
 
+    playbook = EditorialPlaybook(
+        brand_id=brand_id,
+        schema_note=(
+            "Advisory directing playbook only. Not consumed by planner, verifier, "
+            "compile, master, or audit."
+        ),
+        grammar_triggers=_default_grammar_triggers(),
+        exemplar_bank=_build_exemplars(samples, motion_default),
+    )
+
     if validate_contract:
-        errors = validate_against_contract(
+        policy_errors = validate_against_contract(
             policy.model_dump(exclude_none=True),
             "brand_style_policy.schema.json",
         )
-        if errors:
-            raise ValueError(f"Synthesized BrandStylePolicy failed schema contract: {errors}")
+        if policy_errors:
+            raise ValueError(
+                f"Synthesized BrandStylePolicy failed schema contract: {policy_errors}"
+            )
+        playbook_errors = validate_against_contract(
+            playbook.model_dump(exclude_none=True),
+            "editorial_playbook.schema.json",
+        )
+        if playbook_errors:
+            raise ValueError(
+                f"Synthesized EditorialPlaybook failed schema contract: {playbook_errors}"
+            )
 
-    return policy
+    return BrandSynthesisResult(policy=policy, playbook=playbook)
+
+
+def synthesize_brand_policy(
+    brand_id: str,
+    samples: Sequence[ReferenceVideoSample],
+    *,
+    display_name: str | None = None,
+    decision_port: DecisionPort | None = None,
+    validate_contract: bool = True,
+) -> BrandStylePolicy:
+    """Synthesize a schema-valid runtime `BrandStylePolicy` from reference probes."""
+    return synthesize_brand_artifacts(
+        brand_id,
+        samples,
+        display_name=display_name,
+        decision_port=decision_port,
+        validate_contract=validate_contract,
+    ).policy
 
 
 def query_exemplars(
-    policy: BrandStylePolicy,
+    playbook: EditorialPlaybook,
     *,
     role: ExemplarRole | None = None,
     min_duration_s: float | None = None,
     max_duration_s: float | None = None,
 ) -> list[StyleExemplar]:
-    """Retrieve matching reference exemplars filtered by role and clip duration bounds."""
+    """Retrieve matching reference exemplars from an editorial playbook."""
     matches: list[StyleExemplar] = []
-    for ex in policy.exemplar_bank:
+    for ex in playbook.exemplar_bank:
         if role is not None and ex.role != role:
             continue
         dur = max(0.0, ex.end_s - ex.start_s)

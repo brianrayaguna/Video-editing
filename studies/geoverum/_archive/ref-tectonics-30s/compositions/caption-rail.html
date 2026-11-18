@@ -1,0 +1,104 @@
+<template>
+  <style>
+    @font-face {
+      font-family: 'Space Grotesk';
+      src: url('assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+      font-weight: 300 700;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: visible;
+      background: transparent;
+      font-family: 'Space Grotesk', sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+    #chrome-cover-caption {
+      position: absolute;
+      left: 60px;
+      right: 60px;
+      top: 1380px;
+      height: 200px;
+      background: linear-gradient(180deg, rgba(3, 22, 31, 0) 0%, rgba(3, 22, 31, 0.72) 28%, rgba(3, 22, 31, 0.78) 100%);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    #caption-rail-clip {
+      position: absolute;
+      top: 1432px;
+      left: 84px;
+      right: 84px;
+      height: 64px;
+      overflow: visible;
+      pointer-events: none;
+    }
+    .cap-slot {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+    .cap-chip {
+      background: rgba(6, 16, 22, 0.80);
+      color: #F4F1EA;
+      padding: 10px 22px 11px 22px;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 32px;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      text-align: center;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.36);
+    }
+  </style>
+  <div id="root" data-composition-id="caption-rail" data-width="1080" data-height="1920">
+    <div id="chrome-cover-caption" class="clip" data-start="0" data-duration="30" data-track-index="1" data-layout-ignore="true"></div>
+    <div id="caption-rail-clip" class="clip" data-start="0" data-duration="30" data-track-index="2" data-layout-allow-overlap="true">
+      <div id="cap-01" class="cap-slot"><span class="cap-chip">Turki dan India terpisah</span></div>
+      <div id="cap-02" class="cap-slot"><span class="cap-chip">km, tidak berbagi perbatasan,</span></div>
+      <div id="cap-03" class="cap-slot"><span class="cap-chip">bahkan berada di kawasan</span></div>
+      <div id="cap-04" class="cap-slot"><span class="cap-chip">Namun hubungan keduanya kini</span></div>
+      <div id="cap-05" class="cap-slot"><span class="cap-chip">Penyebab utamanya adalah Pakistan.</span></div>
+      <div id="cap-06" class="cap-slot"><span class="cap-chip">Pakistan dalam isu Kashmir</span></div>
+      <div id="cap-07" class="cap-slot"><span class="cap-chip">Ketegangan makin terasa setelah</span></div>
+      <div id="cap-08" class="cap-slot"><span class="cap-chip">konflik India-Pakistan pada</span></div>
+      <div id="cap-09" class="cap-slot"><span class="cap-chip">2025 ketika pesawat nirawak</span></div>
+      <div id="cap-10" class="cap-slot"><span class="cap-chip">buatan Turki dilaporkan</span></div>
+      <div id="cap-11" class="cap-slot"><span class="cap-chip">India tidak membalas dengan</span></div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const groups = [
+      { sel: "#cap-01", start: 7 / 30, end: 51 / 30, softIn: true },
+      { sel: "#cap-02", start: 51 / 30, end: 150 / 30, softIn: false },
+      { sel: "#cap-03", start: 150 / 30, end: 210 / 30, softIn: false },
+      { sel: "#cap-04", start: 210 / 30, end: 360 / 30, softIn: false },
+      { sel: "#cap-05", start: 375 / 30, end: 450 / 30, softIn: true },
+      { sel: "#cap-06", start: 480 / 30, end: 570 / 30, softIn: false },
+      { sel: "#cap-07", start: 590 / 30, end: 645 / 30, softIn: false },
+      { sel: "#cap-08", start: 645 / 30, end: 720 / 30, softIn: false },
+      { sel: "#cap-09", start: 735 / 30, end: 780 / 30, softIn: false },
+      { sel: "#cap-10", start: 780 / 30, end: 840 / 30, softIn: false },
+      { sel: "#cap-11", start: 840 / 30, end: 900 / 30, softIn: false },
+    ];
+    for (const g of groups) {
+      const dur = g.end - g.start;
+      if (g.softIn) {
+        tl.set(g.sel, { visibility: "visible" }, g.start);
+        tl.fromTo(g.sel, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "expo.out" }, g.start);
+      } else {
+        tl.set(g.sel, { visibility: "visible", opacity: 1 }, g.start);
+      }
+      tl.set(g.sel, { visibility: "hidden", opacity: 0 }, g.end);
+    }
+    window.__timelines = window.__timelines || {};
+    window.__timelines["caption-rail"] = tl;
+  </script>
+</template>

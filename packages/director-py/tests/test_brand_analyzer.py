@@ -9,6 +9,7 @@ from vedit.analyzers.brand_analyzer import (
     ReferenceVideoSample,
     query_exemplars,
     record_calibration_feedback,
+    synthesize_brand_artifacts,
     synthesize_brand_policy,
 )
 from vedit.contracts import validate_against_contract
@@ -141,26 +142,35 @@ def test_synthesize_multi_reference_policy_and_exemplars(tmp_path: Path) -> None
         ],
     )
 
-    policy = synthesize_brand_policy(
+    synthesized = synthesize_brand_artifacts(
         "tech_explainer",
         [
             ReferenceVideoSample(source_video_id="ref_one", probe=p1, transcript=transcript),
             ReferenceVideoSample(source_video_id="ref_two", probe=p2),
         ],
     )
+    policy = synthesized.policy
+    playbook = synthesized.playbook
 
     assert validate_against_contract(
         policy.model_dump(exclude_none=True), "brand_style_policy.schema.json"
     ) == []
+    assert validate_against_contract(
+        playbook.model_dump(exclude_none=True), "editorial_playbook.schema.json"
+    ) == []
+    assert "grammar_triggers" not in policy.model_dump()
+    assert "exemplar_bank" not in policy.model_dump()
     assert policy.provenance.reference_video_count == 2
     assert policy.provenance.reference_hashes == ["a" * 64, "b" * 64]
+    assert playbook.grammar_triggers
+    assert playbook.exemplar_bank
 
     palette = policy.soft_priors.visual_tokens.palette_roles
     assert wcag_contrast_ratio(palette.ink, palette.ground) >= 4.5
     for prior in policy.soft_priors.temporal_curve:
         assert 0 < prior.asl_p25_s <= prior.asl_p50_s <= prior.asl_p75_s
 
-    hook_exemplars = query_exemplars(policy, role="hook")
+    hook_exemplars = query_exemplars(playbook, role="hook")
     assert len(hook_exemplars) >= 1
     assert hook_exemplars[0].hyperframes_pattern == "kinetic_hook_title"
     assert "duration_s" in hook_exemplars[0].measured_metrics

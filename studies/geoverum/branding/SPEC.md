@@ -27,6 +27,12 @@ BANNED:  - Pill-shaped dark container (`border-radius: 999px`) or glowing status
          - Bento grid CTA boxes, neon buttons, or violet gradients
          - Runtime CSS `filter: blur()` or `backdrop-filter`
          - Leaving platform bottom 20% occupied (Shorts comment/share chrome collision)
+         - Film-strip / camera-viewfinder chrome frames around the deliverable
+         - Corner political stickers or non-brand badge clusters
+
+ASPECT:  9:16 keeps unboxed top-center meridian + wordmark (`y ≈ 72px` on 1920).
+         16:9 long-form may park a compact meridian mark at top-right safe inset (12–24px)
+         without the full wordmark when landscape B-roll needs horizontal headroom.
 QA:      Inspect f020 (unboxed broadcast bug over moving Sulawesi), f066 (scrim deepening transition),
          f090 (headline + comment cue landed), f145 (full readable hold state), f174 (outro dip-out fade).
 ```

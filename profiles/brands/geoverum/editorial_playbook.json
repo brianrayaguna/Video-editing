@@ -1,0 +1,402 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "geoverum",
+  "schema_note": "Advisory directing playbook only. Not consumed by planner, verifier, compile, master, or audit. Runtime BrandStylePolicy uses soft_priors, hard_guardrails, calibration, and provenance.",
+  "grammar_triggers": [
+    {
+      "trigger_id": "hook_opening_map_dive",
+      "condition": "timeline.section == 'hook' and timeline.t_s <= 2.5",
+      "action": "camera.dive_globe_and_draw_crimson_silhouette()",
+      "weight": 0.94,
+      "rationale": "Establish geographic scale from dark bathymetric ocean before drawing the crimson territory silhouette."
+    },
+    {
+      "trigger_id": "single_signal_callout",
+      "condition": "speech.contains_geography_or_metric and speech.duration_s >= 1.4",
+      "action": "overlay.spawn(kind='kinetic_callout', band='dynamic_away_from_subject')",
+      "weight": 0.9,
+      "rationale": "Place one primary cartographic signal per beat with generous open-water margins and no redundant badges."
+    },
+    {
+      "trigger_id": "optical_transition_anchor",
+      "condition": "transition.kind in {'whip_zoom_blur', 'amber_light_leak'}",
+      "action": "audio.sync_sfx_peak_to_transition_midpoint()",
+      "weight": 0.91,
+      "rationale": "Lock pre-rendered optical whip and solar amber light-leak midpoints to Epidemic SFX waveform peaks."
+    },
+    {
+      "trigger_id": "clause_pause_cut_anchor",
+      "condition": "audio.silence_gap_s >= 0.25",
+      "action": "timeline.prefer_cut_boundary()",
+      "weight": 0.92,
+      "rationale": "Align visual transitions cleanly inside natural inter-word speech gaps without slicing words."
+    },
+    {
+      "trigger_id": "relief_climax_crossfade",
+      "condition": "timeline.section == 'climax'",
+      "action": "video.reveal_sentinel2_aerial_relief()",
+      "weight": 0.86,
+      "rationale": "Shift from vector cartography into Copernicus Sentinel-2 true-color z11 relief imagery during geological climax."
+    },
+    {
+      "trigger_id": "staggered_dual_territory_compare",
+      "condition": "speech.compares_two_territories and overlay.active_fill_count == 0",
+      "action": "overlay.stagger_fills(order='mention_order', gap_s=0.65, palette=['secondary_accent','cobalt_azure'])",
+      "weight": 0.88,
+      "rationale": "When narration compares two territories, stagger fills by mention order; never light two neon accents on the same frame."
+    },
+    {
+      "trigger_id": "influence_flag_pin",
+      "condition": "speech.mentions_foreign_presence_in_third_country",
+      "action": "overlay.spawn(kind='circular_flag_pin', band='coordinate_anchor')",
+      "weight": 0.84,
+      "rationale": "Mark foreign presence with a single-family circular flag pin at geographic coordinates; exclude thematic raster icons."
+    },
+    {
+      "trigger_id": "heat_pulse_after_fill_hold",
+      "condition": "overlay.fill_hold_s >= 1.2 and speech.contains_tension_or_hazard",
+      "action": "overlay.spawn(kind='amber_pulse_nodes', stagger_ms='nonuniform')",
+      "weight": 0.82,
+      "rationale": "After a territory fill holds long enough to read, fire amber pulse nodes at named hazard points."
+    },
+    {
+      "trigger_id": "map_to_live_broll_handoff",
+      "condition": "timeline.section in {'body','escalation','climax'} and shot.kind == 'cartographic' and next_shot.kind == 'live_aerial_or_broll'",
+      "action": "transition.prefer(kind in {'clean_crossfade','amber_light_leak'})",
+      "weight": 0.87,
+      "rationale": "Hand cartographic context into live landscape or wildlife B-roll with a clean dissolve or amber light-leak; never a violet flash."
+    },
+    {
+      "trigger_id": "numbered_fact_card_longform",
+      "condition": "platform.aspect == '16:9' and speech.starts_numbered_chapter",
+      "action": "overlay.spawn(kind='amber_fact_card', band='lower_third_safe')",
+      "weight": 0.8,
+      "rationale": "Long-form chapter beats use amber #F5C542 plates with #03161F ink rather than shouty multi-color chrome."
+    },
+    {
+      "trigger_id": "dual_territory_distance_metric",
+      "condition": "speech.states_distance_between_two_places and overlay.active_fill_count >= 1",
+      "action": "overlay.spawn(kind='distance_metric', band='open_water', tabular=True)",
+      "weight": 0.9,
+      "rationale": "Place a tabular \u00b1KM bracket in open water between two territories after fills are readable; never cover landmass interiors."
+    },
+    {
+      "trigger_id": "maritime_corridor_draw_on",
+      "condition": "speech.mentions_trade_route_or_strategic_strait and overlay.active_corridor_count == 0",
+      "action": "overlay.spawn(kind='amber_stroke_dash_corridor', band='route_path')",
+      "weight": 0.88,
+      "rationale": "Draw one amber maritime corridor as the sole flow signal; forbid red neon bloom and competing spears."
+    },
+    {
+      "trigger_id": "asymmetric_dual_fill_compare",
+      "condition": "speech.contrasts_sovereignty_or_neighbor and overlay.active_fill_count == 0",
+      "action": "overlay.stagger_fills(order='mention_order', modes=['multiply_tint','terrain_preserve'], gap_s=0.65)",
+      "weight": 0.87,
+      "rationale": "Compare two sides with staggered treatments: one terrain-preserving tint and one quieter terrain hold\u2014never simultaneous neon paints."
+    },
+    {
+      "trigger_id": "geometric_vs_natural_border_diagram",
+      "condition": "speech.explains_border_anomaly_or_river_deviation",
+      "action": "overlay.spawn(kind='border_diagram', strokes=['amber_geodesic','hydro_meander'])",
+      "weight": 0.86,
+      "rationale": "Explain meridian-vs-river bites with two stroke families only; keep labels in quiet margins."
+    },
+    {
+      "trigger_id": "map_to_archival_or_live_broll_handoff",
+      "condition": "timeline.section in {'body','escalation','climax'} and shot.kind == 'cartographic' and next_shot.kind in {'archival','live_aerial_or_broll'}",
+      "action": "transition.prefer(kind in {'hard_cut','clean_crossfade','amber_light_leak'})",
+      "weight": 0.85,
+      "rationale": "Hand cartographic context into archival or contemporary B-roll without double-exposure chrome."
+    },
+    {
+      "trigger_id": "continent_to_country_zoom_chain",
+      "condition": "timeline.section in {'hook','setup'} and overlay.active_fill_count == 0",
+      "action": "camera.zoom_chain(steps=['basin_or_continent','country_fill','optional_detail'])",
+      "weight": 0.89,
+      "rationale": "Orient the viewer with a wide recognizable shape before the country fill and any detail push; never open on an unlocated close-up."
+    },
+    {
+      "trigger_id": "hydro_lake_outline_stack",
+      "condition": "speech.names_rift_or_highland_lakes and overlay.active_hydro_count == 0",
+      "action": "overlay.spawn(kind='hydro_lake_outlines', accent='hydro_accent', band='open_water')",
+      "weight": 0.83,
+      "rationale": "Draw one hydro cyan lake group per beat with curved labels only when shoreline clearance allows."
+    },
+    {
+      "trigger_id": "afar_triple_junction_vectors",
+      "condition": "speech.mentions_afar_rift_or_future_ocean and overlay.active_fill_count >= 1",
+      "action": "overlay.spawn(kind='plate_vectors', stagger_after_fill_s=0.65)",
+      "weight": 0.84,
+      "rationale": "After a single territory fill holds, add staggered plate vectors for the Afar triple junction; never a second neon wash on the same still."
+    },
+    {
+      "trigger_id": "tabular_metric_on_broll",
+      "condition": "speech.states_elevation_capacity_or_length and shot.kind == 'live_aerial_or_broll'",
+      "action": "overlay.spawn(kind='tabular_metric', band='dynamic_away_from_subject')",
+      "weight": 0.86,
+      "rationale": "Place Archivo Black tabular metrics beside live evidence with clearance from the subject silhouette."
+    }
+  ],
+  "exemplar_bank": [
+    {
+      "exemplar_id": "ref_sulawesi_hook_s0",
+      "source_video_id": "ref_sulawesi",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 10.067,
+      "hyperframes_pattern": "globe_dive_crimson_silhouette",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 10.067,
+        "confidence": 1.0,
+        "cuts_per_min_ref": 4.25,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Hook establishing Sulawesi fracture silhouette from orthographic Pacific dive."
+    },
+    {
+      "exemplar_id": "ref_sulawesi_body_s1",
+      "source_video_id": "ref_sulawesi",
+      "role": "broll_bridge",
+      "start_s": 10.067,
+      "end_s": 30.8,
+      "hyperframes_pattern": "unified_peninsula_and_bay_glide",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 20.733,
+        "confidence": 0.234,
+        "cuts_per_min_ref": 4.25,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous coastal framing highlighting peninsulas and curved open-water bay labels."
+    },
+    {
+      "exemplar_id": "ref_sulawesi_climax_s4",
+      "source_video_id": "ref_sulawesi",
+      "role": "climax",
+      "start_s": 56.767,
+      "end_s": 65.967,
+      "hyperframes_pattern": "sentinel2_aerial_relief_reveal",
+      "measured_metrics": {
+        "shot_index": 4,
+        "duration_s": 9.2,
+        "confidence": 0.386,
+        "cuts_per_min_ref": 4.25,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Sentinel-2 orbital relief transition for tectonic hazard climax."
+    },
+    {
+      "exemplar_id": "ref_sulawesi_outro_s5",
+      "source_video_id": "ref_sulawesi",
+      "role": "outro",
+      "start_s": 65.967,
+      "end_s": 70.6,
+      "hyperframes_pattern": "clean_broadcast_cta_dip",
+      "measured_metrics": {
+        "shot_index": 5,
+        "duration_s": 4.633,
+        "confidence": 0.177,
+        "cuts_per_min_ref": 4.25,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Quiet typographic end-card cue paired with 200ms dip-out."
+    },
+    {
+      "exemplar_id": "ref_tectonics_proof_s0",
+      "source_video_id": "ref_tectonics",
+      "role": "proof",
+      "start_s": 0.0,
+      "end_s": 33.8,
+      "hyperframes_pattern": "tapered_fault_and_marine_labels",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 33.8,
+        "confidence": 1.0,
+        "cuts_per_min_ref": 0.92,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous cartographic glide with curved hydrography labels and tapered fault spine."
+    },
+    {
+      "exemplar_id": "ref_tectonics_callout_s1",
+      "source_video_id": "ref_tectonics",
+      "role": "data_callout",
+      "start_s": 33.8,
+      "end_s": 65.267,
+      "hyperframes_pattern": "split_tectonic_vector_diagram",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 31.467,
+        "confidence": 0.184,
+        "cuts_per_min_ref": 0.92,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Caucasus/Aegean influence pins, dual fills, heat pulses; adapt with staggered single-signal Geoverum palette."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_hook_map_s0",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 30.0,
+      "hyperframes_pattern": "longform_map_dive_to_extreme_landscape",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 30.0,
+        "confidence": 0.85,
+        "cuts_per_min_ref": 10.13,
+        "asl_p50_s": 3.804,
+        "mad_events_section": 6,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Full-frame: Horn collage map (strip 3D inserts) into extreme-landscape B-roll by ~23.6s; remap purple rims to crimson."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_setup_zoom_chain",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "setup",
+      "start_s": 40.8,
+      "end_s": 94.8,
+      "hyperframes_pattern": "continent_to_country_fill_then_rift_detail",
+      "measured_metrics": {
+        "duration_s": 54.0,
+        "confidence": 0.88,
+        "cuts_per_min_ref": 10.13,
+        "peak_mad_event": 6,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "MAD E006 Africa-wide \u2192 solid Ethiopia fill + yellow chip; reject on-map volcano props; keep single crimson fill."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_body_fact_broll",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "broll_bridge",
+      "start_s": 180.0,
+      "end_s": 720.0,
+      "hyperframes_pattern": "numbered_fact_card_plus_live_broll_cluster",
+      "measured_metrics": {
+        "duration_s": 540.0,
+        "confidence": 0.9,
+        "cuts_per_min_ref": 10.13,
+        "asl_p50_s": 3.804,
+        "mad_events_section": 155,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Full-frame body: numbered amber fact plate \u2192 2\u20138 live B-roll shots \u2192 optional map return; densest MAD section."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_escalation_hydro_metric",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "proof",
+      "start_s": 720.0,
+      "end_s": 1080.0,
+      "hyperframes_pattern": "hydro_corridor_and_tabular_metric_on_broll",
+      "measured_metrics": {
+        "duration_s": 360.0,
+        "confidence": 0.86,
+        "cuts_per_min_ref": 10.13,
+        "mad_events_section": 72,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Nile/GERD/lake-label escalation; stagger dual neighbor fills; tabular megawatt/elevation metrics; reject cargo-ship props."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_climax_afar",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "climax",
+      "start_s": 1080.0,
+      "end_s": 1450.0,
+      "hyperframes_pattern": "triple_junction_map_to_fissure_relief",
+      "measured_metrics": {
+        "duration_s": 370.0,
+        "confidence": 0.88,
+        "cuts_per_min_ref": 10.13,
+        "mad_events_section": 78,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Evidence-led climax (ash/Danakil/Afar) with intermittent maps; stagger plate vectors after one fill; Sentinel-2 relief analogue."
+    },
+    {
+      "exemplar_id": "ref_ethiopia_outro_afar_settle",
+      "source_video_id": "ref_ethiopia_toba",
+      "role": "outro",
+      "start_s": 1450.0,
+      "end_s": 1587.0,
+      "hyperframes_pattern": "staggered_afar_fill_then_country_settle",
+      "measured_metrics": {
+        "duration_s": 137.0,
+        "confidence": 0.84,
+        "cuts_per_min_ref": 10.13,
+        "mad_events_section": 29,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Fissure B-roll + Ethiopia settle; remap purple+blue dual wash to staggered crimson then cobalt."
+    },
+    {
+      "exemplar_id": "ref_batam_hook_sovereignty",
+      "source_video_id": "ref_batam",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 11.2,
+      "hyperframes_pattern": "globe_dive_flag_pin_and_distance_metric",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 11.2,
+        "confidence": 1.0,
+        "cuts_per_min_ref": 1.155,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Globe dive to Batam fill + dual Singapore/Batam compare with \u00b120 KM bracket; remap neon and land labels."
+    },
+    {
+      "exemplar_id": "ref_batam_body_corridor",
+      "source_video_id": "ref_batam",
+      "role": "proof",
+      "start_s": 11.2,
+      "end_s": 51.95,
+      "hyperframes_pattern": "maritime_corridor_and_economy_callouts",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 40.75,
+        "confidence": 0.176,
+        "cuts_per_min_ref": 1.155,
+        "asl_p50_s": 25.975,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous map body with trade corridor; reject isometric economy props and dual light beams."
+    },
+    {
+      "exemplar_id": "ref_png_border_hook_meridian",
+      "source_video_id": "ref_png_border",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 29.062,
+      "hyperframes_pattern": "asymmetric_fill_and_border_bite",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 29.062,
+        "confidence": 1.0,
+        "cuts_per_min_ref": 1.301,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Asymmetric Indonesia/PNG fill with meridian bite; strip vendor basemap chrome."
+    },
+    {
+      "exemplar_id": "ref_png_border_body_archive_diagram",
+      "source_video_id": "ref_png_border",
+      "role": "broll_bridge",
+      "start_s": 29.062,
+      "end_s": 46.113,
+      "hyperframes_pattern": "archival_broll_plus_meridian_river_diagram",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 17.05,
+        "confidence": 0.137,
+        "cuts_per_min_ref": 1.301,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Archival/live handoff with geometric-vs-natural border diagram; reject double-exposure faces."
+    }
+  ]
+}

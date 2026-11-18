@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "geoverum",
+  "display_name": "Geoverum",
+  "editorial_identity": "Cartographic documentary brand: abyssal ground (#03161F), satellite relief, Space Grotesk / Archivo Black, one geographic signal per beat. Short-form continuous map glides (~1 cut/min) use dual-territory metrics, maritime corridors, asymmetric compares, and border diagrams. Long-form map\u2194evidence films use denser pacing (~10 cuts/min, ASL\u22483.8s), continent\u2192country zoom chains, numbered amber fact plates, hydro accents, and staggered plate vectors. No violet multi-fills, 3D map props, or shouty chrome.",
+  "soft_priors": {
+    "temporal_curve": [
+      {
+        "section": "hook",
+        "asl_p25_s": 7.5,
+        "asl_p50_s": 10.067,
+        "asl_p75_s": 12.0,
+        "cuts_per_min_range": [
+          5.0,
+          8.0
+        ],
+        "energy_target": 0.42,
+        "preferred_transitions": [
+          "hard_cut",
+          "j_cut",
+          "whip_zoom_blur"
+        ]
+      },
+      {
+        "section": "setup",
+        "asl_p25_s": 4.8,
+        "asl_p50_s": 6.4,
+        "asl_p75_s": 8.5,
+        "cuts_per_min_range": [
+          6.0,
+          11.0
+        ],
+        "energy_target": 0.36,
+        "preferred_transitions": [
+          "hard_cut",
+          "j_cut"
+        ]
+      },
+      {
+        "section": "body",
+        "asl_p25_s": 2.4,
+        "asl_p50_s": 3.8,
+        "asl_p75_s": 6.9,
+        "cuts_per_min_range": [
+          6.0,
+          11.0
+        ],
+        "energy_target": 0.36,
+        "preferred_transitions": [
+          "hard_cut",
+          "j_cut",
+          "whip_zoom_blur",
+          "clean_crossfade"
+        ]
+      },
+      {
+        "section": "escalation",
+        "asl_p25_s": 5.5,
+        "asl_p50_s": 7.8,
+        "asl_p75_s": 10.5,
+        "cuts_per_min_range": [
+          5.5,
+          9.5
+        ],
+        "energy_target": 0.44,
+        "preferred_transitions": [
+          "hard_cut",
+          "j_cut",
+          "amber_light_leak"
+        ]
+      },
+      {
+        "section": "climax",
+        "asl_p25_s": 6.5,
+        "asl_p50_s": 9.2,
+        "asl_p75_s": 11.5,
+        "cuts_per_min_range": [
+          5.2,
+          8.2
+        ],
+        "energy_target": 0.48,
+        "preferred_transitions": [
+          "amber_light_leak",
+          "j_cut",
+          "clean_crossfade"
+        ]
+      },
+      {
+        "section": "outro",
+        "asl_p25_s": 3.7,
+        "asl_p50_s": 4.633,
+        "asl_p75_s": 5.8,
+        "cuts_per_min_range": [
+          10.0,
+          16.0
+        ],
+        "energy_target": 0.28,
+        "preferred_transitions": [
+          "hard_cut",
+          "clean_fade"
+        ]
+      }
+    ],
+    "visual_tokens": {
+      "palette_roles": {
+        "ground": "#03161F",
+        "ink": "#F4F1EA",
+        "accent": "#F5C542",
+        "secondary_accent": "#C2412D"
+      },
+      "typography": {
+        "display_family": "Archivo Black, Space Grotesk, sans-serif",
+        "body_family": "Space Grotesk, sans-serif",
+        "caption_case": "sentence",
+        "max_words_per_caption_group": 4,
+        "default_caption_band": "dynamic_away_from_subject"
+      },
+      "motion_style": {
+        "easing_feel": "smooth_editorial",
+        "entrance_ms_range": [
+          180,
+          420
+        ],
+        "punch_in_scale_range": [
+          1.0,
+          1.08
+        ]
+      }
+    },
+    "audio_style": {
+      "bgm_moods": [
+        "mysterious",
+        "suspense",
+        "ambient"
+      ],
+      "bpm_range": [
+        75.0,
+        110.0
+      ],
+      "ducking_strength": 0.85,
+      "sfx_policy": "selective_transitions"
+    }
+  },
+  "hard_guardrails": {
+    "min_shot_duration_s": 2.2,
+    "max_uninterrupted_hold_s": 12.0,
+    "no_cut_within_keyword_ms": 180,
+    "never_overlap_subject_boxes": true,
+    "min_wcag_contrast": 4.5,
+    "banned_transitions": [
+      "flash_white_strobe",
+      "glitch_rgb_tear"
+    ],
+    "banned_patterns": [
+      "heavy_css_blur_glass",
+      "saas_pill_watermark",
+      "violet_generic_accent",
+      "internal_provincial_borders",
+      "dual_redundant_labels",
+      "scale_zero_pop_in",
+      "film_strip_viewfinder_chrome",
+      "thematic_emoji_raster_props",
+      "simultaneous_multi_neon_fills",
+      "isometric_economy_props",
+      "vendor_basemap_chrome",
+      "dual_light_beam_chrome",
+      "double_exposure_broll",
+      "thematic_3d_map_props",
+      "shouty_yellow_fact_bar",
+      "document_wall_on_subject",
+      "on_map_calendar_weather_chrome",
+      "false_color_thermal_grade",
+      "film_reel_archival_frame"
+    ],
+    "avoid_heavy_css_blur": true
+  },
+  "calibration": {
+    "accepted_overrides": 0,
+    "rejected_patterns": [
+      "heavy_css_blur_glass",
+      "saas_pill_watermark",
+      "violet_generic_accent",
+      "film_strip_viewfinder_chrome",
+      "thematic_emoji_raster_props",
+      "simultaneous_multi_neon_fills",
+      "isometric_economy_props",
+      "vendor_basemap_chrome",
+      "dual_light_beam_chrome",
+      "double_exposure_broll",
+      "thematic_3d_map_props",
+      "shouty_yellow_fact_bar",
+      "document_wall_on_subject",
+      "on_map_calendar_weather_chrome",
+      "false_color_thermal_grade",
+      "film_reel_archival_frame"
+    ],
+    "last_calibrated_at": "2026-11-18T14:45:00+00:00"
+  },
+  "provenance": {
+    "reference_video_count": 5,
+    "reference_hashes": [
+      "9a8fcd970d89a8d458597b006f1fadc5594c1fda442c55fc600eabce2d1337f6",
+      "c9ca22bcb18c2756947fa21796e1bc270dbb78a0872fcf6fa08342d554c4a8b6",
+      "0719155d7f16d20cd16819b696657c022d0e2bb4c255fe5d8f6aadf64cbaa686",
+      "f0d083936286f88bf0db36580e8cebe3bba4aa51f33df07dc45968674adc3530",
+      "dd9ae48f8d67452d9bb1ca2aea367c5ed77b65c3e4efa1c876d7c49074d8c802"
+    ],
+    "confidence": 0.94,
+    "created_at": "2026-11-18T10:45:00+00:00"
+  }
+}

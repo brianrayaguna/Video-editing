@@ -3,13 +3,17 @@
  * Offline deterministic vertical (1080x1920) & horizontal (1920x1080) map camera baker
  * for Geoverum compositions.
  *
+ * Bake knobs match the production-proven contract in `render_sulawesi_shots.mjs` and
+ * `tools/geo-assets/README.md`: JPEG intermediates (q92), ~1500ms tile idle / 20ms poll,
+ * Darwin GPU angle without forced SwiftShader, optional frame resume unless REBAKE=1.
+ *
  * Supports both single-move parameters (FROM/CENTER/ZSTART/ZEND) and multi-beat keyframe
  * trajectories (`KEYFRAMES_JSON`), driving local MapLibre GL (`5.24.0`) frame-by-frame
  * against the local offline tile server (`serve_tiles.mjs`) and encoding an all-intra
  * H.264 MP4 (`-g 1 -crf 16 -pix_fmt yuv420p`, explicit `bt709` color metadata).
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -248,11 +252,11 @@ function buildPageHtml(baseUrl) {
             requestAnimationFrame(() => requestAnimationFrame(() => res(false)));
             return;
           }
-          if (performance.now() - t0 > (ms || 9000)) {
+          if (performance.now() - t0 > (ms || 1500)) {
             res(!map.areTilesLoaded());
             return;
           }
-          setTimeout(poll, 35);
+          setTimeout(poll, 20);
         })();
       });
     };
@@ -317,18 +321,22 @@ async function main() {
   const server = await startTileServer(port, "127.0.0.1");
   const baseUrl = `http://127.0.0.1:${port}`;
 
+  const chromeArgs =
+    process.platform === "darwin"
+      ? ["--no-sandbox", "--hide-scrollbars", "--use-gl=angle", `--window-size=${WIDTH},${HEIGHT}`]
+      : [
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          "--enable-unsafe-swiftshader",
+          "--enable-webgl",
+          `--window-size=${WIDTH},${HEIGHT}`,
+        ];
   const browser = await puppeteer.launch({
     executablePath: resolveChrome(),
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--hide-scrollbars",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-      "--enable-webgl",
-      `--window-size=${WIDTH},${HEIGHT}`,
-    ],
+    headless: "new",
+    args: chromeArgs,
   });
 
   try {
@@ -337,15 +345,30 @@ async function main() {
     await page.setContent(buildPageHtml(baseUrl), { waitUntil: "load" });
     await page.evaluate(() => window.__ready);
 
+    // Pre-warm tiles at each KEYFRAMES pose (or endpoints) before the full loop.
+    const warmFrames = KEYFRAMES && KEYFRAMES.length
+      ? KEYFRAMES.map((k) => k.frame)
+      : [0, Math.max(0, N - 1)];
+    for (const wf of warmFrames) {
+      await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [wf, N]);
+      await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+    }
+
     const t0 = Date.now();
     let coords = null;
+    const rebake = process.env.REBAKE === "1";
     for (let i = 0; i < N; i++) {
+      const outFrame = join(framesDir, `f${String(i).padStart(4, "0")}.jpg`);
+      if (!rebake && existsSync(outFrame) && statSync(outFrame).size > 1024) {
+        continue;
+      }
       await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [i, N]);
-      await page.evaluate((ms) => window.__waitIdle(ms), 9000);
+      await page.evaluate((ms) => window.__waitIdle(ms), 1500);
       await page.screenshot({
-        path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
+        path: outFrame,
+        type: "jpeg",
+        quality: 92,
         clip: { x: 0, y: 0, width: WIDTH, height: HEIGHT },
-        optimizeForSpeed: true,
       });
       if (!coords && i >= Math.round(N * HOLD)) {
         coords = await page.evaluate(() => window.__projectAll());
@@ -357,7 +380,7 @@ async function main() {
     }
 
     const mp4 = join(OUT, `${NAME}.mp4`);
-    const pat = join(framesDir, "f%04d.png");
+    const pat = join(framesDir, "f%04d.jpg");
     const ff = spawnSync(
       "ffmpeg",
       [

@@ -3,7 +3,7 @@
  * Render the 6 Geoverum cartographic specimen stills (1080x1920 vertical) from the
  * local offline tile server (`serve_tiles.mjs`) using local MapLibre GL (`5.24.0`).
  *
- * Enforces all rules in `DESIGN.md` (`taste-skill`, `stageshow`, `emil-design-eng`):
+ * Enforces engine `DESIGN.md` motion rules and Geoverum `profiles/brands/geoverum/CRAFT.md`:
  * - Unboxed broadcast bug watermark (`GEOVERUM` with geometric meridian mark, no pill, no glowing dot)
  * - Unified exterior island coastline (`island_outline` with zero internal administrative seams)
  * - Terrain-preserving multiply/screen landmass tinting (never opaque pastel mud, never violet)

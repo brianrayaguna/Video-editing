@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/editorial_playbook.schema.json",
+  "title": "EditorialPlaybook",
+  "description": "Advisory directing playbook for humans and AI clients. Not consumed by planner, verifier, compile, master, or audit. Store beside brand_style_policy.json under profiles/brands/<brand_id>/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "brand_id"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "schema_note": { "type": "string" },
+    "grammar_triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trigger_id", "condition", "action", "weight"],
+        "properties": {
+          "trigger_id": { "type": "string", "minLength": 1 },
+          "condition": { "type": "string", "minLength": 1 },
+          "action": { "type": "string", "minLength": 1 },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "exemplar_bank": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exemplar_id", "source_video_id", "role", "start_s", "end_s", "notes"],
+        "properties": {
+          "exemplar_id": { "type": "string", "minLength": 1 },
+          "source_video_id": { "type": "string", "minLength": 1 },
+          "role": {
+            "type": "string",
+            "enum": ["hook", "setup", "proof", "data_callout", "broll_bridge", "climax", "outro"]
+          },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "keyframe_path": { "type": "string" },
+          "hyperframes_pattern": { "type": "string" },
+          "measured_metrics": { "type": "object" },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/brand_template.schema.json",
+  "title": "BrandTemplateCatalog",
+  "description": "Version-pinned brand composition templates with typed variables. Layout and motion stay locked in the composition; only declared variables may change per render. Advisory playbooks are out of scope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "brand_id", "templates"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["template_id", "composition_path", "variables"],
+        "properties": {
+          "template_id": { "type": "string", "minLength": 1 },
+          "composition_path": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "safe_band": {
+            "type": "string",
+            "enum": ["lower_third", "upper_safe", "center_safe", "dynamic_away_from_subject"]
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "type"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "type": {
+                  "type": "string",
+                  "enum": ["string", "number", "boolean", "color", "image", "enum"]
+                },
+                "label": { "type": "string" },
+                "default": {},
+                "enum_values": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "min": { "type": "number" },
+                "max": { "type": "number" },
+                "token_ref": {
+                  "type": "string",
+                  "description": "Optional semantic token path such as palette_roles.accent"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

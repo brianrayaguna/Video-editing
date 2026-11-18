@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from vedit.contracts import validate_against_contract
+from vedit.director.templates import validate_overlay_template
 from vedit.metrics import (
     NormRect,
     intervals_overlap,
@@ -16,11 +17,21 @@ from vedit.metrics import (
 )
 from vedit.models import (
     BrandStylePolicy,
+    BrandTemplateCatalog,
     EditPlan,
     NormalizedTranscript,
     OverlayCompositionOp,
     PlatformTarget,
 )
+
+_SECTION_SPAN: dict[str, tuple[float, float]] = {
+    "hook": (0.00, 0.12),
+    "setup": (0.12, 0.28),
+    "body": (0.28, 0.68),
+    "escalation": (0.68, 0.84),
+    "climax": (0.84, 0.94),
+    "outro": (0.94, 1.01),
+}
 
 _BLUR_CSS_RE = re.compile(r"(backdrop-filter\s*:|filter\s*:[^;]*blur\s*\(|blur\s*\()", re.I)
 
@@ -539,12 +550,67 @@ def _check_audio_dag(
                     )
 
 
+def _check_soft_temporal_priors(
+    plan: EditPlan,
+    policy: BrandStylePolicy,
+    warnings: list[VerificationIssue],
+) -> None:
+    """Warn when section cuts/min drift outside soft prior ranges (non-fatal)."""
+    if plan.duration_s <= 0:
+        return
+    curve = {p.section: p for p in policy.soft_priors.temporal_curve}
+    for section, (lo, hi) in _SECTION_SPAN.items():
+        prior = curve.get(section)  # type: ignore[arg-type]
+        if prior is None:
+            continue
+        sec_start = plan.duration_s * lo
+        sec_end = plan.duration_s * min(hi, 1.0)
+        sec_dur = max(sec_end - sec_start, 1e-6)
+        cuts = sum(
+            1
+            for clip in plan.video_tracks
+            if sec_start <= clip.timeline_start_s < sec_end and clip.timeline_start_s > 0.01
+        )
+        cpm = (cuts / sec_dur) * 60.0
+        lo_cpm, hi_cpm = prior.cuts_per_min_range
+        if cpm < lo_cpm * 0.55 or cpm > hi_cpm * 1.45:
+            warnings.append(
+                VerificationIssue(
+                    severity="warning",
+                    code="SOFT_TEMPORAL_CURVE_DRIFT",
+                    target_id=section,
+                    message=(
+                        f"Section {section} cuts/min={cpm:.1f} outside soft prior "
+                        f"[{lo_cpm:.1f}, {hi_cpm:.1f}] (advisory)."
+                    ),
+                )
+            )
+
+
+def _check_template_bindings(
+    plan: EditPlan,
+    template_catalog: BrandTemplateCatalog | None,
+    errors: list[VerificationIssue],
+) -> None:
+    for ov in plan.overlay_compositions:
+        for msg in validate_overlay_template(ov, template_catalog):
+            errors.append(
+                VerificationIssue(
+                    severity="error",
+                    code="TEMPLATE_VARIABLE_INVALID",
+                    target_id=ov.overlay_id,
+                    message=msg,
+                )
+            )
+
+
 def verify_edit_plan(
     plan: EditPlan,
     policy: BrandStylePolicy,
     platform_target: PlatformTarget,
     transcript: NormalizedTranscript | None = None,
     *,
+    template_catalog: BrandTemplateCatalog | None = None,
     repo_root: Path | None = None,
 ) -> VerificationReport:
     """Run all deterministic schema, pacing, spatial, contrast, and audio DAG checks."""
@@ -556,6 +622,8 @@ def verify_edit_plan(
     _check_keyword_cut_windows(plan, policy, transcript, errors)
     _check_overlays_and_spatial_grounding(plan, policy, platform_target, errors)
     _check_audio_dag(plan, errors, warnings)
+    _check_soft_temporal_priors(plan, policy, warnings)
+    _check_template_bindings(plan, template_catalog, errors)
 
     checked = [
         "edit_plan_schema",
@@ -569,6 +637,8 @@ def verify_edit_plan(
         "platform_safe_zones",
         "never_overlap_subject_boxes",
         "audio_dag_voiceover_carving",
+        "soft_temporal_curve",
+        "brand_template_bindings",
     ]
     return VerificationReport(
         passed=len(errors) == 0,
@@ -591,9 +661,17 @@ def verify_and_stamp_plan(
     platform_target: PlatformTarget,
     transcript: NormalizedTranscript | None = None,
     *,
+    template_catalog: BrandTemplateCatalog | None = None,
     repo_root: Path | None = None,
 ) -> tuple[EditPlan, VerificationReport]:
     """Verify `plan` and return a copy stamped with `verifier_passed` and its report."""
-    report = verify_edit_plan(plan, policy, platform_target, transcript, repo_root=repo_root)
+    report = verify_edit_plan(
+        plan,
+        policy,
+        platform_target,
+        transcript,
+        template_catalog=template_catalog,
+        repo_root=repo_root,
+    )
     stamped = plan.model_copy(update={"verifier_passed": report.passed})
     return stamped, report

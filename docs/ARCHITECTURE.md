@@ -54,14 +54,21 @@ Storage / Raw Media
 
 ## 4. Brand Style Policy Model
 
-`BrandStylePolicy` (`contracts/brand_style_policy.schema.json`) models editing style as a structured policy rather than rigid templates or global averages:
+`BrandStylePolicy` (`contracts/brand_style_policy.schema.json`) models editing style as a structured **runtime** policy. Brand files live under `profiles/brands/<brand_id>/`. Advisory directing aids live in a separate `editorial_playbook.json` (`contracts/editorial_playbook.schema.json`).
 
-- **`soft_priors.temporal_curve`**: Section-conditioned pacing quantiles (`asl_p25_s`, `asl_p50_s`, `asl_p75_s`, `cuts_per_min_range`, `energy_target`) across `hook`, `setup`, `body`, `escalation`, `climax`, and `outro`.
-- **`soft_priors.visual_tokens` & `audio_style`**: Palette roles, typography rules, easing characteristics, music moods, BPM range, and ducking strength.
-- **`grammar_triggers`**: Conditional editorial heuristics mapping speech/audio/visual events (such as quantified claims or topic transitions) to weighted actions.
-- **`hard_guardrails`**: Deterministic constraints enforced prior to rendering (`min_shot_duration_s`, `max_uninterrupted_hold_s`, `no_cut_within_keyword_ms`, `never_overlap_subject_boxes`, `banned_transitions`, `avoid_heavy_css_blur`).
-- **`exemplar_bank`**: Timecoded atomic segments from reference videos preserving concrete composition patterns alongside measured metrics.
-- **`calibration` & `provenance`**: Override counts, rejected patterns, multi-video reference hashes, and confidence score.
+**Consumed by planner / verifier:**
+
+- **`soft_priors.temporal_curve`**: Section-conditioned ASL targets used while subdividing holds; verifier emits soft warnings when cuts/min drift far outside section ranges.
+- **`soft_priors.visual_tokens`**: Palette roles, typography, and `motion_style` (`easing_feel`, `entrance_ms`) emitted onto overlays / HF scenes.
+- **`soft_priors.audio_style`**: Music moods and ducking strength for BGM selection/carving.
+- **`hard_guardrails`**: Deterministic constraints (`min_shot_duration_s`, `max_uninterrupted_hold_s`, `no_cut_within_keyword_ms`, `never_overlap_subject_boxes`, banned patterns/transitions, CSS blur avoidance, WCAG contrast).
+- **`calibration` & `provenance`**: Override counts, rejected patterns, reference hashes, confidence.
+- **`templates/catalog.json`** (optional): typed brand templates bound via `OverlayCompositionOp.template_id` + `variables`; verifier rejects unknown slots; compile may copy `composition_path`.
+
+**Advisory only (`editorial_playbook.json`, not on runtime policy):**
+
+- **`grammar_triggers`**: Human/AI directing heuristics. Not executed by planner, verifier, compile, master, or audit.
+- **`exemplar_bank`**: Timecoded reference notes. Queried by `vedit brand exemplars <playbook.json>`.
 
 ---
 

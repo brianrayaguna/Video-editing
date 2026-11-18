@@ -3,6 +3,8 @@
 ## Purpose
 Full `70.600s` (`2118` frames @ `30fps`, `1080x1920`, H.264 High `yuv420p` `bt709`, `48 kHz` stereo AAC-LC) vertical documentary assembled from all calibrated cartographic, typographic, optical transition, prop, broadcast identity, and audio-mastering components, rendered end-to-end on Modal distributed workers (`vedit cloud render`).
 
+**Production workflow (CLI, Modal, artifacts):** [`../MODAL_PRODUCTION_WORKFLOW.md`](../MODAL_PRODUCTION_WORKFLOW.md). Plan assembler: [`build_pilot.py`](build_pilot.py).
+
 ## Timeline & Shot Breakdown
 All editorial cuts fall strictly inside natural spoken word gaps from the denoised voiceover transcript (`assets/audio/sulawesi_transcript.json`, verified `0` cut collisions):
 

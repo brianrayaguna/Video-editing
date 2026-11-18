@@ -25,6 +25,11 @@ MOTION:  Whip acceleration: radial scale `1.00 -> 1.38` baked into 6 multi-tap r
          Light-leak rise: `5` frames up to `#FFFDF8` peak at `f148`, decaying warm amber halation over `12` frames (`expo.out`);
          Aerial crossfade: `0.33s` (`power2.inOut`) smooth opacity cross-dissolve;
          Outro dip: `0.50s` (`15f`) smooth dark abyssal fade (`power2.in`).
+LONGFORM HANDOFF:
+         Cartographic context → live aerial/wildlife/cultural B-roll: prefer `clean_crossfade`
+         (0.25–0.40s) or `amber_light_leak` when energy rises; return to map with hard cut or
+         J-cut on speech gaps. Optional evidence/source card may bridge map and B-roll for ≤2.5s.
+
 BANNED:  - Runtime CSS `filter: blur()` or `backdrop-filter` in HTML/CSS
          - Purple, violet, or neon magenta light leaks
          - Static paused shots flanking a cut

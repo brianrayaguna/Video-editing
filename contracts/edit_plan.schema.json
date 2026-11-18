@@ -95,6 +95,8 @@
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "transparent": { "type": "boolean" },
           "safe_band": { "type": "string", "enum": ["lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"] },
+          "template_id": { "type": "string", "minLength": 1 },
+          "variables": { "type": "object" },
           "props": { "type": "object" }
         }
       }

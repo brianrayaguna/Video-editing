@@ -48,15 +48,21 @@ SHOTS:   f000-f072 (0.00s-2.40s): Beat 1 — Terrain-Preserving Crimson Silhouet
            f246-f251: Pulse nodes exit simultaneously in 5 frames (0.17s);
            f251-f268: Diagonal 45° amber hatching wipes upward across Southern & Central Sulawesi;
            f268-f300: Holds tectonic hatching state to end of study.
+DUAL:    When two territories must be compared, stagger silhouette fills ≥0.65s apart
+         (mention order). Allowed pair: crimson `#C2412D` then cobalt `#2E74E6` (or amber).
+         Never simultaneous magenta/violet/lime neon multi-fills (banned_pattern
+         `simultaneous_multi_neon_fills`).
 BANNED:  - Internal provincial border lines cutting across Sulawesi's landmass (onion-skin seams)
          - Violet or purple fills (OKLCH 270°-330°)
          - Animating from scale(0)
          - Uniform robotic stagger delays
          - Stacking sweep recolor, pulse rings, and hatching simultaneously
          - Runtime CSS filter: blur() or backdrop-filter
+         - Simultaneous multi-neon country paints on one frame
 QA:      Inspect f005 (clean satellite), f045 (Beat 1 crimson silhouette), f115 (Beat 2 mid-sweep 2 arms),
          f175 (Beat 2 full 4-arm azure sweep), f218 (Beat 3 staggered pulses active), f280 (Beat 4 diagonal hatching).
 ```
+
 
 ---
 

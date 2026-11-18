@@ -6,6 +6,12 @@ import re
 from pathlib import Path
 from typing import Literal
 
+from vedit.director.templates import (
+    catalog_by_id,
+    motion_props_from_policy,
+    overlay_kind_for_template,
+    resolve_template_variables,
+)
 from vedit.director.verifier import VerificationReport, verify_and_stamp_plan
 from vedit.metrics import NormRect, resolve_overlay_rect
 from vedit.models import (
@@ -13,17 +19,45 @@ from vedit.models import (
     AudioTrackOp,
     BoundingBox,
     BrandStylePolicy,
+    BrandTemplateCatalog,
     EditPlan,
     MediaProbeResult,
     NormalizedTranscript,
     OverlayCompositionOp,
     PlatformTarget,
+    TemporalSectionPrior,
     VideoClipOp,
 )
 from vedit.ports.audio_catalog import AudioCatalogPort
 from vedit.ports.decision import DecisionPort, DecisionQuestion, ImageInput, validate_decision_batch
 
 _NUMBER_TOKEN_RE = re.compile(r"\b\d+(?:\.\d+)?(?:%|x|k|m|b|\+)?\b", re.I)
+
+_SECTION_ORDER: tuple[str, ...] = ("hook", "setup", "body", "escalation", "climax", "outro")
+_SECTION_SPAN: dict[str, tuple[float, float]] = {
+    "hook": (0.00, 0.12),
+    "setup": (0.12, 0.28),
+    "body": (0.28, 0.68),
+    "escalation": (0.68, 0.84),
+    "climax": (0.84, 0.94),
+    "outro": (0.94, 1.01),
+}
+
+
+def _section_prior_at(
+    policy: BrandStylePolicy,
+    mid_ratio: float,
+) -> TemporalSectionPrior | None:
+    curve = {p.section: p for p in policy.soft_priors.temporal_curve}
+    for name in _SECTION_ORDER:
+        lo, hi = _SECTION_SPAN[name]
+        if lo <= mid_ratio < hi and name in curve:
+            return curve[name]
+    if "outro" in curve:
+        return curve["outro"]
+    if policy.soft_priors.temporal_curve:
+        return policy.soft_priors.temporal_curve[-1]
+    return None
 
 
 def _apply_case(text: str, case_mode: str) -> str:
@@ -101,12 +135,19 @@ def _plan_video_cuts(
                 raw_boundaries.append(snapped)
     raw_boundaries.append(total_dur)
 
-    # Subdivide any hold exceeding max_uninterrupted_hold_s cleanly between words when possible.
+    # Subdivide holds using section soft prior (asl_p50) when available, hard-capped by max_hold.
     final_boundaries: list[float] = [raw_boundaries[0]]
     for end_t in raw_boundaries[1:]:
         cur_start = final_boundaries[-1]
-        while (end_t - cur_start) > max_hold:
-            candidate = cur_start + max_hold * 0.75
+        while True:
+            mid_ratio = min(max(((cur_start + end_t) * 0.5) / total_dur, 0.0), 0.999)
+            prior = _section_prior_at(policy, mid_ratio)
+            soft_target = prior.asl_p50_s if prior is not None else max_hold * 0.75
+            soft_target = min(max(soft_target, min_shot), max_hold)
+            hold = end_t - cur_start
+            if hold <= max(soft_target * 1.35, max_hold):
+                break
+            candidate = cur_start + soft_target
             lo = cur_start + min_shot
             hi = end_t - min_shot
             if hi <= lo:
@@ -114,6 +155,8 @@ def _plan_video_cuts(
             candidate = min(max(candidate, lo), hi)
             snapped = _snap_cut_to_safe_gap(candidate, lo, hi, transcript, margin_s)
             snapped = min(max(snapped, lo), hi)
+            if snapped <= cur_start + 1e-3:
+                break
             final_boundaries.append(snapped)
             cur_start = snapped
         if end_t - final_boundaries[-1] >= 0.05:
@@ -226,10 +269,15 @@ def _build_overlays(
     transcript: NormalizedTranscript | None,
     policy: BrandStylePolicy,
     platform_target: PlatformTarget,
+    template_catalog: BrandTemplateCatalog | None = None,
 ) -> list[OverlayCompositionOp]:
     overlays: list[OverlayCompositionOp] = []
     typo = policy.soft_priors.visual_tokens.typography
     palette = policy.soft_priors.visual_tokens.palette_roles
+    motion = motion_props_from_policy(policy)
+    catalog_ids = (
+        {entry.template_id for entry in template_catalog.templates} if template_catalog else set()
+    )
     pref_band_raw = typo.default_caption_band
     pref_band: Literal["lower_third", "upper_safe", "center_safe"] = (
         "upper_safe" if pref_band_raw == "upper_safe" else "lower_third"
@@ -252,21 +300,37 @@ def _build_overlays(
 
             band = _choose_non_overlapping_band(pref_band, active_boxes, platform_target)
             phrase = _apply_case(" ".join(w.text for w in chunk), typo.caption_case)
+            caption_template = "caption_rail" if "caption_rail" in catalog_ids else None
+            caption_vars = {"text": phrase, "fg_color": palette.ink, "bg_color": palette.ground}
+            caption_path = None
+            if template_catalog is not None and caption_template:
+                entry = catalog_by_id(template_catalog)[caption_template]
+                caption_vars = resolve_template_variables(entry, policy, caption_vars)
+                caption_path = entry.composition_path
+            caption_props: dict = {
+                "text": phrase,
+                "font_family": typo.body_family,
+                "display_family": typo.display_family,
+                "fg_color": caption_vars.get("fg_color", palette.ink),
+                "bg_color": caption_vars.get("bg_color", palette.ground),
+                "pattern": "clean_caption_rail",
+                **motion,
+            }
+            if caption_path:
+                caption_props["composition_path"] = caption_path
             overlays.append(
                 OverlayCompositionOp(
                     overlay_id=f"cap_{len(overlays) + 1:03d}",
-                    kind="caption_rail",
+                    kind=overlay_kind_for_template(
+                        caption_template or "caption_rail", "caption_rail"
+                    ),
                     timeline_start_s=t_start,
                     timeline_duration_s=t_dur,
                     transparent=True,
                     safe_band=band,
-                    props={
-                        "text": phrase,
-                        "font_family": typo.body_family,
-                        "fg_color": palette.ink,
-                        "bg_color": palette.ground,
-                        "pattern": "clean_caption_rail",
-                    },
+                    template_id=caption_template,
+                    variables=caption_vars if caption_template else {},
+                    props=caption_props,
                 )
             )
 
@@ -277,21 +341,45 @@ def _build_overlays(
                     active_boxes,
                     platform_target,
                 )
+                card_template = (
+                    "amber_fact_card"
+                    if "amber_fact_card" in catalog_ids
+                    else ("tabular_metric" if "tabular_metric" in catalog_ids else None)
+                )
+                card_vars = {
+                    "text": phrase,
+                    "label": phrase,
+                    "fg_color": palette.ink,
+                    "bg_color": palette.ground,
+                    "accent_color": palette.accent,
+                }
+                card_path = None
+                if template_catalog is not None and card_template:
+                    entry = catalog_by_id(template_catalog)[card_template]
+                    card_vars = resolve_template_variables(entry, policy, card_vars)
+                    card_path = entry.composition_path
+                card_props: dict = {
+                    "headline": phrase,
+                    "text": phrase,
+                    "accent_color": card_vars.get("accent_color", palette.accent),
+                    "fg_color": card_vars.get("fg_color", palette.ink),
+                    "bg_color": card_vars.get("bg_color", palette.ground),
+                    "pattern": "split_metric_card",
+                    **motion,
+                }
+                if card_path:
+                    card_props["composition_path"] = card_path
                 overlays.append(
                     OverlayCompositionOp(
                         overlay_id=f"card_{len(overlays) + 1:03d}",
-                        kind="data_card",
+                        kind=overlay_kind_for_template(card_template or "data_card", "data_card"),
                         timeline_start_s=t_start,
                         timeline_duration_s=round(max(t_dur, 1.2), 3),
                         transparent=True,
                         safe_band=card_band,
-                        props={
-                            "headline": phrase,
-                            "accent_color": palette.accent,
-                            "fg_color": palette.ink,
-                            "bg_color": palette.ground,
-                            "pattern": "split_metric_card",
-                        },
+                        template_id=card_template,
+                        variables=card_vars if card_template else {},
+                        props=card_props,
                     )
                 )
     return overlays
@@ -311,6 +399,7 @@ def build_edit_plan(
     render_strategy: Literal["hybrid", "full_hf"] = "hybrid",
     reframed_to_target: bool = True,
     cleaned_speech_stem: bool = True,
+    template_catalog: BrandTemplateCatalog | None = None,
     repo_root: Path | None = None,
 ) -> tuple[EditPlan, VerificationReport]:
     """Assemble and deterministically verify an `EditPlan` using `BrandStylePolicy`."""
@@ -336,7 +425,9 @@ def build_edit_plan(
     )
     _ground_subject_boxes(clips, probe, decision_port)
 
-    overlays = _build_overlays(clips, transcript, policy, platform_target)
+    overlays = _build_overlays(
+        clips, transcript, policy, platform_target, template_catalog=template_catalog
+    )
     # Clamp overlays cleanly within total timeline duration.
     clamped_overlays: list[OverlayCompositionOp] = []
     for ov in overlays:
@@ -417,5 +508,6 @@ def build_edit_plan(
         policy,
         platform_target,
         transcript=transcript,
+        template_catalog=template_catalog,
         repo_root=repo_root,
     )

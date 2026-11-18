@@ -331,7 +331,29 @@ function buildOverlayCompositionHtml(
   const innerId = `${sceneId}-inner`;
   const duration = Number(ov.timeline_duration_s.toFixed(3));
   const isCaption = ov.kind === "caption_rail";
-  const enterDur = Number((isCaption ? Math.min(0.12, duration * 0.2) : Math.min(0.22, duration * 0.25)).toFixed(3));
+  const entranceMs =
+    typeof ov.props.entrance_ms === "number" && Number.isFinite(ov.props.entrance_ms)
+      ? Math.max(40, Math.min(2000, Number(ov.props.entrance_ms)))
+      : null;
+  const easingFeel =
+    typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "snappy_ease_out";
+  const easeName =
+    easingFeel === "smooth_editorial"
+      ? "power2.out"
+      : easingFeel === "energetic_pop"
+        ? "back.out(1.4)"
+        : easingFeel === "minimal_static"
+          ? "none"
+          : "expo.out";
+  const enterDur = Number(
+    (
+      entranceMs != null
+        ? Math.min(entranceMs / 1000, duration * 0.45)
+        : isCaption
+          ? Math.min(0.12, duration * 0.2)
+          : Math.min(0.22, duration * 0.25)
+    ).toFixed(3)
+  );
   const exitDur = Number((isCaption ? 0.08 : 0.13).toFixed(3));
   const exitAt = Number(Math.max(0.05, duration - exitDur).toFixed(3));
   const posCss = hasCustomHtml
@@ -362,7 +384,7 @@ function buildOverlayCompositionHtml(
     tl.fromTo(
       "#${innerId}",
       { opacity: 0, scale: 0.96, y: ${isCaption ? 4 : 8} },
-      { opacity: 1, scale: 1, y: 0, duration: ${enterDur}, ease: "expo.out" },
+      { opacity: 1, scale: 1, y: 0, duration: ${enterDur}, ease: "${easeName}" },
       0
     );
     tl.to("#${innerId}", { opacity: 0, duration: ${exitDur}, ease: "power2.in" }, ${exitAt});
@@ -569,26 +591,38 @@ export function compileEditPlanToHyperframes(
   for (const ov of plan.overlay_compositions) {
     const sceneId = sanitizeId(ov.overlay_id);
     const scenePath = path.join(compDir, `${sceneId}.html`);
-    const sceneHtml = buildOverlayCompositionHtml(
-      ov,
-      sceneId,
-      plan.width,
-      plan.height,
-      safeZone,
-      extraFontFamilies
-    );
-    fs.writeFileSync(scenePath, sceneHtml, "utf8");
+    const mergedProps = { ...(ov.variables ?? {}), ...ov.props };
+    const effectiveOv: OverlayCompositionOp = { ...ov, props: mergedProps };
+    const catalogPath =
+      typeof mergedProps.composition_path === "string" ? String(mergedProps.composition_path) : "";
+    if (catalogPath && fs.existsSync(catalogPath) && fs.statSync(catalogPath).isFile()) {
+      fs.copyFileSync(catalogPath, scenePath);
+    } else {
+      const sceneHtml = buildOverlayCompositionHtml(
+        effectiveOv,
+        sceneId,
+        plan.width,
+        plan.height,
+        safeZone,
+        extraFontFamilies
+      );
+      fs.writeFileSync(scenePath, sceneHtml, "utf8");
+    }
     compositionFiles.push(scenePath);
 
     const start = Number(ov.timeline_start_s.toFixed(3));
     const dur = Number(ov.timeline_duration_s.toFixed(3));
     const lane = assignTrackLane(lanes, start, dur);
     const trackKind = ov.kind === "caption_rail" ? "captions" : "graphics";
+    const templateAttr = ov.template_id
+      ? ` data-template-id="${escapeHtml(ov.template_id)}"`
+      : "";
     hostTags.push(
       `      <div id="${sceneId}" data-composition-id="${sceneId}" ` +
         `data-composition-src="compositions/${sceneId}.html" ` +
         `data-start="${start}" data-duration="${dur}" ` +
-        `data-track-index="${lane}" data-track-kind="${trackKind}" ` +
+        `data-track-index="${lane}" data-track-kind="${trackKind}"` +
+        `${templateAttr} ` +
         `data-width="${plan.width}" data-height="${plan.height}"></div>`
     );
   }
