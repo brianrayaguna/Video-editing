@@ -247,17 +247,106 @@ def test_two_pass_mastering_hybrid_assembly_and_qc_audit(tmp_path: Path) -> None
     assert qc.metrics["true_peak_dbtp"] <= -1.0
 
 
-def test_modal_worker_image_spec_and_cost_estimator() -> None:
+def test_modal_worker_image_spec_and_cas_staging(tmp_path: Path) -> None:
     cloud_src = str(find_repo_root() / "packages" / "cloud-modal" / "src")
     if cloud_src not in sys.path:
         sys.path.insert(0, cloud_src)
 
-    from vedit_cloud.app import CAS_VOLUME_NAME, estimate_modal_render_cost
-    from vedit_cloud.image import WORKER_CHROMIUM_FLAGS, build_worker_image
+    from vedit_cloud.app import (
+        CAS_VOLUME_NAME,
+        download_cas_file,
+        estimate_modal_render_cost,
+        stage_local_assets_for_cloud,
+    )
+    from vedit_cloud.image import (
+        PINNED_CHROME_HEADLESS_VERSION,
+        WORKER_CHROMIUM_FLAGS,
+        build_worker_image,
+    )
 
     img = build_worker_image()
     assert img is not None
     assert WORKER_CHROMIUM_FLAGS == "--no-browser-gpu --use-gl=swiftshader"
+    assert PINNED_CHROME_HEADLESS_VERSION == "152.0.7977.30"
     assert CAS_VOLUME_NAME == "vedit-cas-cache"
     usd = estimate_modal_render_cost(10_000, cpus=4.0, memory_mb=8192)
     assert usd > 0.0
+
+    # Mock Modal Volume CAS upload dedup and download.
+    cached_sha = "1" * 64
+    new_sha = "2" * 64
+    local_cached = tmp_path / "cached.mp4"
+    local_new = tmp_path / "fresh.wav"
+    local_cached.write_bytes(b"cached")
+    local_new.write_bytes(b"fresh")
+
+    class _FakeEntry:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    class _FakeBatch:
+        def __init__(self, target_list: list[tuple[str, str]]) -> None:
+            self._list = target_list
+
+        def __enter__(self) -> _FakeBatch:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def put_file(self, src: str, dst: str) -> None:
+            self._list.append((src, dst))
+
+    class _FakeVolume:
+        def __init__(self) -> None:
+            self.uploaded: list[tuple[str, str]] = []
+
+        def listdir(self, prefix: str) -> list[_FakeEntry]:
+            assert prefix == "/sources"
+            return [_FakeEntry(f"sources/{cached_sha}.mp4")]
+
+        def batch_upload(self, force: bool = False) -> _FakeBatch:
+            return _FakeBatch(self.uploaded)
+
+        def read_file(self, remote_path: str):
+            assert remote_path == "jobs/j_1/out.mp4"
+            yield b"hello-"
+            yield b"mp4"
+
+    vol = _FakeVolume()
+    plan = EditPlan(
+        schema_version="1.0",
+        job_id="j_1",
+        project_id="p_1",
+        brand_id="b_1",
+        platform_target_id="reels_9x16_1080p",
+        render_strategy="hybrid",
+        duration_s=2.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(asset_id="a1", sha256=cached_sha, kind="video", path=str(local_cached)),
+            AssetRef(asset_id="a2", sha256=new_sha, kind="audio_speech", path=str(local_new)),
+            AssetRef(
+                asset_id="a3",
+                sha256="3" * 64,
+                kind="audio_bgm",
+                path="https://cdn.example/music.mp3",
+            ),
+        ],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[],
+    )
+
+    staged = stage_local_assets_for_cloud(plan, vol)
+    assert len(vol.uploaded) == 1
+    assert vol.uploaded[0][1] == f"/sources/{new_sha}.wav"
+    assert staged.assets[0].path == f"/vol/cas/sources/{cached_sha}.mp4"
+    assert staged.assets[1].path == f"/vol/cas/sources/{new_sha}.wav"
+    assert staged.assets[2].path == "https://cdn.example/music.mp3"
+
+    out_dl = tmp_path / "downloaded.mp4"
+    download_cas_file(vol, "/jobs/j_1/out.mp4", out_dl)
+    assert out_dl.read_bytes() == b"hello-mp4"

@@ -8,14 +8,19 @@ import modal
 from vedit.contracts import find_repo_root
 
 WORKER_CHROMIUM_FLAGS = "--no-browser-gpu --use-gl=swiftshader"
+PINNED_CHROME_HEADLESS_VERSION = "152.0.7977.30"
 
 _DEBIAN_PACKAGES = [
     "ffmpeg",
     "ca-certificates",
     "curl",
     "gnupg",
+    "unzip",
     "build-essential",
     "pkg-config",
+    "libcairo2",
+    "libpango-1.0-0",
+    "libxshmfence1",
     "libnss3",
     "libatk1.0-0",
     "libatk-bridge2.0-0",
@@ -36,10 +41,9 @@ _DEBIAN_PACKAGES = [
 def build_worker_image(repo_root: Path | None = None) -> modal.Image:
     """Build the Linux x86_64 worker image without copying macOS host binaries.
 
-    Compiles `vedit-probe` natively from source via Cargo inside the container, installs
-    Node.js 22 with pinned `@hyperframes/core@0.9.65`, `@hyperframes/producer@0.9.65`,
-    and `@hyperframes/lint@0.9.65`, installs headless Chrome for BeginFrame software GL,
-    and stages Python contracts, presets, and `vedit` core modules.
+    Compiles `vedit-probe` natively from source via Cargo inside the container, builds
+    `@vedit/hf-compiler` (`0.9.65`), installs the pinned `chrome-headless-shell` build,
+    and stages Python contracts, presets, and workspace packages cleanly.
     """
     root = repo_root or find_repo_root()
     ignore_build_dirs = [
@@ -50,6 +54,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
         ".pytest_cache",
         ".ruff_cache",
         "__pycache__",
+        "*.egg-info",
     ]
 
     return (
@@ -69,7 +74,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
             ignore=ignore_build_dirs,
         )
         .run_commands(
-            "/root/.cargo/bin/cargo build --release "
+            "/root/.cargo/bin/cargo build --release --locked "
             "--manifest-path /opt/vedit/packages/media-probe-rs/Cargo.toml",
             "install -m 0755 "
             "/opt/vedit/packages/media-probe-rs/target/release/vedit-probe "
@@ -84,25 +89,55 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
         )
         .run_commands(
             "cd /opt/vedit/packages/hf-compiler-ts "
-            "&& npm ci --omit=dev "
+            "&& npm ci "
             "&& npx tsc "
-            "&& npx puppeteer browsers install chrome-headless-shell",
+            "&& npm prune --omit=dev "
+            "&& npx puppeteer browsers install "
+            f"chrome-headless-shell@{PINNED_CHROME_HEADLESS_VERSION} "
+            "&& SHELL_BIN=$(find /root/.cache/puppeteer/chrome-headless-shell "
+            "-name chrome-headless-shell -type f | head -n 1) "
+            '&& test -x "$SHELL_BIN" '
+            '&& ! ldd "$SHELL_BIN" | grep -q "not found"',
         )
         .add_local_dir(root / "contracts", "/opt/vedit/contracts", copy=True)
         .add_local_dir(root / "profiles", "/opt/vedit/profiles", copy=True)
+        .add_local_dir(
+            root / "config",
+            "/opt/vedit/config",
+            copy=True,
+            ignore=["providers.yaml"],
+        )
         .add_local_dir(
             root / "packages" / "director-py",
             "/opt/vedit/packages/director-py",
             copy=True,
             ignore=ignore_build_dirs,
         )
-        .pip_install("pydantic>=2.9.0", "jsonschema>=4.23.0", "pyyaml>=6.0.2", "httpx>=0.27.2", "typer>=0.12.5")
-        .run_commands("pip install --no-deps -e /opt/vedit/packages/director-py")
+        .add_local_dir(
+            root / "packages" / "cloud-modal",
+            "/opt/vedit/packages/cloud-modal",
+            copy=True,
+            ignore=ignore_build_dirs,
+        )
+        .pip_install(
+            "hatchling>=1.25.0",
+            "pydantic>=2.9.0",
+            "jsonschema>=4.23.0",
+            "pyyaml>=6.0.2",
+            "httpx>=0.27.2",
+            "typer>=0.12.5",
+        )
+        .run_commands(
+            "pip install --no-deps --no-build-isolation /opt/vedit/packages/director-py",
+            "pip install --no-deps --no-build-isolation /opt/vedit/packages/cloud-modal",
+        )
         .env(
             {
+                "VEDIT_REPO_ROOT": "/opt/vedit",
                 "VEDIT_PROBE_BIN": "/usr/local/bin/vedit-probe",
                 "VEDIT_HF_COMPILER_CLI": "/opt/vedit/packages/hf-compiler-ts/dist/cli.js",
                 "HYPERFRAMES_CHROMIUM_FLAGS": WORKER_CHROMIUM_FLAGS,
+                "HYPERFRAMES_CHROME_SANDBOX": "0",
             }
         )
     )

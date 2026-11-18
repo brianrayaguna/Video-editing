@@ -1,9 +1,10 @@
-"""Modal.com distributed worker fan-out, CAS caching, and benchmark cost attribution."""
+"""Modal.com distributed worker fan-out, CAS staging, and benchmark cost attribution."""
 
 from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from vedit.compiler.hf_bridge import (
 )
 from vedit.mastering.ffmpeg_master import assemble_hybrid_deliverable
 from vedit.mastering.qc_audit import audit_mastered_deliverable
-from vedit.models import EditPlan, PlatformTarget
+from vedit.models import AssetRef, EditPlan, PlatformTarget
 from vedit.telemetry import JobCheckpoint, StageMetric
 
 from vedit_cloud.image import WORKER_CHROMIUM_FLAGS, build_worker_image
@@ -33,7 +34,11 @@ MODAL_GIB_PER_SEC_USD = 0.00000222
 
 app = modal.App("vedit-distributed-renderer")
 cas_volume = modal.Volume.from_name(CAS_VOLUME_NAME, create_if_missing=True)
-worker_image = build_worker_image()
+worker_image = (
+    build_worker_image()
+    if modal.is_local()
+    else modal.Image.debian_slim(python_version="3.12")
+)
 
 
 def estimate_modal_render_cost(
@@ -53,6 +58,49 @@ def _stage_key(prefix: str, payload: str) -> str:
     return hashlib.sha256(f"{prefix}:{payload}".encode()).hexdigest()
 
 
+def stage_local_assets_for_cloud(plan: EditPlan, volume: Any) -> EditPlan:
+    """Upload missing local media files by SHA-256 to Modal CAS Volume and rewrite paths."""
+    existing_paths: set[str] = set()
+    try:
+        for entry in volume.listdir("/sources"):
+            existing_paths.add(str(entry.path).lstrip("/"))
+    except (FileNotFoundError, modal.exception.NotFoundError, modal.exception.InvalidError):
+        existing_paths = set()
+
+    uploads: dict[str, tuple[Path, str]] = {}
+    rewritten_assets: list[AssetRef] = []
+
+    for asset in plan.assets:
+        local_src = Path(asset.path)
+        if local_src.is_file():
+            ext = local_src.suffix.lower() or ".bin"
+            remote_rel = f"sources/{asset.sha256}{ext}"
+            if remote_rel not in existing_paths and remote_rel not in uploads:
+                uploads[remote_rel] = (local_src, f"/{remote_rel}")
+            rewritten_assets.append(
+                asset.model_copy(update={"path": str(CAS_MOUNT_PATH / remote_rel)})
+            )
+        else:
+            rewritten_assets.append(asset)
+
+    if uploads:
+        with volume.batch_upload(force=True) as batch:
+            for local_src, remote_dst in uploads.values():
+                batch.put_file(str(local_src), remote_dst)
+
+    return plan.model_copy(update={"assets": rewritten_assets})
+
+
+def download_cas_file(volume: Any, remote_relpath: str, local_output_path: Path) -> Path:
+    """Download a completed deliverable from the Modal CAS Volume to a local path."""
+    local_output_path.parent.mkdir(parents=True, exist_ok=True)
+    clean_rel = remote_relpath.lstrip("/")
+    with local_output_path.open("wb") as fp:
+        for chunk in volume.read_file(clean_rel):
+            fp.write(chunk)
+    return local_output_path
+
+
 @app.function(
     image=worker_image,
     volumes={str(CAS_MOUNT_PATH): cas_volume},
@@ -63,12 +111,14 @@ def _stage_key(prefix: str, payload: str) -> str:
 def render_chunk_worker(plan_v2_subpath: str, chunk_index: int, job_subpath: str) -> dict[str, Any]:
     """Render one bounded HyperFrames chunk (`150-240` frames) inside a fresh worker turn."""
     os.environ["HYPERFRAMES_CHROMIUM_FLAGS"] = WORKER_CHROMIUM_FLAGS
+    os.environ["HYPERFRAMES_CHROME_SANDBOX"] = "0"
     cas_volume.reload()
 
     plan_v2_dir = CAS_MOUNT_PATH / plan_v2_subpath
     chunk_ext = ".mov" if "mov" in job_subpath else ".mp4"
     out_chunk = CAS_MOUNT_PATH / job_subpath / "chunks" / f"chunk_{chunk_index:04d}{chunk_ext}"
     out_chunk.parent.mkdir(parents=True, exist_ok=True)
+    out_chunk.unlink(missing_ok=True)
 
     t0 = time.perf_counter()
     chunk_result = render_chunk_v2(
@@ -134,6 +184,7 @@ def orchestrate_distributed_render(
             state_path=checkpoint_path,
             provider="hyperframes",
         ) as meta:
+            shutil.rmtree(hf_dir, ignore_errors=True)
             compiled = compile_edit_plan(
                 plan,
                 hf_dir,
@@ -151,6 +202,7 @@ def orchestrate_distributed_render(
             state_path=checkpoint_path,
             provider="hyperframes_producer",
         ) as meta:
+            shutil.rmtree(plan_v2_dir, ignore_errors=True)
             planned = plan_distributed_v2(
                 hf_dir,
                 plan_v2_dir,
@@ -176,6 +228,7 @@ def orchestrate_distributed_render(
                 ]
             )
         )
+        cas_volume.reload()
         chunks_wall_ms = int((time.perf_counter() - t_chunks) * 1000)
         chunks_usd = round(sum(float(c["estimated_usd"]) for c in chunk_outputs), 6)
         chunk_paths = [CAS_MOUNT_PATH / str(c["output_subpath"]) for c in chunk_outputs]
@@ -199,6 +252,7 @@ def orchestrate_distributed_render(
             state_path=checkpoint_path,
             provider="hyperframes_producer",
         ) as meta:
+            assembled_hf_path.unlink(missing_ok=True)
             assemble_v2(plan_v2_dir, chunk_paths, assembled_hf_path, repo_root=repo_root)
             meta["output_artifacts"] = [str(assembled_hf_path)]
         overlay_render_path = assembled_hf_path
@@ -241,30 +295,59 @@ def orchestrate_distributed_render(
     return {
         "job_id": plan.job_id,
         "deliverable_path": str(final_deliverable),
+        "deliverable_subpath": str(final_deliverable.relative_to(CAS_MOUNT_PATH)),
         "qc": qc.to_dict(),
         "telemetry": checkpoint.model_dump(),
     }
 
 
+def submit_modal_render(
+    plan: EditPlan,
+    platform_target: PlatformTarget,
+    *,
+    output_path: Path | None = None,
+    chunk_frames: int = 180,
+) -> dict[str, Any]:
+    """Upload local source assets to Modal CAS, run cloud render, and optionally download output."""
+    cloud_plan = stage_local_assets_for_cloud(plan, cas_volume)
+    summary = orchestrate_distributed_render.remote(
+        cloud_plan.model_dump_json(exclude_none=True),
+        platform_target.model_dump_json(exclude_none=True),
+        chunk_frames=chunk_frames,
+    )
+    if output_path is not None and "deliverable_subpath" in summary:
+        downloaded = download_cas_file(
+            cas_volume,
+            str(summary["deliverable_subpath"]),
+            output_path,
+        )
+        summary["local_output_path"] = str(downloaded)
+    return summary
+
+
 @app.local_entrypoint()
 def main(
     plan_file: str,
-    platform_id: str = "reels_9x16_1080p",
+    platform_id: str = "",
     chunk_frames: int = 180,
+    output: str = "",
 ) -> None:
-    """Submit a local `EditPlan` JSON to Modal distributed rendering and print benchmark JSON."""
+    """Stage local media on Modal CAS, run distributed render, and download master MP4."""
     import json
 
     from vedit.contracts import load_platform_targets
 
+    plan = EditPlan.model_validate_json(Path(plan_file).read_text(encoding="utf-8"))
+    target_id = platform_id or plan.platform_target_id
     platforms = load_platform_targets()
-    if platform_id not in platforms:
-        raise ValueError(f"Unknown platform target: {platform_id}")
-    plan_json = Path(plan_file).read_text(encoding="utf-8")
-    platform_json = json.dumps(platforms[platform_id])
-    summary = orchestrate_distributed_render.remote(
-        plan_json,
-        platform_json,
+    if target_id not in platforms:
+        raise ValueError(f"Unknown platform target: {target_id}")
+    target = PlatformTarget.model_validate(platforms[target_id])
+    out_path = Path(output) if output else Path("renders") / f"{plan.job_id}_master.mp4"
+    summary = submit_modal_render(
+        plan,
+        target,
+        output_path=out_path,
         chunk_frames=chunk_frames,
     )
     print(json.dumps(summary, indent=2))

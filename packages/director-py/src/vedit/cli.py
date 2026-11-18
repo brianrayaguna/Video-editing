@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Literal
@@ -50,6 +51,7 @@ platforms_app = typer.Typer(help="List validated platform mastering targets.")
 probe_app = typer.Typer(help="Fast deterministic media hashing, shot & CIELAB analysis.")
 brand_app = typer.Typer(help="Synthesize BrandStylePolicy and query style exemplars.")
 director_app = typer.Typer(help="Assemble and verify EditPlan specifications.")
+cloud_app = typer.Typer(help="Submit distributed renders and mastering jobs to Modal.com.")
 
 app.add_typer(contracts_app, name="contracts")
 app.add_typer(providers_app, name="providers")
@@ -57,6 +59,7 @@ app.add_typer(platforms_app, name="platforms")
 app.add_typer(probe_app, name="probe")
 app.add_typer(brand_app, name="brand")
 app.add_typer(director_app, name="director")
+app.add_typer(cloud_app, name="cloud")
 
 JsonOption = Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")]
 
@@ -545,6 +548,45 @@ def audit_cmd(
     typer.echo(json.dumps(qc.to_dict(), indent=2, default=str))
     if not qc.passed:
         raise typer.Exit(code=1)
+
+
+@cloud_app.command("render")
+def cloud_render_cmd(
+    plan_file: Annotated[Path, typer.Option("--plan-file", help="Verified EditPlan JSON path.")],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Local output deliverable MP4 path.")
+    ] = None,
+    platform_id: Annotated[str | None, typer.Option("--platform")] = None,
+    chunk_frames: Annotated[
+        int, typer.Option("--chunk-frames", help="Chunk frame budget (150-240).")
+    ] = 180,
+) -> None:
+    """Stage local media on Modal CAS, run distributed render & mastering, and download MP4."""
+    import modal
+
+    cloud_src = str(find_repo_root() / "packages" / "cloud-modal" / "src")
+    if cloud_src not in sys.path:
+        sys.path.insert(0, cloud_src)
+
+    from vedit_cloud.app import app as modal_app
+    from vedit_cloud.app import submit_modal_render
+
+    plan = EditPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    target_id = platform_id or plan.platform_target_id
+    platforms = load_platform_targets()
+    if target_id not in platforms:
+        raise typer.BadParameter(f"Unknown platform target: {target_id}")
+    platform_target = PlatformTarget.model_validate(platforms[target_id])
+    out_path = output or (Path("renders") / f"{plan.job_id}_master.mp4")
+
+    with modal.enable_output(), modal_app.run():
+        summary = submit_modal_render(
+            plan,
+            platform_target,
+            output_path=out_path,
+            chunk_frames=chunk_frames,
+        )
+    typer.echo(json.dumps(summary, indent=2, default=str))
 
 
 if __name__ == "__main__":

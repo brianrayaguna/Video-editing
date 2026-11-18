@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +11,21 @@ from jsonschema import Draft202012Validator
 
 
 def find_repo_root(start: Path | None = None) -> Path:
-    """Walk upward from start (or this file) to find the repository root containing `contracts/`."""
-    cursor = (start or Path(__file__)).resolve()
-    for candidate in [cursor, *cursor.parents]:
+    """Locate repository root containing `contracts/` via start path, ancestors, or env."""
+    if start is not None:
+        cursor = start.resolve()
+        for candidate in [cursor, *cursor.parents]:
+            if (candidate / "contracts").is_dir():
+                return candidate
+
+    env_root = os.environ.get("VEDIT_REPO_ROOT", "").strip()
+    if env_root:
+        candidate = Path(env_root).expanduser().resolve()
+        if (candidate / "contracts").is_dir():
+            return candidate
+
+    cursor = Path(__file__).resolve()
+    for candidate in [cursor, *cursor.parents, Path.cwd().resolve(), Path("/opt/vedit")]:
         if (candidate / "contracts").is_dir():
             return candidate
     raise FileNotFoundError("Could not locate `contracts/` directory in parent hierarchy.")
