@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/transcript.schema.json",
+  "title": "NormalizedTranscript",
+  "description": "Provider-agnostic word-level transcript with speaker diarization and filler markers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_hash", "provider", "language", "duration_s", "text", "words"],
+  "properties": {
+    "source_hash": { "type": "string", "minLength": 8 },
+    "provider": { "type": "string", "minLength": 1 },
+    "model": { "type": "string" },
+    "language": { "type": "string", "minLength": 2 },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "text": { "type": "string" },
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "start_s", "end_s"],
+        "properties": {
+          "text": { "type": "string" },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "speaker": { "type": ["string", "integer", "null"] },
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "is_filler": { "type": "boolean", "default": false }
+        }
+      }
+    }
+  }
+}

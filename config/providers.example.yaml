@@ -1,0 +1,52 @@
+# Capability-to-Provider Configuration (copy to config/providers.yaml)
+# Never put raw API keys in this file; reference environment variable names or OAuth stores only.
+
+defaults:
+  transcription:
+    primary: xai
+    fallback:
+      - veed
+    options:
+      auth_type: api_key
+      model: grok-voice-transcribe-2.0
+      diarize: true
+      filler_words: true
+      api_key_env: XAI_API_KEY
+
+  decision:
+    primary: liquid_d1
+    fallback: []
+    options:
+      auth_type: api_key
+      model: d1.2-ultra
+      endpoint: https://api.liquid.ai/decisions/v1/systemone
+      max_images_per_batch: 8
+      max_body_mb: 4.5
+      api_key_env: LIQUID_API_KEY
+
+  media_ops:
+    primary: veed
+    fallback:
+      - ffmpeg
+    options:
+      auth_type: openedit_oauth
+      origin: https://www.veed.io
+      allow_generative_video: false
+
+  audio_catalog:
+    primary: epidemic
+    fallback: []
+    options:
+      auth_type: api_key
+      base_url: https://api.epidemicsound.com/v0
+      default_quality: high
+      instrumental_only_under_speech: true
+      api_key_env: EPIDEMIC_API_KEY
+
+  generative_planner:
+    # Optional companion generative planner when running headless outside an interactive directing client
+    primary: xai_grok
+    fallback: []
+    options:
+      auth_type: api_key
+      api_key_env: XAI_API_KEY

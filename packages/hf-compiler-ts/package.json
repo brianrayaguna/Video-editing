@@ -1,0 +1,21 @@
+{
+  "name": "@vedit/hf-compiler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript bridge compiling EditPlan.json into HyperFrames compositions and distributed render jobs.",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test dist/compiler.test.js"
+  },
+  "dependencies": {
+    "@hyperframes/core": "0.9.65",
+    "@hyperframes/lint": "0.9.65",
+    "@hyperframes/producer": "0.9.65"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

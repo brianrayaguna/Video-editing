@@ -1,0 +1,12 @@
+# Engineering Roadmap
+
+## Implemented
+- **Cross-Runtime Contracts (`contracts/`)**: JSON Schema (Draft 2020-12) definitions for `BrandStylePolicy`, `EditPlan`, `MediaProbeResult`, `PlatformTarget`, and `NormalizedTranscript`, plus validated presets in `profiles/platforms/`.
+- **Native Media Probe (`packages/media-probe-rs/`)**: Rust CLI `vedit-probe` providing parallel SHA-256 CAS hashing, `ffprobe` stream inspection, single-pass FFmpeg shot/silence/black/loudness parsing, CIELAB palette clustering, band luminance, Sobel sharpness, and JPEG keyframe extraction.
+- **Capability Ports & Providers (`packages/director-py/`)**: Typed Pydantic models, `TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, YAML-driven `ProviderRegistry`, `.env` and OpenEdit OAuth token management (`vedit providers auth`), retry/redaction HTTP transport, implemented adapters (`xai`, `veed` OAuth, `liquid_d1`, `ffmpeg`, `epidemic`), durable `JobCheckpoint` telemetry, and generic `vedit` CLI commands.
+- **Brand Analyzer, Planner & Constraint Verifier (`vedit.analyzers`, `vedit.director`)**: Multi-reference `BrandStylePolicy` aggregation, exemplar indexing/querying, calibration updates, constraint-aware `EditPlan` synthesis, and deterministic pre-render guardrail verification (`min_shot_duration_s`, `max_uninterrupted_hold_s`, `no_cut_within_keyword_ms`, WCAG contrast, CSS blur prevention, safe zones, `never_overlap_subject_boxes`, voiceover carving).
+- **HyperFrames Compiler & Distributed Producer Bridge (`packages/hf-compiler-ts/`, `vedit.compiler`)**: `EditPlan` to HTML/GSAP scene compiler (pinned HyperFrames `0.9.65`), CSS blur performance linter, `@hyperframes/lint` verification gate, and `@hyperframes/producer/distributed` (`planV2`, `renderChunkV2`, `assembleV2`) wrappers with bounded chunk frames (`150–240`).
+- **Distributed Cloud Rendering & Mastering (`packages/cloud-modal/`, `vedit.mastering`)**: Modal Linux `x86_64` container image (compiling `vedit-probe` natively and installing `chrome-headless-shell` + FFmpeg), CAS Modal Volume orchestration with software-GL workers (`--no-browser-gpu --use-gl=swiftshader`), two-pass `-14.0 LUFS` / `<= -1.0 dBTP` EBU R128 mastering with voiceover carving, deterministic `ffprobe`/`ebur128` QC auditing (`vedit audit`), and per-stage cost/latency benchmarking.
+
+## Operational Verification Focus
+- End-to-end cloud smoke deployments on live Modal workspaces using real brand reference footage sets and full deliverable latency/cost benchmarking.

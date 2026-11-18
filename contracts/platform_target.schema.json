@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/platform_target.schema.json",
+  "title": "PlatformMasteringTarget",
+  "description": "Platform-specific video, audio mastering, and safe-zone delivery specifications.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "platform_id",
+    "aspect_ratio",
+    "width",
+    "height",
+    "fps",
+    "video",
+    "audio",
+    "safe_zone"
+  ],
+  "properties": {
+    "platform_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["16:9", "9:16", "1:1", "4:5"]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 360,
+      "maximum": 7680
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 360,
+      "maximum": 7680
+    },
+    "fps": {
+      "type": "number",
+      "enum": [24, 25, 30, 48, 50, 60]
+    },
+    "purpose": {
+      "type": "string",
+      "enum": ["long_form", "short_form", "social_square", "archive_master"]
+    },
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "container",
+        "codec",
+        "profile",
+        "pixel_format",
+        "color_space",
+        "color_primaries",
+        "color_trc",
+        "target_bitrate_mbps",
+        "max_bitrate_mbps",
+        "gop_seconds",
+        "faststart"
+      ],
+      "properties": {
+        "container": { "type": "string", "enum": ["mp4", "mov"] },
+        "codec": { "type": "string", "enum": ["h264", "hevc", "prores"] },
+        "profile": { "type": "string" },
+        "pixel_format": { "type": "string", "enum": ["yuv420p", "yuv422p10le", "yuva444p10le"] },
+        "color_space": { "type": "string", "enum": ["bt709", "bt2020nc"] },
+        "color_primaries": { "type": "string", "enum": ["bt709", "bt2020"] },
+        "color_trc": { "type": "string", "enum": ["bt709", "smpte2084"] },
+        "target_bitrate_mbps": { "type": "number", "exclusiveMinimum": 0 },
+        "max_bitrate_mbps": { "type": "number", "exclusiveMinimum": 0 },
+        "high_fps_target_bitrate_mbps": { "type": "number", "exclusiveMinimum": 0 },
+        "gop_seconds": { "type": "number", "exclusiveMinimum": 0 },
+        "faststart": { "type": "boolean" }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "sample_rate_hz",
+        "channels",
+        "bitrate_kbps",
+        "target_lufs",
+        "lufs_tolerance",
+        "max_true_peak_dbtp",
+        "target_lra"
+      ],
+      "properties": {
+        "codec": { "type": "string", "enum": ["aac"] },
+        "sample_rate_hz": { "type": "integer", "enum": [48000] },
+        "channels": { "type": "integer", "enum": [1, 2] },
+        "bitrate_kbps": { "type": "integer", "minimum": 128, "maximum": 512 },
+        "target_lufs": { "type": "number", "minimum": -24.0, "maximum": -8.0 },
+        "lufs_tolerance": { "type": "number", "minimum": 0.1, "maximum": 2.0 },
+        "max_true_peak_dbtp": { "type": "number", "minimum": -3.0, "maximum": -0.5 },
+        "target_lra": { "type": "number", "minimum": 2.0, "maximum": 15.0 }
+      }
+    },
+    "safe_zone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_pct", "bottom_pct", "left_pct", "right_pct"],
+      "properties": {
+        "top_pct": { "type": "number", "minimum": 0, "maximum": 0.4 },
+        "bottom_pct": { "type": "number", "minimum": 0, "maximum": 0.45 },
+        "left_pct": { "type": "number", "minimum": 0, "maximum": 0.3 },
+        "right_pct": { "type": "number", "minimum": 0, "maximum": 0.35 }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}

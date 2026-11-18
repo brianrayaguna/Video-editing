@@ -1,0 +1,40 @@
+{
+  "platform_id": "youtube_16x9_1080p",
+  "display_name": "YouTube Landscape 1080p SDR",
+  "aspect_ratio": "16:9",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "purpose": "long_form",
+  "video": {
+    "container": "mp4",
+    "codec": "h264",
+    "profile": "high",
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "target_bitrate_mbps": 8.0,
+    "high_fps_target_bitrate_mbps": 12.0,
+    "max_bitrate_mbps": 14.0,
+    "gop_seconds": 2.0,
+    "faststart": true
+  },
+  "audio": {
+    "codec": "aac",
+    "sample_rate_hz": 48000,
+    "channels": 2,
+    "bitrate_kbps": 384,
+    "target_lufs": -14.0,
+    "lufs_tolerance": 0.5,
+    "max_true_peak_dbtp": -1.0,
+    "target_lra": 7.0
+  },
+  "safe_zone": {
+    "top_pct": 0.05,
+    "bottom_pct": 0.08,
+    "left_pct": 0.05,
+    "right_pct": 0.05
+  },
+  "notes": "Standard YouTube SDR 1080p mastering target with explicit BT.709 metadata and -14 LUFS loudness normalization target."
+}

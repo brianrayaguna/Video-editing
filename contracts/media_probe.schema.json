@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/media_probe.schema.json",
+  "title": "MediaProbeResult",
+  "description": "Deterministic single-pass audio/visual/shot analysis emitted by vedit-probe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "path",
+    "sha256",
+    "file_bytes",
+    "container",
+    "video",
+    "audio",
+    "shots",
+    "shot_stats",
+    "visual",
+    "timing_ms"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "path": { "type": "string" },
+    "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "file_bytes": { "type": "integer", "minimum": 0 },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format_name", "duration_s", "bit_rate"],
+      "properties": {
+        "format_name": { "type": "string" },
+        "duration_s": { "type": "number", "minimum": 0 },
+        "bit_rate": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "width", "height", "fps", "is_cfr"],
+      "properties": {
+        "present": { "type": "boolean" },
+        "codec": { "type": ["string", "null"] },
+        "width": { "type": "integer", "minimum": 0 },
+        "height": { "type": "integer", "minimum": 0 },
+        "fps": { "type": "number", "minimum": 0 },
+        "is_cfr": { "type": "boolean" },
+        "pixel_format": { "type": ["string", "null"] },
+        "color_space": { "type": ["string", "null"] },
+        "color_primaries": { "type": ["string", "null"] },
+        "color_trc": { "type": ["string", "null"] },
+        "frame_count_est": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "silence_intervals", "silence_ratio"],
+      "properties": {
+        "present": { "type": "boolean" },
+        "codec": { "type": ["string", "null"] },
+        "sample_rate_hz": { "type": ["integer", "null"], "minimum": 0 },
+        "channels": { "type": ["integer", "null"], "minimum": 0 },
+        "integrated_lufs": { "type": ["number", "null"] },
+        "lra": { "type": ["number", "null"], "minimum": 0 },
+        "true_peak_dbtp": { "type": ["number", "null"] },
+        "silence_intervals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_s", "end_s", "duration_s"],
+            "properties": {
+              "start_s": { "type": "number", "minimum": 0 },
+              "end_s": { "type": "number", "minimum": 0 },
+              "duration_s": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "silence_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["shot_index", "start_s", "end_s", "duration_s", "confidence"],
+        "properties": {
+          "shot_index": { "type": "integer", "minimum": 0 },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "duration_s": { "type": "number", "minimum": 0 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "shot_stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "asl_p25_s", "asl_p50_s", "asl_p75_s", "cuts_per_min"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "asl_p25_s": { "type": "number", "minimum": 0 },
+        "asl_p50_s": { "type": "number", "minimum": 0 },
+        "asl_p75_s": { "type": "number", "minimum": 0 },
+        "cuts_per_min": { "type": "number", "minimum": 0 }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampled_frames",
+        "palette",
+        "palette_entropy",
+        "mean_luminance",
+        "band_luminance",
+        "mean_sharpness",
+        "black_intervals",
+        "keyframes"
+      ],
+      "properties": {
+        "sampled_frames": { "type": "integer", "minimum": 0 },
+        "palette": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hex", "share", "lab_l", "lab_a", "lab_b"],
+            "properties": {
+              "hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "share": { "type": "number", "minimum": 0, "maximum": 1 },
+              "lab_l": { "type": "number" },
+              "lab_a": { "type": "number" },
+              "lab_b": { "type": "number" }
+            }
+          }
+        },
+        "palette_entropy": { "type": "number", "minimum": 0 },
+        "mean_luminance": { "type": "number", "minimum": 0, "maximum": 255 },
+        "band_luminance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["upper", "center", "lower_third"],
+          "properties": {
+            "upper": { "type": "number", "minimum": 0, "maximum": 255 },
+            "center": { "type": "number", "minimum": 0, "maximum": 255 },
+            "lower_third": { "type": "number", "minimum": 0, "maximum": 255 }
+          }
+        },
+        "mean_sharpness": { "type": "number", "minimum": 0 },
+        "black_intervals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_s", "end_s", "duration_s"],
+            "properties": {
+              "start_s": { "type": "number", "minimum": 0 },
+              "end_s": { "type": "number", "minimum": 0 },
+              "duration_s": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["timestamp_s", "shot_index", "path", "luma_lower_third", "sharpness"],
+            "properties": {
+              "timestamp_s": { "type": "number", "minimum": 0 },
+              "shot_index": { "type": "integer", "minimum": 0 },
+              "path": { "type": "string" },
+              "luma_lower_third": { "type": "number", "minimum": 0, "maximum": 255 },
+              "sharpness": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "timing_ms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_ms", "ffprobe_ms", "stream_analyze_ms", "total_ms"],
+      "properties": {
+        "hash_ms": { "type": "integer", "minimum": 0 },
+        "ffprobe_ms": { "type": "integer", "minimum": 0 },
+        "stream_analyze_ms": { "type": "integer", "minimum": 0 },
+        "total_ms": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

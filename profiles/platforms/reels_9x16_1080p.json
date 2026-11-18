@@ -1,0 +1,40 @@
+{
+  "platform_id": "reels_9x16_1080p",
+  "display_name": "Instagram Reels 1080x1920",
+  "aspect_ratio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "purpose": "short_form",
+  "video": {
+    "container": "mp4",
+    "codec": "h264",
+    "profile": "high",
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "target_bitrate_mbps": 10.0,
+    "high_fps_target_bitrate_mbps": 12.0,
+    "max_bitrate_mbps": 14.0,
+    "gop_seconds": 2.0,
+    "faststart": true
+  },
+  "audio": {
+    "codec": "aac",
+    "sample_rate_hz": 48000,
+    "channels": 2,
+    "bitrate_kbps": 192,
+    "target_lufs": -14.0,
+    "lufs_tolerance": 0.5,
+    "max_true_peak_dbtp": -1.0,
+    "target_lra": 6.0
+  },
+  "safe_zone": {
+    "top_pct": 0.14,
+    "bottom_pct": 0.28,
+    "left_pct": 0.05,
+    "right_pct": 0.16
+  },
+  "notes": "Practical Reels VBR target safely below Meta's 25 Mbps ceiling, with strict bottom/right caption safe-zone margins."
+}

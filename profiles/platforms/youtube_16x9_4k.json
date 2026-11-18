@@ -1,0 +1,40 @@
+{
+  "platform_id": "youtube_16x9_4k",
+  "display_name": "YouTube Landscape 4K UHD SDR",
+  "aspect_ratio": "16:9",
+  "width": 3840,
+  "height": 2160,
+  "fps": 30,
+  "purpose": "long_form",
+  "video": {
+    "container": "mp4",
+    "codec": "h264",
+    "profile": "high",
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "color_trc": "bt709",
+    "target_bitrate_mbps": 40.0,
+    "high_fps_target_bitrate_mbps": 60.0,
+    "max_bitrate_mbps": 68.0,
+    "gop_seconds": 2.0,
+    "faststart": true
+  },
+  "audio": {
+    "codec": "aac",
+    "sample_rate_hz": 48000,
+    "channels": 2,
+    "bitrate_kbps": 384,
+    "target_lufs": -14.0,
+    "lufs_tolerance": 0.5,
+    "max_true_peak_dbtp": -1.0,
+    "target_lra": 7.0
+  },
+  "safe_zone": {
+    "top_pct": 0.05,
+    "bottom_pct": 0.08,
+    "left_pct": 0.05,
+    "right_pct": 0.05
+  },
+  "notes": "YouTube 4K SDR mastering target (35-45 Mbps at 24-30fps, 53-68 Mbps at 48-60fps)."
+}

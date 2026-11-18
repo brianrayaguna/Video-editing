@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/edit_plan.schema.json",
+  "title": "EditPlan",
+  "description": "Cross-runtime Edit Decision Plan bridging Python Director, TypeScript HyperFrames compiler, and Modal.com distributed workers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "project_id",
+    "brand_id",
+    "platform_target_id",
+    "render_strategy",
+    "duration_s",
+    "fps",
+    "width",
+    "height",
+    "assets",
+    "video_tracks",
+    "overlay_compositions",
+    "audio_tracks"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "job_id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "platform_target_id": { "type": "string", "minLength": 1 },
+    "render_strategy": { "type": "string", "enum": ["hybrid", "full_hf"] },
+    "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "width": { "type": "integer", "minimum": 360 },
+    "height": { "type": "integer", "minimum": 360 },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["asset_id", "sha256", "kind", "path"],
+        "properties": {
+          "asset_id": { "type": "string" },
+          "sha256": { "type": "string", "minLength": 16 },
+          "kind": { "type": "string", "enum": ["video", "audio_speech", "audio_bgm", "audio_sfx", "image", "font"] },
+          "path": { "type": "string" },
+          "duration_s": { "type": "number", "minimum": 0 },
+          "has_audio": { "type": "boolean" }
+        }
+      }
+    },
+    "video_tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clip_id", "asset_id", "timeline_start_s", "timeline_duration_s", "source_start_s", "role"],
+        "properties": {
+          "clip_id": { "type": "string" },
+          "asset_id": { "type": "string" },
+          "timeline_start_s": { "type": "number", "minimum": 0 },
+          "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+          "source_start_s": { "type": "number", "minimum": 0 },
+          "role": { "type": "string", "enum": ["a_roll", "b_roll", "screen_recording", "cutaway"] },
+          "reframed_to_target": { "type": "boolean", "default": true },
+          "scale": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
+          "transition_in": { "type": ["string", "null"] },
+          "subject_safe_boxes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["top", "bottom", "left", "right"],
+              "properties": {
+                "top": { "type": "number", "minimum": 0, "maximum": 1 },
+                "bottom": { "type": "number", "minimum": 0, "maximum": 1 },
+                "left": { "type": "number", "minimum": 0, "maximum": 1 },
+                "right": { "type": "number", "minimum": 0, "maximum": 1 },
+                "label": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "overlay_compositions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["overlay_id", "kind", "timeline_start_s", "timeline_duration_s", "transparent", "props"],
+        "properties": {
+          "overlay_id": { "type": "string" },
+          "kind": { "type": "string", "enum": ["caption_rail", "kinetic_callout", "lower_third", "data_card", "title_scene", "full_scene"] },
+          "timeline_start_s": { "type": "number", "minimum": 0 },
+          "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+          "transparent": { "type": "boolean" },
+          "safe_band": { "type": "string", "enum": ["lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"] },
+          "props": { "type": "object" }
+        }
+      }
+    },
+    "audio_tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["track_id", "asset_id", "audio_group", "timeline_start_s", "timeline_duration_s", "source_start_s"],
+        "properties": {
+          "track_id": { "type": "string" },
+          "asset_id": { "type": "string" },
+          "audio_group": { "type": "string", "enum": ["voiceover", "music", "sfx"] },
+          "timeline_start_s": { "type": "number", "minimum": 0 },
+          "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+          "source_start_s": { "type": "number", "minimum": 0 },
+          "gain_db": { "type": "number", "minimum": -60, "maximum": 24 },
+          "carve_against_group": { "type": ["string", "null"] },
+          "carve_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+          "cleaned_speech_stem": { "type": "boolean" }
+        }
+      }
+    },
+    "verifier_passed": { "type": "boolean" }
+  }
+}

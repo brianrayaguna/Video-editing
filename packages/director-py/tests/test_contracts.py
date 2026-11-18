@@ -1,0 +1,222 @@
+"""JSON Schema contract and Pydantic model round-trip tests."""
+
+from __future__ import annotations
+
+from vedit.contracts import find_repo_root, load_platform_targets, validate_against_contract
+from vedit.models import (
+    BrandStylePolicy,
+    EditPlan,
+    NormalizedTranscript,
+    PlatformTarget,
+)
+
+
+def test_all_platform_presets_validate_against_schema_and_model() -> None:
+    presets = load_platform_targets()
+    expected = {
+        "youtube_16x9_1080p",
+        "youtube_16x9_4k",
+        "shorts_9x16_1080p",
+        "reels_9x16_1080p",
+        "tiktok_9x16_1080p",
+    }
+    assert expected.issubset(presets.keys())
+    for pid, payload in presets.items():
+        model = PlatformTarget.model_validate(payload)
+        assert model.platform_id == pid
+        assert model.audio.target_lufs == -14.0
+        assert model.audio.max_true_peak_dbtp <= -1.0
+        assert model.video.color_space == "bt709"
+
+
+def test_brand_style_policy_round_trip() -> None:
+    sample = {
+        "schema_version": "1.0",
+        "brand_id": "sample-creator",
+        "display_name": "Sample Creator",
+        "editorial_identity": (
+            "Analytical tech storytelling with brisk hooks and breathing body shots."
+        ),
+        "soft_priors": {
+            "temporal_curve": [
+                {
+                    "section": "hook",
+                    "asl_p25_s": 0.9,
+                    "asl_p50_s": 1.4,
+                    "asl_p75_s": 1.9,
+                    "cuts_per_min_range": [28, 45],
+                    "energy_target": 0.85,
+                    "preferred_transitions": ["hard_cut", "j_cut"],
+                },
+                {
+                    "section": "body",
+                    "asl_p25_s": 2.1,
+                    "asl_p50_s": 3.2,
+                    "asl_p75_s": 4.8,
+                    "cuts_per_min_range": [12, 22],
+                    "energy_target": 0.55,
+                    "preferred_transitions": ["hard_cut", "l_cut"],
+                },
+            ],
+            "visual_tokens": {
+                "palette_roles": {
+                    "ground": "#0D1117",
+                    "ink": "#F0F6FC",
+                    "accent": "#2F81F7",
+                },
+                "typography": {
+                    "display_family": "Space Grotesk",
+                    "body_family": "Inter",
+                    "caption_case": "sentence",
+                    "max_words_per_caption_group": 5,
+                    "default_caption_band": "dynamic_away_from_subject",
+                },
+                "motion_style": {
+                    "easing_feel": "snappy_ease_out",
+                    "entrance_ms_range": [160, 280],
+                    "punch_in_scale_range": [1.06, 1.12],
+                },
+            },
+            "audio_style": {
+                "bgm_moods": ["minimal_pulse", "focused_electronic"],
+                "bpm_range": [105, 128],
+                "ducking_strength": 0.8,
+                "sfx_policy": "selective_transitions",
+            },
+        },
+        "grammar_triggers": [
+            {
+                "trigger_id": "numeric_claim_callout",
+                "condition": "spoken sentence states a quantified metric or percentage",
+                "action": "insert data_card overlay in safe band without cutting speech",
+                "weight": 0.85,
+            }
+        ],
+        "hard_guardrails": {
+            "min_shot_duration_s": 0.7,
+            "max_uninterrupted_hold_s": 9.0,
+            "no_cut_within_keyword_ms": 180,
+            "never_overlap_subject_boxes": True,
+            "min_wcag_contrast": 4.5,
+            "banned_transitions": ["spin_3d", "star_wipe"],
+            "banned_patterns": ["bouncy_emoji_captions"],
+            "avoid_heavy_css_blur": True,
+        },
+        "exemplar_bank": [
+            {
+                "exemplar_id": "ex-hook-01",
+                "source_video_id": "ref-01",
+                "role": "hook",
+                "start_s": 0.0,
+                "end_s": 3.2,
+                "notes": "Cold open claim with 1.08x punch-in at 1.6s and lower-third stat badge.",
+            }
+        ],
+        "calibration": {
+            "accepted_overrides": 0,
+            "rejected_patterns": [],
+        },
+        "provenance": {
+            "reference_video_count": 3,
+            "reference_hashes": ["deadbeef12345678"],
+            "confidence": 0.86,
+        },
+    }
+    model = BrandStylePolicy.model_validate(sample)
+    errors = validate_against_contract(
+        model.model_dump(exclude_none=True),
+        "brand_style_policy.schema.json",
+        repo_root=find_repo_root(),
+    )
+    assert errors == []
+
+
+def test_transcript_and_edit_plan_contracts() -> None:
+    transcript_data = {
+        "source_hash": "a1b2c3d4e5f67890",
+        "provider": "mock-stt",
+        "language": "id",
+        "duration_s": 4.0,
+        "text": "Halo semua.",
+        "words": [
+            {"text": "Halo", "start_s": 0.1, "end_s": 0.4, "speaker": 0, "is_filler": False},
+            {"text": "semua.", "start_s": 0.45, "end_s": 0.9, "speaker": 0, "is_filler": False},
+        ],
+    }
+    t_model = NormalizedTranscript.model_validate(transcript_data)
+    t_errors = validate_against_contract(
+        t_model.model_dump(exclude_none=True),
+        "transcript.schema.json",
+    )
+    assert t_errors == []
+
+    plan_data = {
+        "schema_version": "1.0",
+        "job_id": "job-001",
+        "project_id": "proj-001",
+        "brand_id": "sample-creator",
+        "platform_target_id": "youtube_16x9_1080p",
+        "render_strategy": "hybrid",
+        "duration_s": 4.0,
+        "fps": 30,
+        "width": 1920,
+        "height": 1080,
+        "assets": [
+            {
+                "asset_id": "aroll-1",
+                "sha256": "0123456789abcdef0123456789abcdef",
+                "kind": "video",
+                "path": "assets/aroll.mp4",
+                "duration_s": 4.0,
+                "has_audio": True,
+            }
+        ],
+        "video_tracks": [
+            {
+                "clip_id": "v1",
+                "asset_id": "aroll-1",
+                "timeline_start_s": 0.0,
+                "timeline_duration_s": 4.0,
+                "source_start_s": 0.0,
+                "role": "a_roll",
+                "reframed_to_target": True,
+                "scale": 1.0,
+                "transition_in": None,
+                "subject_safe_boxes": [
+                    {"top": 0.1, "bottom": 0.85, "left": 0.35, "right": 0.65, "label": "speaker"}
+                ],
+            }
+        ],
+        "overlay_compositions": [
+            {
+                "overlay_id": "cap-1",
+                "kind": "caption_rail",
+                "timeline_start_s": 0.1,
+                "timeline_duration_s": 0.85,
+                "transparent": True,
+                "safe_band": "lower_third",
+                "props": {"text": "Halo semua."},
+            }
+        ],
+        "audio_tracks": [
+            {
+                "track_id": "vo-1",
+                "asset_id": "aroll-1",
+                "audio_group": "voiceover",
+                "timeline_start_s": 0.0,
+                "timeline_duration_s": 4.0,
+                "source_start_s": 0.0,
+                "gain_db": 0.0,
+                "carve_against_group": None,
+                "carve_strength": 0.8,
+                "cleaned_speech_stem": True,
+            }
+        ],
+        "verifier_passed": True,
+    }
+    p_model = EditPlan.model_validate(plan_data)
+    p_errors = validate_against_contract(
+        p_model.model_dump(exclude_none=True),
+        "edit_plan.schema.json",
+    )
+    assert p_errors == []

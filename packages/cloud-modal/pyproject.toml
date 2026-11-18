@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vedit-cloud-modal"
+version = "0.1.0"
+description = "Modal.com Linux x86_64 worker image and distributed rendering orchestration."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "modal>=1.6.0",
+  "vedit-director",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vedit_cloud"]

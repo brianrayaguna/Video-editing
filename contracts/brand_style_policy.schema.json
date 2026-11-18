@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/brand_style_policy.schema.json",
+  "title": "BrandStylePolicy",
+  "description": "Adaptive multi-reference brand editing policy defining temporal pacing curves, conditional grammar triggers, hard guardrails, multimodal exemplars, and calibration state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "brand_id",
+    "soft_priors",
+    "grammar_triggers",
+    "hard_guardrails",
+    "exemplar_bank",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "display_name": { "type": "string" },
+    "editorial_identity": { "type": "string" },
+    "soft_priors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["temporal_curve", "visual_tokens", "audio_style"],
+      "properties": {
+        "temporal_curve": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "section",
+              "asl_p25_s",
+              "asl_p50_s",
+              "asl_p75_s",
+              "cuts_per_min_range",
+              "energy_target"
+            ],
+            "properties": {
+              "section": {
+                "type": "string",
+                "enum": ["hook", "setup", "body", "escalation", "climax", "outro"]
+              },
+              "asl_p25_s": { "type": "number", "exclusiveMinimum": 0 },
+              "asl_p50_s": { "type": "number", "exclusiveMinimum": 0 },
+              "asl_p75_s": { "type": "number", "exclusiveMinimum": 0 },
+              "cuts_per_min_range": {
+                "type": "array",
+                "items": { "type": "number", "minimum": 0 },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "energy_target": { "type": "number", "minimum": 0, "maximum": 1 },
+              "preferred_transitions": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "visual_tokens": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["palette_roles", "typography", "motion_style"],
+          "properties": {
+            "palette_roles": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ground", "ink", "accent"],
+              "properties": {
+                "ground": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "secondary_accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+              }
+            },
+            "typography": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["display_family", "body_family", "caption_case", "max_words_per_caption_group"],
+              "properties": {
+                "display_family": { "type": "string" },
+                "body_family": { "type": "string" },
+                "caption_case": { "type": "string", "enum": ["sentence", "uppercase", "title", "lowercase"] },
+                "max_words_per_caption_group": { "type": "integer", "minimum": 1, "maximum": 12 },
+                "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] }
+              }
+            },
+            "motion_style": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["easing_feel", "entrance_ms_range"],
+              "properties": {
+                "easing_feel": { "type": "string", "enum": ["snappy_ease_out", "smooth_editorial", "energetic_pop", "minimal_static"] },
+                "entrance_ms_range": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 40, "maximum": 2000 },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "punch_in_scale_range": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 1.0, "maximum": 1.5 },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            }
+          }
+        },
+        "audio_style": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bgm_moods", "ducking_strength", "sfx_policy"],
+          "properties": {
+            "bgm_moods": { "type": "array", "items": { "type": "string" } },
+            "bpm_range": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 40, "maximum": 220 },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "ducking_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+            "sfx_policy": { "type": "string", "enum": ["none", "selective_transitions", "kinetic_accents"] }
+          }
+        }
+      }
+    },
+    "grammar_triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trigger_id", "condition", "action", "weight"],
+        "properties": {
+          "trigger_id": { "type": "string" },
+          "condition": { "type": "string" },
+          "action": { "type": "string" },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "hard_guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min_shot_duration_s",
+        "max_uninterrupted_hold_s",
+        "no_cut_within_keyword_ms",
+        "never_overlap_subject_boxes",
+        "banned_transitions",
+        "avoid_heavy_css_blur"
+      ],
+      "properties": {
+        "min_shot_duration_s": { "type": "number", "minimum": 0.2 },
+        "max_uninterrupted_hold_s": { "type": "number", "minimum": 1.0 },
+        "no_cut_within_keyword_ms": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "never_overlap_subject_boxes": { "type": "boolean" },
+        "min_wcag_contrast": { "type": "number", "minimum": 3.0 },
+        "banned_transitions": { "type": "array", "items": { "type": "string" } },
+        "banned_patterns": { "type": "array", "items": { "type": "string" } },
+        "avoid_heavy_css_blur": { "type": "boolean" }
+      }
+    },
+    "exemplar_bank": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exemplar_id", "source_video_id", "role", "start_s", "end_s", "notes"],
+        "properties": {
+          "exemplar_id": { "type": "string" },
+          "source_video_id": { "type": "string" },
+          "role": { "type": "string", "enum": ["hook", "proof", "data_callout", "broll_bridge", "climax", "outro"] },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "keyframe_path": { "type": "string" },
+          "hyperframes_pattern": { "type": "string" },
+          "measured_metrics": { "type": "object" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accepted_overrides": { "type": "integer", "minimum": 0 },
+        "rejected_patterns": { "type": "array", "items": { "type": "string" } },
+        "last_calibrated_at": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_video_count", "confidence"],
+      "properties": {
+        "reference_video_count": { "type": "integer", "minimum": 1 },
+        "reference_hashes": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "created_at": { "type": "string" }
+      }
+    }
+  }
+}
