@@ -186,3 +186,101 @@ test("compileEditPlanToHyperframes emits media and audio elements in full_hf mod
   assert.match(indexHtml, /<audio id="vo_1" class="clip"/);
   assert.match(indexHtml, /background: #000000;/);
 });
+
+test("compileEditPlanToHyperframes emits local font-face rules and custom HTML overlays", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-fonts-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      assets: [
+        {
+          asset_id: "font_sg",
+          sha256: "b".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceGrotesk-Variable.ttf",
+        },
+      ],
+      video_tracks: [],
+      overlay_compositions: [
+        {
+          overlay_id: "cap_accent",
+          kind: "caption_rail",
+          timeline_start_s: 0.2,
+          timeline_duration_s: 1.5,
+          transparent: true,
+          safe_band: "lower_third",
+          props: {
+            text: "Mengapa Sulawesi patah",
+            highlight_text: "Sulawesi",
+            font_family: "Space Grotesk",
+            accent_color: "#F5C542",
+          },
+        },
+        {
+          overlay_id: "bug_corner",
+          kind: "full_scene",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {
+            font_family: "Space Grotesk",
+            custom_html: "<div class=\"geo-bug\">geoverum</div>",
+            custom_css: ".geo-bug { position: absolute; top: 80px; right: 72px; color: #F4F1EA; }",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /data-vedit-local-fonts="true"/);
+  assert.match(indexHtml, /font-family: 'Space Grotesk';/);
+  assert.match(indexHtml, /src: url\('assets\/font_sg\.ttf'\) format\('truetype'\);/);
+
+  const capHtml = fs.readFileSync(compiled.compositionFiles[0]!, "utf8");
+  assert.match(capHtml, /font-family: 'Space Grotesk', sans-serif;/);
+  assert.match(capHtml, /<span class="vedit-caption-accent" style="color: #F5C542;">Sulawesi<\/span>/);
+
+  const bugHtml = fs.readFileSync(compiled.compositionFiles[1]!, "utf8");
+  assert.match(bugHtml, /<div class="geo-bug">geoverum<\/div>/);
+});
+
+test("compileEditPlanToHyperframes resolves font family across CAS SHA paths", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-cas-fonts-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      assets: [
+        {
+          asset_id: "font_space_grotesk",
+          sha256: "f".repeat(64),
+          kind: "font",
+          path: "/vol/cas/sources/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.ttf",
+        },
+      ],
+      video_tracks: [],
+      overlay_compositions: [
+        {
+          overlay_id: "bug_cas",
+          kind: "full_scene",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {
+            font_family: "Space Grotesk",
+            custom_html: "<div class=\"geo-bug\">geoverum</div>",
+            custom_css: ".geo-bug { font-family: 'Space Grotesk', sans-serif; color: #F4F1EA; }",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /font-family: 'Space Grotesk';/);
+  assert.match(indexHtml, /src: url\('assets\/font_space_grotesk\.ttf'\) format\('truetype'\);/);
+});

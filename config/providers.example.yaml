@@ -38,7 +38,9 @@ defaults:
     fallback: []
     options:
       auth_type: api_key
+      transport: auto
       base_url: https://api.epidemicsound.com/v0
+      mcp_url: https://www.epidemicsound.com/a/mcp-service/mcp
       default_quality: high
       instrumental_only_under_speech: true
       api_key_env: EPIDEMIC_API_KEY

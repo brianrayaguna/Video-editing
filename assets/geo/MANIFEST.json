@@ -1,0 +1,263 @@
+{
+  "schema_version": "1.0",
+  "profile": "geoverum",
+  "generated_at": "2026-11-18T06:45:11.713583+00:00",
+  "on_screen_credit": "Imagery: NASA Blue Marble, EOX Sentinel-2 cloudless 2016 (Copernicus) \u00b7 Map data: Natural Earth, PB2002, GEM",
+  "static_assets": [
+    {
+      "id": "ne_10m_admin_0_countries",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/ne_10m_admin_0_countries.geojson",
+      "source_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson",
+      "license": "Public Domain (Natural Earth)",
+      "attribution": "Made with Natural Earth.",
+      "bytes": 13287234,
+      "sha256": "239eec57ac17f100a11e2536cffc56752c318b50ae765b0918ff7aab4ce8f255"
+    },
+    {
+      "id": "ne_10m_admin_1_states_provinces",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/ne_10m_admin_1_states_provinces.geojson",
+      "source_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson",
+      "license": "Public Domain (Natural Earth)",
+      "attribution": "Made with Natural Earth.",
+      "bytes": 40726851,
+      "sha256": "22d0e3ad85eb3e27f17cabf8ba2d50e554fbc27a87796ff891d958185da62fb5"
+    },
+    {
+      "id": "ne_10m_geography_marine_polys",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/ne_10m_geography_marine_polys.geojson",
+      "source_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_geography_marine_polys.geojson",
+      "license": "Public Domain (Natural Earth)",
+      "attribution": "Made with Natural Earth.",
+      "bytes": 1692635,
+      "sha256": "53f865e8ffa966cdd402145c82c5cd14ee7ce974cd0eb9a3f59f03a4cfd2d66c"
+    },
+    {
+      "id": "ne_10m_geography_regions_polys",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/ne_10m_geography_regions_polys.geojson",
+      "source_url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_geography_regions_polys.geojson",
+      "license": "Public Domain (Natural Earth)",
+      "attribution": "Made with Natural Earth.",
+      "bytes": 5583870,
+      "sha256": "b7b26e50ea917d3696aec87f932def2bf5f890f5770e441d59c162c6f4c92a77"
+    },
+    {
+      "id": "pb2002_tectonic_boundaries",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/PB2002_boundaries.json",
+      "source_url": "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json",
+      "license": "ODC-By 1.0",
+      "attribution": "Peter Bird (2003) PB2002 / Hugo Ahlenius (fraxen/tectonicplates).",
+      "bytes": 226378,
+      "sha256": "42b3e0876a7e40f133e958ba7ab85f8851b5c693a046fbc3b138e7751863d92a"
+    },
+    {
+      "id": "pb2002_tectonic_plates",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/PB2002_plates.json",
+      "source_url": "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_plates.json",
+      "license": "ODC-By 1.0",
+      "attribution": "Peter Bird (2003) PB2002 / Hugo Ahlenius (fraxen/tectonicplates).",
+      "bytes": 327718,
+      "sha256": "922918f970baf7e645821a4a728b945dbb5eeac1337d71d087fba021bcc79e21"
+    },
+    {
+      "id": "gem_active_faults",
+      "category": "vector",
+      "path": "assets/geo/raw/vector/gem_active_faults_harmonized.geojson",
+      "source_url": "https://raw.githubusercontent.com/GEMScienceTools/gem-global-active-faults/master/geojson/gem_active_faults_harmonized.geojson",
+      "license": "CC BY-SA 4.0",
+      "attribution": "Styron & Pagani (2020) GEM Global Active Faults Database.",
+      "bytes": 10622730,
+      "sha256": "37babb516edfac22b5ae91744495d8546b3ae4676b4d4f68cc77da8222df20e1"
+    },
+    {
+      "id": "font_space_grotesk",
+      "category": "font",
+      "path": "assets/geo/fonts/SpaceGrotesk-Variable.ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Space Grotesk by Florian Karsten.",
+      "bytes": 136676,
+      "sha256": "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72"
+    },
+    {
+      "id": "font_space_grotesk_license",
+      "category": "font",
+      "path": "assets/geo/fonts/SpaceGrotesk-OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/spacegrotesk/OFL.txt",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Space Grotesk by Florian Karsten.",
+      "bytes": 4495,
+      "sha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72"
+    },
+    {
+      "id": "font_archivo_black",
+      "category": "font",
+      "path": "assets/geo/fonts/ArchivoBlack-Regular.ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/archivoblack/ArchivoBlack-Regular.ttf",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Archivo Black by Omnibus-Type.",
+      "bytes": 90988,
+      "sha256": "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180"
+    },
+    {
+      "id": "font_archivo_black_license",
+      "category": "font",
+      "path": "assets/geo/fonts/ArchivoBlack-OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/archivoblack/OFL.txt",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Archivo Black by Omnibus-Type.",
+      "bytes": 4492,
+      "sha256": "3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff"
+    },
+    {
+      "id": "font_unbounded",
+      "category": "font",
+      "path": "assets/geo/fonts/Unbounded-Variable.ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/unbounded/Unbounded%5Bwght%5D.ttf",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Unbounded by NaN, Studio Feixen, and Polkadot.",
+      "bytes": 778272,
+      "sha256": "323b511be380c8d474ef030686b71aedde501f8d9cd46da558b7c40454372c3f"
+    },
+    {
+      "id": "font_unbounded_license",
+      "category": "font",
+      "path": "assets/geo/fonts/Unbounded-OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/unbounded/OFL.txt",
+      "license": "SIL Open Font License 1.1",
+      "attribution": "Unbounded by NaN, Studio Feixen, and Polkadot.",
+      "bytes": 4392,
+      "sha256": "31e5d4e83955e7103c34570dd49b0570ef490800bd65b42923c0dd02445263b3"
+    },
+    {
+      "id": "flag_icons_tarball",
+      "category": "flags",
+      "path": "assets/geo/raw/flag-icons-7.2.3.tgz",
+      "source_url": "https://registry.npmjs.org/flag-icons/-/flag-icons-7.2.3.tgz",
+      "license": "MIT",
+      "attribution": "flag-icons by Panayiotis Lipiridis (lipis).",
+      "bytes": 1208977,
+      "sha256": "691cd3917f7596ff7e9960d9b4ae98b00ff2000d26c119284609f6d2fafbdad2"
+    },
+    {
+      "id": "icon_location_on",
+      "category": "icon",
+      "path": "assets/geo/icons/location_on.svg",
+      "source_url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/location_on/materialsymbolsrounded/location_on_24px.svg",
+      "license": "Apache-2.0",
+      "attribution": "Google Material Symbols.",
+      "bytes": 509,
+      "sha256": "e280b5b0ac2d406337d8135d5744628dab9bc54ace23e4487801776e81080e73"
+    },
+    {
+      "id": "icon_explore",
+      "category": "icon",
+      "path": "assets/geo/icons/explore.svg",
+      "source_url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/explore/materialsymbolsrounded/explore_24px.svg",
+      "license": "Apache-2.0",
+      "attribution": "Google Material Symbols.",
+      "bytes": 608,
+      "sha256": "2a8433fe386c496e725ce39deb77b84840d71c5dad8948173452041108af2c7b"
+    },
+    {
+      "id": "icon_warning",
+      "category": "icon",
+      "path": "assets/geo/icons/warning.svg",
+      "source_url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/warning/materialsymbolsrounded/warning_24px.svg",
+      "license": "Apache-2.0",
+      "attribution": "Google Material Symbols.",
+      "bytes": 503,
+      "sha256": "b6907a9a2d0f1bd6b57191c958c221a2c35cf105e880d04f2a7455791b7a9ea8"
+    },
+    {
+      "id": "icon_tsunami",
+      "category": "icon",
+      "path": "assets/geo/icons/tsunami.svg",
+      "source_url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/tsunami/materialsymbolsrounded/tsunami_24px.svg",
+      "license": "Apache-2.0",
+      "attribution": "Google Material Symbols.",
+      "bytes": 1282,
+      "sha256": "c3d4abf740d25bd9312db62b8e3840e7a2879940ce9b7bcb3b9c69240f10a24e"
+    },
+    {
+      "id": "icon_public",
+      "category": "icon",
+      "path": "assets/geo/icons/public.svg",
+      "source_url": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/public/materialsymbolsrounded/public_24px.svg",
+      "license": "Apache-2.0",
+      "attribution": "Google Material Symbols.",
+      "bytes": 583,
+      "sha256": "5b8ad24e63e4a2f601728fe0e589df9ca943b813ad24a71635c803a677e1ecc0"
+    },
+    {
+      "id": "vendor_maplibre_js",
+      "category": "vendor",
+      "path": "assets/geo/vendor/maplibre-gl.js",
+      "source_url": "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+      "license": "BSD-3-Clause",
+      "attribution": "MapLibre GL JS contributors.",
+      "bytes": 1056837,
+      "sha256": "45a9b07a9189ce56054c620a947ccf41e291e58c95e9b61533b740aaa65ee5cb"
+    },
+    {
+      "id": "vendor_maplibre_css",
+      "category": "vendor",
+      "path": "assets/geo/vendor/maplibre-gl.css",
+      "source_url": "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css",
+      "license": "BSD-3-Clause",
+      "attribution": "MapLibre GL JS contributors.",
+      "bytes": 70024,
+      "sha256": "ab1e70d59ec40465bae7e7030da2f3ccf28133fd502e62bd598eefbadfd7a732"
+    }
+  ],
+  "tile_collections": [
+    {
+      "id": "nasa_bmng",
+      "title": "NASA Blue Marble: Next Generation (Shaded Relief & Bathymetry)",
+      "source_url_template": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg",
+      "license": "Public Domain",
+      "attribution": "NASA Earth Observatory / Goddard Space Flight Center",
+      "directory": "assets/geo/raw/tiles_bmng",
+      "zoom_levels": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "tile_count": 341,
+      "total_bytes": 3197798,
+      "tree_sha256": "0682fa1f31eb7a331ca99cb2fef43d38a6ba761c6defa0266924eb114cc459eb"
+    },
+    {
+      "id": "eox_s2_2016",
+      "title": "EOX Sentinel-2 cloudless 2016 (EPSG:3857)",
+      "source_url_template": "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg",
+      "license": "CC BY 4.0",
+      "attribution": "Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
+      "directory": "assets/geo/raw/tiles_s2_2016",
+      "zoom_levels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "tile_count": 2223,
+      "total_bytes": 17990767,
+      "tree_sha256": "b6e4082d7d6a623e9a734390476453cdcb18464ad0a30b693e88ebcb526d2871"
+    }
+  ]
+}

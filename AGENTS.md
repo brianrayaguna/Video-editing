@@ -3,6 +3,7 @@
 All automated pipelines and AI directing clients operating in this repository must follow the permanent standards in:
 - [`.agents/rules/engineering-standards.md`](.agents/rules/engineering-standards.md)
 - [`.agents/rules/editing-system.md`](.agents/rules/editing-system.md)
+- [`DESIGN.md`](DESIGN.md) — Before building or changing visual compositions, overlays, or brand profiles, read `DESIGN.md`.
 - [`.agents/skills/brand-director/SKILL.md`](.agents/skills/brand-director/SKILL.md)
 
 Quick verification commands after any change:

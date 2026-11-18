@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html
+  lang="id"
+  data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Background","default":"#03161F"},
+    {"id":"color-ink","type":"color","label":"Text","default":"#F4F1EA"},
+    {"id":"color-accent","type":"color","label":"Accent","default":"#F5C542"}
+  ]'
+>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geoverum Branding — Channel Watermark &amp; Documentary End-Card</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face {
+      font-family: 'Space Grotesk';
+      src: url('assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+      font-weight: 300 700;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #03161F; }
+    #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #03161F; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="main" data-start="0" data-duration="6" data-width="1080" data-height="1920" data-fps="30">
+    <div
+      id="branding-scene"
+      data-composition-id="branding-scene"
+      data-composition-src="compositions/branding-scene.html"
+      data-start="0"
+      data-duration="6"
+      data-track-index="1"
+      data-track-kind="graphics"
+      data-width="1080"
+      data-height="1920"
+    ></div>
+    <div
+      id="top-bug"
+      data-composition-id="top-bug"
+      data-composition-src="compositions/top-bug.html"
+      data-start="0"
+      data-duration="2.25"
+      data-track-index="2"
+      data-track-kind="graphics"
+      data-width="1080"
+      data-height="1920"
+    ></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to({}, { duration: 6 });
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = tl;
+  </script>
+</body>
+</html>

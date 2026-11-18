@@ -112,6 +112,7 @@ def render_chunk_worker(plan_v2_subpath: str, chunk_index: int, job_subpath: str
     """Render one bounded HyperFrames chunk (`150-240` frames) inside a fresh worker turn."""
     os.environ["HYPERFRAMES_CHROMIUM_FLAGS"] = WORKER_CHROMIUM_FLAGS
     os.environ["HYPERFRAMES_CHROME_SANDBOX"] = "0"
+    os.environ["PRODUCER_BROWSER_GPU_MODE"] = "software"
     cas_volume.reload()
 
     plan_v2_dir = CAS_MOUNT_PATH / plan_v2_subpath

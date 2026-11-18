@@ -14,8 +14,11 @@ It is designed for automated pipelines and AI directing clients to edit real foo
 | [`packages/cloud-modal`](packages/cloud-modal) | Python / Modal (Optional) | Optional serverless worker image and entrypoint for offloading headless Chromium / HyperFrames `BeginFrame` renders to Modal. |
 | [`contracts`](contracts) | JSON Schema (Draft 2020-12) | Shared cross-runtime contracts (`brand_style_policy`, `edit_plan`, `media_probe`, `platform_target`, `transcript`). |
 | [`profiles/platforms`](profiles/platforms) | JSON | Delivery mastering presets for YouTube (`16:9` 1080p/4K), Shorts, Reels, and TikTok (`9:16` 1080p). |
+| [`profiles/<brand_id>`](profiles) | JSON / Markdown | Brand-specific editing policies (`brand_style_policy.json`), visual tokens, and exemplar references (decoupled from core engine code). |
+| [`tools/geo-assets`](tools/geo-assets) | Python / Node.js | Deterministic open-licensed geospatial asset fetcher, SHA-256 manifest verifier (`assets/geo/MANIFEST.json`), build-time tile grader, and local offline XYZ tile server. |
+| [`studies/<brand_id>`](DESIGN.md) | HyperFrames HTML/GSAP | Isolated component studies and production compositions governed by [`DESIGN.md`](DESIGN.md). |
 
-For detailed pipeline invariants and design rationale, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/ROADMAP.md`](docs/ROADMAP.md).
+For detailed pipeline invariants, visual craft standards, and design rationale, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`DESIGN.md`](DESIGN.md), and [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Execution & Rendering Modes
 

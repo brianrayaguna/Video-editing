@@ -416,3 +416,119 @@ def test_epidemic_uses_repeated_query_keys_and_caches_downloads(tmp_path: Path) 
     assert p1.read_bytes() == b"ID3mp3payload"
     assert "authorization" not in {k.lower() for k in cdn_headers}
     assert api_download_hits == 1
+
+
+def test_epidemic_mcp_transport_search_and_download(tmp_path: Path) -> None:
+    seen_rpc_methods: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.epidemicsound.com":
+            return httpx.Response(401, json={"message": "Unauthorized"})
+        if request.url.host == "www.epidemicsound.com" and request.url.path == "/a/mcp-service/mcp":
+            body = json.loads(request.content.decode("utf-8"))
+            method = body.get("method")
+            seen_rpc_methods.append(method)
+            if method == "initialize":
+                init_body = {
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "result": {"protocolVersion": "2025-03-26"},
+                }
+                return httpx.Response(
+                    200,
+                    headers={
+                        "Content-Type": "text/event-stream",
+                        "Mcp-Session-Id": "sess-123",
+                    },
+                    text=f"data: {json.dumps(init_body)}\n\n",
+                )
+            if method == "notifications/initialized":
+                return httpx.Response(202, text="")
+            if method == "tools/call":
+                tool = body["params"]["name"]
+                if tool == "SearchRecordings":
+                    payload = {
+                        "data": {
+                            "recordings": {
+                                "nodes": [
+                                    {
+                                        "recording": {
+                                            "id": "872cd5d6-c040-335f-890d-dc68d9e58b09",
+                                            "title": "Grieving Volcano",
+                                            "bpm": 60,
+                                            "audioFile": {
+                                                "durationInMilliseconds": 173638,
+                                                "lqmp3Url": "https://cdn.test/prev.mp3",
+                                            },
+                                            "tags": [
+                                                {
+                                                    "displayName": "ambient",
+                                                    "dimension": {"name": "genre"},
+                                                },
+                                                {
+                                                    "displayName": "mysterious",
+                                                    "dimension": {"name": "mood"},
+                                                },
+                                                {
+                                                    "displayName": "no vocals",
+                                                    "dimension": {"name": "vocals"},
+                                                },
+                                            ],
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                    rpc_res = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]},
+                    }
+                    return httpx.Response(
+                        200,
+                        headers={"Content-Type": "text/event-stream"},
+                        text=f"data: {json.dumps(rpc_res)}\n\n",
+                    )
+                if tool == "DownloadSoundEffect":
+                    dl_payload = {
+                        "data": {"soundEffectDownload": {"assetUrl": "https://cdn.test/sfx.wav"}}
+                    }
+                    dl_rpc = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "result": {"content": [{"type": "text", "text": json.dumps(dl_payload)}]},
+                    }
+                    return httpx.Response(
+                        200,
+                        headers={"Content-Type": "application/json"},
+                        json=dl_rpc,
+                    )
+        if request.url.host == "cdn.test":
+            return httpx.Response(200, content=b"RIFFwavdata")
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    cat = EpidemicAudioCatalogProvider({"api_key": "epidemic_live_test"}, client=client)
+
+    tracks = cat.search_music("documentary", vocal_type="NONE")
+    assert len(tracks) == 1
+    assert tracks[0].title == "Grieving Volcano"
+    assert tracks[0].duration_s == 173.638
+    assert tracks[0].bpm == 60.0
+    assert tracks[0].vocal_type == "NONE"
+
+    sfx_path = cat.download_asset(
+        "9e26e4dc-2b6e-4f10-8bc4-6a2f158c3401",
+        kind="sfx",
+        destination_dir=tmp_path,
+        quality="high",
+    )
+    assert sfx_path.suffix == ".wav"
+    assert sfx_path.read_bytes() == b"RIFFwavdata"
+    assert seen_rpc_methods == [
+        "initialize",
+        "notifications/initialized",
+        "tools/call",
+        "tools/call",
+    ]

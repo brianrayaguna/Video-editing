@@ -1,0 +1,204 @@
+<template>
+  <style>
+    @font-face {
+      font-family: 'Space Grotesk';
+      src: url('assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+      font-weight: 300 700;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      background: #03161F;
+      font-family: 'Space Grotesk', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #pullback-rig {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      transform-origin: 540px 960px;
+      will-change: transform;
+    }
+    #pullback-img {
+      width: 1080px;
+      height: 1920px;
+      object-fit: cover;
+      display: block;
+    }
+    #outro-scrim {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(3, 22, 31, 0.56) 0%, rgba(3, 22, 31, 0.78) 50%, rgba(3, 22, 31, 0.64) 100%);
+      opacity: 0.14;
+      pointer-events: none;
+    }
+    /* Upper safe-zone unboxed broadcast watermark (exits before endcard lockup enters -> "Say it once") */
+    #top-bug-clip {
+      position: absolute;
+      top: 72px;
+      left: 108px;
+      right: 108px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #top-bug-inner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      opacity: 0;
+    }
+    .bug-text {
+      font-weight: 700;
+      font-size: 32px;
+      letter-spacing: 0.12em;
+      color: #F4F1EA;
+      line-height: 1;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.68);
+    }
+
+    /* Editorial closing prompt card in calm central safe band */
+    #endcard-clip {
+      position: absolute;
+      top: 640px;
+      left: 120px;
+      right: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      pointer-events: none;
+    }
+    #endcard-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      opacity: 0;
+    }
+    .ec-brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .ec-brand-label {
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: 0.16em;
+      color: rgba(244, 241, 234, 0.84);
+    }
+    .ec-accent-rule {
+      width: 56px;
+      height: 3px;
+      background: #F5C542;
+      margin-bottom: 28px;
+    }
+    .ec-headline {
+      font-weight: 700;
+      font-size: 52px;
+      line-height: 1.18;
+      letter-spacing: -0.015em;
+      color: #F4F1EA;
+      max-width: 760px;
+    }
+    #endcard-cta {
+      margin-top: 34px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid rgba(245, 197, 66, 0.42);
+      opacity: 0;
+    }
+    .cta-label {
+      font-weight: 500;
+      font-size: 29px;
+      color: #F5C542;
+      letter-spacing: -0.01em;
+    }
+    #endcard-colophon {
+      margin-top: 56px;
+      font-weight: 400;
+      font-size: 16px;
+      letter-spacing: 0.04em;
+      color: rgba(244, 241, 234, 0.56);
+      opacity: 0;
+    }
+    #tail-dip {
+      position: absolute;
+      inset: 0;
+      background: #03161F;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+  <div id="root" data-composition-id="branding-scene" data-width="1080" data-height="1920">
+    <div id="map-clip" class="clip" data-start="0" data-duration="6" data-track-index="1" data-layout-allow-overflow="true">
+      <div id="pullback-rig">
+        <img id="pullback-img" src="assets/sulawesi-outro-plate.jpg" alt="Sulawesi pullback relief" />
+      </div>
+      <div id="outro-scrim"></div>
+    </div>
+
+    <div id="endcard-clip" class="clip" data-start="2.20" data-duration="3.80" data-track-index="2">
+      <div id="endcard-head">
+        <div class="ec-brand-row">
+          <svg width="26" height="26" viewBox="0 0 34 34" fill="none">
+            <circle cx="17" cy="17" r="13" stroke="#F4F1EA" stroke-width="2.3" />
+            <ellipse cx="17" cy="17" rx="6" ry="13" stroke="#F4F1EA" stroke-width="1.7" />
+            <line x1="4" y1="17" x2="30" y2="17" stroke="#F4F1EA" stroke-width="1.7" />
+          </svg>
+          <span class="ec-brand-label">GEOVERUM · GEOGRAFI NUSANTARA</span>
+        </div>
+        <div class="ec-accent-rule"></div>
+        <div class="ec-headline">Ada yang berasal dari Sulawesi?</div>
+      </div>
+
+      <div id="endcard-cta">
+        <svg width="28" height="28" viewBox="0 -960 960 960" fill="none">
+          <path d="M480-186q122-112 181-203.5T720-552q0-109-69.5-178.5T480-800q-101 0-170.5 69.5T240-552q0 71 59 162.5T480-186Zm0 79q-14 0-28-5t-25-15q-65-60-115-117t-83.5-110.5q-33.5-53.5-51-103T160-552q0-150 96.5-239T480-880q127 0 223.5 89T800-552q0 45-17.5 94.5t-51 103Q698-301 648-244T533-127q-11 10-25 15t-28 5Zm0-453Zm0 80q33 0 56.5-23.5T560-560q0-33-23.5-56.5T480-640q-33 0-56.5 23.5T400-560q0 33 23.5 56.5T480-480Z" fill="#F5C542" />
+        </svg>
+        <span class="cta-label">Tulis asal daerahmu di komentar</span>
+      </div>
+
+      <div id="endcard-colophon">
+        Citra: NASA Blue Marble &amp; Copernicus Sentinel-2 · Vektor: Natural Earth &amp; GEM Faults
+      </div>
+    </div>
+
+    <div id="tail-dip" class="clip" data-start="5.50" data-duration="0.50" data-track-index="4"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+
+    // Initial states at t=0
+    tl.set("#endcard-head, #endcard-cta, #endcard-colophon, #tail-dip", { opacity: 0 }, 0);
+    tl.set("#endcard-head", { y: 12 }, 0);
+    tl.set("#endcard-cta", { y: 8, scale: 0.96 }, 0);
+
+    // Global Lead: Continuous smooth satellite pullback across all 6.0 seconds
+    tl.fromTo(
+      "#pullback-rig",
+      { scale: 1.12, x: 10, y: -26 },
+      { scale: 1.00, x: 0, y: 0, duration: 6.0, ease: "none" },
+      0.0
+    );
+
+    // Beat 2 (2.10s - 5.50s): Documentary scrim deepen + headline + comment CTA + colophon
+    tl.to("#outro-scrim", { opacity: 0.92, duration: 0.42, ease: "power2.inOut" }, 2.10);
+    tl.to("#endcard-head", { opacity: 1, y: 0, duration: 0.26, ease: "expo.out" }, 2.32);
+    tl.to("#endcard-cta", { opacity: 1, y: 0, scale: 1.0, duration: 0.22, ease: "expo.out" }, 2.46);
+    tl.to("#endcard-colophon", { opacity: 1, duration: 0.20, ease: "expo.out" }, 2.60);
+
+    // Beat 3 (5.50s - 6.00s): Clean 15-frame fade-to-abyss exit
+    tl.to("#tail-dip", { opacity: 1, duration: 0.50, ease: "power2.in" }, 5.50);
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["branding-scene"] = tl;
+  </script>
+</template>

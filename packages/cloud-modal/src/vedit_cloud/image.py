@@ -138,6 +138,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
                 "VEDIT_HF_COMPILER_CLI": "/opt/vedit/packages/hf-compiler-ts/dist/cli.js",
                 "HYPERFRAMES_CHROMIUM_FLAGS": WORKER_CHROMIUM_FLAGS,
                 "HYPERFRAMES_CHROME_SANDBOX": "0",
+                "PRODUCER_BROWSER_GPU_MODE": "software",
             }
         )
     )

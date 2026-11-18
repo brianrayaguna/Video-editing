@@ -1,0 +1,89 @@
+<template>
+  <style>
+    @font-face {
+      font-family: 'Space Grotesk';
+      src: url('assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+      font-weight: 300 700;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      background: transparent;
+      font-family: 'Space Grotesk', sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+    #watermark-clip {
+      position: absolute;
+      top: 72px;
+      left: 108px;
+      right: 108px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #watermark-inner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      opacity: 0;
+    }
+    .wm-wordmark {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 32px;
+      letter-spacing: 0.12em;
+      color: #F4F1EA;
+      line-height: 1;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.68);
+    }
+    #credit-clip {
+      position: absolute;
+      bottom: 24px;
+      left: 84px;
+      right: 84px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #credit-inner {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      color: rgba(244, 241, 234, 0.40);
+      letter-spacing: 0.01em;
+      text-align: center;
+    }
+  </style>
+  <div id="root" data-composition-id="broadcast-layer" data-width="1080" data-height="1920">
+    <div id="watermark-clip" class="clip" data-start="0" data-duration="10" data-track-index="1">
+      <div id="watermark-inner">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+          <circle cx="17" cy="17" r="13" stroke="#F4F1EA" stroke-width="2.2" />
+          <ellipse cx="17" cy="17" rx="6" ry="13" stroke="#F4F1EA" stroke-width="1.6" />
+          <line x1="4" y1="17" x2="30" y2="17" stroke="#F4F1EA" stroke-width="1.6" />
+        </svg>
+        <span class="wm-wordmark" data-var-text="brand-name">GEOVERUM</span>
+      </div>
+    </div>
+
+    <div id="credit-clip" class="clip" data-start="0" data-duration="10" data-track-index="2" data-layout-ignore="true">
+      <div id="credit-inner" data-layout-ignore="true">
+        Imagery: NASA Blue Marble, EOX Sentinel-2 cloudless 2016 (Copernicus) · Vectors: Natural Earth, PB2002, GEM
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(
+      "#watermark-inner",
+      { opacity: 0, scale: 0.96 },
+      { opacity: 0.86, scale: 1.0, duration: 0.2, ease: "expo.out" },
+      0.1
+    );
+    window.__timelines = window.__timelines || {};
+    window.__timelines["broadcast-layer"] = tl;
+  </script>
+</template>
