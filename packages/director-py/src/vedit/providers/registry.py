@@ -8,7 +8,9 @@ from typing import Any, Literal
 
 from vedit.providers.config import ProvidersConfig, load_providers_config
 
-Capability = Literal["transcription", "decision", "media_ops", "audio_catalog"]
+Capability = Literal[
+    "transcription", "decision", "media_ops", "audio_catalog", "video_breakdown"
+]
 ProviderFactory = Callable[[dict[str, Any]], Any]
 
 
@@ -61,13 +63,28 @@ class ProviderRegistry:
                 f"Provider '{target}' is not registered for '{capability}'. Available: {available}"
             )
         cap_cfg = self._config.defaults.get(capability)
-        options = dict(cap_cfg.options) if (cap_cfg and cap_cfg.primary == target) else {}
+        if cap_cfg is None:
+            options: dict[str, Any] = {}
+        elif cap_cfg.primary == target:
+            options = dict(cap_cfg.options)
+        else:
+            fallback_opts = cap_cfg.options.get("fallback_options")
+            if isinstance(fallback_opts, dict) and isinstance(fallback_opts.get(target), dict):
+                options = dict(fallback_opts[target])
+            else:
+                options = {}
         return spec.factory(options)
 
     def status_report(self) -> dict[str, dict[str, Any]]:
         """Summarize configured vs registered capabilities without leaking credentials."""
         report: dict[str, dict[str, Any]] = {}
-        for capability in ("transcription", "decision", "media_ops", "audio_catalog"):
+        for capability in (
+            "transcription",
+            "decision",
+            "media_ops",
+            "audio_catalog",
+            "video_breakdown",
+        ):
             cap_cfg = self._config.defaults.get(capability)
             specs = self.list_specs(capability)  # type: ignore[arg-type]
             report[capability] = {

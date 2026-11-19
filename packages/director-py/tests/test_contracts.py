@@ -364,3 +364,50 @@ def test_transcript_and_edit_plan_contracts() -> None:
         "edit_plan.schema.json",
     )
     assert p_errors == []
+
+
+def test_geoverum_two_documentary_formats_and_brand_tree_integrity(tmp_path) -> None:
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    assert policy.soft_priors.visual_tokens.typography.caption_style == "plain"
+    assert policy.soft_priors.visual_tokens.typography.max_words_per_caption_group == 3
+    assert policy.format_overrides is not None
+    assert "9:16" in policy.format_overrides
+    assert "16:9" in policy.format_overrides
+    assert policy.format_overrides["9:16"].watermark_default is False
+    assert policy.format_overrides["16:9"].watermark_default is False
+
+    # Copy geoverum brand tree to tmp and break composition_path -> validate_brand_tree must fail.
+    broken_dir = tmp_path / "broken_brand"
+    (broken_dir / "templates").mkdir(parents=True)
+    (broken_dir / "brand_style_policy.json").write_text(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    bad_catalog = json.loads(
+        (gv_dir / "templates" / "catalog.json").read_text(encoding="utf-8")
+    )
+    bad_catalog["templates"][0]["composition_path"] = (
+        "profiles/brands/geoverum/templates/components/nonexistent_tpl.html"
+    )
+    (broken_dir / "templates" / "catalog.json").write_text(
+        json.dumps(bad_catalog),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="missing composition_path"):
+        validate_brand_tree(broken_dir, repo_root=root)
+
+    # Break token_ref -> validate_brand_tree must fail.
+    bad_token_catalog = json.loads(
+        (gv_dir / "templates" / "catalog.json").read_text(encoding="utf-8")
+    )
+    bad_token_catalog["templates"][0]["variables"][1]["token_ref"] = "palette_roles.nonexistent"
+    (broken_dir / "templates" / "catalog.json").write_text(
+        json.dumps(bad_token_catalog),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unresolved policy token_ref"):
+        validate_brand_tree(broken_dir, repo_root=root)

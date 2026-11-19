@@ -1,4 +1,4 @@
-"""Modal Linux x86_64 worker container definition compiling vedit-probe & HyperFrames 0.9.65."""
+"""Modal Linux x86_64 worker container definition compiling vedit-probe & HyperFrames 0.9.68."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ _DEBIAN_PACKAGES = [
     "libxrandr2",
     "libgbm1",
     "libasound2",
+    "fontconfig",
     "fonts-liberation",
     "fonts-noto-color-emoji",
 ]
@@ -42,7 +43,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
     """Build the Linux x86_64 worker image without copying macOS host binaries.
 
     Compiles `vedit-probe` natively from source via Cargo inside the container, builds
-    `@vedit/hf-compiler` (`0.9.65`), installs the pinned `chrome-headless-shell` build,
+    `@vedit/hf-compiler` (`0.9.68`), installs the pinned `chrome-headless-shell` build,
     and stages Python contracts, presets, and workspace packages cleanly.
     """
     root = repo_root or find_repo_root()

@@ -11,10 +11,19 @@ from vedit.ports.decision import (
 )
 from vedit.ports.media_ops import MediaOpResult, MediaOpsPort
 from vedit.ports.transcription import TranscriptionOptions, TranscriptionPort
+from vedit.ports.video_breakdown import (
+    BreakdownOptions,
+    BreakdownReviewBundle,
+    BreakdownSurveyStep,
+    VideoBreakdownPort,
+)
 
 __all__ = [
     "AudioAssetResult",
     "AudioCatalogPort",
+    "BreakdownOptions",
+    "BreakdownReviewBundle",
+    "BreakdownSurveyStep",
     "DecisionAnswer",
     "DecisionBatchResult",
     "DecisionPort",
@@ -25,4 +34,5 @@ __all__ = [
     "SpatialBox",
     "TranscriptionOptions",
     "TranscriptionPort",
+    "VideoBreakdownPort",
 ]

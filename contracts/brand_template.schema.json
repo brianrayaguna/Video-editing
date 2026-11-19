@@ -19,6 +19,18 @@
         "properties": {
           "template_id": { "type": "string", "minLength": 1 },
           "composition_path": { "type": "string", "minLength": 1 },
+          "overlay_kind": {
+            "type": "string",
+            "enum": ["caption_rail", "kinetic_callout", "lower_third", "data_card", "title_scene", "full_scene"]
+          },
+          "supported_aspects": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["9:16", "16:9", "1:1", "4:5"] }
+          },
+          "render_mode": {
+            "type": "string",
+            "enum": ["parameterized_html", "static_copy"]
+          },
           "description": { "type": "string" },
           "safe_band": {
             "type": "string",

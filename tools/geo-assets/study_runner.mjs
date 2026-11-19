@@ -510,7 +510,7 @@ export function encodeDeliverableAndSheet({
       "-i",
       outMp4,
       "-vf",
-      `drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='f%{n} %{pts\\:hms}':x=20:y=20:fontsize=38:fontcolor=yellow:box=1:boxcolor=black@0.7,select='${selectExpr}',scale=${scaleW}:${scaleH},tile=${tileCols}x${tileRows}`,
+      `drawtext=text='f%{n} %{pts\\:hms}':x=20:y=20:fontsize=38:fontcolor=yellow:box=1:boxcolor=black@0.7,select='${selectExpr}',scale=${scaleW}:${scaleH},tile=${tileCols}x${tileRows}`,
       "-fps_mode",
       "passthrough",
       "-frames:v",

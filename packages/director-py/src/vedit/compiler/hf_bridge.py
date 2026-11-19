@@ -62,12 +62,16 @@ def _run_node_cli(args: list[str], *, repo_root: Path | None = None) -> dict[str
     node_bin = shutil.which("node")
     if not node_bin:
         raise FileNotFoundError("Node.js >= 22 is required to invoke @vedit/hf-compiler.")
-    cli_js = resolve_hf_compiler_cli(repo_root=repo_root)
+    root = (repo_root or find_repo_root()).resolve()
+    cli_js = resolve_hf_compiler_cli(repo_root=root)
+    env = dict(os.environ)
+    env.setdefault("VEDIT_REPO_ROOT", str(root))
     proc = subprocess.run(
         [node_bin, str(cli_js), *args],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
@@ -157,7 +161,9 @@ def plan_distributed_v2(
     width: int,
     height: int,
     fmt: Literal["mp4", "mov"] = "mp4",
+    quality: Literal["draft", "standard", "high"] = "high",
     chunk_frames: int = 180,
+    max_parallel_chunks: int | None = None,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Build a bounded-chunk distributed Plan v2 directory via `@hyperframes/producer`."""
@@ -175,9 +181,13 @@ def plan_distributed_v2(
         str(int(height)),
         "--format",
         fmt,
+        "--quality",
+        quality,
         "--chunk-frames",
         str(int(chunk_frames)),
     ]
+    if max_parallel_chunks is not None:
+        args.extend(["--max-parallel-chunks", str(int(max_parallel_chunks))])
     return _run_node_cli(args, repo_root=repo_root)
 
 
@@ -186,6 +196,7 @@ def render_chunk_v2(
     chunk_index: int,
     output_chunk_path: Path,
     *,
+    max_capture_workers: int | None = None,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Render one chunk from a materialized Plan v2 directory."""
@@ -198,6 +209,8 @@ def render_chunk_v2(
         "--out",
         str(output_chunk_path),
     ]
+    if max_capture_workers is not None and max_capture_workers > 0:
+        args.extend(["--max-capture-workers", str(int(max_capture_workers))])
     return _run_node_cli(args, repo_root=repo_root)
 
 

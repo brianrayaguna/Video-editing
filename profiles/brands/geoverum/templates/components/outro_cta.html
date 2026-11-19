@@ -1,0 +1,84 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      width: {{WIDTH}}px;
+      height: {{HEIGHT}}px;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: {{SAFE_TOP_PCT}}%;
+      bottom: {{SAFE_BOTTOM_PCT}}%;
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(14px * {{SCALE_FACTOR}});
+    }
+    .outro-wordmark {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(36px * {{SCALE_FACTOR}});
+      letter-spacing: 0.08em;
+      color: var(--vedit-ink);
+      line-height: 1;
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.78);
+    }
+    .outro-rule {
+      width: calc(56px * {{SCALE_FACTOR}});
+      height: 2px;
+      background: var(--vedit-accent);
+    }
+    .outro-prompt {
+      font-size: calc(24px * {{SCALE_FACTOR}});
+      font-weight: 500;
+      color: var(--vedit-ink);
+      opacity: 0.92;
+      line-height: 1.3;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
+    }
+    .outro-cta {
+      font-size: calc(18px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--vedit-accent);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-inner">
+        <div class="outro-wordmark">{{VAR_HEADLINE|geoverum}}</div>
+        <div class="outro-rule"></div>
+        <div class="outro-prompt">{{VAR_PROMPT|}}</div>
+        <div class="outro-cta">{{VAR_CTA_TAG|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(
+      "#{{SCENE_ID}}-inner",
+      { opacity: 0, scale: 0.96, y: 10 },
+      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
+      0
+    );
+    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
+    window.__timelines = window.__timelines || {};
+    window.__timelines["{{SCENE_ID}}"] = tl;
+  </script>
+</template>

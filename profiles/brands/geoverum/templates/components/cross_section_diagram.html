@@ -1,0 +1,157 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: '{{BODY_FONT}}', sans-serif;
+      font-variant-numeric: tabular-nums;
+      color: {{VAR_FG_COLOR|#F4F1EA}};
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: 15.5%;
+      left: 6%;
+      right: 6%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .gv-diag-panel {
+      width: 100%;
+      max-width: 920px;
+      background: rgba(3, 22, 31, 0.90);
+      border: 1.5px solid rgba(124, 224, 249, 0.32);
+      border-left: 5px solid {{VAR_ACCENT_COLOR|#F5C542}};
+      border-radius: 10px;
+      padding: 24px 28px 26px;
+      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .gv-diag-kicker {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7CE0F9;
+    }
+    .gv-diag-title {
+      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
+      font-size: 31px;
+      line-height: 1.15;
+      color: {{VAR_FG_COLOR|#F4F1EA}};
+    }
+    .gv-diag-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .gv-diag-metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(244, 241, 234, 0.16);
+    }
+    .gv-diag-tag {
+      font-size: 17px;
+      font-weight: 600;
+      color: rgba(244, 241, 234, 0.85);
+    }
+    .gv-diag-callout {
+      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
+      font-size: 24px;
+      color: {{VAR_ACCENT_COLOR|#F5C542}};
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-panel" class="gv-diag-panel">
+        <div>
+          <div class="gv-diag-kicker">{{VAR_KICKER|PENAMPANG INFRASTRUKTUR}}</div>
+          <div class="gv-diag-title">{{VAR_TITLE|MENGAPA JALAN DARAT MAHAL}}</div>
+        </div>
+
+        <svg class="gv-diag-svg" viewBox="0 0 840 330" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="{{SCENE_ID}}-peat-pat" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+              <line x1="0" y1="0" x2="0" y2="14" stroke="#C2412D" stroke-width="2" stroke-opacity="0.45"/>
+            </pattern>
+          </defs>
+
+          <!-- Layer 1: Bedrock / deep stable clay -->
+          <g id="{{SCENE_ID}}-l-bedrock">
+            <rect x="20" y="248" width="800" height="62" rx="4" fill="#0B2938" stroke="#7CE0F9" stroke-opacity="0.25" stroke-width="1.5"/>
+            <text x="42" y="286" font-family="{{BODY_FONT}}, sans-serif" font-size="18" font-weight="600" fill="#F4F1EA" opacity="0.72">{{VAR_LAYER3|LAPISAN TANAH KERAS (DALAM)}}</text>
+          </g>
+
+          <!-- Layer 2: Soft peat swamp + wide river channel -->
+          <g id="{{SCENE_ID}}-l-peat">
+            <rect x="20" y="138" width="490" height="110" fill="#3D1C18" fill-opacity="0.82"/>
+            <rect x="20" y="138" width="490" height="110" fill="url(#{{SCENE_ID}}-peat-pat)" stroke="#C2412D" stroke-width="2"/>
+
+            <!-- Wide river cut -->
+            <path d="M 510 138 L 820 138 L 820 248 L 540 248 Q 515 215 510 138 Z" fill="#0A3A4E" stroke="#7CE0F9" stroke-width="2"/>
+            <path d="M 530 162 Q 610 152 680 162 T 805 162" fill="none" stroke="#7CE0F9" stroke-width="2.5" stroke-opacity="0.75"/>
+          </g>
+
+          <!-- Layer 3: Deep pilings (rendered behind text labels for clean legibility) -->
+          <g id="{{SCENE_ID}}-l-pilings">
+            <rect x="95" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
+            <rect x="225" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
+            <rect x="355" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
+            <rect x="470" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
+            <rect x="655" y="114" width="16" height="156" fill="#F5C542" opacity="0.72"/>
+            <rect x="780" y="114" width="16" height="156" fill="#F5C542" opacity="0.72"/>
+          </g>
+
+          <!-- Labels rendered above pilings with crisp dark outline for 100% readability -->
+          <g id="{{SCENE_ID}}-l-labels">
+            <text x="42" y="182" font-family="{{BODY_FONT}}, sans-serif" font-size="20" font-weight="700" fill="#F4F1EA" style="paint-order:stroke;stroke:#03161F;stroke-width:5px;">{{VAR_LAYER1|RAWA GAMBUT LUNAK}}</text>
+            <text x="42" y="210" font-family="{{BODY_FONT}}, sans-serif" font-size="16" font-weight="500" fill="#F4F1EA" opacity="0.92" style="paint-order:stroke;stroke:#03161F;stroke-width:4px;">Rawan amblas, butuh pondasi dalam</text>
+            <text x="556" y="206" font-family="{{BODY_FONT}}, sans-serif" font-size="20" font-weight="700" fill="#7CE0F9" style="paint-order:stroke;stroke:#03161F;stroke-width:5px;">{{VAR_LAYER2|SUNGAI LEBAR}}</text>
+          </g>
+
+          <!-- Layer 4: Asphalt deck & bridge arch -->
+          <g id="{{SCENE_ID}}-l-deck">
+            <rect x="20" y="96" width="800" height="22" rx="3" fill="#F4F1EA"/>
+            <line x1="36" y1="107" x2="804" y2="107" stroke="#03161F" stroke-width="2.5" stroke-dasharray="18 14"/>
+            <path d="M 500 96 Q 665 18 820 96" fill="none" stroke="#F5C542" stroke-width="5"/>
+            <text x="660" y="42" text-anchor="middle" font-family="{{BODY_FONT}}, sans-serif" font-size="18" font-weight="700" letter-spacing="0.08em" fill="#F5C542">JEMBATAN BENTANG PANJANG</text>
+          </g>
+        </svg>
+
+        <div id="{{SCENE_ID}}-foot" class="gv-diag-metric-row">
+          <span class="gv-diag-tag">{{VAR_FOOT_LABEL|Populasi jarang · Perawatan tinggi}}</span>
+          <span class="gv-diag-callout">{{VAR_FOOT_METRIC|BIAYA / KAPITA TINGGI}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const dur = {{DURATION_S}};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(
+      "#{{SCENE_ID}}-panel",
+      { opacity: 0, y: 24, scale: 0.97 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "expo.out" },
+      0
+    );
+    tl.fromTo("#{{SCENE_ID}}-l-bedrock", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.25);
+    tl.fromTo("#{{SCENE_ID}}-l-peat", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.55, ease: "expo.out" }, 0.65);
+    tl.fromTo("#{{SCENE_ID}}-l-labels", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.80);
+    tl.fromTo("#{{SCENE_ID}}-l-pilings", { opacity: 0, y: -24 }, { opacity: 1, y: 0, duration: 0.6, ease: "expo.out" }, 1.25);
+    tl.fromTo("#{{SCENE_ID}}-l-deck", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.65, ease: "expo.out" }, 1.85);
+    tl.fromTo("#{{SCENE_ID}}-foot", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 2.45);
+
+    const exitAt = Math.max(0.6, dur - 0.30);
+    tl.to("#{{SCENE_ID}}-panel", { opacity: 0, y: -14, duration: 0.28, ease: "power3.in" }, exitAt);
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["{{SCENE_ID}}"] = tl;
+  </script>
+</template>

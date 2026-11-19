@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import colorsys
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from vedit.contracts import validate_against_contract
-from vedit.director.templates import validate_overlay_template
+from vedit.director.templates import resolve_effective_policy, validate_overlay_template
 from vedit.metrics import (
     NormRect,
     intervals_overlap,
+    parse_hex_rgb,
     resolve_overlay_rect,
     wcag_contrast_ratio,
 )
@@ -34,6 +37,43 @@ _SECTION_SPAN: dict[str, tuple[float, float]] = {
 }
 
 _BLUR_CSS_RE = re.compile(r"(backdrop-filter\s*:|filter\s*:[^;]*blur\s*\(|blur\s*\()", re.I)
+_SCALE_ZERO_RE = re.compile(r"\bscale\s*:\s*0(?:\.0+)?(?![0-9])", re.I)
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _is_saturated_violet_hex(hex_color: str) -> bool:
+    """Return True if `#RRGGBB` falls within saturated violet/magenta hues (265-335 deg)."""
+    if not _HEX_COLOR_RE.fullmatch(hex_color.strip()):
+        return False
+    r, g, b = parse_hex_rgb(hex_color)
+    h, l_val, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
+    hue_deg = h * 360.0
+    return 265.0 <= hue_deg <= 335.0 and s >= 0.30 and 0.12 <= l_val <= 0.88
+
+
+def _collect_hex_values(payload: Mapping[str, Any]) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for key, val in payload.items():
+        if isinstance(val, str) and _HEX_COLOR_RE.fullmatch(val.strip()):
+            found.append((str(key), val.strip().upper()))
+    return found
+
+
+def _is_upper_right_corner_watermark(
+    ov: OverlayCompositionOp,
+    rect: NormRect,
+    safe_zone_top: float,
+) -> bool:
+    """Allow understated text-only watermarks in upper-right corner clearance (above y=0.25)."""
+    is_wm = ov.template_id == "broadcast_bug" or bool(ov.props.get("corner_watermark"))
+    return (
+        is_wm
+        and ov.safe_band == "upper_safe"
+        and rect.top >= safe_zone_top - 1e-4
+        and rect.bottom <= 0.25 + 1e-4
+        and rect.left >= 0.50
+        and rect.right <= 0.96 + 1e-4
+    )
 
 
 @dataclass(slots=True)
@@ -328,8 +368,9 @@ def _check_overlay_contrast(
     errors: list[VerificationIssue],
 ) -> None:
     min_ratio = policy.hard_guardrails.min_wcag_contrast
-    fg = _first_hex(ov.props, ("fg_color", "text_color", "ink"))
-    bg = _first_hex(ov.props, ("bg_color", "background_color", "ground"))
+    merged: dict[str, Any] = {**(ov.variables or {}), **(ov.props or {})}
+    fg = _first_hex(merged, ("fg_color", "text_color", "ink"))
+    bg = _first_hex(merged, ("bg_color", "background_color", "ground"))
     palette_bg = policy.soft_priors.visual_tokens.palette_roles.ground
 
     if fg and bg:
@@ -388,7 +429,9 @@ def _check_overlays_and_spatial_grounding(
         )
 
     safe_zone = platform_target.safe_zone
+    resolved_boxes: list[tuple[OverlayCompositionOp, NormRect]] = []
     for ov in plan.overlay_compositions:
+        merged_ov: dict[str, Any] = {**(ov.variables or {}), **(ov.props or {})}
         if ov.timeline_start_s + ov.timeline_duration_s > plan.duration_s + 1e-3:
             errors.append(
                 VerificationIssue(
@@ -401,8 +444,8 @@ def _check_overlays_and_spatial_grounding(
 
         pattern_tags = [
             ov.kind.lower(),
-            str(ov.props.get("pattern", "")).lower(),
-            str(ov.props.get("template", "")).lower(),
+            str(merged_ov.get("pattern", "")).lower(),
+            str(merged_ov.get("template", "")).lower(),
         ]
         for tag in pattern_tags:
             if tag and tag in banned_patterns:
@@ -415,13 +458,40 @@ def _check_overlays_and_spatial_grounding(
                     )
                 )
 
-        if guard.avoid_heavy_css_blur and _contains_css_blur(ov.props):
+        if "violet_generic_accent" in banned_patterns:
+            for key, hx in _collect_hex_values(merged_ov):
+                if _is_saturated_violet_hex(hx):
+                    errors.append(
+                        VerificationIssue(
+                            severity="error",
+                            code="BANNED_PATTERN",
+                            target_id=ov.overlay_id,
+                            message=(
+                                f"Overlay color {key}={hx} violates banned pattern "
+                                "'violet_generic_accent'."
+                            ),
+                        )
+                    )
+
+        if "scale_zero_pop_in" in banned_patterns:
+            timeline_js = str(merged_ov.get("custom_timeline_js") or "")
+            if timeline_js and _SCALE_ZERO_RE.search(timeline_js):
+                errors.append(
+                    VerificationIssue(
+                        severity="error",
+                        code="BANNED_PATTERN",
+                        target_id=ov.overlay_id,
+                        message="Overlay timeline uses scale: 0 pop-in forbidden by guardrails.",
+                    )
+                )
+
+        if guard.avoid_heavy_css_blur and _contains_css_blur(merged_ov):
             errors.append(
                 VerificationIssue(
                     severity="error",
                     code="HEAVY_CSS_BLUR",
                     target_id=ov.overlay_id,
-                    message="Overlay props include forbidden runtime CSS blur/backdrop-filter.",
+                    message="Overlay props/variables include forbidden runtime CSS blur.",
                 )
             )
 
@@ -429,8 +499,10 @@ def _check_overlays_and_spatial_grounding(
 
         explicit_box = ov.props.get("box") if isinstance(ov.props.get("box"), dict) else None
         rect = resolve_overlay_rect(ov.safe_band, safe_zone, explicit_box=explicit_box)
+        resolved_boxes.append((ov, rect))
         if ov.safe_band != "fullscreen" or explicit_box is not None:
-            if (
+            corner_ok = _is_upper_right_corner_watermark(ov, rect, safe_zone.top_pct)
+            if not corner_ok and (
                 rect.top < safe_zone.top_pct - 1e-4
                 or rect.bottom > (1.0 - safe_zone.bottom_pct) + 1e-4
                 or rect.left < safe_zone.left_pct - 1e-4
@@ -476,6 +548,36 @@ def _check_overlays_and_spatial_grounding(
                                 ),
                             )
                         )
+
+    # Detect simultaneous overlay-vs-overlay visual collisions on the same screen region.
+    for i in range(len(resolved_boxes)):
+        ov_a, rect_a = resolved_boxes[i]
+        if ov_a.safe_band == "fullscreen" and not isinstance(ov_a.props.get("box"), dict):
+            continue
+        for j in range(i + 1, len(resolved_boxes)):
+            ov_b, rect_b = resolved_boxes[j]
+            if ov_b.safe_band == "fullscreen" and not isinstance(ov_b.props.get("box"), dict):
+                continue
+            if not intervals_overlap(
+                ov_a.timeline_start_s,
+                ov_a.timeline_duration_s,
+                ov_b.timeline_start_s,
+                ov_b.timeline_duration_s,
+                eps=0.05,
+            ):
+                continue
+            if rect_a.overlap_fraction(rect_b) > 0.25:
+                errors.append(
+                    VerificationIssue(
+                        severity="error",
+                        code="OVERLAY_COLLISION",
+                        target_id=ov_b.overlay_id,
+                        message=(
+                            f"Overlay {ov_b.overlay_id!r} overlaps {ov_a.overlay_id!r} "
+                            "in both time and screen area."
+                        ),
+                    )
+                )
 
 
 def _check_audio_dag(
@@ -566,6 +668,8 @@ def _check_soft_temporal_priors(
         sec_start = plan.duration_s * lo
         sec_end = plan.duration_s * min(hi, 1.0)
         sec_dur = max(sec_end - sec_start, 1e-6)
+        if sec_dur < 6.0:
+            continue
         cuts = sum(
             1
             for clip in plan.video_tracks
@@ -614,15 +718,16 @@ def verify_edit_plan(
     repo_root: Path | None = None,
 ) -> VerificationReport:
     """Run all deterministic schema, pacing, spatial, contrast, and audio DAG checks."""
+    effective_policy = resolve_effective_policy(policy, platform_target)
     errors: list[VerificationIssue] = []
     warnings: list[VerificationIssue] = []
 
     _check_schema_and_canvas(plan, platform_target, errors, repo_root)
-    _check_assets_and_video_tracks(plan, policy, errors, warnings)
-    _check_keyword_cut_windows(plan, policy, transcript, errors)
-    _check_overlays_and_spatial_grounding(plan, policy, platform_target, errors)
+    _check_assets_and_video_tracks(plan, effective_policy, errors, warnings)
+    _check_keyword_cut_windows(plan, effective_policy, transcript, errors)
+    _check_overlays_and_spatial_grounding(plan, effective_policy, platform_target, errors)
     _check_audio_dag(plan, errors, warnings)
-    _check_soft_temporal_priors(plan, policy, warnings)
+    _check_soft_temporal_priors(plan, effective_policy, warnings)
     _check_template_bindings(plan, template_catalog, errors)
 
     checked = [

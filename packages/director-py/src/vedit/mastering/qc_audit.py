@@ -1,4 +1,4 @@
-"""Post-render technical QC auditor using ffprobe and EBU R128 loudness analysis."""
+"""Post-render technical and visual QC auditor (ffprobe, EBU R128, black/freeze, optional VMAF)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,13 @@ from vedit.models import PlatformTarget
 
 _EBUR128_I_RE = re.compile(r"Integrated loudness:\s*\n\s*I:\s*([-\d.]+)\s*LUFS", re.I)
 _EBUR128_TP_RE = re.compile(r"True peak:\s*\n\s*Peak:\s*([-\d.]+)\s*dBFS", re.I)
+_BLACK_RE = re.compile(
+    r"black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)",
+    re.I,
+)
+_FREEZE_START_RE = re.compile(r"freeze_start:\s*([\d.]+)", re.I)
+_FREEZE_DUR_RE = re.compile(r"freeze_duration:\s*([\d.]+)", re.I)
+_VMAF_SCORE_RE = re.compile(r"VMAF score:\s*([\d.]+)", re.I)
 
 
 @dataclass(slots=True)
@@ -48,13 +55,109 @@ def _parse_rate(rate_str: str | None) -> float:
     return float(num_s) / den if den > 0 else 0.0
 
 
+def _run_visual_anomaly_scan(
+    media_path: Path,
+    *,
+    black_min_s: float = 0.4,
+    freeze_min_s: float = 3.0,
+) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
+    """Detect unintended black segments and frozen frames in a single FFmpeg decode pass."""
+    vf = f"blackdetect=d={black_min_s:.2f}:pix_th=0.10,freezedetect=n=-60dB:d={freeze_min_s:.2f}"
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(media_path),
+            "-vf",
+            vf,
+            "-an",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stderr = proc.stderr or ""
+    blacks = [
+        {
+            "start_s": round(float(m.group(1)), 3),
+            "end_s": round(float(m.group(2)), 3),
+            "duration_s": round(float(m.group(3)), 3),
+        }
+        for m in _BLACK_RE.finditer(stderr)
+    ]
+
+    freezes: list[dict[str, float]] = []
+    pending_start: float | None = None
+    for line in stderr.splitlines():
+        s_match = _FREEZE_START_RE.search(line)
+        if s_match:
+            pending_start = float(s_match.group(1))
+            continue
+        d_match = _FREEZE_DUR_RE.search(line)
+        if d_match and pending_start is not None:
+            dur = float(d_match.group(1))
+            freezes.append(
+                {
+                    "start_s": round(pending_start, 3),
+                    "duration_s": round(dur, 3),
+                }
+            )
+            pending_start = None
+    return blacks, freezes
+
+
+def compute_vmaf_score(
+    distorted_path: Path,
+    reference_path: Path,
+) -> float | None:
+    """Compute perceptual VMAF score via FFmpeg `libvmaf` when supported by the FFmpeg build."""
+    if not distorted_path.is_file() or not reference_path.is_file():
+        return None
+    filters = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-filters"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if filters.returncode != 0 or "libvmaf" not in (filters.stdout or ""):
+        return None
+
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(distorted_path),
+            "-i",
+            str(reference_path),
+            "-lavfi",
+            "[0:v]setpts=PTS-STARTPTS[dist];[1:v]setpts=PTS-STARTPTS[ref];[dist][ref]libvmaf",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    match = _VMAF_SCORE_RE.search(proc.stderr or "")
+    return round(float(match.group(1)), 3) if match else None
+
+
 def audit_mastered_deliverable(
     media_path: Path,
     platform_target: PlatformTarget,
     *,
     require_audio: bool = True,
+    check_visual: bool = True,
+    reference_path: Path | None = None,
+    min_vmaf: float = 85.0,
 ) -> QCAuditReport:
-    """Verify resolution, CFR frame rate, bt709 tags, AAC audio, and EBU R128 loudness."""
+    """Verify resolution, CFR frame rate, bt709 tags, AAC audio, loudness, and visual anomalies."""
     errors: list[QCIssue] = []
     warnings: list[QCIssue] = []
     metrics: dict[str, Any] = {}
@@ -160,6 +263,54 @@ def audit_mastered_deliverable(
                         severity="error",
                         code="COLOR_METADATA_MISMATCH",
                         message=f"{field_name}={actual!r}, expected {expected!r}.",
+                    )
+                )
+
+        if check_visual:
+            blacks, freezes = _run_visual_anomaly_scan(media_path)
+            metrics["black_segments"] = blacks
+            metrics["freeze_segments"] = freezes
+            if blacks:
+                warnings.append(
+                    QCIssue(
+                        severity="warning",
+                        code="BLACK_FRAMES_DETECTED",
+                        message=(
+                            f"Detected {len(blacks)} black segment(s) >= 0.4s "
+                            f"(first at {blacks[0]['start_s']:.2f}s)."
+                        ),
+                    )
+                )
+            if freezes:
+                warnings.append(
+                    QCIssue(
+                        severity="warning",
+                        code="FROZEN_FRAMES_DETECTED",
+                        message=(
+                            f"Detected {len(freezes)} frozen segment(s) >= 3.0s "
+                            f"(first at {freezes[0]['start_s']:.2f}s)."
+                        ),
+                    )
+                )
+
+        if reference_path is not None:
+            vmaf = compute_vmaf_score(media_path, reference_path)
+            if vmaf is not None:
+                metrics["vmaf_score"] = vmaf
+                if vmaf < min_vmaf:
+                    warnings.append(
+                        QCIssue(
+                            severity="warning",
+                            code="LOW_VMAF_SCORE",
+                            message=f"VMAF score {vmaf:.2f} is below threshold {min_vmaf:.1f}.",
+                        )
+                    )
+            else:
+                warnings.append(
+                    QCIssue(
+                        severity="warning",
+                        code="VMAF_UNAVAILABLE",
+                        message="FFmpeg libvmaf filter not available on this host.",
                     )
                 )
 

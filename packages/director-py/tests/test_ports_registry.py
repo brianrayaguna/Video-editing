@@ -8,6 +8,7 @@ import pytest
 
 from vedit.ports.decision import DecisionQuestion, ImageInput, validate_decision_batch
 from vedit.ports.media_ops import MediaOpsPort
+from vedit.ports.video_breakdown import VideoBreakdownPort
 from vedit.providers.registry import ProviderNotFoundError, ProviderSpec, build_default_registry
 from vedit.telemetry import JobCheckpoint, compute_idempotency_key
 
@@ -15,7 +16,14 @@ from vedit.telemetry import JobCheckpoint, compute_idempotency_key
 def test_registry_resolves_custom_capability_provider_without_core_changes() -> None:
     registry = build_default_registry()
     report = registry.status_report()
-    assert set(report.keys()) == {"transcription", "decision", "media_ops", "audio_catalog"}
+    assert set(report.keys()) == {
+        "transcription",
+        "decision",
+        "media_ops",
+        "audio_catalog",
+        "video_breakdown",
+    }
+    assert isinstance(registry.resolve("video_breakdown"), VideoBreakdownPort)
 
     class FakeSTT:
         @property

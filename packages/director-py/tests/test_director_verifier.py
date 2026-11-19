@@ -363,3 +363,187 @@ def test_verifier_catches_all_hard_guardrails(tmp_path: Path) -> None:
     pace_codes = {i.code for i in verify_edit_plan(tiny_and_long, policy, target).errors}
     assert "BELOW_MIN_SHOT_DURATION" in pace_codes
     assert "EXCEEDS_MAX_HOLD_DURATION" in pace_codes
+
+
+def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_path: Path) -> None:
+    from vedit.contracts import find_repo_root, load_brand_template_catalog
+    from vedit.director.templates import resolve_effective_policy
+    from vedit.models import BrandTemplateCatalog
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    gv_policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    gv_catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(gv_dir / "templates" / "catalog.json", repo_root=root)
+    )
+    platforms = load_platform_targets()
+    shorts_target = PlatformTarget.model_validate(platforms["shorts_9x16_1080p"])
+    yt_target = PlatformTarget.model_validate(platforms["youtube_16x9_1080p"])
+
+    eff_9x16 = resolve_effective_policy(gv_policy, shorts_target)
+    eff_16x9 = resolve_effective_policy(gv_policy, yt_target)
+    assert eff_9x16.hard_guardrails.max_uninterrupted_hold_s == 30.0
+    assert eff_16x9.hard_guardrails.max_uninterrupted_hold_s == 20.0
+
+    # Long single 45s shot must be subdivided strictly <= max_uninterrupted_hold_s.
+    probe, _, _, _ = _build_fixture_bundle(tmp_path)
+    long_probe = probe.model_copy(
+        update={
+            "container": probe.container.model_copy(update={"duration_s": 45.0}),
+            "shots": [
+                ProbeShotSegment(
+                    shot_index=0,
+                    start_s=0.0,
+                    end_s=45.0,
+                    duration_s=45.0,
+                    confidence=0.99,
+                )
+            ],
+        }
+    )
+    transcript = NormalizedTranscript(
+        source_hash="d" * 64,
+        provider="xai",
+        language="en",
+        duration_s=45.0,
+        text="Three tectonic plates, colliding slowly, formed 42 percent of Sulawesi.",
+        words=[
+            TranscriptWord(text="Three", start_s=0.2, end_s=0.5),
+            TranscriptWord(text="tectonic", start_s=0.55, end_s=0.95),
+            TranscriptWord(text="plates,", start_s=1.0, end_s=1.4),
+            TranscriptWord(text="colliding", start_s=2.0, end_s=2.4),
+            TranscriptWord(text="slowly,", start_s=2.45, end_s=2.9),
+            TranscriptWord(text="formed", start_s=3.4, end_s=3.7),
+            TranscriptWord(text="42", start_s=3.75, end_s=4.0),
+            TranscriptWord(text="percent", start_s=4.05, end_s=4.4),
+            TranscriptWord(text="of", start_s=4.45, end_s=4.6),
+            TranscriptWord(text="Sulawesi.", start_s=4.65, end_s=5.1),
+        ],
+    )
+
+    plan_9x16, report_9x16 = build_edit_plan(
+        job_id="job_gv_9x16",
+        project_id="proj_gv",
+        probe=long_probe,
+        policy=gv_policy,
+        platform_target=shorts_target,
+        transcript=transcript,
+        template_catalog=gv_catalog,
+    )
+    assert report_9x16.passed is True, f"9:16 errors: {report_9x16.errors}"
+    assert all(
+        c.timeline_duration_s <= eff_9x16.hard_guardrails.max_uninterrupted_hold_s + 0.01
+        for c in plan_9x16.video_tracks
+    )
+    assert all(c.role == "a_roll" for c in plan_9x16.video_tracks)
+    # 2-3 words max per caption group and plain caption style, no amber_fact_card on 9:16.
+    captions = [ov for ov in plan_9x16.overlay_compositions if ov.kind == "caption_rail"]
+    assert len(captions) >= 3
+    for cap in captions:
+        words = str(cap.props.get("text", "")).split()
+        assert 1 <= len(words) <= 3
+        assert cap.props.get("caption_style") == "plain"
+    assert not any(ov.template_id == "amber_fact_card" for ov in plan_9x16.overlay_compositions)
+
+    # On 16:9, amber_fact_card is eligible for numeric phrases and keeps amber ground/ink tokens.
+    plan_16x9, report_16x9 = build_edit_plan(
+        job_id="job_gv_16x9",
+        project_id="proj_gv",
+        probe=long_probe,
+        policy=gv_policy,
+        platform_target=yt_target,
+        transcript=transcript,
+        template_catalog=gv_catalog,
+    )
+    assert report_16x9.passed is True, f"16:9 errors: {report_16x9.errors}"
+    amber_cards = [
+        ov for ov in plan_16x9.overlay_compositions if ov.template_id == "amber_fact_card"
+    ]
+    assert amber_cards, "Expected amber_fact_card on 16:9 documentary plan"
+    assert amber_cards[0].variables is not None
+    assert amber_cards[0].variables["bg_color"] == "#F5C542"
+    assert amber_cards[0].variables["fg_color"] == "#03161F"
+
+
+def test_verifier_detects_violet_scale_zero_collision_and_allows_corner_watermark(
+    tmp_path: Path,
+) -> None:
+    from vedit.contracts import find_repo_root, load_brand_template_catalog
+    from vedit.models import BrandTemplateCatalog
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    gv_policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    gv_catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(gv_dir / "templates" / "catalog.json", repo_root=root)
+    )
+    probe, _, target, transcript = _build_fixture_bundle(tmp_path)
+    plan, report = build_edit_plan(
+        job_id="job_v_checks",
+        project_id="proj_v",
+        probe=probe,
+        policy=gv_policy,
+        platform_target=target,
+        transcript=transcript,
+    )
+    assert report.passed is True
+
+    # Corner watermark in upper-right slightly down (top=0.16, bottom=0.20, left=0.72, right=0.945)
+    # should pass safe-zone validation cleanly.
+    wm_plan = plan.model_copy(
+        update={
+            "overlay_compositions": [
+                OverlayCompositionOp(
+                    overlay_id="wm_ok",
+                    kind="lower_third",
+                    template_id="broadcast_bug",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=5.0,
+                    transparent=True,
+                    safe_band="upper_safe",
+                    variables={"text": "geoverum", "opacity": 0.72, "fg_color": "#F4F1EA"},
+                    props={
+                        "text": "geoverum",
+                        "box": {"top": 0.16, "bottom": 0.20, "left": 0.72, "right": 0.945},
+                    },
+                )
+            ]
+        }
+    )
+    wm_report = verify_edit_plan(wm_plan, gv_policy, target, template_catalog=gv_catalog)
+    assert wm_report.passed is True, f"Watermark should pass: {wm_report.errors}"
+
+    # Violet accent, scale_zero_pop_in, and colliding overlays must all be caught.
+    bad_plan = plan.model_copy(
+        update={
+            "overlay_compositions": [
+                OverlayCompositionOp(
+                    overlay_id="ov_violet",
+                    kind="data_card",
+                    timeline_start_s=1.0,
+                    timeline_duration_s=2.0,
+                    transparent=True,
+                    safe_band="upper_safe",
+                    variables={"accent_color": "#A855F7"},
+                    props={"custom_timeline_js": "tl.from('#el', { scale: 0, duration: 0.3 })"},
+                ),
+                OverlayCompositionOp(
+                    overlay_id="ov_collide",
+                    kind="data_card",
+                    timeline_start_s=1.5,
+                    timeline_duration_s=2.0,
+                    transparent=True,
+                    safe_band="upper_safe",
+                    props={"headline": "Overlapping card"},
+                ),
+            ]
+        }
+    )
+    bad_report = verify_edit_plan(bad_plan, gv_policy, target)
+    codes = {i.code for i in bad_report.errors}
+    assert "BANNED_PATTERN" in codes
+    assert "OVERLAY_COLLISION" in codes

@@ -1,0 +1,78 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      width: {{WIDTH}}px;
+      height: {{HEIGHT}}px;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-ground: {{BG_COLOR}};
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: {{SAFE_TOP_PCT}}%;
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 24px;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-inner {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transform-origin: center top;
+    }
+    .metric-rule {
+      width: 44px;
+      height: 3px;
+      background: var(--vedit-accent);
+    }
+    .metric-value {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(44px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      letter-spacing: 0.02em;
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.85);
+      white-space: nowrap;
+    }
+    .metric-sub {
+      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-size: calc(20px * {{SCALE_FACTOR}});
+      font-weight: 500;
+      color: var(--vedit-ink);
+      opacity: 0.88;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-inner">
+        <div class="metric-rule"></div>
+        <div class="metric-value">{{VAR_LABEL|±20 KM}}</div>
+        <div class="metric-sub">{{VAR_SUBTITLE|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(
+      "#{{SCENE_ID}}-inner",
+      { opacity: 0, scale: 0.95, y: 6 },
+      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
+      0
+    );
+    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
+    window.__timelines = window.__timelines || {};
+    window.__timelines["{{SCENE_ID}}"] = tl;
+  </script>
+</template>

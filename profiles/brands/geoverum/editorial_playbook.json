@@ -123,11 +123,11 @@
       "rationale": "Draw one hydro cyan lake group per beat with curved labels only when shoreline clearance allows."
     },
     {
-      "trigger_id": "afar_triple_junction_vectors",
-      "condition": "speech.mentions_afar_rift_or_future_ocean and overlay.active_fill_count >= 1",
+      "trigger_id": "tectonic_triple_junction_vectors",
+      "condition": "speech.mentions_rift_junction_or_plate_divergence and overlay.active_fill_count >= 1",
       "action": "overlay.spawn(kind='plate_vectors', stagger_after_fill_s=0.65)",
       "weight": 0.84,
-      "rationale": "After a single territory fill holds, add staggered plate vectors for the Afar triple junction; never a second neon wash on the same still."
+      "rationale": "After a single territory fill holds, add staggered plate vectors for tectonic divergence zones; never add a second neon wash on the same still."
     },
     {
       "trigger_id": "tabular_metric_on_broll",

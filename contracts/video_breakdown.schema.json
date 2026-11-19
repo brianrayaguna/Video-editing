@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/video_breakdown.schema.json",
+  "title": "VideoBreakdownResult",
+  "description": "Vendor-neutral forensic video breakdown telemetry emitted by VideoBreakdownPort for evidence-driven brand profiling. Strictly excludes generative video synthesis or remake commands.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider",
+    "source_path",
+    "duration_s",
+    "width",
+    "height",
+    "fps",
+    "aspect_ratio",
+    "confidence",
+    "production_mix",
+    "shots",
+    "editing",
+    "packaging",
+    "audio",
+    "grade",
+    "generative_reference_warning"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "provider": { "type": "string", "minLength": 1 },
+    "source_path": { "type": "string", "minLength": 1 },
+    "source_sha256": { "type": "string", "minLength": 8 },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "width": { "type": "integer", "minimum": 0 },
+    "height": { "type": "integer", "minimum": 0 },
+    "fps": { "type": "number", "minimum": 0 },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["16:9", "9:16", "1:1", "4:5", "other"]
+    },
+    "output_dir": { "type": "string" },
+    "videomd_path": { "type": "string" },
+    "storyboard_path": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "reviewed_by": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verdict": { "type": "string" },
+    "generative_reference_warning": { "type": "boolean" },
+    "production_mix": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "shot_index",
+          "start_s",
+          "end_s",
+          "duration_s",
+          "transition_in",
+          "production_label",
+          "production_confidence"
+        ],
+        "properties": {
+          "shot_index": { "type": "integer", "minimum": 0 },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "duration_s": { "type": "number", "minimum": 0 },
+          "transition_in": {
+            "type": "string",
+            "enum": ["start", "cut", "jump", "fade", "dissolve", "wipe", "flash", "other"]
+          },
+          "transition_duration_s": { "type": "number", "minimum": 0 },
+          "production_label": { "type": "string", "minLength": 1 },
+          "production_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "narrative_role": {
+            "type": "string",
+            "enum": ["hook", "context", "info", "proof", "turn", "payoff", "cta", "mood"]
+          },
+          "narrative_point": { "type": "string" },
+          "description": { "type": "string" },
+          "beats_s": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0 }
+          },
+          "drawn_palette_hex": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+          },
+          "has_embedded_real_assets": { "type": "boolean" },
+          "low_confidence_flag": { "type": "boolean" },
+          "sheet_path": { "type": "string" }
+        }
+      }
+    },
+    "editing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cuts_per_min", "avg_shot_s", "jump_cuts", "punch_ins", "beat_synced_edit"],
+      "properties": {
+        "cuts_per_min": { "type": "number", "minimum": 0 },
+        "avg_shot_s": { "type": "number", "minimum": 0 },
+        "camera_positions": { "type": "integer", "minimum": 0 },
+        "jump_cuts": { "type": "integer", "minimum": 0 },
+        "punch_ins": { "type": "integer", "minimum": 0 },
+        "punch_in_scale_ratios": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 1.0 }
+        },
+        "cuts_in_pauses_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "insert_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "beat_synced_edit": { "type": "boolean" }
+      }
+    },
+    "packaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subtitle_count", "persistent_watermark_detected", "styled_text_count", "sticker_count"],
+      "properties": {
+        "subtitle_count": { "type": "integer", "minimum": 0 },
+        "caption_case_observed": {
+          "type": "string",
+          "enum": ["sentence", "uppercase", "title", "lowercase"]
+        },
+        "caption_style_observed": {
+          "type": "string",
+          "enum": ["plain", "chip", "bar"]
+        },
+        "caption_band_observed": {
+          "type": "string",
+          "enum": ["lower_third", "center_safe", "upper_safe"]
+        },
+        "caption_words_p50": { "type": "number", "minimum": 0 },
+        "caption_words_p75": { "type": "number", "minimum": 0 },
+        "caption_entrance_animations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "caption_entrance_ms_median": { "type": "integer", "minimum": 0 },
+        "caption_fill_hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "caption_stroke_hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "caption_box_hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "persistent_watermark_detected": { "type": "boolean" },
+        "styled_text_count": { "type": "integer", "minimum": 0 },
+        "sticker_count": { "type": "integer", "minimum": 0 },
+        "overlay_text_samples": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["has_audio", "has_voice", "has_music", "no_beat", "sfx_count", "sfx_aligned_to_visual_count"],
+      "properties": {
+        "has_audio": { "type": "boolean" },
+        "has_voice": { "type": "boolean" },
+        "has_music": { "type": "boolean" },
+        "tempo_bpm": { "type": "number", "minimum": 20, "maximum": 260 },
+        "beat_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "no_beat": { "type": "boolean" },
+        "key_tonic": { "type": "string" },
+        "key_mode": { "type": "string", "enum": ["major", "minor"] },
+        "vocal_style": { "type": "string", "enum": ["speech", "singing", "rap_or_rhythmic"] },
+        "sfx_count": { "type": "integer", "minimum": 0 },
+        "sfx_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sfx_aligned_to_visual_count": { "type": "integer", "minimum": 0 },
+        "music_section_changes_s": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "look": { "type": "string" },
+        "saturation": { "type": "number", "minimum": 0, "maximum": 1 },
+        "contrast": { "type": "number", "minimum": 0, "maximum": 1 },
+        "black_level": { "type": "number", "minimum": 0, "maximum": 100 },
+        "white_level": { "type": "number", "minimum": 0, "maximum": 100 },
+        "shadow_b": { "type": "number" },
+        "highlight_b": { "type": "number" },
+        "mean_l": { "type": "number", "minimum": 0, "maximum": 100 },
+        "tone": { "type": "string", "enum": ["warm", "cool", "neutral"] }
+      }
+    }
+  }
+}

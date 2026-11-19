@@ -238,8 +238,14 @@ def enumerate_bbox_tiles(
     ]
 
 
-def build_tile_plan() -> list[tuple[str, int, int, int, str, Path]]:
-    """Build the list of `(provider, z, x, y, url, dest)` tiles to fetch."""
+def build_tile_plan(
+    aoi_bboxes: list[tuple[int, tuple[float, float, float, float]]] | None = None,
+) -> list[tuple[str, int, int, int, str, Path]]:
+    """Build the list of `(provider, z, x, y, url, dest)` tiles to fetch.
+
+    Always includes global z0-z4 base coverage. Pass project-specific `(zoom, (w, s, e, n))`
+    entries via `--aoi-config` for higher-zoom regional or close-up tiles.
+    """
     tasks: list[tuple[str, int, int, int, str, Path]] = []
 
     # 1. NASA GIBS Blue Marble Shaded Relief & Bathymetry (z0-z4 global)
@@ -264,29 +270,8 @@ def build_tile_plan() -> list[tuple[str, int, int, int, str, Path]]:
             for y in range(n):
                 eox_coords.add((z, x, y))
 
-    # Regional & Sulawesi AOI z5-z10
-    regional_bboxes = [
-        (5, (20.0, -15.0, 145.0, 48.0)),   # Mediterranean/Caucasus/India through Indonesia
-        (6, (24.0, -12.0, 142.0, 44.0)),   # Turkey-India corridor + Maritime Southeast Asia
-        (7, (94.0, -12.0, 142.0, 8.0)),    # Indonesian Archipelago
-        (8, (117.5, -6.8, 126.2, 2.5)),    # Sulawesi & surrounding seas
-        (9, (118.0, -6.5, 126.0, 2.2)),    # Sulawesi island + gulfs
-        (10, (118.4, -6.2, 125.6, 2.0)),   # Full Sulawesi high-detail
-    ]
-    for z, bbox in regional_bboxes:
+    for z, bbox in aoi_bboxes or []:
         for coord in enumerate_bbox_tiles(*bbox, z):
-            eox_coords.add(coord)
-
-    # Close-up z11 sub-regions: Palu-Koro fault, Gulf of Tomini, Gulf of Tolo, Gulf of Bone, Maros karst
-    closeup_z11_bboxes = [
-        (119.3, -2.0, 120.6, 0.2),   # Palu-Koro fault valley & Palu Bay
-        (119.9, -1.2, 123.4, 0.7),   # Gulf of Tomini & Togian Islands
-        (121.2, -3.1, 123.3, -1.5),  # Gulf of Tolo & East Peninsula
-        (120.1, -5.6, 121.7, -2.5),  # Gulf of Bone & South/SE Peninsula
-        (119.3, -5.3, 120.2, -4.6),  # Maros-Pangkep karst & Makassar
-    ]
-    for bbox in closeup_z11_bboxes:
-        for coord in enumerate_bbox_tiles(*bbox, 11):
             eox_coords.add(coord)
 
     for idx, (z, x, y) in enumerate(sorted(eox_coords)):
@@ -514,6 +499,15 @@ def main() -> int:
         default=12,
         help="Maximum concurrent HTTP downloads (default: 12).",
     )
+    parser.add_argument(
+        "--aoi-config",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSON file defining project AOI bounding boxes as "
+            "[{\"zoom\": 8, \"bbox\": [west, south, east, north]}]."
+        ),
+    )
     args = parser.parse_args()
 
     if args.verify:
@@ -529,7 +523,15 @@ def main() -> int:
     n_flags = extract_flag_icons(tarball)
     print(f"  [ok] extracted {n_flags} SVG flags into assets/geo/flags/")
 
-    tile_tasks = build_tile_plan()
+    aoi_bboxes: list[tuple[int, tuple[float, float, float, float]]] = []
+    if args.aoi_config is not None:
+        raw_aoi = json.loads(args.aoi_config.read_text(encoding="utf-8"))
+        for entry in raw_aoi:
+            z = int(entry["zoom"])
+            w, s, e, n = (float(v) for v in entry["bbox"])
+            aoi_bboxes.append((z, (w, s, e, n)))
+
+    tile_tasks = build_tile_plan(aoi_bboxes=aoi_bboxes)
     print(f"Fetching {len(tile_tasks)} satellite raster tiles (NASA BMNG + EOX Sentinel-2 2016)...")
     t0 = time.time()
     completed = 0

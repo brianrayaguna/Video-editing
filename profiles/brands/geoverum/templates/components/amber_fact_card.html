@@ -1,0 +1,71 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      width: {{WIDTH}}px;
+      height: {{HEIGHT}}px;
+      overflow: hidden;
+      background: transparent;
+      --vedit-fg: {{FG_COLOR}};
+      --vedit-bg: {{BG_COLOR}};
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      bottom: {{SAFE_BOTTOM_PCT}}%;
+      left: {{SAFE_LEFT_PCT}}%;
+      right: {{SAFE_RIGHT_PCT}}%;
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-end;
+      padding-bottom: calc(64px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-inner {
+      background: var(--vedit-bg);
+      color: var(--vedit-fg);
+      border-radius: 4px;
+      padding: calc(12px * {{SCALE_FACTOR}}) calc(22px * {{SCALE_FACTOR}});
+      display: inline-flex;
+      align-items: baseline;
+      gap: calc(12px * {{SCALE_FACTOR}});
+      max-width: 72%;
+      transform-origin: left bottom;
+    }
+    .fact-num {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      line-height: 1.1;
+      opacity: 0.92;
+    }
+    .fact-title {
+      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-inner">
+        <span class="fact-num">{{VAR_NUMBER|}}</span>
+        <span class="fact-title">{{VAR_TEXT|}}</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(
+      "#{{SCENE_ID}}-inner",
+      { opacity: 0, scale: 0.96, y: 8 },
+      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
+      0
+    );
+    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
+    window.__timelines = window.__timelines || {};
+    window.__timelines["{{SCENE_ID}}"] = tl;
+  </script>
+</template>

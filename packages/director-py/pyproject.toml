@@ -21,9 +21,16 @@ dev = [
   "pytest>=8.3.0",
   "ruff>=0.7.0",
 ]
+interop = [
+  "opentimelineio>=0.17.0",
+]
+mcp = [
+  "fastmcp>=2.0.0",
+]
 
 [project.scripts]
 vedit = "vedit.cli:app"
+vedit-mcp = "vedit.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vedit"]

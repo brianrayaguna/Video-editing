@@ -2,19 +2,19 @@
   "schema_version": "1.0",
   "brand_id": "geoverum",
   "display_name": "Geoverum",
-  "editorial_identity": "Cartographic documentary brand: abyssal ground (#03161F), satellite relief, Space Grotesk / Archivo Black, one geographic signal per beat. Short-form continuous map glides (~1 cut/min) use dual-territory metrics, maritime corridors, asymmetric compares, and border diagrams. Long-form map\u2194evidence films use denser pacing (~10 cuts/min, ASL\u22483.8s), continent\u2192country zoom chains, numbered amber fact plates, hydro accents, and staggered plate vectors. No violet multi-fills, 3D map props, or shouty chrome.",
+  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): abyssal ground (#03161F), satellite relief, 3-tier visual hierarchy (Ground, Context, Focal Lead), plain true-centered 2-3 word Space Grotesk captions, Archivo Black tabular metrics, and optional understated text-only top-right watermark ('geoverum', no logo).",
   "soft_priors": {
     "temporal_curve": [
       {
         "section": "hook",
-        "asl_p25_s": 7.5,
-        "asl_p50_s": 10.067,
-        "asl_p75_s": 12.0,
+        "asl_p25_s": 3.5,
+        "asl_p50_s": 5.5,
+        "asl_p75_s": 9.5,
         "cuts_per_min_range": [
-          5.0,
-          8.0
+          4.0,
+          12.0
         ],
-        "energy_target": 0.42,
+        "energy_target": 0.44,
         "preferred_transitions": [
           "hard_cut",
           "j_cut",
@@ -23,14 +23,14 @@
       },
       {
         "section": "setup",
-        "asl_p25_s": 4.8,
-        "asl_p50_s": 6.4,
-        "asl_p75_s": 8.5,
+        "asl_p25_s": 4.0,
+        "asl_p50_s": 6.2,
+        "asl_p75_s": 10.0,
         "cuts_per_min_range": [
-          6.0,
+          4.0,
           11.0
         ],
-        "energy_target": 0.36,
+        "energy_target": 0.38,
         "preferred_transitions": [
           "hard_cut",
           "j_cut"
@@ -38,29 +38,28 @@
       },
       {
         "section": "body",
-        "asl_p25_s": 2.4,
-        "asl_p50_s": 3.8,
-        "asl_p75_s": 6.9,
+        "asl_p25_s": 3.0,
+        "asl_p50_s": 5.2,
+        "asl_p75_s": 9.0,
         "cuts_per_min_range": [
-          6.0,
-          11.0
+          4.0,
+          12.0
         ],
-        "energy_target": 0.36,
+        "energy_target": 0.38,
         "preferred_transitions": [
           "hard_cut",
           "j_cut",
-          "whip_zoom_blur",
           "clean_crossfade"
         ]
       },
       {
         "section": "escalation",
-        "asl_p25_s": 5.5,
-        "asl_p50_s": 7.8,
+        "asl_p25_s": 4.0,
+        "asl_p50_s": 6.8,
         "asl_p75_s": 10.5,
         "cuts_per_min_range": [
-          5.5,
-          9.5
+          4.0,
+          10.0
         ],
         "energy_target": 0.44,
         "preferred_transitions": [
@@ -71,12 +70,12 @@
       },
       {
         "section": "climax",
-        "asl_p25_s": 6.5,
-        "asl_p50_s": 9.2,
+        "asl_p25_s": 4.5,
+        "asl_p50_s": 7.5,
         "asl_p75_s": 11.5,
         "cuts_per_min_range": [
-          5.2,
-          8.2
+          4.0,
+          9.0
         ],
         "energy_target": 0.48,
         "preferred_transitions": [
@@ -87,12 +86,12 @@
       },
       {
         "section": "outro",
-        "asl_p25_s": 3.7,
-        "asl_p50_s": 4.633,
-        "asl_p75_s": 5.8,
+        "asl_p25_s": 3.5,
+        "asl_p50_s": 5.0,
+        "asl_p75_s": 7.5,
         "cuts_per_min_range": [
-          10.0,
-          16.0
+          6.0,
+          14.0
         ],
         "energy_target": 0.28,
         "preferred_transitions": [
@@ -106,20 +105,27 @@
         "ground": "#03161F",
         "ink": "#F4F1EA",
         "accent": "#F5C542",
-        "secondary_accent": "#C2412D"
+        "secondary_accent": "#C2412D",
+        "hydro_accent": "#7CE0F9",
+        "comparison_accent": "#2E74E6",
+        "surface_elevated": "#0A2230",
+        "muted_ink": "#9DB2BE"
       },
       "typography": {
         "display_family": "Archivo Black, Space Grotesk, sans-serif",
         "body_family": "Space Grotesk, sans-serif",
+        "title_family": "Unbounded, Space Grotesk, sans-serif",
         "caption_case": "sentence",
-        "max_words_per_caption_group": 4,
-        "default_caption_band": "dynamic_away_from_subject"
+        "caption_style": "plain",
+        "caption_transition_ms": 50,
+        "max_words_per_caption_group": 3,
+        "default_caption_band": "lower_third"
       },
       "motion_style": {
         "easing_feel": "smooth_editorial",
         "entrance_ms_range": [
-          180,
-          420
+          160,
+          240
         ],
         "punch_in_scale_range": [
           1.0,
@@ -142,8 +148,8 @@
     }
   },
   "hard_guardrails": {
-    "min_shot_duration_s": 2.2,
-    "max_uninterrupted_hold_s": 12.0,
+    "min_shot_duration_s": 1.8,
+    "max_uninterrupted_hold_s": 30.0,
     "no_cut_within_keyword_ms": 180,
     "never_overlap_subject_boxes": true,
     "min_wcag_contrast": 4.5,
@@ -174,6 +180,213 @@
     ],
     "avoid_heavy_css_blur": true
   },
+  "format_overrides": {
+    "9:16": {
+      "format_name": "short_documentary",
+      "min_shot_duration_s": 1.8,
+      "max_uninterrupted_hold_s": 30.0,
+      "default_caption_band": "lower_third",
+      "watermark_default": false,
+      "temporal_curve": [
+        {
+          "section": "hook",
+          "asl_p25_s": 3.5,
+          "asl_p50_s": 5.5,
+          "asl_p75_s": 10.0,
+          "cuts_per_min_range": [
+            2.0,
+            12.0
+          ],
+          "energy_target": 0.45,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut",
+            "whip_zoom_blur"
+          ]
+        },
+        {
+          "section": "setup",
+          "asl_p25_s": 4.0,
+          "asl_p50_s": 6.5,
+          "asl_p75_s": 11.0,
+          "cuts_per_min_range": [
+            1.5,
+            11.0
+          ],
+          "energy_target": 0.38,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut"
+          ]
+        },
+        {
+          "section": "body",
+          "asl_p25_s": 3.5,
+          "asl_p50_s": 6.0,
+          "asl_p75_s": 12.0,
+          "cuts_per_min_range": [
+            1.0,
+            12.0
+          ],
+          "energy_target": 0.38,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut",
+            "clean_crossfade"
+          ]
+        },
+        {
+          "section": "escalation",
+          "asl_p25_s": 4.5,
+          "asl_p50_s": 7.5,
+          "asl_p75_s": 11.5,
+          "cuts_per_min_range": [
+            1.5,
+            10.0
+          ],
+          "energy_target": 0.44,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut",
+            "amber_light_leak"
+          ]
+        },
+        {
+          "section": "climax",
+          "asl_p25_s": 4.5,
+          "asl_p50_s": 8.0,
+          "asl_p75_s": 12.0,
+          "cuts_per_min_range": [
+            1.5,
+            9.0
+          ],
+          "energy_target": 0.48,
+          "preferred_transitions": [
+            "amber_light_leak",
+            "j_cut",
+            "clean_crossfade"
+          ]
+        },
+        {
+          "section": "outro",
+          "asl_p25_s": 3.5,
+          "asl_p50_s": 5.0,
+          "asl_p75_s": 7.5,
+          "cuts_per_min_range": [
+            4.0,
+            14.0
+          ],
+          "energy_target": 0.28,
+          "preferred_transitions": [
+            "hard_cut",
+            "clean_fade"
+          ]
+        }
+      ]
+    },
+    "16:9": {
+      "format_name": "long_documentary",
+      "min_shot_duration_s": 1.5,
+      "max_uninterrupted_hold_s": 20.0,
+      "default_caption_band": "lower_third",
+      "watermark_default": false,
+      "temporal_curve": [
+        {
+          "section": "hook",
+          "asl_p25_s": 3.5,
+          "asl_p50_s": 5.5,
+          "asl_p75_s": 9.0,
+          "cuts_per_min_range": [
+            5.0,
+            12.0
+          ],
+          "energy_target": 0.44,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut"
+          ]
+        },
+        {
+          "section": "setup",
+          "asl_p25_s": 4.0,
+          "asl_p50_s": 6.0,
+          "asl_p75_s": 8.5,
+          "cuts_per_min_range": [
+            6.0,
+            11.0
+          ],
+          "energy_target": 0.38,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut"
+          ]
+        },
+        {
+          "section": "body",
+          "asl_p25_s": 2.4,
+          "asl_p50_s": 3.8,
+          "asl_p75_s": 6.9,
+          "cuts_per_min_range": [
+            6.0,
+            14.0
+          ],
+          "energy_target": 0.38,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut",
+            "clean_crossfade"
+          ]
+        },
+        {
+          "section": "escalation",
+          "asl_p25_s": 4.0,
+          "asl_p50_s": 6.5,
+          "asl_p75_s": 9.5,
+          "cuts_per_min_range": [
+            5.0,
+            11.0
+          ],
+          "energy_target": 0.44,
+          "preferred_transitions": [
+            "hard_cut",
+            "j_cut",
+            "amber_light_leak"
+          ]
+        },
+        {
+          "section": "climax",
+          "asl_p25_s": 4.5,
+          "asl_p50_s": 7.5,
+          "asl_p75_s": 10.5,
+          "cuts_per_min_range": [
+            4.5,
+            10.0
+          ],
+          "energy_target": 0.48,
+          "preferred_transitions": [
+            "amber_light_leak",
+            "j_cut",
+            "clean_crossfade"
+          ]
+        },
+        {
+          "section": "outro",
+          "asl_p25_s": 3.5,
+          "asl_p50_s": 5.5,
+          "asl_p75_s": 8.0,
+          "cuts_per_min_range": [
+            6.0,
+            14.0
+          ],
+          "energy_target": 0.28,
+          "preferred_transitions": [
+            "hard_cut",
+            "clean_fade"
+          ]
+        }
+      ]
+    }
+  },
   "calibration": {
     "accepted_overrides": 0,
     "rejected_patterns": [
@@ -194,7 +407,7 @@
       "false_color_thermal_grade",
       "film_reel_archival_frame"
     ],
-    "last_calibrated_at": "2026-11-18T14:45:00+00:00"
+    "last_calibrated_at": "2026-11-19T06:00:00+00:00"
   },
   "provenance": {
     "reference_video_count": 5,

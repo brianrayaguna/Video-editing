@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/project_manifest.schema.json",
+  "title": "ProjectManifest",
+  "description": "Self-contained external editing project manifest storing strictly project-relative directory and artifact pointers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "brand_id",
+    "platform_target_id",
+    "created_at",
+    "directories",
+    "artifacts"
+  ],
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!~)(?!.*\\.\\.[\\\\/]).+$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+    },
+    "brand_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+    },
+    "platform_target_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "directories": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "probes",
+        "breakdowns",
+        "transcripts",
+        "decisions",
+        "maps",
+        "broll",
+        "audio",
+        "plan",
+        "build",
+        "output"
+      ],
+      "properties": {
+        "inputs": { "$ref": "#/$defs/relativePath" },
+        "probes": { "$ref": "#/$defs/relativePath" },
+        "breakdowns": { "$ref": "#/$defs/relativePath" },
+        "transcripts": { "$ref": "#/$defs/relativePath" },
+        "decisions": { "$ref": "#/$defs/relativePath" },
+        "maps": { "$ref": "#/$defs/relativePath" },
+        "broll": { "$ref": "#/$defs/relativePath" },
+        "audio": { "$ref": "#/$defs/relativePath" },
+        "plan": { "$ref": "#/$defs/relativePath" },
+        "build": { "$ref": "#/$defs/relativePath" },
+        "output": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief",
+        "edit_plan",
+        "verification",
+        "master",
+        "audit",
+        "otio",
+        "benchmark"
+      ],
+      "properties": {
+        "brief": { "$ref": "#/$defs/relativePath" },
+        "edit_plan": { "$ref": "#/$defs/relativePath" },
+        "verification": { "$ref": "#/$defs/relativePath" },
+        "master": { "$ref": "#/$defs/relativePath" },
+        "audit": { "$ref": "#/$defs/relativePath" },
+        "otio": { "$ref": "#/$defs/relativePath" },
+        "benchmark": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  }
+}

@@ -11,22 +11,58 @@ from vedit.models import (
     BrandTemplateEntry,
     BrandTemplateVariable,
     OverlayCompositionOp,
+    PlatformTarget,
 )
 
 OverlayKind = Literal[
     "caption_rail", "kinetic_callout", "lower_third", "data_card", "title_scene", "full_scene"
 ]
 
-TEMPLATE_KIND_MAP: dict[str, OverlayKind] = {
+_GENERIC_TEMPLATE_KINDS: dict[str, OverlayKind] = {
     "caption_rail": "caption_rail",
-    "amber_fact_card": "data_card",
-    "broadcast_bug": "lower_third",
-    "distance_metric": "kinetic_callout",
-    "tabular_metric": "kinetic_callout",
-    "region_highlight": "full_scene",
+    "lower_third": "lower_third",
+    "data_card": "data_card",
+    "kinetic_callout": "kinetic_callout",
+    "title_scene": "title_scene",
+    "full_scene": "full_scene",
 }
 
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def resolve_effective_policy(
+    policy: BrandStylePolicy,
+    platform_target: PlatformTarget | None,
+) -> BrandStylePolicy:
+    """Apply aspect-ratio-conditioned format_overrides onto a BrandStylePolicy copy."""
+    if platform_target is None or not policy.format_overrides:
+        return policy
+    override = policy.format_overrides.get(platform_target.aspect_ratio)
+    if override is None:
+        return policy
+
+    guard_updates: dict[str, Any] = {}
+    if override.min_shot_duration_s is not None:
+        guard_updates["min_shot_duration_s"] = override.min_shot_duration_s
+    if override.max_uninterrupted_hold_s is not None:
+        guard_updates["max_uninterrupted_hold_s"] = override.max_uninterrupted_hold_s
+    new_guard = (
+        policy.hard_guardrails.model_copy(update=guard_updates)
+        if guard_updates
+        else policy.hard_guardrails
+    )
+
+    soft = policy.soft_priors
+    new_curve = override.temporal_curve if override.temporal_curve else soft.temporal_curve
+    typo = soft.visual_tokens.typography
+    new_typo = (
+        typo.model_copy(update={"default_caption_band": override.default_caption_band})
+        if override.default_caption_band is not None
+        else typo
+    )
+    new_visual = soft.visual_tokens.model_copy(update={"typography": new_typo})
+    new_soft = soft.model_copy(update={"temporal_curve": new_curve, "visual_tokens": new_visual})
+    return policy.model_copy(update={"soft_priors": new_soft, "hard_guardrails": new_guard})
 
 
 def catalog_by_id(catalog: BrandTemplateCatalog) -> dict[str, BrandTemplateEntry]:
@@ -76,8 +112,16 @@ def resolve_template_variables(
     return resolved
 
 
-def overlay_kind_for_template(template_id: str, fallback: OverlayKind) -> OverlayKind:
-    return TEMPLATE_KIND_MAP.get(template_id, fallback)
+def overlay_kind_for_template(
+    template_id: str,
+    fallback: OverlayKind,
+    catalog: BrandTemplateCatalog | None = None,
+) -> OverlayKind:
+    if catalog is not None:
+        entry = catalog_by_id(catalog).get(template_id)
+        if entry is not None and entry.overlay_kind is not None:
+            return entry.overlay_kind
+    return _GENERIC_TEMPLATE_KINDS.get(template_id, fallback)
 
 
 def motion_props_from_policy(policy: BrandStylePolicy) -> dict[str, Any]:
@@ -152,7 +196,7 @@ def validate_overlay_template(
                 f"{overlay.overlay_id}: variable {var_id!r} failed type/range check "
                 f"({var.type}) for {overlay.template_id}"
             )
-    expected_kind = TEMPLATE_KIND_MAP.get(overlay.template_id)
+    expected_kind = entry.overlay_kind or _GENERIC_TEMPLATE_KINDS.get(overlay.template_id)
     if expected_kind is not None and overlay.kind != expected_kind:
         errors.append(
             f"{overlay.overlay_id}: kind {overlay.kind!r} incompatible with "

@@ -15,6 +15,11 @@ from vedit.analyzers.brand_analyzer import (
 from vedit.contracts import validate_against_contract
 from vedit.metrics import wcag_contrast_ratio
 from vedit.models import (
+    BreakdownAudioMetrics,
+    BreakdownEditingMetrics,
+    BreakdownGradeMetrics,
+    BreakdownPackagingMetrics,
+    BreakdownShot,
     MediaProbeResult,
     NormalizedTranscript,
     ProbeAudioInfo,
@@ -28,6 +33,7 @@ from vedit.models import (
     ProbeVideoInfo,
     ProbeVisualInfo,
     TranscriptWord,
+    VideoBreakdownResult,
 )
 from vedit.ports.decision import DecisionAnswer, DecisionBatchResult, DecisionQuestion, ImageInput
 
@@ -242,3 +248,162 @@ def test_calibration_feedback_updates_and_validates(tmp_path: Path) -> None:
     assert updated.calibration is not None
     assert updated.calibration.accepted_overrides == 1
     assert "split_metric_card" in updated.calibration.rejected_patterns
+
+
+def test_synthesize_with_forensic_breakdown_and_multi_aspect_overrides(tmp_path: Path) -> None:
+    kf1 = tmp_path / "kf_v.jpg"
+    kf2 = tmp_path / "kf_h.jpg"
+    kf1.write_bytes(b"img-v")
+    kf2.write_bytes(b"img-h")
+
+    probe_v = _make_probe(sha="d" * 64, shot_durations=[5.0, 6.0], kf_paths=[kf1])
+    probe_h = _make_probe(sha="e" * 64, shot_durations=[4.0, 5.0], kf_paths=[kf2]).model_copy(
+        update={
+            "video": _make_probe(
+                sha="e" * 64, shot_durations=[4.0, 5.0], kf_paths=[kf2]
+            ).video.model_copy(update={"width": 1920, "height": 1080})
+        }
+    )
+
+    bd_v = VideoBreakdownResult(
+        provider="rea_video",
+        source_path="/tmp/short.mp4",
+        source_sha256="d" * 64,
+        duration_s=30.0,
+        width=1080,
+        height=1920,
+        fps=30.0,
+        aspect_ratio="9:16",
+        confidence=0.95,
+        reviewed_by=["agent"],
+        generative_reference_warning=False,
+        production_mix={"code_render": 0.6, "live_action": 0.4},
+        shots=[
+            BreakdownShot(
+                shot_index=0,
+                start_s=0.0,
+                end_s=5.5,
+                duration_s=5.5,
+                transition_in="start",
+                production_label="code_render",
+                production_confidence=0.96,
+                narrative_role="hook",
+                narrative_point="Hook with bold contrast.",
+                drawn_palette_hex=["#F5C542"],
+            ),
+            BreakdownShot(
+                shot_index=1,
+                start_s=5.5,
+                end_s=18.0,
+                duration_s=12.5,
+                transition_in="dissolve",
+                production_label="live_action",
+                production_confidence=0.92,
+                narrative_role="proof",
+                narrative_point="Aerial landscape proof.",
+            ),
+            BreakdownShot(
+                shot_index=2,
+                start_s=18.0,
+                end_s=30.0,
+                duration_s=12.0,
+                transition_in="fade",
+                production_label="code_render",
+                production_confidence=0.94,
+                narrative_role="cta",
+                narrative_point="Clean typographic close.",
+            ),
+        ],
+        editing=BreakdownEditingMetrics(
+            cuts_per_min=4.0,
+            avg_shot_s=10.0,
+            jump_cuts=0,
+            punch_ins=1,
+            punch_in_scale_ratios=[1.12, 1.18],
+            cuts_in_pauses_ratio=0.72,
+            beat_synced_edit=False,
+        ),
+        packaging=BreakdownPackagingMetrics(
+            subtitle_count=12,
+            caption_case_observed="title",
+            caption_style_observed="chip",
+            caption_band_observed="lower_third",
+            caption_words_p50=2.0,
+            caption_words_p75=3.0,
+            caption_entrance_animations=["fade"],
+            caption_entrance_ms_median=120,
+            caption_fill_hex="#F4F1EA",
+            persistent_watermark_detected=True,
+        ),
+        audio=BreakdownAudioMetrics(
+            has_audio=True,
+            has_voice=True,
+            has_music=True,
+            tempo_bpm=92.0,
+            beat_strength=0.61,
+            no_beat=False,
+            key_tonic="C",
+            key_mode="minor",
+            sfx_count=2,
+            sfx_types=["whoosh"],
+            sfx_aligned_to_visual_count=2,
+        ),
+        grade=BreakdownGradeMetrics(look="dark and desaturated", tone="cool"),
+    )
+
+    bd_h = bd_v.model_copy(
+        update={
+            "source_path": "/tmp/long.mp4",
+            "source_sha256": "e" * 64,
+            "width": 1920,
+            "height": 1080,
+            "aspect_ratio": "16:9",
+            "packaging": bd_v.packaging.model_copy(update={"persistent_watermark_detected": False}),
+            "audio": bd_v.audio.model_copy(update={"tempo_bpm": 102.0}),
+        }
+    )
+
+    res = synthesize_brand_artifacts(
+        "docu_brand",
+        [
+            ReferenceVideoSample(source_video_id="short_ref", probe=probe_v, breakdown=bd_v),
+            ReferenceVideoSample(source_video_id="long_ref", probe=probe_h, breakdown=bd_h),
+        ],
+    )
+    policy = res.policy
+    playbook = res.playbook
+
+    assert validate_against_contract(
+        policy.model_dump(exclude_none=True), "brand_style_policy.schema.json"
+    ) == []
+    assert validate_against_contract(
+        playbook.model_dump(exclude_none=True), "editorial_playbook.schema.json"
+    ) == []
+
+    # Measured audio & packaging override coarse heuristics
+    assert policy.soft_priors.audio_style.bpm_range == [84.0, 110.0]
+    assert policy.soft_priors.audio_style.sfx_policy == "kinetic_accents"
+    assert "mysterious" in policy.soft_priors.audio_style.bgm_moods
+    assert policy.soft_priors.visual_tokens.typography.caption_case == "title"
+    assert policy.soft_priors.visual_tokens.typography.caption_style == "chip"
+    assert policy.soft_priors.visual_tokens.typography.default_caption_band == "lower_third"
+    assert policy.soft_priors.visual_tokens.typography.max_words_per_caption_group == 3
+    assert policy.soft_priors.visual_tokens.typography.caption_transition_ms == 120
+    assert policy.soft_priors.visual_tokens.motion_style.punch_in_scale_range == [1.12, 1.18]
+
+    # Transitions derived from real dissolve/fade + pause-cut ratio
+    curve_by_sec = {s.section: s for s in policy.soft_priors.temporal_curve}
+    assert "clean_crossfade" in curve_by_sec["body"].preferred_transitions
+    assert "j_cut" in curve_by_sec["body"].preferred_transitions
+    assert "clean_fade" in curve_by_sec["outro"].preferred_transitions
+
+    # Automatic multi-aspect format overrides
+    assert policy.format_overrides is not None
+    assert set(policy.format_overrides.keys()) == {"9:16", "16:9"}
+    assert policy.format_overrides["9:16"].watermark_default is True
+    assert policy.format_overrides["16:9"].watermark_default is False
+
+    # Confidence boosted by reviewed forensic breakdowns
+    assert policy.provenance.confidence >= 0.90
+    assert any(t.trigger_id == "sfx_transition_anchor" for t in playbook.grammar_triggers)
+    assert any(t.trigger_id == "punch_in_rhythm_refresh" for t in playbook.grammar_triggers)

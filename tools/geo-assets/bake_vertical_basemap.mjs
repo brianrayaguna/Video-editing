@@ -3,14 +3,12 @@
  * Offline deterministic vertical (1080x1920) & horizontal (1920x1080) map camera baker
  * for Geoverum compositions.
  *
- * Bake knobs match the production-proven contract in `render_sulawesi_shots.mjs` and
- * `tools/geo-assets/README.md`: JPEG intermediates (q92), ~1500ms tile idle / 20ms poll,
- * Darwin GPU angle without forced SwiftShader, optional frame resume unless REBAKE=1.
+ * Uses raw CDP JPEG capture (`optimizeForSpeed: true`, q92), direct FFmpeg `image2pipe`
+ * encoding (zero JPEG disk round-trip unless `KEEP_FRAMES=1`), Metal ANGLE on macOS,
+ * and optional multi-process Chrome frame-range sharding (`WORKERS=2` default when `N>=120`).
  *
- * Supports both single-move parameters (FROM/CENTER/ZSTART/ZEND) and multi-beat keyframe
- * trajectories (`KEYFRAMES_JSON`), driving local MapLibre GL (`5.24.0`) frame-by-frame
- * against the local offline tile server (`serve_tiles.mjs`) and encoding an all-intra
- * H.264 MP4 (`-g 1 -crf 16 -pix_fmt yuv420p`, explicit `bt709` color metadata).
+ * Optional GeoJSON coordinate projection is opt-in via `REGIONS_GEOJSON` and
+ * `TECTONICS_GEOJSON` (relative paths under `/vector/` on the local tile server).
  */
 
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -19,6 +17,12 @@ import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import {
+  concatMp4Slices,
+  createCdpScreenshotter,
+  getChromeArgs,
+  spawnMjpegPipeEncoder,
+} from "./fast_capture.mjs";
 import { startTileServer } from "./serve_tiles.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -73,6 +77,17 @@ const DRIFT_ZOOM = Number(process.env.DRIFT_ZOOM || 0.12);
 const KEYFRAMES = process.env.KEYFRAMES_JSON ? JSON.parse(process.env.KEYFRAMES_JSON) : null;
 const OUT = process.env.OUT || process.cwd();
 const KEEP_FRAMES = process.env.KEEP_FRAMES === "1";
+const USE_HW_ENCODE = process.env.HW_ENCODE === "1";
+const REGIONS_GEOJSON = process.env.REGIONS_GEOJSON || "";
+const TECTONICS_GEOJSON = process.env.TECTONICS_GEOJSON || "";
+const TERRAIN = process.env.TERRAIN === "1";
+const TERRAIN_EXAG = Number(process.env.TERRAIN_EXAG || 2.2);
+const DEM_BOUNDS = (process.env.DEM_BOUNDS || "-180,-85,180,85").split(",").map(Number);
+const HIGHLIGHT_PROP = process.env.HIGHLIGHT_PROP || "highlight";
+const WORKERS = Math.max(
+  1,
+  Number(process.env.WORKERS || (!KEEP_FRAMES && N >= 120 ? 2 : 1))
+);
 
 function buildPageHtml(baseUrl) {
   let seed = 11;
@@ -117,13 +132,60 @@ function buildPageHtml(baseUrl) {
     const PAN = ${PAN}, HOLD = ${HOLD}, DRIFT_ZOOM = ${DRIFT_ZOOM};
     const KEYFRAMES = ${JSON.stringify(KEYFRAMES)};
     const GLOBE = ${PROJECTION === "globe"};
+    const TERRAIN = ${TERRAIN};
+    const TERRAIN_EXAG = ${TERRAIN_EXAG};
+    const REGIONS_GEOJSON = ${JSON.stringify(REGIONS_GEOJSON)};
+    const TECTONICS_GEOJSON = ${JSON.stringify(TECTONICS_GEOJSON)};
 
-    let sulawesiRegions = null;
-    let sulawesiTectonics = null;
+    let regionsData = null;
+    let tectonicsData = null;
 
     const initCam = KEYFRAMES && KEYFRAMES.length
       ? KEYFRAMES[0]
       : { center: FROM || CENTER, zoom: ZSTART, pitch: PITCH_START, bearing: BEARING_START };
+
+    const styleSources = {
+      sat: {
+        type: "raster",
+        tiles: [BASE_URL + "/tiles/{z}/{x}/{y}.jpg"],
+        tileSize: 256,
+        maxzoom: 11
+      }
+    };
+    const styleLayers = (GLOBE ? [] : [{ id: "bg", type: "background", paint: { "background-color": "#03161F" } }])
+      .concat([{ id: "sat", type: "raster", source: "sat" }]);
+    if (TERRAIN) {
+      const DEM_B = ${JSON.stringify(DEM_BOUNDS)};
+      styleSources.dem = {
+        type: "raster-dem",
+        tiles: [BASE_URL + "/dem/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        encoding: "terrarium",
+        bounds: DEM_B,
+        minzoom: 4,
+        maxzoom: 7
+      };
+      styleSources.hillshadeDem = {
+        type: "raster-dem",
+        tiles: [BASE_URL + "/dem/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        encoding: "terrarium",
+        bounds: DEM_B,
+        minzoom: 4,
+        maxzoom: 7
+      };
+      styleLayers.push({
+        id: "hills",
+        type: "hillshade",
+        source: "hillshadeDem",
+        paint: {
+          "hillshade-exaggeration": 0.48,
+          "hillshade-shadow-color": "#03161F",
+          "hillshade-highlight-color": "#F4F1EA",
+          "hillshade-accent-color": "#0B2938"
+        }
+      });
+    }
 
     const map = new maplibregl.Map({
       container: "map",
@@ -131,16 +193,9 @@ function buildPageHtml(baseUrl) {
         version: 8,
         projection: { type: GLOBE ? "globe" : "mercator" },
         sky: GLOBE ? { "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 4.5, 0.85, 6.0, 0] } : undefined,
-        sources: {
-          sat: {
-            type: "raster",
-            tiles: [BASE_URL + "/tiles/{z}/{x}/{y}.jpg"],
-            tileSize: 256,
-            maxzoom: 11
-          }
-        },
-        layers: (GLOBE ? [] : [{ id: "bg", type: "background", paint: { "background-color": "#03161F" } }])
-          .concat([{ id: "sat", type: "raster", source: "sat" }])
+        sources: styleSources,
+        layers: styleLayers,
+        terrain: TERRAIN ? { source: "dem", exaggeration: TERRAIN_EXAG } : undefined
       },
       center: initCam.center,
       zoom: initCam.zoom,
@@ -173,7 +228,6 @@ function buildPageHtml(baseUrl) {
       };
     }
 
-    // Emil Kowalski's custom curves from DESIGN.md
     const EASE_STRONG_IN_OUT = makeCubicBezier(0.77, 0.0, 0.175, 1.0);
     const EASE_STRONG_OUT = makeCubicBezier(0.23, 1.0, 0.32, 1.0);
     const EASE_SINE_IN_OUT = (x) => -(Math.cos(Math.PI * x) - 1) / 2;
@@ -227,14 +281,22 @@ function buildPageHtml(baseUrl) {
       return { center, zoom, pitch, bearing };
     }
 
+    async function fetchOptionalGeoJson(relName) {
+      if (!relName) return null;
+      const path = relName.startsWith("/") ? relName : "/vector/" + relName;
+      const resp = await fetch(BASE_URL + path);
+      if (!resp.ok) return null;
+      return resp.json();
+    }
+
     window.__ready = new Promise((res) => {
       map.on("load", async () => {
         const [r1, r3] = await Promise.all([
-          fetch(BASE_URL + "/vector/sulawesi_regions.geojson").then((r) => r.json()),
-          fetch(BASE_URL + "/vector/sulawesi_tectonics.geojson").then((r) => r.json()),
+          fetchOptionalGeoJson(REGIONS_GEOJSON),
+          fetchOptionalGeoJson(TECTONICS_GEOJSON),
         ]);
-        sulawesiRegions = r1;
-        sulawesiTectonics = r3;
+        regionsData = r1;
+        tectonicsData = r3;
         res();
       });
     });
@@ -245,11 +307,16 @@ function buildPageHtml(baseUrl) {
 
     window.__waitIdle = function(ms) {
       return new Promise((res) => {
+        if (map.loaded() && map.areTilesLoaded()) {
+          map.triggerRepaint();
+          requestAnimationFrame(() => res(false));
+          return;
+        }
         const t0 = performance.now();
         (function poll() {
           if (map.loaded() && map.areTilesLoaded()) {
             map.triggerRepaint();
-            requestAnimationFrame(() => requestAnimationFrame(() => res(false)));
+            requestAnimationFrame(() => res(false));
             return;
           }
           if (performance.now() - t0 > (ms || 1500)) {
@@ -291,18 +358,22 @@ function buildPageHtml(baseUrl) {
           pitch: Number(map.getPitch().toFixed(2)),
           bearing: Number(map.getBearing().toFixed(2)),
         },
-        sulawesi_regions: sulawesiRegions.features.map((f) => ({
-          name: f.properties.name,
-          peninsula: f.properties.peninsula || null,
-          feature_type: f.properties.feature_type || "province",
+        regions: (regionsData?.features || []).map((f) => ({
+          name: f.properties?.name,
+          peninsula: f.properties?.peninsula || null,
+          feature_type: f.properties?.feature_type || "province",
           d: geomToPath(f.geometry),
         })),
-        tectonics: sulawesiTectonics.features
-          .filter((f) => f.properties.layer === "callout_trace" || f.properties.is_palu_koro)
+        tectonics: (tectonicsData?.features || [])
+          .filter(
+            (f) =>
+              f.properties?.layer === "callout_trace" ||
+              Boolean(f.properties?.[${JSON.stringify(HIGHLIGHT_PROP)}])
+          )
           .map((f) => ({
-            id: f.properties.id || f.properties.name,
-            label: f.properties.label || f.properties.name,
-            layer: f.properties.layer,
+            id: f.properties?.id || f.properties?.name,
+            label: f.properties?.label || f.properties?.name,
+            layer: f.properties?.layer,
             d: geomToPath(f.geometry),
           })),
       };
@@ -312,40 +383,84 @@ function buildPageHtml(baseUrl) {
 </html>`;
 }
 
-async function main() {
-  mkdirSync(OUT, { recursive: true });
-  const framesDir = join(OUT, `frames-${NAME}`);
-  mkdirSync(framesDir, { recursive: true });
-
-  const port = Number(process.env.TILE_PORT || 8767);
-  const server = await startTileServer(port, "127.0.0.1");
-  const baseUrl = `http://127.0.0.1:${port}`;
-
-  const chromeArgs =
-    process.platform === "darwin"
-      ? ["--no-sandbox", "--hide-scrollbars", "--use-gl=angle", `--window-size=${WIDTH},${HEIGHT}`]
-      : [
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--enable-unsafe-swiftshader",
-          "--enable-webgl",
-          `--window-size=${WIDTH},${HEIGHT}`,
-        ];
+async function renderRangeToPipe({
+  baseUrl,
+  startFrame,
+  endFrame,
+  outMp4,
+  coordsTargetFrame,
+  workerId,
+}) {
   const browser = await puppeteer.launch({
     executablePath: resolveChrome(),
     headless: "new",
-    args: chromeArgs,
+    args: getChromeArgs(WIDTH, HEIGHT),
   });
-
+  let coords = null;
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 });
     await page.setContent(buildPageHtml(baseUrl), { waitUntil: "load" });
     await page.evaluate(() => window.__ready);
 
-    // Pre-warm tiles at each KEYFRAMES pose (or endpoints) before the full loop.
+    // Pre-warm tiles at boundary poses for this slice.
+    const warmFrames = KEYFRAMES && KEYFRAMES.length
+      ? KEYFRAMES.map((k) => k.frame).filter((f) => f >= startFrame && f < endFrame)
+      : [];
+    warmFrames.unshift(startFrame);
+    warmFrames.push(Math.max(startFrame, endFrame - 1));
+    for (const wf of new Set(warmFrames)) {
+      await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [wf, N]);
+      await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+    }
+
+    const shotter = await createCdpScreenshotter(page, WIDTH, HEIGHT, { quality: 92 });
+    const encoder = spawnMjpegPipeEncoder(outMp4, {
+      fps: FPS,
+      crf: 16,
+      gop: 1,
+      preset: "fast",
+      useVideoToolbox: USE_HW_ENCODE,
+    });
+
+    const t0 = Date.now();
+    try {
+      for (let i = startFrame; i < endFrame; i++) {
+        await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [i, N]);
+        await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+        const buf = await shotter.captureJpegBuffer();
+        await encoder.writeFrame(buf);
+        if (coords === null && i === coordsTargetFrame && (REGIONS_GEOJSON || TECTONICS_GEOJSON)) {
+          coords = await page.evaluate(() => window.__projectAll());
+        }
+        if ((i - startFrame) % 45 === 0 || i === endFrame - 1) {
+          const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+          console.log(`  [${NAME}:w${workerId}] rendered frame ${i + 1}/${N} (${elapsed}s)`);
+        }
+      }
+    } finally {
+      await shotter.close();
+    }
+    await encoder.finish();
+  } finally {
+    await browser.close();
+  }
+  return coords;
+}
+
+async function renderFramesToDisk({ baseUrl, framesDir, coordsTargetFrame }) {
+  const browser = await puppeteer.launch({
+    executablePath: resolveChrome(),
+    headless: "new",
+    args: getChromeArgs(WIDTH, HEIGHT),
+  });
+  let coords = null;
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 });
+    await page.setContent(buildPageHtml(baseUrl), { waitUntil: "load" });
+    await page.evaluate(() => window.__ready);
+
     const warmFrames = KEYFRAMES && KEYFRAMES.length
       ? KEYFRAMES.map((k) => k.frame)
       : [0, Math.max(0, N - 1)];
@@ -354,75 +469,148 @@ async function main() {
       await page.evaluate((ms) => window.__waitIdle(ms), 1500);
     }
 
+    const shotter = await createCdpScreenshotter(page, WIDTH, HEIGHT, { quality: 92 });
     const t0 = Date.now();
-    let coords = null;
     const rebake = process.env.REBAKE === "1";
-    for (let i = 0; i < N; i++) {
-      const outFrame = join(framesDir, `f${String(i).padStart(4, "0")}.jpg`);
-      if (!rebake && existsSync(outFrame) && statSync(outFrame).size > 1024) {
-        continue;
+    try {
+      for (let i = 0; i < N; i++) {
+        const outFrame = join(framesDir, `f${String(i).padStart(4, "0")}.jpg`);
+        if (!rebake && existsSync(outFrame) && statSync(outFrame).size > 1024) {
+          continue;
+        }
+        await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [i, N]);
+        await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+        const buf = await shotter.captureJpegBuffer();
+        writeFileSync(outFrame, buf);
+        if (coords === null && i >= coordsTargetFrame && (REGIONS_GEOJSON || TECTONICS_GEOJSON)) {
+          coords = await page.evaluate(() => window.__projectAll());
+        }
+        if (i % 45 === 0 || i === N - 1) {
+          const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+          console.log(`  [${NAME}] rendered frame ${i + 1}/${N} (${elapsed}s)`);
+        }
       }
-      await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [i, N]);
-      await page.evaluate((ms) => window.__waitIdle(ms), 1500);
-      await page.screenshot({
-        path: outFrame,
-        type: "jpeg",
-        quality: 92,
-        clip: { x: 0, y: 0, width: WIDTH, height: HEIGHT },
+    } finally {
+      await shotter.close();
+    }
+  } finally {
+    await browser.close();
+  }
+  return coords;
+}
+
+async function main() {
+  mkdirSync(OUT, { recursive: true });
+  const mp4 = join(OUT, `${NAME}.mp4`);
+  const coordsTargetFrame = Math.min(N - 1, Math.round(N * HOLD));
+
+  const port = Number(process.env.TILE_PORT || 8767);
+  const server = await startTileServer(port, "127.0.0.1");
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    let coords = null;
+    if (KEEP_FRAMES) {
+      const framesDir = join(OUT, `frames-${NAME}`);
+      mkdirSync(framesDir, { recursive: true });
+      coords = await renderFramesToDisk({ baseUrl, framesDir, coordsTargetFrame });
+      const pat = join(framesDir, "f%04d.jpg");
+      const ff = spawnSync(
+        "ffmpeg",
+        [
+          "-y",
+          "-framerate",
+          String(FPS),
+          "-i",
+          pat,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "fast",
+          "-pix_fmt",
+          "yuv420p",
+          "-color_primaries",
+          "bt709",
+          "-color_trc",
+          "bt709",
+          "-colorspace",
+          "bt709",
+          "-g",
+          "1",
+          "-crf",
+          "16",
+          "-movflags",
+          "+faststart",
+          mp4,
+        ],
+        { stdio: "inherit" }
+      );
+      if (ff.status !== 0) {
+        throw new Error(`FFmpeg encoding failed with status ${ff.status}`);
+      }
+    } else if (WORKERS <= 1) {
+      coords = await renderRangeToPipe({
+        baseUrl,
+        startFrame: 0,
+        endFrame: N,
+        outMp4: mp4,
+        coordsTargetFrame,
+        workerId: 0,
       });
-      if (!coords && i >= Math.round(N * HOLD)) {
-        coords = await page.evaluate(() => window.__projectAll());
+    } else {
+      const sliceCount = Math.min(WORKERS, N);
+      const baseLen = Math.floor(N / sliceCount);
+      const rem = N % sliceCount;
+      const slices = [];
+      let cursor = 0;
+      for (let w = 0; w < sliceCount; w++) {
+        const len = baseLen + (w < rem ? 1 : 0);
+        const startFrame = cursor;
+        const endFrame = cursor + len;
+        cursor = endFrame;
+        slices.push({
+          workerId: w,
+          startFrame,
+          endFrame,
+          partMp4: join(OUT, `.${NAME}_part_${w}.mp4`),
+        });
       }
-      if (i % 45 === 0 || i === N - 1) {
-        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-        console.log(`  [${NAME}] rendered frame ${i + 1}/${N} (${elapsed}s)`);
+      const results = await Promise.all(
+        slices.map((sl) =>
+          renderRangeToPipe({
+            baseUrl,
+            startFrame: sl.startFrame,
+            endFrame: sl.endFrame,
+            outMp4: sl.partMp4,
+            coordsTargetFrame,
+            workerId: sl.workerId,
+          })
+        )
+      );
+      coords = results.find((c) => c !== null) || null;
+      const listPath = join(OUT, `.${NAME}_concat.txt`);
+      writeFileSync(
+        listPath,
+        slices.map((sl) => `file '${sl.partMp4.replace(/'/g, "'\\''")}'`).join("\n") + "\n"
+      );
+      concatMp4Slices(
+        slices.map((sl) => sl.partMp4),
+        mp4,
+        listPath
+      );
+      rmSync(listPath, { force: true });
+      for (const sl of slices) {
+        rmSync(sl.partMp4, { force: true });
       }
     }
 
-    const mp4 = join(OUT, `${NAME}.mp4`);
-    const pat = join(framesDir, "f%04d.jpg");
-    const ff = spawnSync(
-      "ffmpeg",
-      [
-        "-y",
-        "-framerate",
-        String(FPS),
-        "-i",
-        pat,
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
-        "-g",
-        "1",
-        "-crf",
-        "16",
-        "-movflags",
-        "+faststart",
-        mp4,
-      ],
-      { stdio: "inherit" }
-    );
-    if (ff.status !== 0) {
-      throw new Error(`FFmpeg encoding failed with status ${ff.status}`);
-    }
     if (coords) {
       const coordsPath = join(OUT, `${NAME}-coords.json`);
       writeFileSync(coordsPath, JSON.stringify(coords, null, 2));
       console.log(`[${NAME}] exported projected coordinates -> ${coordsPath}`);
     }
-    if (!KEEP_FRAMES) {
-      rmSync(framesDir, { recursive: true, force: true });
-    }
     console.log(`[${NAME}] encoded all-intra basemap -> ${mp4}`);
   } finally {
-    await browser.close();
     server.close();
   }
 }

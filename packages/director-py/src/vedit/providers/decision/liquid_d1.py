@@ -173,7 +173,7 @@ class LiquidDecisionProvider:
         for q_name, ans_data in (payload.get("answers") or {}).items():
             answers[q_name] = DecisionAnswer(
                 name=q_name,
-                question_type=q_types.get(q_name, ans_data.get("type", "noul")),
+                question_type=q_types.get(q_name, ans_data.get("type", "text")),
                 raw=dict(ans_data),
             )
 

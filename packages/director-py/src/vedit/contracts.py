@@ -79,6 +79,43 @@ def load_brand_template_catalog(
     return payload
 
 
+def _resolve_policy_token(policy: dict[str, Any], token_ref: str) -> Any | None:
+    """Resolve a dotted token path against a raw BrandStylePolicy dictionary."""
+    parts = [p for p in token_ref.split(".") if p]
+    if not parts:
+        return None
+    soft = policy.get("soft_priors") or {}
+    visual = soft.get("visual_tokens") or {}
+    roots: dict[str, Any] = {
+        "palette_roles": visual.get("palette_roles") or {},
+        "typography": visual.get("typography") or {},
+        "motion_style": visual.get("motion_style") or {},
+        "audio_style": soft.get("audio_style") or {},
+    }
+    cursor: Any = roots
+    for part in parts:
+        if not isinstance(cursor, dict) or part not in cursor:
+            return None
+        cursor = cursor[part]
+    return cursor
+
+
+def _resolve_template_composition_path(
+    comp_path: str,
+    *,
+    brand_dir: Path,
+    repo_root: Path,
+) -> Path | None:
+    raw = Path(comp_path)
+    if raw.is_absolute():
+        return raw if raw.is_file() else None
+    for base in (repo_root, brand_dir, brand_dir / "templates"):
+        cand = (base / raw).resolve()
+        if cand.is_file():
+            return cand
+    return None
+
+
 def validate_brand_tree(
     brand_dir: Path,
     *,
@@ -143,6 +180,25 @@ def validate_brand_tree(
                 f"Template catalog brand_id {catalog.get('brand_id')!r} "
                 f"!= policy brand_id {brand_id!r}"
             )
+        for entry in catalog.get("templates") or []:
+            tid = str(entry.get("template_id") or "")
+            comp_path = str(entry.get("composition_path") or "")
+            if not _resolve_template_composition_path(
+                comp_path,
+                brand_dir=brand_dir,
+                repo_root=root,
+            ):
+                raise ValueError(
+                    f"Template {tid!r} references missing composition_path: {comp_path!r}"
+                )
+            for var in entry.get("variables") or []:
+                token_ref = var.get("token_ref")
+                if isinstance(token_ref, str) and token_ref.strip():
+                    if _resolve_policy_token(policy, token_ref.strip()) is None:
+                        raise ValueError(
+                            f"Template {tid!r} variable {var.get('id')!r} references "
+                            f"unresolved policy token_ref: {token_ref!r}"
+                        )
         validated["templates"] = (
             str(catalog_path.relative_to(root))
             if catalog_path.is_relative_to(root)

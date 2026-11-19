@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Literal
@@ -10,6 +11,7 @@ from vedit.director.templates import (
     catalog_by_id,
     motion_props_from_policy,
     overlay_kind_for_template,
+    resolve_effective_policy,
     resolve_template_variables,
 )
 from vedit.director.verifier import VerificationReport, verify_and_stamp_plan
@@ -26,6 +28,7 @@ from vedit.models import (
     OverlayCompositionOp,
     PlatformTarget,
     TemporalSectionPrior,
+    TranscriptWord,
     VideoClipOp,
 )
 from vedit.ports.audio_catalog import AudioCatalogPort
@@ -135,26 +138,34 @@ def _plan_video_cuts(
                 raw_boundaries.append(snapped)
     raw_boundaries.append(total_dur)
 
-    # Subdivide holds using section soft prior (asl_p50) when available, hard-capped by max_hold.
+    # Subdivide holds using section soft prior (asl_p50) when available, capped by max_hold.
     final_boundaries: list[float] = [raw_boundaries[0]]
     for end_t in raw_boundaries[1:]:
         cur_start = final_boundaries[-1]
         while True:
+            hold = end_t - cur_start
             mid_ratio = min(max(((cur_start + end_t) * 0.5) / total_dur, 0.0), 0.999)
             prior = _section_prior_at(policy, mid_ratio)
             soft_target = prior.asl_p50_s if prior is not None else max_hold * 0.75
             soft_target = min(max(soft_target, min_shot), max_hold)
-            hold = end_t - cur_start
-            if hold <= max(soft_target * 1.35, max_hold):
+            split_threshold = min(soft_target * 1.35, max_hold)
+            if hold <= split_threshold + 1e-6:
                 break
-            candidate = cur_start + soft_target
             lo = cur_start + min_shot
             hi = end_t - min_shot
             if hi <= lo:
                 break
+            # Ensure even remainder when a hold strictly exceeds max_hold.
+            if hold > max_hold:
+                ideal_step = min(soft_target, max_hold * 0.85, hold * 0.5)
+                candidate = cur_start + max(ideal_step, min_shot)
+            else:
+                candidate = cur_start + soft_target
             candidate = min(max(candidate, lo), hi)
             snapped = _snap_cut_to_safe_gap(candidate, lo, hi, transcript, margin_s)
             snapped = min(max(snapped, lo), hi)
+            if snapped - cur_start > max_hold:
+                snapped = round(min(cur_start + max_hold, hi), 3)
             if snapped <= cur_start + 1e-3:
                 break
             final_boundaries.append(snapped)
@@ -175,7 +186,7 @@ def _plan_video_cuts(
                 timeline_start_s=start_s,
                 timeline_duration_s=dur_s,
                 source_start_s=start_s,
-                role="a_roll" if idx % 2 == 0 else "cutaway",
+                role="a_roll",
                 reframed_to_target=reframed_to_target,
                 scale=1.0,
                 transition_in=None,
@@ -264,6 +275,53 @@ def _choose_non_overlapping_band(
     return preferred
 
 
+_CLAUSE_END_RE = re.compile(r"[.,!?;:]$")
+
+
+def _group_caption_words(
+    spoken: list[TranscriptWord],
+    max_words: int,
+    *,
+    pause_gap_s: float = 0.15,
+) -> list[list[TranscriptWord]]:
+    """Partition spoken words into balanced 2-to-max_words phrases aligned to pauses and clauses."""
+    if not spoken:
+        return []
+
+    clauses: list[list[TranscriptWord]] = []
+    current: list[TranscriptWord] = []
+    for idx, word in enumerate(spoken):
+        current.append(word)
+        is_last = idx == len(spoken) - 1
+        next_gap = (spoken[idx + 1].start_s - word.end_s) if not is_last else 0.0
+        ends_clause = bool(_CLAUSE_END_RE.search(word.text.strip()))
+        if is_last or next_gap >= pause_gap_s or ends_clause:
+            clauses.append(current)
+            current = []
+
+    groups: list[list[TranscriptWord]] = []
+    cap = max(1, max_words)
+    for clause in clauses:
+        n = len(clause)
+        if n <= cap:
+            groups.append(clause)
+            continue
+        # Balance chunks to avoid awkward single-word orphans when cap >= 3 (e.g. 4 words -> 2+2).
+        pos = 0
+        while pos < n:
+            rem = n - pos
+            if rem <= cap:
+                groups.append(clause[pos:])
+                break
+            if cap >= 3 and rem == cap + 1:
+                take = cap - 1
+            else:
+                take = cap
+            groups.append(clause[pos : pos + take])
+            pos += take
+    return groups
+
+
 def _build_overlays(
     clips: list[VideoClipOp],
     transcript: NormalizedTranscript | None,
@@ -275,19 +333,25 @@ def _build_overlays(
     typo = policy.soft_priors.visual_tokens.typography
     palette = policy.soft_priors.visual_tokens.palette_roles
     motion = motion_props_from_policy(policy)
-    catalog_ids = (
-        {entry.template_id for entry in template_catalog.templates} if template_catalog else set()
-    )
+    catalog_map = catalog_by_id(template_catalog) if template_catalog else {}
+    catalog_ids = set(catalog_map.keys())
     pref_band_raw = typo.default_caption_band
-    pref_band: Literal["lower_third", "upper_safe", "center_safe"] = (
-        "upper_safe" if pref_band_raw == "upper_safe" else "lower_third"
+    if pref_band_raw == "upper_safe":
+        pref_band: Literal["lower_third", "upper_safe", "center_safe"] = "upper_safe"
+    elif pref_band_raw == "center_safe":
+        pref_band = "center_safe"
+    else:
+        pref_band = "lower_third"
+
+    caption_style = typo.caption_style or "plain"
+    caption_transition_ms = (
+        typo.caption_transition_ms if typo.caption_transition_ms is not None else 50
     )
 
     if transcript and transcript.words:
         max_words = typo.max_words_per_caption_group
         spoken = [w for w in transcript.words if not w.is_filler]
-        for idx in range(0, len(spoken), max_words):
-            chunk = spoken[idx : idx + max_words]
+        for chunk in _group_caption_words(spoken, max_words):
             t_start = round(chunk[0].start_s, 3)
             t_end = round(max(chunk[-1].end_s, t_start + 0.3), 3)
             t_dur = round(t_end - t_start, 3)
@@ -301,18 +365,20 @@ def _build_overlays(
             band = _choose_non_overlapping_band(pref_band, active_boxes, platform_target)
             phrase = _apply_case(" ".join(w.text for w in chunk), typo.caption_case)
             caption_template = "caption_rail" if "caption_rail" in catalog_ids else None
-            caption_vars = {"text": phrase, "fg_color": palette.ink, "bg_color": palette.ground}
+            caption_vars: dict[str, object] = {"text": phrase}
             caption_path = None
             if template_catalog is not None and caption_template:
-                entry = catalog_by_id(template_catalog)[caption_template]
+                entry = catalog_map[caption_template]
                 caption_vars = resolve_template_variables(entry, policy, caption_vars)
                 caption_path = entry.composition_path
-            caption_props: dict = {
+            caption_props: dict[str, object] = {
                 "text": phrase,
                 "font_family": typo.body_family,
                 "display_family": typo.display_family,
                 "fg_color": caption_vars.get("fg_color", palette.ink),
                 "bg_color": caption_vars.get("bg_color", palette.ground),
+                "caption_style": caption_vars.get("caption_style", caption_style),
+                "caption_transition_ms": caption_transition_ms,
                 "pattern": "clean_caption_rail",
                 **motion,
             }
@@ -322,7 +388,9 @@ def _build_overlays(
                 OverlayCompositionOp(
                     overlay_id=f"cap_{len(overlays) + 1:03d}",
                     kind=overlay_kind_for_template(
-                        caption_template or "caption_rail", "caption_rail"
+                        caption_template or "caption_rail",
+                        "caption_rail",
+                        catalog=template_catalog,
                     ),
                     timeline_start_s=t_start,
                     timeline_duration_s=t_dur,
@@ -335,32 +403,41 @@ def _build_overlays(
             )
 
             if _NUMBER_TOKEN_RE.search(phrase):
-                alt_band = "upper_safe" if band == "lower_third" else "lower_third"
-                card_band = _choose_non_overlapping_band(
-                    alt_band,  # type: ignore[arg-type]
-                    active_boxes,
-                    platform_target,
-                )
-                card_template = (
-                    "amber_fact_card"
-                    if "amber_fact_card" in catalog_ids
-                    else ("tabular_metric" if "tabular_metric" in catalog_ids else None)
-                )
-                card_vars = {
-                    "text": phrase,
-                    "label": phrase,
-                    "fg_color": palette.ink,
-                    "bg_color": palette.ground,
-                    "accent_color": palette.accent,
-                }
+                alt_band: Literal[
+                    "lower_third", "upper_safe", "center_safe", "left_rail", "right_rail"
+                ] = "upper_safe" if band == "lower_third" else "lower_third"
+                card_band = _choose_non_overlapping_band(alt_band, active_boxes, platform_target)
+                if card_band == band:
+                    # Try center_safe if opposite band was blocked by subject boxes.
+                    fallback_band = _choose_non_overlapping_band(
+                        "center_safe",
+                        active_boxes,
+                        platform_target,
+                    )
+                    card_band = fallback_band if fallback_band != band else band
+                if card_band == band:
+                    continue
+                is_landscape = platform_target.aspect_ratio == "16:9"
+                if is_landscape and "amber_fact_card" in catalog_ids:
+                    card_template: str | None = "amber_fact_card"
+                elif "tabular_metric" in catalog_ids:
+                    card_template = "tabular_metric"
+                else:
+                    card_template = None
+
+                # Pass only content overrides so template token_ref defaults (e.g. amber_fact_card
+                # amber surface + dark ink) are preserved rather than overwritten.
+                card_vars: dict[str, object] = {"text": phrase, "label": phrase}
                 card_path = None
                 if template_catalog is not None and card_template:
-                    entry = catalog_by_id(template_catalog)[card_template]
+                    entry = catalog_map[card_template]
                     card_vars = resolve_template_variables(entry, policy, card_vars)
                     card_path = entry.composition_path
-                card_props: dict = {
+                card_props: dict[str, object] = {
                     "headline": phrase,
                     "text": phrase,
+                    "font_family": typo.body_family,
+                    "display_family": typo.display_family,
                     "accent_color": card_vars.get("accent_color", palette.accent),
                     "fg_color": card_vars.get("fg_color", palette.ink),
                     "bg_color": card_vars.get("bg_color", palette.ground),
@@ -372,9 +449,13 @@ def _build_overlays(
                 overlays.append(
                     OverlayCompositionOp(
                         overlay_id=f"card_{len(overlays) + 1:03d}",
-                        kind=overlay_kind_for_template(card_template or "data_card", "data_card"),
+                        kind=overlay_kind_for_template(
+                            card_template or "data_card",
+                            "data_card",
+                            catalog=template_catalog,
+                        ),
                         timeline_start_s=t_start,
-                        timeline_duration_s=round(max(t_dur, 1.2), 3),
+                        timeline_duration_s=round(min(max(t_dur, 1.0), t_dur), 3),
                         transparent=True,
                         safe_band=card_band,
                         template_id=card_template,
@@ -403,6 +484,7 @@ def build_edit_plan(
     repo_root: Path | None = None,
 ) -> tuple[EditPlan, VerificationReport]:
     """Assemble and deterministically verify an `EditPlan` using `BrandStylePolicy`."""
+    effective_policy = resolve_effective_policy(policy, platform_target)
     total_dur = round(max(probe.container.duration_s, 0.5), 3)
     primary_asset_id = "src_primary"
     assets: list[AssetRef] = [
@@ -418,7 +500,7 @@ def build_edit_plan(
 
     clips = _plan_video_cuts(
         probe,
-        policy,
+        effective_policy,
         transcript,
         primary_asset_id=primary_asset_id,
         reframed_to_target=reframed_to_target,
@@ -426,7 +508,7 @@ def build_edit_plan(
     _ground_subject_boxes(clips, probe, decision_port)
 
     overlays = _build_overlays(
-        clips, transcript, policy, platform_target, template_catalog=template_catalog
+        clips, transcript, effective_policy, platform_target, template_catalog=template_catalog
     )
     # Clamp overlays cleanly within total timeline duration.
     clamped_overlays: list[OverlayCompositionOp] = []
@@ -456,19 +538,25 @@ def build_edit_plan(
         )
 
     chosen_bgm = bgm_asset
-    bgm_moods = policy.soft_priors.audio_style.bgm_moods
+    bgm_moods = effective_policy.soft_priors.audio_style.bgm_moods
     if chosen_bgm is None and audio_catalog is not None and bgm_moods:
         mood_query = " ".join(bgm_moods[:2])
         hits = audio_catalog.search_music(mood_query, vocal_type="NONE", limit=1)
-        if hits and hits[0].preview_url:
-            chosen_bgm = AssetRef(
-                asset_id="bgm_selected",
-                sha256=f"{hits[0].asset_id:0<16}"[:16],
-                kind="audio_bgm",
-                path=hits[0].preview_url,
-                duration_s=max(hits[0].duration_s or total_dur, total_dur),
-                has_audio=True,
-            )
+        if hits:
+            hit = hits[0]
+            bgm_path_str = hit.preview_url or ""
+            if bgm_path_str:
+                bgm_sha = hashlib.sha256(
+                    f"{hit.provider}:{hit.asset_id}:{bgm_path_str}".encode()
+                ).hexdigest()
+                chosen_bgm = AssetRef(
+                    asset_id="bgm_selected",
+                    sha256=bgm_sha,
+                    kind="audio_bgm",
+                    path=bgm_path_str,
+                    duration_s=max(hit.duration_s or total_dur, total_dur),
+                    has_audio=True,
+                )
 
     if chosen_bgm is not None:
         assets.append(chosen_bgm)
@@ -482,7 +570,7 @@ def build_edit_plan(
                 source_start_s=0.0,
                 gain_db=-14.0,
                 carve_against_group="voiceover" if probe.audio.present else None,
-                carve_strength=policy.soft_priors.audio_style.ducking_strength,
+                carve_strength=effective_policy.soft_priors.audio_style.ducking_strength,
                 cleaned_speech_stem=False,
             )
         )
@@ -490,7 +578,7 @@ def build_edit_plan(
     raw_plan = EditPlan(
         job_id=job_id,
         project_id=project_id,
-        brand_id=policy.brand_id,
+        brand_id=effective_policy.brand_id,
         platform_target_id=platform_target.platform_id,
         render_strategy=render_strategy,
         duration_s=total_dur,
@@ -505,7 +593,7 @@ def build_edit_plan(
     )
     return verify_and_stamp_plan(
         raw_plan,
-        policy,
+        effective_policy,
         platform_target,
         transcript=transcript,
         template_catalog=template_catalog,

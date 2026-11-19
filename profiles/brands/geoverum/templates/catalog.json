@@ -4,70 +4,171 @@
   "templates": [
     {
       "template_id": "caption_rail",
-      "composition_path": "studies/geoverum/captions/compositions/caption-rail.html",
-      "description": "Sentence-case narrative caption chip. Layout locked; only text and timing props vary.",
+      "composition_path": "profiles/brands/geoverum/templates/components/caption_rail.html",
+      "overlay_kind": "caption_rail",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Plain true-centered 2-3 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). Hard-cut switch, proportional sizing.",
       "safe_band": "lower_third",
       "variables": [
-        { "id": "text", "type": "string", "label": "Caption phrase" },
+        { "id": "text", "type": "string", "label": "Caption phrase (2-3 words)" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" }
-      ]
-    },
-    {
-      "template_id": "broadcast_bug",
-      "composition_path": "studies/geoverum/branding/compositions/top-bug.html",
-      "description": "Unboxed Geoverum meridian mark. No pill, no status dot.",
-      "safe_band": "upper_safe",
-      "variables": [
-        { "id": "opacity", "type": "number", "min": 0.78, "max": 0.86, "default": 0.84 },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
         {
-          "id": "aspect",
+          "id": "caption_style",
           "type": "enum",
-          "enum_values": ["9x16", "16x9"],
-          "default": "9x16"
+          "enum_values": ["plain", "chip"],
+          "default": "plain"
         }
       ]
     },
     {
+      "template_id": "broadcast_bug",
+      "composition_path": "profiles/brands/geoverum/templates/components/broadcast_bug.html",
+      "overlay_kind": "lower_third",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Optional small text-only Geoverum watermark ('geoverum', no logo) placed top-right slightly down.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "text", "type": "string", "default": "geoverum" },
+        { "id": "opacity", "type": "number", "min": 0.55, "max": 0.85, "default": 0.72 },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+      ]
+    },
+    {
       "template_id": "distance_metric",
-      "composition_path": "studies/geoverum/labels-lines/compositions/labels-lines-scene.html",
-      "description": "Tabular ±KM bracket between two territories in open water.",
-      "safe_band": "dynamic_away_from_subject",
+      "composition_path": "profiles/brands/geoverum/templates/components/metric_callout.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Tabular Archivo Black distance metric between two territories.",
+      "safe_band": "upper_safe",
       "variables": [
         { "id": "label", "type": "string", "default": "±20 KM" },
+        { "id": "subtitle", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
     },
     {
-      "template_id": "region_highlight",
-      "composition_path": "studies/geoverum/region-highlight/compositions/region-highlight-scene.html",
-      "description": "Terrain-preserving landmass tint with unified exterior coastline.",
-      "safe_band": "center_safe",
+      "template_id": "tabular_metric",
+      "composition_path": "profiles/brands/geoverum/templates/components/metric_callout.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Tabular Archivo Black metric callout beside map or live B-roll (elevation, length, capacity).",
+      "safe_band": "upper_safe",
       "variables": [
-        { "id": "fill_color", "type": "color", "token_ref": "palette_roles.secondary_accent", "default": "#C2412D" },
-        { "id": "rim_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "stagger_gap_s", "type": "number", "min": 0.6, "max": 1.2, "default": 0.65 }
+        { "id": "label", "type": "string", "default": "1.143 KM" },
+        { "id": "subtitle", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
     },
     {
       "template_id": "amber_fact_card",
-      "composition_path": "studies/geoverum/captions/compositions/caption-rail.html",
-      "description": "Long-form numbered chapter plate. Amber surface, abyssal ink; layout locked to .fact-card.",
+      "composition_path": "profiles/brands/geoverum/templates/components/amber_fact_card.html",
+      "overlay_kind": "data_card",
+      "supported_aspects": ["16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Long-form 16:9 documentary chapter plate. Amber surface with abyssal ink.",
       "safe_band": "lower_third",
       "variables": [
-        { "id": "text", "type": "string", "label": "Numbered fact title" },
+        { "id": "number", "type": "string", "default": "" },
+        { "id": "text", "type": "string", "label": "Chapter fact title" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
         { "id": "bg_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
     },
     {
-      "template_id": "tabular_metric",
-      "composition_path": "studies/geoverum/labels-lines/compositions/labels-lines-scene.html",
-      "description": "Archivo Black tabular metric beside live B-roll (elevation, capacity, length).",
-      "safe_band": "dynamic_away_from_subject",
+      "template_id": "source_credit",
+      "composition_path": "profiles/brands/geoverum/templates/components/source_credit.html",
+      "overlay_kind": "lower_third",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Quiet documentary source attribution label (imagery, archive, or footage credit).",
+      "safe_band": "upper_safe",
       "variables": [
-        { "id": "label", "type": "string", "default": "5.150 MW" },
+        { "id": "text", "type": "string", "label": "Source attribution" },
+        { "id": "opacity", "type": "number", "min": 0.45, "max": 0.85, "default": 0.62 },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+      ]
+    },
+    {
+      "template_id": "outro_cta",
+      "composition_path": "profiles/brands/geoverum/templates/components/outro_cta.html",
+      "overlay_kind": "title_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Topic-agnostic documentary closing prompt card.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "headline", "type": "string", "default": "geoverum" },
+        { "id": "prompt", "type": "string", "default": "" },
+        { "id": "cta_tag", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "comparison_bar_chart",
+      "composition_path": "profiles/brands/geoverum/templates/components/comparison_bar_chart.html",
+      "overlay_kind": "data_card",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "GSAP animated 3-bar tabular comparison chart with lead highlight and count-up, keeping y=70% caption band clear.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "kicker", "type": "string", "default": "PERBANDINGAN DATA" },
+        { "id": "title", "type": "string", "default": "PERBANDINGAN UTAMA" },
+        { "id": "unit", "type": "string", "default": "KM" },
+        { "id": "unit_lower", "type": "string", "default": "km" },
+        { "id": "bar1_label", "type": "string", "default": "Item 1" },
+        { "id": "bar1_value", "type": "number", "default": 100 },
+        { "id": "bar1_text", "type": "string", "default": "100 km" },
+        { "id": "bar2_label", "type": "string", "default": "Item 2" },
+        { "id": "bar2_value", "type": "number", "default": 85 },
+        { "id": "bar2_text", "type": "string", "default": "85 km" },
+        { "id": "bar3_label", "type": "string", "default": "Item 3" },
+        { "id": "bar3_value", "type": "number", "default": 70 },
+        { "id": "bar3_text", "type": "string", "default": "70 km" },
+        { "id": "source", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "cross_section_diagram",
+      "composition_path": "profiles/brands/geoverum/templates/components/cross_section_diagram.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Layered GSAP+SVG cross-section explainer diagram revealing terrain, substructure, and cost impact.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "kicker", "type": "string", "default": "PENAMPANG INFRASTRUKTUR" },
+        { "id": "title", "type": "string", "default": "STRUKTUR LAHAN" },
+        { "id": "layer1", "type": "string", "default": "RAWA GAMBUT LUNAK" },
+        { "id": "layer2", "type": "string", "default": "SUNGAI LEBAR" },
+        { "id": "layer3", "type": "string", "default": "LAPISAN TANAH KERAS" },
+        { "id": "foot_label", "type": "string", "default": "" },
+        { "id": "foot_metric", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "chapter_morph_card",
+      "composition_path": "profiles/brands/geoverum/templates/components/chapter_morph_card.html",
+      "overlay_kind": "title_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Kinetic chapter transition plate with motion blur support, landing dead still in upper-safe band.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "kicker", "type": "string", "default": "BAB 01" },
+        { "id": "title", "type": "string", "default": "TOPIK UTAMA" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]

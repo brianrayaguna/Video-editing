@@ -83,7 +83,9 @@ async function main(): Promise<void> {
         width: { type: "string" },
         height: { type: "string" },
         format: { type: "string", default: "mp4" },
+        quality: { type: "string", default: "high" },
         "chunk-frames": { type: "string" },
+        "max-parallel-chunks": { type: "string" },
       },
     });
     if (
@@ -96,6 +98,8 @@ async function main(): Promise<void> {
       throw new Error("plan-v2 requires --project-dir, --plan-v2-dir, --fps, --width, --height");
     }
     const fmt = values.format === "mov" ? "mov" : "mp4";
+    const quality =
+      values.quality === "draft" || values.quality === "standard" ? values.quality : "high";
     const result = await createDistributedPlan({
       projectDir: path.resolve(values["project-dir"]),
       planV2Dir: path.resolve(values["plan-v2-dir"]),
@@ -103,7 +107,11 @@ async function main(): Promise<void> {
       width: Number(values.width),
       height: Number(values.height),
       format: fmt,
+      quality,
       ...(values["chunk-frames"] ? { targetChunkFrames: Number(values["chunk-frames"]) } : {}),
+      ...(values["max-parallel-chunks"]
+        ? { maxParallelChunks: Number(values["max-parallel-chunks"]) }
+        : {}),
     });
     console.log(JSON.stringify(result, null, 2));
     return;
@@ -116,15 +124,22 @@ async function main(): Promise<void> {
         "plan-v2-dir": { type: "string" },
         "chunk-index": { type: "string" },
         out: { type: "string" },
+        "max-capture-workers": { type: "string" },
       },
     });
     if (!values["plan-v2-dir"] || values["chunk-index"] === undefined || !values.out) {
       throw new Error("render-chunk-v2 requires --plan-v2-dir, --chunk-index, and --out");
     }
+    const maxWorkers = values["max-capture-workers"]
+      ? Number(values["max-capture-workers"])
+      : undefined;
     const chunk = await executeDistributedChunk(
       path.resolve(values["plan-v2-dir"]),
       Number(values["chunk-index"]),
-      path.resolve(values.out)
+      path.resolve(values.out),
+      maxWorkers && Number.isFinite(maxWorkers) && maxWorkers > 0
+        ? { maxCaptureWorkers: Math.round(maxWorkers) }
+        : undefined
     );
     console.log(JSON.stringify(chunk, null, 2));
     return;

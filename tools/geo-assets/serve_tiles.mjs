@@ -22,6 +22,7 @@ const sharp = require("sharp");
 
 const GEO_ROOT = join(REPO_ROOT, "assets/geo");
 const TILES_DIR = join(GEO_ROOT, "tiles");
+const DEM_DIR = join(GEO_ROOT, "dem");
 
 const PORT = Number(process.env.PORT || 8765);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -40,6 +41,45 @@ const MIME_TYPES = {
 };
 
 const fallbackCache = new Map();
+const demFallbackCache = new Map();
+
+/**
+ * Resolve a lossless Terrarium DEM PNG tile `{z}/{x}/{y}` from `assets/geo/dem/`
+ * with nearest-neighbor ancestor fallback so RGB elevation encoding stays uncorrupted.
+ */
+async function resolveDemBuffer(z, x, y) {
+  const exactPath = join(DEM_DIR, String(z), String(x), `${y}.png`);
+  if (existsSync(exactPath)) {
+    return readFileSync(exactPath);
+  }
+  const cacheKey = `${z}/${x}/${y}`;
+  if (demFallbackCache.has(cacheKey)) {
+    return demFallbackCache.get(cacheKey);
+  }
+  for (let pz = z - 1; pz >= 0; pz--) {
+    const scale = 1 << (z - pz);
+    const px = Math.floor(x / scale);
+    const py = Math.floor(y / scale);
+    const parentPath = join(DEM_DIR, String(pz), String(px), `${py}.png`);
+    if (existsSync(parentPath)) {
+      const subSize = Math.max(1, Math.floor(256 / scale));
+      const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+      const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+      const buf = await sharp(parentPath)
+        .extract({ left, top, width: subSize, height: subSize })
+        .resize(256, 256, { kernel: sharp.kernel.nearest })
+        .png()
+        .toBuffer();
+      if (demFallbackCache.size > 512) {
+        const firstKey = demFallbackCache.keys().next().value;
+        demFallbackCache.delete(firstKey);
+      }
+      demFallbackCache.set(cacheKey, buf);
+      return buf;
+    }
+  }
+  return null;
+}
 
 /**
  * Resolve a tile `{z}/{x}/{y}` from disk, or synthesize it deterministically by cropping
@@ -108,6 +148,22 @@ export function startTileServer(port = PORT, host = HOST) {
           return;
         }
         res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.end(buf);
+        return;
+      }
+
+      const demMatch = pathname.match(/^\/dem\/(\d+)\/(\d+)\/(\d+)\.png$/);
+      if (demMatch) {
+        const z = Number(demMatch[1]);
+        const x = Number(demMatch[2]);
+        const y = Number(demMatch[3]);
+        const buf = await resolveDemBuffer(z, x, y);
+        if (!buf) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("DEM tile not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "image/png" });
         res.end(buf);
         return;
       }

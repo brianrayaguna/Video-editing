@@ -1,51 +1,33 @@
 # Geo Assets — Offline Cartography Bake Contract
 
-This directory owns graded satellite tiles, curated vectors, the local XYZ tile server, and MapLibre → MP4 A-roll bakers for Geoverum (and other brands using the same stack).
+This directory owns reusable geospatial asset fetchers, tile grading scripts, the offline XYZ tile server, and generic MapLibre -> MP4 A-roll capture helpers.
 
-## System split (read this first)
+## System Split
 
-| Stage | Where it runs | Canonical entry |
+| Stage | Where It Runs | Canonical Entry |
 | --- | --- | --- |
-| Tile fetch / grade | Local | `fetch_assets.py`, `build_tiles.mjs` |
-| Tile serve | Local | `serve_tiles.mjs` |
-| **MapLibre A-roll bake** (camera + fills) | **Local only** | Production-proven: `render_sulawesi_shots.mjs`; shared continuous helper: `bake_vertical_basemap.mjs` |
-| HyperFrames overlays + hybrid master | Local dry-run or **Modal** | `vedit compile` → `vedit cloud render` |
-| Loudness / QC | Modal worker + local re-audit | `vedit audit` |
+| Tile fetch / grade | Host / Cache | `fetch_assets.py` (with optional `--aoi-config <json>`), `build_tiles.mjs`, `fetch_dem_tiles.mjs` (Terrarium DEM) |
+| Tile serve | Offline HTTP | `serve_tiles.mjs` (`/tiles/*.jpg` + `/dem/*.png` + `/vector/*` + `/fonts/*`) |
+| MapLibre A-roll bake | Project-scoped baker | `bake_vertical_basemap.mjs` + `fast_capture.mjs` (writes into external project `media/maps/`) |
+| HyperFrames overlays + hybrid master | Local or **Modal Cloud** | `vedit compile` -> `vedit cloud render` |
+| Loudness / visual QC | Modal worker + local re-audit | `vedit audit` |
 
-Modal never replaces MapLibre basemap baking. Upload finished silent A-roll MP4s as `AssetRef` video, then overlay captions/bug via EditPlan.
+Active project shot scripts and baked MP4 outputs belong under `VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/`, never inside this engine directory.
 
-## Production-proven MapLibre bake knobs
+## MapLibre Capture Contract
 
-Authoritative reference implementation: **`render_sulawesi_shots.mjs`** (used by `studies/geoverum/pilot-sulawesi`).
+All continuous or multi-shot MapLibre bakers must adhere to these verified capture knobs:
 
-Any new continuous or multi-shot MapLibre baker **must** match these knobs unless a SPEC explicitly requires otherwise:
-
-1. **JPEG intermediates** (`type: "jpeg", quality: 92`) — not PNG frame dumps (~2–3 MB/frame at 1080×1920).
-2. **Tile idle** — poll every ~20 ms, timeout ~**1500 ms**, then double `requestAnimationFrame`.
-3. **Darwin Chromium** — `["--no-sandbox", "--hide-scrollbars", "--use-gl=angle"]` (host GPU). Do **not** force `--use-angle=swiftshader` on macOS directing hosts.
+1. **Fast CDP JPEG capture** (`Page.captureScreenshot` with `format: "jpeg", quality: 92, optimizeForSpeed: true` via `fast_capture.mjs`) — pipe directly to FFmpeg `image2pipe` MJPEG unless `KEEP_FRAMES=1` or boundary post-processing is required.
+2. **Tile idle** — fast-path single `requestAnimationFrame` when `map.loaded() && map.areTilesLoaded()` immediately; otherwise poll every ~20 ms up to ~**1500 ms**.
+3. **Darwin Chromium** — `["--no-sandbox", "--hide-scrollbars", "--use-gl=angle", "--use-angle=metal"]` (host GPU). Do not force `--use-angle=swiftshader` on macOS hosts.
 4. **Linux / CI** — SwiftShader is appropriate (`--use-gl=angle --use-angle=swiftshader`), matching cloud HyperFrames workers.
-5. **Resume** — skip frames that already exist and are >1 KB unless `REBAKE=1`.
-6. **Encode** — all-intra H.264 (`-g 1`), `yuv420p`, explicit `bt709`, CRF ≈ 16.
+5. **Parallel workers & resume** — default `WORKERS=2` independent Chromium processes for long (`>= 120` frames) bakes; skip frames that already exist and are >1 KB when writing frame sequences unless `REBAKE=1`.
+6. **Encode** — all-intra H.264 (`-g 1 -preset fast`), `yuv420p`, explicit `bt709`, CRF ≈ 16 (`HW_ENCODE=1` opts into `h264_videotoolbox` on macOS).
 
-Shared helper `bake_vertical_basemap.mjs` must stay aligned with this contract so study scripts that call it inherit the proven path.
+## Related Docs
 
-## When to use which baker
-
-| Need | Use |
-| --- | --- |
-| Multi-shot documentary beds with fills (pilot) | `render_sulawesi_shots.mjs` |
-| Single continuous camera trajectory (camera-moves, tectonics A-roll) | `bake_vertical_basemap.mjs` **or** a study baker that copies its knobs + `render_sulawesi_shots` GL/JPEG/idle contract |
-| One still plate + GSAP camera-rig (region-highlight) | MapLibre once → JPEG plate; animate in HyperFrames (no per-frame MapLibre) |
-| Labels / projected SVG at discrete poses | Plate bake + `project` extract (see `labels-lines`) |
-
-## Anti-patterns
-
-- Copying an older PNG + 9 s `__waitIdle` + forced SwiftShader-on-Darwin loop for long bakes
-- Treating `studies/*/bake_and_render.mjs` overlay remasters of reference encodes as production masters
-- Assuming Modal will bake MapLibre satellite beds
-
-## Related
-
-- Production Modal spine: `studies/geoverum/MODAL_PRODUCTION_WORKFLOW.md`
-- Architecture invariants: `.agents/rules/editing-system.md` §4b
-- Brand directing playbook: `.agents/skills/brand-director/SKILL.md`
+- Cloud Modal spine: [`docs/CLOUD_WORKFLOW.md`](../../docs/CLOUD_WORKFLOW.md)
+- External project layout: [`docs/PROJECT_WORKSPACE.md`](../../docs/PROJECT_WORKSPACE.md)
+- Architecture invariants: [`.agents/rules/editing-system.md`](../../.agents/rules/editing-system.md) §4b
+- Brand directing playbook: [`.agents/skills/brand-director/SKILL.md`](../../.agents/skills/brand-director/SKILL.md)

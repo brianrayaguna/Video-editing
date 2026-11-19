@@ -95,7 +95,13 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
     let video = meta.video;
 
     let mut frame_metrics: Vec<FrameVisionMetrics> = Vec::new();
-    let mut compressed_frames: Vec<(f64, Vec<u8>, f64, f64)> = Vec::new();
+    let mut staged_frames: Vec<(f64, std::path::PathBuf, f64, f64)> = Vec::new();
+    let tmp_kf_dir = opts.extract_keyframes_dir.as_ref().map(|kf_dir| {
+        kf_dir.join(format!(".tmp_kf_{}", std::process::id()))
+    });
+    if let Some(ref tmp_dir) = tmp_kf_dir {
+        fs::create_dir_all(tmp_dir)?;
+    }
     let stderr_text: String;
 
     if video.present {
@@ -162,19 +168,22 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
 
             let mut buf = vec![0u8; frame_bytes];
             let mut idx = 0usize;
-            let keep_jpegs = opts.extract_keyframes_dir.is_some();
 
             let res: Result<()> = loop {
                 match stdout.read_exact(&mut buf) {
                     Ok(()) => {
                         let m = analyze_rgb24_frame(&buf, target_w as usize, target_h as usize);
-                        if keep_jpegs {
+                        if let Some(ref tmp_dir) = tmp_kf_dir {
                             let ts = (idx as f64) / effective_fps;
                             let jpg = match encode_jpeg_bytes(&buf, target_w, target_h) {
                                 Ok(j) => j,
                                 Err(e) => break Err(e),
                             };
-                            compressed_frames.push((ts, jpg, m.lower_third_luma, m.sharpness));
+                            let tmp_path = tmp_dir.join(format!("f_{idx:06}.jpg"));
+                            if let Err(e) = fs::write(&tmp_path, &jpg) {
+                                break Err(e.into());
+                            }
+                            staged_frames.push((ts, tmp_path, m.lower_third_luma, m.sharpness));
                         }
                         frame_metrics.push(m);
                         idx += 1;
@@ -252,18 +261,18 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
 
     let mut keyframes = Vec::new();
     if let Some(ref kf_dir) = opts.extract_keyframes_dir
-        && !compressed_frames.is_empty()
+        && !staged_frames.is_empty()
         && !shots.is_empty()
     {
         fs::create_dir_all(kf_dir)?;
         for shot in &shots {
             let midpoint = (shot.start_s + shot.end_s) / 2.0;
-            if let Some((ts, jpg, luma_low, sharp)) = compressed_frames
+            if let Some((ts, tmp_path, luma_low, sharp)) = staged_frames
                 .iter()
                 .min_by(|a, b| (a.0 - midpoint).abs().total_cmp(&(b.0 - midpoint).abs()))
             {
                 let out_path = kf_dir.join(format!("shot_{:04}.jpg", shot.shot_index));
-                fs::write(&out_path, jpg)?;
+                fs::copy(tmp_path, &out_path)?;
                 keyframes.push(KeyframeInfo {
                     timestamp_s: round3(*ts),
                     shot_index: shot.shot_index,
@@ -273,6 +282,9 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
                 });
             }
         }
+    }
+    if let Some(ref tmp_dir) = tmp_kf_dir {
+        let _ = fs::remove_dir_all(tmp_dir);
     }
 
     let stream_analyze_ms = stream_t0.elapsed().as_millis() as u64;

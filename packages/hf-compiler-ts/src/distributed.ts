@@ -61,7 +61,7 @@ export function buildDistributedConfig(opts: CreateDistributedPlanOptions): Dist
     format: opts.format,
     quality: opts.quality ?? "high",
     targetChunkFrames,
-    maxParallelChunks: opts.maxParallelChunks ?? 16,
+    maxParallelChunks: opts.maxParallelChunks ?? 48,
     hdrMode: "force-sdr",
     rejectOnSystemFonts: true,
     failClosedFontFetch: true,

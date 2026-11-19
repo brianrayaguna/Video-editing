@@ -1,14 +1,13 @@
 # Geoverum — Cartographic Documentary Brand Profile
 
-**Geoverum** is a short-form (`9:16`, `1080x1920` @ `30 fps`) and long-form (`16:9`) cartographic documentary brand profile for the `vedit` engine. It pairs satellite imagery and tectonic vectors with single-signal cartographic annotations and word-synchronized Indonesian voiceover.
+**Geoverum** is a cartographic documentary brand profile for the `vedit` engine across two documentary formats: **`9:16` portrait** (`1080x1920` @ `30 fps`) and **`16:9` landscape** (`1920x1080` / `3840x2160` @ `30 fps`). Both formats pair graded satellite imagery, geospatial vectors, and field B-roll with clean plain centered captions and single-lead cartographic annotations.
 
 | File | Role |
 | :--- | :--- |
-| [`brand_style_policy.json`](brand_style_policy.json) | Runtime policy (soft priors, hard guardrails, calibration). |
+| [`brand_style_policy.json`](brand_style_policy.json) | Runtime policy (soft priors, format overrides for `9:16` & `16:9`, hard guardrails, calibration). |
 | [`editorial_playbook.json`](editorial_playbook.json) | Advisory grammar triggers and exemplars (not executed by `vedit`). |
-| [`CRAFT.md`](CRAFT.md) | Brand visual and cartographic craft rules. |
-| [`templates/`](templates/) | Typed brand templates (locked compositions + variables). |
-| Calibration catalog | [`studies/geoverum/reference-calibration/applied-policy-deltas.md`](../../../studies/geoverum/reference-calibration/applied-policy-deltas.md) |
+| [`CRAFT.md`](CRAFT.md) | Brand visual, typographic, and cartographic documentary craft rules. |
+| [`templates/`](templates/) | Parameterized, aspect-responsive brand templates (`catalog.json` + `components/*.html`). |
 | Engine [`DESIGN.md`](../../../DESIGN.md) | Cross-brand motion and layer boundaries. |
 
 ---
@@ -17,12 +16,12 @@
 
 Full craft rules: [`CRAFT.md`](CRAFT.md).
 
-1. Continuous virtual satellite camera (`globe` → `mercator` / terrain tilt).
-2. 90–95% neutral canvas; one focal color signal per beat.
+1. Continuous satellite cartography (`globe` → `mercator` / terrain tilt) paired with grounded live or archival B-roll.
+2. Three-tier visual hierarchy: calm abyssal ground, muted orientation context, and one clear focal lead per beat.
 3. Unified exterior coastlines with terrain-preserving fills.
-4. Unboxed, aspect-aware broadcast mark.
-5. Zero-collision annotations and scale-matched hydrographic labels.
-6. Staggered dual-territory compares; amber long-form fact cards; map ↔ live B-roll handoffs.
+4. Plain true-centered (`x = 50%`) 2–3 word Space Grotesk captions (`y ≈ 70%` on `9:16`, lower-third on `16:9`).
+5. Optional text-only lowercase `geoverum` watermark (no logo, small, top-right slightly down, disabled by default).
+6. Staggered dual-territory compares, tabular metrics, amber `16:9` chapter plates, and quiet source credits.
 
 ---
 
@@ -30,14 +29,17 @@ Full craft rules: [`CRAFT.md`](CRAFT.md).
 
 | Token Role | Value | Usage |
 | :--- | :--- | :--- |
-| `ground` | `#03161F` | Abyssal base and dark caption backing. |
-| `ink` | `#F4F1EA` | Primary typography and coastline stroke. |
-| `accent` | `#F5C542` | Fault traces, metrics, primary callouts. |
-| `secondary_accent` | `#C2412D` | Landmass silhouette tint and impact markers. |
-| `hydro_accent` | `#7CE0F9` | Close-up curved waterbody labels only. |
-| `display_family` | `Archivo Black` | Callout badges and metrics. |
-| `body_family` | `Space Grotesk` | Caption rail. |
-| `title_family` | `Unbounded` | Wordmark and curved basin labels. |
+| `ground` | `#03161F` | Abyssal base and dark surface backing. |
+| `ink` | `#F4F1EA` | Primary typography, captions, and coastline stroke. |
+| `accent` | `#F5C542` | Corridors, metrics, `16:9` chapter plates, primary callouts. |
+| `secondary_accent` | `#C2412D` | Primary territory fill tint and hazard markers. |
+| `hydro_accent` | `#7CE0F9` | Rivers, lakes, and curved open-water labels. |
+| `comparison_accent` | `#2E74E6` | Secondary comparative territory tint (staggered). |
+| `surface_elevated` | `#0A2230` | Elevated card backing when non-transparent. |
+| `muted_ink` | `#9DB2BE` | Secondary labels and quiet source credits. |
+| `display_family` | `Archivo Black` | Metrics and callout numerals. |
+| `body_family` | `Space Grotesk` | Plain captions, labels, and optional watermark. |
+| `title_family` | `Unbounded` | Display titles and curved basin labels. |
 
 ---
 

@@ -10,9 +10,9 @@
     "test": "tsc && node --test dist/compiler.test.js"
   },
   "dependencies": {
-    "@hyperframes/core": "0.9.65",
-    "@hyperframes/lint": "0.9.65",
-    "@hyperframes/producer": "0.9.65"
+    "@hyperframes/core": "0.9.68",
+    "@hyperframes/lint": "0.9.68",
+    "@hyperframes/producer": "0.9.68"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

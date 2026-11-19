@@ -69,6 +69,9 @@ export function lintPlanPerformance(plan: EditPlan): PerformanceFinding[] {
   const findings: PerformanceFinding[] = [];
   for (const ov of plan.overlay_compositions) {
     scanValueForCssBlur(ov.props, `overlay[${ov.overlay_id}].props`, findings);
+    if (ov.variables) {
+      scanValueForCssBlur(ov.variables, `overlay[${ov.overlay_id}].variables`, findings);
+    }
   }
   return findings;
 }

@@ -31,7 +31,11 @@ def test_builtin_registry_marks_all_providers_implemented() -> None:
     registry = build_default_registry()
     report = registry.status_report()
     assert {s["name"] for s in report["transcription"]["registered"]} == {"veed", "xai"}
-    assert {s["name"] for s in report["media_ops"]["registered"]} == {"ffmpeg", "veed"}
+    assert {s["name"] for s in report["media_ops"]["registered"]} == {
+        "ffmpeg",
+        "modal_cloud",
+        "veed",
+    }
     for capability in ("transcription", "decision", "media_ops", "audio_catalog"):
         assert all(s["implemented"] for s in report[capability]["registered"])
 

@@ -92,12 +92,19 @@ class PaletteRoles(StrictModel):
     ink: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     accent: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     secondary_accent: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    hydro_accent: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    comparison_accent: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    surface_elevated: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    muted_ink: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class TypographyTokens(StrictModel):
     display_family: str
     body_family: str
+    title_family: str | None = None
     caption_case: Literal["sentence", "uppercase", "title", "lowercase"]
+    caption_style: Literal["plain", "chip", "bar"] | None = None
+    caption_transition_ms: int | None = Field(default=None, ge=0, le=200)
     max_words_per_caption_group: int = Field(ge=1, le=12)
     default_caption_band: Literal[
         "lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"
@@ -175,6 +182,17 @@ class BrandProvenance(StrictModel):
     created_at: str | None = None
 
 
+class BrandFormatOverride(StrictModel):
+    format_name: str | None = None
+    min_shot_duration_s: float | None = Field(default=None, ge=0.2)
+    max_uninterrupted_hold_s: float | None = Field(default=None, ge=1.0)
+    default_caption_band: (
+        Literal["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] | None
+    ) = None
+    watermark_default: bool | None = None
+    temporal_curve: list[TemporalSectionPrior] | None = Field(default=None, min_length=1)
+
+
 class BrandStylePolicy(StrictModel):
     """Runtime brand policy for planner/verifier.
 
@@ -188,6 +206,7 @@ class BrandStylePolicy(StrictModel):
     editorial_identity: str | None = None
     soft_priors: SoftPriors
     hard_guardrails: HardGuardrails
+    format_overrides: dict[str, BrandFormatOverride] | None = None
     provenance: BrandProvenance
     calibration: StyleCalibration | None = None
 
@@ -216,10 +235,23 @@ class BrandTemplateVariable(StrictModel):
 class BrandTemplateEntry(StrictModel):
     template_id: str = Field(min_length=1)
     composition_path: str = Field(min_length=1)
+    overlay_kind: (
+        Literal[
+            "caption_rail",
+            "kinetic_callout",
+            "lower_third",
+            "data_card",
+            "title_scene",
+            "full_scene",
+        ]
+        | None
+    ) = None
+    supported_aspects: list[Literal["9:16", "16:9", "1:1", "4:5"]] | None = None
+    render_mode: Literal["parameterized_html", "static_copy"] | None = None
     description: str | None = None
-    safe_band: Literal[
-        "lower_third", "upper_safe", "center_safe", "dynamic_away_from_subject"
-    ] | None = None
+    safe_band: (
+        Literal["lower_third", "upper_safe", "center_safe", "dynamic_away_from_subject"] | None
+    ) = None
     variables: list[BrandTemplateVariable] = Field(default_factory=list)
 
 
@@ -412,3 +444,149 @@ class MediaProbeResult(StrictModel):
     shot_stats: ProbeShotStats
     visual: ProbeVisualInfo
     timing_ms: ProbeTimingBreakdown
+
+
+class BreakdownShot(StrictModel):
+    shot_index: int = Field(ge=0)
+    start_s: float = Field(ge=0.0)
+    end_s: float = Field(ge=0.0)
+    duration_s: float = Field(ge=0.0)
+    transition_in: Literal[
+        "start", "cut", "jump", "fade", "dissolve", "wipe", "flash", "other"
+    ] = "cut"
+    transition_duration_s: float | None = Field(default=None, ge=0.0)
+    production_label: str = Field(min_length=1)
+    production_confidence: float = Field(ge=0.0, le=1.0)
+    narrative_role: (
+        Literal["hook", "context", "info", "proof", "turn", "payoff", "cta", "mood"] | None
+    ) = None
+    narrative_point: str | None = None
+    description: str | None = None
+    beats_s: list[float] = Field(default_factory=list)
+    drawn_palette_hex: list[str] = Field(default_factory=list)
+    has_embedded_real_assets: bool = False
+    low_confidence_flag: bool = False
+    sheet_path: str | None = None
+
+
+class BreakdownEditingMetrics(StrictModel):
+    cuts_per_min: float = Field(ge=0.0)
+    avg_shot_s: float = Field(ge=0.0)
+    camera_positions: int | None = Field(default=None, ge=0)
+    jump_cuts: int = Field(default=0, ge=0)
+    punch_ins: int = Field(default=0, ge=0)
+    punch_in_scale_ratios: list[float] = Field(default_factory=list)
+    cuts_in_pauses_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    insert_share: float | None = Field(default=None, ge=0.0, le=1.0)
+    beat_synced_edit: bool = False
+
+
+class BreakdownPackagingMetrics(StrictModel):
+    subtitle_count: int = Field(default=0, ge=0)
+    caption_case_observed: Literal["sentence", "uppercase", "title", "lowercase"] | None = None
+    caption_style_observed: Literal["plain", "chip", "bar"] | None = None
+    caption_band_observed: Literal["lower_third", "center_safe", "upper_safe"] | None = None
+    caption_words_p50: float | None = Field(default=None, ge=0.0)
+    caption_words_p75: float | None = Field(default=None, ge=0.0)
+    caption_entrance_animations: list[str] = Field(default_factory=list)
+    caption_entrance_ms_median: int | None = Field(default=None, ge=0)
+    caption_fill_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    caption_stroke_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    caption_box_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    persistent_watermark_detected: bool = False
+    styled_text_count: int = Field(default=0, ge=0)
+    sticker_count: int = Field(default=0, ge=0)
+    overlay_text_samples: list[str] = Field(default_factory=list)
+
+
+class BreakdownAudioMetrics(StrictModel):
+    has_audio: bool = False
+    has_voice: bool = False
+    has_music: bool = False
+    tempo_bpm: float | None = Field(default=None, ge=20.0, le=260.0)
+    beat_strength: float | None = Field(default=None, ge=0.0, le=1.0)
+    no_beat: bool = True
+    key_tonic: str | None = None
+    key_mode: Literal["major", "minor"] | None = None
+    vocal_style: Literal["speech", "singing", "rap_or_rhythmic"] | None = None
+    sfx_count: int = Field(default=0, ge=0)
+    sfx_types: list[str] = Field(default_factory=list)
+    sfx_aligned_to_visual_count: int = Field(default=0, ge=0)
+    music_section_changes_s: list[float] = Field(default_factory=list)
+
+
+class BreakdownGradeMetrics(StrictModel):
+    look: str | None = None
+    saturation: float | None = Field(default=None, ge=0.0, le=1.0)
+    contrast: float | None = Field(default=None, ge=0.0, le=1.0)
+    black_level: float | None = Field(default=None, ge=0.0, le=100.0)
+    white_level: float | None = Field(default=None, ge=0.0, le=100.0)
+    shadow_b: float | None = None
+    highlight_b: float | None = None
+    mean_l: float | None = Field(default=None, ge=0.0, le=100.0)
+    tone: Literal["warm", "cool", "neutral"] | None = None
+
+
+class VideoBreakdownResult(StrictModel):
+    """Normalized forensic reference-video breakdown produced by `VideoBreakdownPort`."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    provider: str = Field(min_length=1)
+    source_path: str = Field(min_length=1)
+    source_sha256: str | None = Field(default=None, min_length=8)
+    duration_s: float = Field(ge=0.0)
+    width: int = Field(ge=0)
+    height: int = Field(ge=0)
+    fps: float = Field(ge=0.0)
+    aspect_ratio: Literal["16:9", "9:16", "1:1", "4:5", "other"] = "other"
+    output_dir: str | None = None
+    videomd_path: str | None = None
+    storyboard_path: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    reviewed_by: list[str] = Field(default_factory=list)
+    verdict: str | None = None
+    generative_reference_warning: bool = False
+    production_mix: dict[str, float] = Field(default_factory=dict)
+    shots: list[BreakdownShot] = Field(default_factory=list)
+    editing: BreakdownEditingMetrics
+    packaging: BreakdownPackagingMetrics
+    audio: BreakdownAudioMetrics
+    grade: BreakdownGradeMetrics
+
+
+class ProjectDirectories(StrictModel):
+    inputs: str = "inputs"
+    probes: str = "analysis/probes"
+    breakdowns: str = "analysis/breakdowns"
+    transcripts: str = "analysis/transcripts"
+    decisions: str = "analysis/decisions"
+    maps: str = "media/maps"
+    broll: str = "media/broll"
+    audio: str = "media/audio"
+    plan: str = "plan"
+    build: str = "build"
+    output: str = "output"
+
+
+class ProjectArtifacts(StrictModel):
+    brief: str = "brief.md"
+    edit_plan: str = "plan/edit_plan.json"
+    verification: str = "plan/verification.json"
+    master: str = "output/master.mp4"
+    audit: str = "output/audit.json"
+    otio: str = "output/timeline.otio"
+    benchmark: str = "output/benchmark.json"
+
+
+class ProjectManifest(StrictModel):
+    """Self-contained external editing project manifest using relative paths only."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    project_id: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+    brand_id: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+    platform_target_id: str = Field(min_length=1)
+    title: str | None = None
+    created_at: str = Field(min_length=1)
+    directories: ProjectDirectories = Field(default_factory=ProjectDirectories)
+    artifacts: ProjectArtifacts = Field(default_factory=ProjectArtifacts)
+    notes: str | None = None

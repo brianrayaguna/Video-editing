@@ -22,9 +22,14 @@ Storage / Raw Media
   │     Capability ports, BrandStylePolicy synthesis, constraint verifier,
   │     Modal serverless orchestration, mastering QC
   │
+  ├─► Isolated Local Forensic Toolchain (`tools/rea-video/.venv`)
+  │     Optional `VideoBreakdownPort` adapter (`rea_video`): shot/transition
+  │     forensics, BPM/beat/SFX extraction, 2-10fps OCR caption packaging,
+  │     layered `VIDEO.md` output, and Agent-as-VLM visual review loop
+  │
   └─► TypeScript / Node >= 22 (`@vedit/hf-compiler`)
         EditPlan → HyperFrames HTML/GSAP scenes, static checks,
-        distributed planV2 / renderChunkV2 / assembleV2 bridge (pinned 0.9.65)
+        distributed planV2 / renderChunkV2 / assembleV2 bridge (pinned 0.9.68)
 ```
 
 ---

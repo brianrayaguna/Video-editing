@@ -5,10 +5,12 @@ from __future__ import annotations
 from vedit.providers.audio_catalog.epidemic import EpidemicAudioCatalogProvider
 from vedit.providers.decision.liquid_d1 import LiquidDecisionProvider
 from vedit.providers.media_ops.ffmpeg_local import FfmpegMediaOpsProvider
+from vedit.providers.media_ops.modal_cloud import ModalCloudMediaOpsProvider
 from vedit.providers.media_ops.veed import VeedMediaOpsProvider
 from vedit.providers.registry import ProviderRegistry, ProviderSpec
 from vedit.providers.transcription.veed import VeedTranscriptionProvider
 from vedit.providers.transcription.xai import XaiTranscriptionProvider
+from vedit.providers.video_breakdown.rea_video import ReaVideoBreakdownProvider
 
 
 def register_builtin_providers(registry: ProviderRegistry) -> None:
@@ -48,6 +50,15 @@ def register_builtin_providers(registry: ProviderRegistry) -> None:
         ),
         ProviderSpec(
             capability="media_ops",
+            name="modal_cloud",
+            factory=lambda opts: ModalCloudMediaOpsProvider(opts),
+            implemented=True,
+            description=(
+                "Modal serverless CPU speech denoising (DeepFilterNet) and aspect-ratio reframing."
+            ),
+        ),
+        ProviderSpec(
+            capability="media_ops",
             name="ffmpeg",
             factory=lambda opts: FfmpegMediaOpsProvider(opts),
             implemented=True,
@@ -59,6 +70,16 @@ def register_builtin_providers(registry: ProviderRegistry) -> None:
             factory=lambda opts: EpidemicAudioCatalogProvider(opts),
             implemented=True,
             description="Semantic music and sound-effect catalog search/download adapter.",
+        ),
+        ProviderSpec(
+            capability="video_breakdown",
+            name="rea_video",
+            factory=lambda opts: ReaVideoBreakdownProvider(opts),
+            implemented=True,
+            description=(
+                "Local forensic video breakdown adapter (non-generative analysis, OCR packaging, "
+                "audio BPM/SFX, and Agent-as-VLM visual review)."
+            ),
         ),
     ]
     for spec in specs:

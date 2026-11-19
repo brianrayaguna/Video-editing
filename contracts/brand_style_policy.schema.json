@@ -71,7 +71,11 @@
                 "ground": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
                 "ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
                 "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-                "secondary_accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+                "secondary_accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "hydro_accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "comparison_accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "surface_elevated": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+                "muted_ink": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
               }
             },
             "typography": {
@@ -81,7 +85,10 @@
               "properties": {
                 "display_family": { "type": "string" },
                 "body_family": { "type": "string" },
+                "title_family": { "type": "string" },
                 "caption_case": { "type": "string", "enum": ["sentence", "uppercase", "title", "lowercase"] },
+                "caption_style": { "type": "string", "enum": ["plain", "chip", "bar"] },
+                "caption_transition_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "max_words_per_caption_group": { "type": "integer", "minimum": 1, "maximum": 12 },
                 "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] }
               }
@@ -146,6 +153,60 @@
         "banned_transitions": { "type": "array", "items": { "type": "string" } },
         "banned_patterns": { "type": "array", "items": { "type": "string" } },
         "avoid_heavy_css_blur": { "type": "boolean" }
+      }
+    },
+    "format_overrides": {
+      "type": "object",
+      "description": "Optional aspect-ratio-conditioned documentary format overrides (e.g., 9:16 portrait vs 16:9 landscape).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "format_name": { "type": "string" },
+          "min_shot_duration_s": { "type": "number", "minimum": 0.2 },
+          "max_uninterrupted_hold_s": { "type": "number", "minimum": 1.0 },
+          "default_caption_band": {
+            "type": "string",
+            "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"]
+          },
+          "watermark_default": { "type": "boolean" },
+          "temporal_curve": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "section",
+                "asl_p25_s",
+                "asl_p50_s",
+                "asl_p75_s",
+                "cuts_per_min_range",
+                "energy_target"
+              ],
+              "properties": {
+                "section": {
+                  "type": "string",
+                  "enum": ["hook", "setup", "body", "escalation", "climax", "outro"]
+                },
+                "asl_p25_s": { "type": "number", "exclusiveMinimum": 0 },
+                "asl_p50_s": { "type": "number", "exclusiveMinimum": 0 },
+                "asl_p75_s": { "type": "number", "exclusiveMinimum": 0 },
+                "cuts_per_min_range": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 0 },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "energy_target": { "type": "number", "minimum": 0, "maximum": 1 },
+                "preferred_transitions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "calibration": {

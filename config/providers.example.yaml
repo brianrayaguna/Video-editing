@@ -27,11 +27,17 @@ defaults:
   media_ops:
     primary: veed
     fallback:
+      - modal_cloud
       - ffmpeg
     options:
       auth_type: openedit_oauth
       origin: https://www.veed.io
       allow_generative_video: false
+      fallback_options:
+        modal_cloud:
+          app_name: vedit-distributed-renderer
+          volume_name: vedit-cas-cache-v2
+          allow_generative_video: false
 
   audio_catalog:
     primary: epidemic
@@ -44,6 +50,21 @@ defaults:
       default_quality: high
       instrumental_only_under_speech: true
       api_key_env: EPIDEMIC_API_KEY
+
+  video_breakdown:
+    primary: rea_video
+    fallback: []
+    options:
+      auth_type: local
+      use_vlm: false
+      prepare_review: true
+      ocr: true
+      # Enable stems=true or raise workers on high-memory workstations when full stem forensics are needed.
+      stems: false
+      packaging: true
+      asr: false
+      lang: en
+      workers: 1
 
   generative_planner:
     # Optional companion generative planner when running headless outside an interactive directing client
