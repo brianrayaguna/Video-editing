@@ -3,76 +3,229 @@
     #root {
       position: absolute;
       inset: 0;
-      width: {{WIDTH}}px;
-      height: {{HEIGHT}}px;
       overflow: hidden;
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
-      --vedit-ground: {{BG_COLOR}};
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
-      top: {{SAFE_TOP_PCT}}%;
+      top: calc({{SAFE_TOP_PCT}}% + calc(44px * {{SCALE_FACTOR}}));
       left: {{SYM_X_PCT}}%;
       right: {{SYM_X_PCT}}%;
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      padding-top: 24px;
       pointer-events: none;
     }
-    #{{SCENE_ID}}-inner {
+    #{{SCENE_ID}}-stack {
       display: inline-flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      transform-origin: center top;
+      gap: calc(6px * {{SCALE_FACTOR}});
+      text-align: center;
+      max-width: 100%;
     }
-    .metric-rule {
-      width: 44px;
-      height: 3px;
-      background: var(--vedit-accent);
+    .gv-metric-mask {
+      overflow: hidden;
+      padding: 0 calc(8px * {{SCALE_FACTOR}});
     }
-    .metric-value {
+    #{{SCENE_ID}}-primary {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
-      font-size: calc(44px * {{SCALE_FACTOR}});
-      line-height: 1.05;
-      letter-spacing: 0.02em;
+      font-size: calc(86px * {{SCALE_FACTOR}});
+      line-height: 1.02;
+      letter-spacing: -0.025em;
       color: var(--vedit-ink);
-      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.85);
+      text-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.85),
+        0 2px 4px rgba(0, 0, 0, 0.96);
       white-space: nowrap;
+      will-change: transform, opacity;
     }
-    .metric-sub {
-      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
-      font-size: calc(20px * {{SCALE_FACTOR}});
-      font-weight: 500;
+    #{{SCENE_ID}}-secondary {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(36px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      color: var(--vedit-accent);
+      text-shadow:
+        0 3px 12px rgba(0, 0, 0, 0.88),
+        0 1px 3px rgba(0, 0, 0, 0.96);
+    }
+    #{{SCENE_ID}}-sub {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
       color: var(--vedit-ink);
-      opacity: 0.88;
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+      opacity: 0.92;
+      text-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.9),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    .gv-empty {
+      display: none;
     }
   </style>
-  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
-      <div id="{{SCENE_ID}}-inner">
-        <div class="metric-rule"></div>
-        <div class="metric-value">{{VAR_LABEL|±20 KM}}</div>
-        <div class="metric-sub">{{VAR_SUBTITLE|}}</div>
+      <div id="{{SCENE_ID}}-stack">
+        <div class="gv-metric-mask">
+          <div id="{{SCENE_ID}}-primary" data-var-text="label">{{VAR_LABEL|}}</div>
+        </div>
+        <div class="gv-metric-mask">
+          <div id="{{SCENE_ID}}-secondary" data-var-text="secondary_value">{{VAR_SECONDARY_VALUE|}}</div>
+        </div>
+        <div class="gv-metric-mask">
+          <div id="{{SCENE_ID}}-sub" data-var-text="subtitle">{{VAR_SUBTITLE|}}</div>
+        </div>
       </div>
     </div>
   </div>
   <script>
-    const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
-      "#{{SCENE_ID}}-inner",
-      { opacity: 0, scale: 0.95, y: 6 },
-      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
-      0
-    );
-    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+    (function () {
+      const primaryEl = document.getElementById("{{SCENE_ID}}-primary");
+      const secEl = document.getElementById("{{SCENE_ID}}-secondary");
+      const subEl = document.getElementById("{{SCENE_ID}}-sub");
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.24), dur * 0.35);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.14), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.1, dur - exitS);
+
+      if (secEl && !secEl.textContent.trim()) secEl.classList.add("gv-empty");
+      if (subEl && !subEl.textContent.trim()) subEl.classList.add("gv-empty");
+
+      if (primaryEl && !primaryEl.textContent.trim()) {
+        const legacyVal = ("{{VAR_VALUE|1.143 KM}}").trim();
+        primaryEl.textContent = legacyVal || "1.143 KM";
+      }
+      const rawText = primaryEl ? primaryEl.textContent.trim() : "";
+      const maxWidthPx = Math.round(Number({{WIDTH}}) * 0.84);
+      if (primaryEl && window.__hyperframes && typeof window.__hyperframes.fitTextFontSize === "function" && rawText) {
+        try {
+          const fitted = window.__hyperframes.fitTextFontSize(rawText, {
+            fontFamily: "{{DISPLAY_FONT}}",
+            fontWeight: 900,
+            maxWidth: maxWidthPx,
+          });
+          if (fitted && fitted.fontSize) {
+            const cap = Math.round(86 * Number({{SCALE_FACTOR}}));
+            primaryEl.style.fontSize = Math.min(cap, Math.max(42, fitted.fontSize)) + "px";
+          }
+        } catch (_err) {}
+      }
+
+      const tl = gsap.timeline({ paused: true });
+
+      // Parse first numeric run for deterministic tabular count-up (handles 1.143 or 4,700 or 42.5).
+      const numMatch = rawText.match(/^([^\d\-+]*[±~+\-]?\s*)(\d[\d.,]*)(.*)$/);
+      if (primaryEl && numMatch) {
+        const prefix = numMatch[1] || "";
+        const numToken = numMatch[2] || "";
+        const suffix = numMatch[3] || "";
+        const dotCount = (numToken.match(/\./g) || []).length;
+        const commaCount = (numToken.match(/,/g) || []).length;
+        let sep = "";
+        let dec = "";
+        let decimals = 0;
+        let normalized = numToken;
+        if (dotCount > 0 && commaCount === 0) {
+          const parts = numToken.split(".");
+          if (parts[parts.length - 1].length === 3) {
+            sep = ".";
+            normalized = numToken.replace(/\./g, "");
+          } else {
+            dec = ".";
+            decimals = parts[parts.length - 1].length;
+          }
+        } else if (commaCount > 0 && dotCount === 0) {
+          const parts = numToken.split(",");
+          if (parts[parts.length - 1].length === 3) {
+            sep = ",";
+            normalized = numToken.replace(/,/g, "");
+          } else {
+            dec = ",";
+            decimals = parts[parts.length - 1].length;
+            normalized = numToken.replace(",", ".");
+          }
+        } else if (commaCount > 0 && dotCount > 0) {
+          if (numToken.lastIndexOf(".") > numToken.lastIndexOf(",")) {
+            sep = ",";
+            dec = ".";
+            decimals = numToken.length - numToken.lastIndexOf(".") - 1;
+            normalized = numToken.replace(/,/g, "");
+          } else {
+            sep = ".";
+            dec = ",";
+            decimals = numToken.length - numToken.lastIndexOf(",") - 1;
+            normalized = numToken.replace(/\./g, "").replace(",", ".");
+          }
+        }
+        const targetVal = parseFloat(normalized);
+        if (Number.isFinite(targetVal) && targetVal > 0) {
+          const fmtNum = (val) => {
+            const fixed = decimals > 0 ? val.toFixed(decimals) : String(Math.round(val));
+            const pieces = fixed.split(".");
+            let intPart = pieces[0];
+            if (sep) {
+              intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+            }
+            return decimals > 0 ? intPart + dec + pieces[1] : intPart;
+          };
+          const countDur = Math.min(Math.max(enterS * 2.2, 0.55), Math.max(0.4, exitAt - 0.35));
+          const counter = { p: 0 };
+          tl.fromTo(
+            counter,
+            { p: 0 },
+            {
+              p: 1,
+              duration: countDur,
+              ease: "expo.out",
+              onUpdate: () => {
+                primaryEl.textContent = prefix + fmtNum(targetVal * counter.p) + suffix;
+              },
+            },
+            0
+          );
+        }
+      }
+
+      tl.fromTo(
+        "#{{SCENE_ID}}-primary",
+        { yPercent: 112, opacity: 0 },
+        { yPercent: 0, opacity: 1, duration: enterS, ease: "expo.out" },
+        0
+      );
+      if (secEl && !secEl.classList.contains("gv-empty")) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-secondary",
+          { yPercent: 105, opacity: 0 },
+          { yPercent: 0, opacity: 1, duration: enterS * 0.9, ease: "expo.out" },
+          enterS * 0.38
+        );
+      }
+      if (subEl && !subEl.classList.contains("gv-empty")) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-sub",
+          { yPercent: 100, opacity: 0 },
+          { yPercent: 0, opacity: 0.92, duration: enterS * 0.9, ease: "expo.out" },
+          enterS * 0.55
+        );
+      }
+
+      tl.to(
+        "#{{SCENE_ID}}-stack",
+        { y: -14 * Number({{SCALE_FACTOR}}), opacity: 0, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

@@ -1,0 +1,227 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: 'EB Garamond', 'Playfair Display', Georgia, serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-canvas-bg {
+      position: absolute;
+      inset: 0;
+      background-color: #C2AD8D;
+      background-image:
+        linear-gradient(rgba(52, 38, 22, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(52, 38, 22, 0.08) 1px, transparent 1px),
+        radial-gradient(circle at 50% 42%, rgba(242, 228, 200, 0.4) 0%, rgba(124, 98, 66, 0.42) 100%);
+      background-size:
+        calc(52px * {{SCALE_FACTOR}}) calc(52px * {{SCALE_FACTOR}}),
+        calc(52px * {{SCALE_FACTOR}}) calc(52px * {{SCALE_FACTOR}}),
+        100% 100%;
+    }
+    #{{SCENE_ID}}-wash {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 42%, rgba(185, 152, 108, 0.24) 0%, rgba(16, 12, 8, 0.56) 100%);
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: {{SAFE_TOP_PCT}}%;
+      bottom: {{CAPTION_BOTTOM_PCT}}%;
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+    }
+    /* Variant 1: era_stamp (straight 0-deg boxless directly over map) */
+    #{{SCENE_ID}}-era {
+      width: 100%;
+      max-width: calc(660px * {{SCALE_FACTOR}});
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(12px * {{SCALE_FACTOR}});
+      will-change: transform, opacity;
+    }
+    .gv-era-year {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(92px * {{SCALE_FACTOR}});
+      line-height: 0.98;
+      letter-spacing: 0.01em;
+      color: #F4F1EA;
+      text-shadow:
+        0 4px 22px rgba(0, 0, 0, 0.88),
+        0 2px 5px rgba(0, 0, 0, 0.96);
+    }
+    .gv-era-title {
+      font-family: 'Playfair Display', 'EB Garamond', Georgia, serif;
+      font-size: calc(44px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.12;
+      color: #F5C542;
+      text-shadow:
+        0 3px 16px rgba(0, 0, 0, 0.9),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+    }
+    .gv-era-excerpt {
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: calc(32px * {{SCALE_FACTOR}});
+      font-style: italic;
+      line-height: 1.3;
+      color: #F4F1EA;
+      max-width: 92%;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.92);
+    }
+    /* Variant 2: parchment_canvas (100% full-bleed aged sepia sheet, zero floating mini box) */
+    #{{SCENE_ID}}-parch {
+      width: 100%;
+      max-width: calc(660px * {{SCALE_FACTOR}});
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(16px * {{SCALE_FACTOR}});
+      will-change: transform, opacity;
+    }
+    .gv-parch-year {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(86px * {{SCALE_FACTOR}});
+      line-height: 1;
+      color: #24190E;
+    }
+    .gv-parch-title {
+      font-family: 'Playfair Display', 'EB Garamond', Georgia, serif;
+      font-size: calc(46px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.14;
+      color: #1A120A;
+    }
+    .gv-parch-excerpt {
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: calc(33px * {{SCALE_FACTOR}});
+      font-style: italic;
+      line-height: 1.35;
+      color: #382817;
+      max-width: 92%;
+    }
+    /* Variant 3: archival_sheet (large 84%-width physical document/map scan image_src) */
+    #{{SCENE_ID}}-sheet {
+      width: 94%;
+      max-width: calc(740px * {{SCALE_FACTOR}});
+      background: #D8C7AB;
+      padding: calc(18px * {{SCALE_FACTOR}});
+      box-shadow: 0 calc(20px * {{SCALE_FACTOR}}) calc(44px * {{SCALE_FACTOR}}) rgba(0, 0, 0, 0.56);
+      display: flex;
+      flex-direction: column;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      will-change: transform, opacity;
+    }
+    #{{SCENE_ID}}-sheet-img {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    #{{SCENE_ID}}-sheet-cap {
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: #2A1E12;
+      text-align: center;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-canvas-bg"></div>
+    <div id="{{SCENE_ID}}-wash"></div>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <!-- Variant 1: era_stamp -->
+      <div id="{{SCENE_ID}}-era">
+        <div id="{{SCENE_ID}}-e-year" class="gv-era-year" data-var-text="year">{{VAR_YEAR|1803}}</div>
+        <div id="{{SCENE_ID}}-e-title" class="gv-era-title" data-var-text="title">{{VAR_TITLE|LOUISIANA PURCHASE}}</div>
+        <div id="{{SCENE_ID}}-e-ex" class="gv-era-excerpt" data-var-text="excerpt">{{VAR_EXCERPT|}}</div>
+      </div>
+
+      <!-- Variant 2: parchment_canvas -->
+      <div id="{{SCENE_ID}}-parch">
+        <div id="{{SCENE_ID}}-p-year" class="gv-parch-year" data-var-text="year">{{VAR_YEAR|1803}}</div>
+        <div id="{{SCENE_ID}}-p-title" class="gv-parch-title" data-var-text="title">{{VAR_TITLE|LOUISIANA PURCHASE}}</div>
+        <div id="{{SCENE_ID}}-p-ex" class="gv-parch-excerpt" data-var-text="excerpt">{{VAR_EXCERPT|}}</div>
+      </div>
+
+      <!-- Variant 3: archival_sheet -->
+      <div id="{{SCENE_ID}}-sheet">
+        <img id="{{SCENE_ID}}-sheet-img" alt="" data-src="{{VAR_IMAGE_SRC|}}" data-var-src="image_src" />
+        <div id="{{SCENE_ID}}-sheet-cap" data-var-text="title">{{VAR_YEAR|1803}} · {{VAR_TITLE|HISTORICAL ARCHIVE}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const variant = ("{{VAR_VARIANT|era_stamp}}").trim().toLowerCase();
+      const tiltDeg = Number({{VAR_TILT_DEG|0}});
+      const imgSrc = ("{{VAR_IMAGE_SRC|}}").trim();
+
+      const bgEl = document.getElementById("{{SCENE_ID}}-canvas-bg");
+      const washEl = document.getElementById("{{SCENE_ID}}-wash");
+      const eraEl = document.getElementById("{{SCENE_ID}}-era");
+      const parchEl = document.getElementById("{{SCENE_ID}}-parch");
+      const sheetEl = document.getElementById("{{SCENE_ID}}-sheet");
+      const sheetImgEl = document.getElementById("{{SCENE_ID}}-sheet-img");
+      if (sheetImgEl && imgSrc) sheetImgEl.setAttribute("src", imgSrc);
+
+      ["{{SCENE_ID}}-e-year", "{{SCENE_ID}}-p-year", "{{SCENE_ID}}-e-ex", "{{SCENE_ID}}-p-ex"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && !el.textContent.trim()) el.classList.add("gv-empty");
+      });
+
+      let activeSel = "#{{SCENE_ID}}-era";
+      let bgSel = "#{{SCENE_ID}}-wash";
+
+      if (variant === "parchment_canvas") {
+        if (washEl) washEl.classList.add("gv-empty");
+        if (eraEl) eraEl.classList.add("gv-empty");
+        if (sheetEl) sheetEl.classList.add("gv-empty");
+        activeSel = "#{{SCENE_ID}}-parch";
+        bgSel = "#{{SCENE_ID}}-canvas-bg";
+      } else if (variant === "archival_sheet" && imgSrc) {
+        if (bgEl) bgEl.classList.add("gv-empty");
+        if (eraEl) eraEl.classList.add("gv-empty");
+        if (parchEl) parchEl.classList.add("gv-empty");
+        activeSel = "#{{SCENE_ID}}-sheet";
+        bgSel = "#{{SCENE_ID}}-wash";
+      } else {
+        if (bgEl) bgEl.classList.add("gv-empty");
+        if (parchEl) parchEl.classList.add("gv-empty");
+        if (sheetEl) sheetEl.classList.add("gv-empty");
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.3), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.16), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(bgSel, { opacity: 0 }, { opacity: 1, duration: enterS * 0.8, ease: "power2.out" }, 0);
+      tl.fromTo(
+        activeSel,
+        { y: 26 * Number({{SCALE_FACTOR}}), rotation: tiltDeg, opacity: 0 },
+        { y: 0, rotation: tiltDeg, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.04
+      );
+      tl.to([activeSel, bgSel], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

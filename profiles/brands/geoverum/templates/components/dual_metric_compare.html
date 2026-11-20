@@ -1,0 +1,143 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-left: {{VAR_LEFT_COLOR|#7CE0F9}};
+      --vedit-right: {{VAR_RIGHT_COLOR|#F5C542}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: calc({{SAFE_TOP_PCT}}% + calc(60px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-pair {
+      width: 100%;
+      max-width: calc(740px * {{SCALE_FACTOR}});
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: calc(32px * {{SCALE_FACTOR}});
+      align-items: start;
+    }
+    .gv-dm-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(6px * {{SCALE_FACTOR}});
+    }
+    .gv-dm-val {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(56px * {{SCALE_FACTOR}});
+      line-height: 1.02;
+      letter-spacing: -0.025em;
+      white-space: nowrap;
+      text-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.92),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+    }
+    .gv-dm-val.left { color: var(--vedit-left); }
+    .gv-dm-val.right { color: var(--vedit-right); }
+    .gv-dm-sec {
+      font-size: calc(30px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.15;
+      white-space: nowrap;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    .gv-dm-sec.left { color: var(--vedit-left); opacity: 0.9; }
+    .gv-dm-sec.right { color: var(--vedit-right); opacity: 0.9; }
+    .gv-dm-lbl {
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      margin-top: calc(4px * {{SCALE_FACTOR}});
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-pair">
+        <div id="{{SCENE_ID}}-col-l" class="gv-dm-col">
+          <div id="{{SCENE_ID}}-lv" class="gv-dm-val left" data-var-text="left_value">{{VAR_LEFT_VALUE|4,700°C}}</div>
+          <div id="{{SCENE_ID}}-ls" class="gv-dm-sec left" data-var-text="left_secondary">{{VAR_LEFT_SECONDARY|(8,492°F)}}</div>
+          <div id="{{SCENE_ID}}-ll" class="gv-dm-lbl" data-var-text="left_label">{{VAR_LEFT_LABEL|CAVITATION}}</div>
+        </div>
+        <div id="{{SCENE_ID}}-col-r" class="gv-dm-col">
+          <div id="{{SCENE_ID}}-rv" class="gv-dm-val right" data-var-text="right_value">{{VAR_RIGHT_VALUE|5,500°C}}</div>
+          <div id="{{SCENE_ID}}-rs" class="gv-dm-sec right" data-var-text="right_secondary">{{VAR_RIGHT_SECONDARY|(9,932°F)}}</div>
+          <div id="{{SCENE_ID}}-rl" class="gv-dm-lbl" data-var-text="right_label">{{VAR_RIGHT_LABEL|SUN SURFACE}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const S = Number({{SCALE_FACTOR}});
+      ["{{SCENE_ID}}-ls", "{{SCENE_ID}}-rs", "{{SCENE_ID}}-ll", "{{SCENE_ID}}-rl"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && !el.textContent.trim()) el.classList.add("gv-empty");
+      });
+
+      function bindCountUp(tl, el, startAt, countDur) {
+        if (!el) return;
+        const raw = el.textContent.trim();
+        const m = raw.match(/^([^\d\-+]*[±~+\-]?\s*)(\d[\d.,]*)(.*)$/);
+        if (!m) return;
+        const prefix = m[1] || "";
+        const tok = m[2] || "";
+        const suffix = m[3] || "";
+        const sep = tok.includes(",") && !tok.includes(".") ? "," : (tok.includes(".") && tok.split(".").pop().length === 3 ? "." : "");
+        const num = parseFloat(sep ? tok.replace(new RegExp("\\" + sep, "g"), "") : tok.replace(",", "."));
+        if (!Number.isFinite(num) || num <= 0) return;
+        const c = { p: 0 };
+        tl.fromTo(
+          c,
+          { p: 0 },
+          {
+            p: 1,
+            duration: countDur,
+            ease: "expo.out",
+            onUpdate: () => {
+              let s = String(Math.round(num * c.p));
+              if (sep) s = s.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+              el.textContent = prefix + s + suffix;
+            },
+          },
+          startAt
+        );
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.28), dur * 0.28);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.14), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.5, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-col-l", { y: 18 * S, opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-lv"), 0.04, Math.min(0.75, exitAt - 0.3));
+      tl.fromTo("#{{SCENE_ID}}-col-r", { y: 18 * S, opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0.2);
+      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-rv"), 0.24, Math.min(0.75, exitAt - 0.4));
+      tl.to("#{{SCENE_ID}}-pair", { y: -12 * S, opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

@@ -3,14 +3,12 @@
     #root {
       position: absolute;
       inset: 0;
-      width: {{WIDTH}}px;
-      height: {{HEIGHT}}px;
       overflow: hidden;
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
       --vedit-ground: {{BG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
-      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
     }
@@ -34,33 +32,37 @@
       letter-spacing: -0.01em;
       background: transparent;
       padding: 0;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.88), 0 0 2px rgba(0, 0, 0, 0.96);
+      text-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.92),
+        0 0 2px rgba(0, 0, 0, 0.98);
     }
     #{{SCENE_ID}}-inner.style-chip {
       background: {{BG_RGBA_78}};
-      border-radius: 6px;
+      border-radius: 4px;
       padding: 8px 20px;
       text-shadow: none;
     }
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
-    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}" data-layout-allow-caption-zone="true">
       <div id="{{SCENE_ID}}-inner" class="style-{{VAR_CAPTION_STYLE|plain}}">
-        <span class="vedit-caption-text">{{CAPTION_HTML}}</span>
+        <span class="vedit-caption-text" data-var-text="text">{{CAPTION_HTML}}</span>
       </div>
     </div>
   </div>
   <script>
-    const tl = gsap.timeline({ paused: true });
-    const fadeS = Number({{CAPTION_TRANSITION_S}});
-    if (fadeS > 0) {
-      tl.fromTo("#{{SCENE_ID}}-inner", { opacity: 0 }, { opacity: 1, duration: fadeS, ease: "none" }, 0);
-      tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: fadeS, ease: "none" }, {{CAPTION_EXIT_AT_S}});
-    } else {
-      tl.set("#{{SCENE_ID}}-inner", { opacity: 1 }, 0);
-      tl.set("#{{SCENE_ID}}-inner", { opacity: 0 }, {{DURATION_S}});
-    }
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const fadeS = Number({{CAPTION_TRANSITION_S}});
+      if (fadeS > 0) {
+        tl.fromTo("#{{SCENE_ID}}-inner", { opacity: 0 }, { opacity: 1, duration: fadeS, ease: "none" }, 0);
+        tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: fadeS, ease: "none" }, {{CAPTION_EXIT_AT_S}});
+      } else {
+        tl.set("#{{SCENE_ID}}-inner", { opacity: 1 }, 0);
+        tl.set("#{{SCENE_ID}}-inner", { opacity: 0 }, {{DURATION_S}});
+      }
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

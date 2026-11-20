@@ -12,6 +12,7 @@ Use this workflow whenever analyzing reference videos to create, calibrate, or a
 1. **Forensic Analysis Only**: Never invoke generative video remake commands (`plan`, `remake`, `remake-run`, `drive`, or external synthetic video generators). If a reference video contains `ai_video` or `avatar` shots (`generative_reference_warning: true`), document non-generative substitutes (real footage, cartographic beds, or procedural HyperFrames HTML/GSAP) in `CRAFT.md` and `editorial_playbook.json`.
 2. **Evidence Over Guessing**: Prefer measured telemetry from `vedit-probe` and `VideoBreakdownPort` (`VIDEO.md` + `video_breakdown.json`) verified by direct visual inspection over heuristic defaults.
 3. **Layered Reading (`VIDEO.md`)**: Never load raw `breakdown.json` into context. Read `VIDEO.md` first, then open only the specific topic files needed (`video/timeline.md`, `video/packaging.md`, `video/sound.md`, `video/rhythm.md`, `video/look.md`).
+4. **Timeless & Neutral Repository Output**: Follow `.agents/rules/engineering-standards.md` and `AGENTS.md` strictly when writing into `profiles/brands/<brand_id>/`. Keep batch trackers, download numbers (`yt_01`), and raw per-video notes strictly inside the external `$VEDIT_PROJECTS_ROOT/<brand_id>/_calibration/` workspace. Inside the repository, use only content-based `ref_<topic>` IDs in `exemplar_bank`, write standalone objective technical English with zero batch/session counters, and strip all third-party product, app, platform, software, and channel brand names.
 
 ## Workflow
 
@@ -87,10 +88,11 @@ packages/director-py/.venv/bin/vedit brand analyze \
 Then refine the brand directory:
 1. Update `typography.display_family`, `body_family`, and `title_family` in `brand_style_policy.json` with the visually identified font families (OCR cannot read font names).
 2. Refine `hard_guardrails.banned_patterns` and `editorial_identity` using the reviewed visual craft notes.
-3. Author or update `profiles/brands/<brand_id>/CRAFT.md` documenting layout hierarchy, motion choreography, color roles, audio/SFX rules, and non-generative asset sourcing.
-4. Validate the complete brand tree before finishing:
+3. Author or update `profiles/brands/<brand_id>/CRAFT.md` documenting layout hierarchy, motion choreography, color roles, audio/SFX rules, and non-generative asset sourcing in standalone technical English (zero batch/corpus counters, zero video-ID citation lists, zero third-party brand names).
+4. Run a repository hygiene audit (checking for leaked batch/session counters, sequential platform prefixes, local paths, and any third-party brand/product/platform names) and validate the complete brand tree before finishing:
 
 ```bash
+rg -in "batch|phase |preserved baseline|cumulatively|yt_|/Users/" profiles/brands/<brand_id>/ || true
 packages/director-py/.venv/bin/vedit brand validate --brand-dir profiles/brands/<brand_id> --json
 packages/director-py/.venv/bin/vedit contracts validate --json
 ```

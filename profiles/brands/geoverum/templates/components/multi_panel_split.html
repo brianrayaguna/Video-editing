@@ -1,0 +1,145 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-mp-panel {
+      position: absolute;
+      inset: 0;
+    }
+    #{{SCENE_ID}}-p1 { background: rgba(14, 72, 92, 0.88); }
+    #{{SCENE_ID}}-p2 { background: rgba(24, 92, 68, 0.88); }
+    #{{SCENE_ID}}-p3 { background: rgba(128, 34, 28, 0.88); }
+    #{{SCENE_ID}}-seams {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .gv-mp-label {
+      position: absolute;
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(48px * {{SCALE_FACTOR}});
+      line-height: 1.04;
+      color: var(--vedit-ink);
+      text-align: center;
+      text-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.88),
+        0 1px 4px rgba(0, 0, 0, 0.96);
+      white-space: nowrap;
+    }
+    .gv-mp-sub {
+      display: block;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: var(--vedit-accent);
+      margin-top: calc(6px * {{SCALE_FACTOR}});
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-p1" class="gv-mp-panel"></div>
+      <div id="{{SCENE_ID}}-p2" class="gv-mp-panel"></div>
+      <div id="{{SCENE_ID}}-p3" class="gv-mp-panel"></div>
+      <svg id="{{SCENE_ID}}-seams" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <line id="{{SCENE_ID}}-seam-1" x1="54" y1="0" x2="46" y2="51.24" stroke="#F4F1EA" stroke-width="0.9" />
+        <line id="{{SCENE_ID}}-seam-2" x1="0" y1="54" x2="100" y2="48" stroke="#F4F1EA" stroke-width="0.9" />
+      </svg>
+      <div id="{{SCENE_ID}}-lbl-1" class="gv-mp-label">
+        <span data-var-text="panel1_label">{{VAR_PANEL1_LABEL|UAE}}</span>
+        <span id="{{SCENE_ID}}-m1" class="gv-mp-sub" data-var-text="panel1_metric">{{VAR_PANEL1_METRIC|}}</span>
+      </div>
+      <div id="{{SCENE_ID}}-lbl-2" class="gv-mp-label">
+        <span data-var-text="panel2_label">{{VAR_PANEL2_LABEL|ABU DHABI}}</span>
+        <span id="{{SCENE_ID}}-m2" class="gv-mp-sub" data-var-text="panel2_metric">{{VAR_PANEL2_METRIC|}}</span>
+      </div>
+      <div id="{{SCENE_ID}}-lbl-3" class="gv-mp-label">
+        <span data-var-text="panel3_label">{{VAR_PANEL3_LABEL|DUBAI}}</span>
+        <span id="{{SCENE_ID}}-m3" class="gv-mp-sub" data-var-text="panel3_metric">{{VAR_PANEL3_METRIC|}}</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_SPLIT_MODE|diagonal_3panel}}").trim().toLowerCase();
+      const isHoriz = mode === "horizontal_analogy";
+
+      const p3 = document.getElementById("{{SCENE_ID}}-p3");
+      const lbl3 = document.getElementById("{{SCENE_ID}}-lbl-3");
+      const seam1 = document.getElementById("{{SCENE_ID}}-seam-1");
+      const seam2 = document.getElementById("{{SCENE_ID}}-seam-2");
+      const lbl1 = document.getElementById("{{SCENE_ID}}-lbl-1");
+      const lbl2 = document.getElementById("{{SCENE_ID}}-lbl-2");
+
+      ["{{SCENE_ID}}-m1", "{{SCENE_ID}}-m2", "{{SCENE_ID}}-m3"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && !el.textContent.trim()) el.classList.add("gv-empty");
+      });
+
+      let clip1 = "polygon(0 0, 54% 0, 46% 52%, 0 54%)";
+      let clip2 = "polygon(54% 0, 100% 0, 100% 48%, 46% 52%)";
+      let clip3 = "polygon(0 54%, 100% 48%, 100% 100%, 0 100%)";
+
+      if (isHoriz) {
+        if (p3) p3.classList.add("gv-empty");
+        if (lbl3) lbl3.classList.add("gv-empty");
+        if (seam1) seam1.classList.add("gv-empty");
+        if (seam2) {
+          seam2.setAttribute("x1", "0");
+          seam2.setAttribute("y1", "50");
+          seam2.setAttribute("x2", "100");
+          seam2.setAttribute("y2", "50");
+        }
+        clip1 = "inset(0 0 50% 0)";
+        clip2 = "inset(50% 0 0 0)";
+        if (lbl1) { lbl1.style.left = "50%"; lbl1.style.top = "30%"; }
+        if (lbl2) { lbl2.style.left = "50%"; lbl2.style.top = "62%"; }
+      } else {
+        if (lbl1) { lbl1.style.left = "28%"; lbl1.style.top = "30%"; }
+        if (lbl2) { lbl2.style.left = "67%"; lbl2.style.top = "30%"; }
+        if (lbl3) { lbl3.style.left = "50%"; lbl3.style.top = "58%"; }
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.34), dur * 0.3);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.16), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.5, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set(["#{{SCENE_ID}}-lbl-1", "#{{SCENE_ID}}-lbl-2", "#{{SCENE_ID}}-lbl-3"], { xPercent: -50, yPercent: -50 });
+      tl.fromTo("#{{SCENE_ID}}-p1", { clipPath: "inset(0 100% 0 0)", opacity: 0 }, { clipPath: clip1, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+      tl.fromTo("#{{SCENE_ID}}-p2", { clipPath: "inset(0 0 0 100%)", opacity: 0 }, { clipPath: clip2, opacity: 1, duration: enterS, ease: "expo.out" }, 0.14);
+      if (!isHoriz) {
+        tl.fromTo("#{{SCENE_ID}}-p3", { clipPath: "inset(100% 0 0 0)", opacity: 0 }, { clipPath: clip3, opacity: 1, duration: enterS, ease: "expo.out" }, 0.28);
+      }
+      tl.fromTo("#{{SCENE_ID}}-seams", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 0.16);
+      tl.fromTo("#{{SCENE_ID}}-lbl-1", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.16);
+      tl.fromTo("#{{SCENE_ID}}-lbl-2", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.3);
+      if (!isHoriz) {
+        tl.fromTo("#{{SCENE_ID}}-lbl-3", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.44);
+      }
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

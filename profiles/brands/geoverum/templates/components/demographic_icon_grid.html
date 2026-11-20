@@ -1,0 +1,205 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: calc(340px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    .gv-dg-scrim {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse 82% 54% at 50% 38%,
+        rgba(3, 18, 28, 0.72) 0%,
+        rgba(3, 18, 28, 0.34) 56%,
+        rgba(3, 18, 28, 0) 100%
+      );
+    }
+    .gv-dg-wrap {
+      position: relative;
+      z-index: 2;
+      width: calc(740px * {{SCALE_FACTOR}});
+      max-width: 68%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(24px * {{SCALE_FACTOR}});
+    }
+    .gv-dg-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      line-height: 1.06;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      text-align: center;
+      color: var(--vedit-ink);
+      text-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.9),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+    }
+    .gv-dg-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: calc(18px * {{SCALE_FACTOR}}) calc(22px * {{SCALE_FACTOR}});
+      align-items: center;
+      justify-items: center;
+    }
+    .gv-dg-grid.is-wide {
+      grid-template-columns: repeat(10, 1fr);
+      gap: calc(14px * {{SCALE_FACTOR}});
+    }
+    .gv-dg-person {
+      width: calc(64px * {{SCALE_FACTOR}});
+      height: calc(108px * {{SCALE_FACTOR}});
+      display: block;
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.8));
+    }
+    .gv-dg-stats {
+      width: 100%;
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: calc(24px * {{SCALE_FACTOR}});
+      margin-top: calc(6px * {{SCALE_FACTOR}});
+    }
+    .gv-dg-stat {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(4px * {{SCALE_FACTOR}});
+    }
+    .gv-dg-pct {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(68px * {{SCALE_FACTOR}});
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+      text-shadow:
+        0 5px 18px rgba(0, 0, 0, 0.92),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+    }
+    .gv-dg-pct.is-accent {
+      color: var(--vedit-accent);
+    }
+    .gv-dg-pct.is-ink {
+      color: var(--vedit-ink);
+    }
+    .gv-dg-lbl {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.92);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-scrim" class="gv-dg-scrim"></div>
+      <div class="gv-dg-wrap">
+        <div id="{{SCENE_ID}}-title" class="gv-dg-title" data-var-text="title">{{VAR_TITLE|POPULATION SPLIT}}</div>
+        <div id="{{SCENE_ID}}-grid" class="gv-dg-grid"></div>
+        <div id="{{SCENE_ID}}-stats" class="gv-dg-stats">
+          <div class="gv-dg-stat">
+            <span id="{{SCENE_ID}}-lpct" class="gv-dg-pct is-accent" data-var-text="left_pct">{{VAR_LEFT_PCT|20%}}</span>
+            <span id="{{SCENE_ID}}-llbl" class="gv-dg-lbl" data-var-text="left_label">{{VAR_LEFT_LABEL|CITIZENS}}</span>
+          </div>
+          <div class="gv-dg-stat">
+            <span id="{{SCENE_ID}}-rpct" class="gv-dg-pct is-ink" data-var-text="right_pct">{{VAR_RIGHT_PCT|80%}}</span>
+            <span id="{{SCENE_ID}}-rlbl" class="gv-dg-lbl" data-var-text="right_label">{{VAR_RIGHT_LABEL|EXPATS}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const rootW = Number({{WIDTH}}) || 1080;
+      const rootH = Number({{HEIGHT}}) || 1920;
+      const isWide = rootW > rootH;
+      const highlightCount = Math.max(0, Math.min(10, Math.round(Number("{{VAR_HIGHLIGHT_COUNT|2}}") || 0)));
+
+      const titleEl = document.getElementById("{{SCENE_ID}}-title");
+      const gridEl = document.getElementById("{{SCENE_ID}}-grid");
+      const clipEl = document.getElementById("{{SCENE_ID}}-clip");
+
+      if (titleEl && !titleEl.textContent.trim()) titleEl.classList.add("gv-empty");
+      if (isWide) {
+        if (gridEl) gridEl.classList.add("is-wide");
+        if (clipEl) clipEl.style.paddingTop = "calc(120px * {{SCALE_FACTOR}})";
+      }
+
+      const ns = "http://www.w3.org/2000/svg";
+      const iconEls = [];
+      for (let i = 0; i < 10; i++) {
+        const isHighlight = i < highlightCount;
+        const fill = isHighlight ? "{{ACCENT_COLOR}}" : "{{FG_COLOR}}";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 60 100");
+        svg.setAttribute("class", "gv-dg-person");
+        svg.setAttribute("id", "{{SCENE_ID}}-p" + i);
+
+        const head = document.createElementNS(ns, "circle");
+        head.setAttribute("cx", "30");
+        head.setAttribute("cy", "18");
+        head.setAttribute("r", "12");
+        head.setAttribute("fill", fill);
+        head.setAttribute("fill-opacity", isHighlight ? "1" : "0.8");
+
+        const body = document.createElementNS(ns, "path");
+        body.setAttribute("d", "M12,48 C12,38 19,34 30,34 C41,34 48,38 48,48 L48,70 L41,70 L41,96 L32,96 L32,72 L28,72 L28,96 L19,96 L19,70 L12,70 Z");
+        body.setAttribute("fill", fill);
+        body.setAttribute("fill-opacity", isHighlight ? "1" : "0.8");
+
+        svg.appendChild(head);
+        svg.appendChild(body);
+        if (gridEl) gridEl.appendChild(svg);
+        iconEls.push(svg);
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.34), dur * 0.28);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.16), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.65, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: 0.22, ease: "none" }, 0);
+      if (titleEl && !titleEl.classList.contains("gv-empty")) {
+        tl.fromTo("#{{SCENE_ID}}-title", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.04);
+      }
+      tl.fromTo(
+        iconEls,
+        { scale: 0.68, opacity: 0, y: 12 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.28, stagger: 0.045, ease: "back.out(1.4)" },
+        0.1
+      );
+      tl.fromTo("#{{SCENE_ID}}-stats", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: "expo.out" }, 0.34);
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

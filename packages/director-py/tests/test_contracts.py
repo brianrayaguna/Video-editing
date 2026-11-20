@@ -373,7 +373,7 @@ def test_geoverum_two_documentary_formats_and_brand_tree_integrity(tmp_path) -> 
         (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
     )
     assert policy.soft_priors.visual_tokens.typography.caption_style == "plain"
-    assert policy.soft_priors.visual_tokens.typography.max_words_per_caption_group == 3
+    assert 2 <= policy.soft_priors.visual_tokens.typography.max_words_per_caption_group <= 4
     assert policy.format_overrides is not None
     assert "9:16" in policy.format_overrides
     assert "16:9" in policy.format_overrides

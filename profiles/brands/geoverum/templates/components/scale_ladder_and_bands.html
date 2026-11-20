@@ -1,0 +1,260 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-sl-scrim {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(3, 18, 28, 0.66) 0%,
+        rgba(3, 18, 28, 0.32) 48%,
+        rgba(3, 18, 28, 0) 86%
+      );
+    }
+    .gv-sl-wrap {
+      position: absolute;
+      left: 17%;
+      right: 17%;
+      top: 18%;
+      bottom: 38%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    .gv-sl-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      line-height: 1.06;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.88),
+        0 1px 4px rgba(0, 0, 0, 0.96);
+      margin-bottom: calc(20px * {{SCALE_FACTOR}});
+    }
+    /* Mode 1: Altitude / Depth Ladder */
+    .gv-sl-ladder {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: calc(360px * {{SCALE_FACTOR}});
+    }
+    .gv-sl-svg {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .gv-sl-row {
+      position: absolute;
+      left: calc(116px * {{SCALE_FACTOR}});
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      gap: calc(4px * {{SCALE_FACTOR}});
+    }
+    .gv-sl-row-val {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(46px * {{SCALE_FACTOR}});
+      line-height: 1;
+      color: var(--vedit-accent);
+      text-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.9),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+    }
+    .gv-sl-row-val.is-ink {
+      color: var(--vedit-ink);
+    }
+    .gv-sl-row-lbl {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow:
+        0 3px 12px rgba(0, 0, 0, 0.9),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    /* Mode 2: Longitude / Time-Zone Bands */
+    .gv-sl-bands {
+      position: relative;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: calc(10px * {{SCALE_FACTOR}});
+      align-items: stretch;
+    }
+    .gv-sl-band {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: calc(16px * {{SCALE_FACTOR}});
+      background: linear-gradient(
+        180deg,
+        rgba(38, 122, 198, 0.42) 0%,
+        rgba(20, 74, 134, 0.24) 68%,
+        rgba(12, 44, 86, 0.08) 100%
+      );
+      border-left: 1.5px solid rgba(244, 241, 234, 0.32);
+      border-right: 1.5px solid rgba(244, 241, 234, 0.32);
+      transform-origin: 50% 0%;
+    }
+    .gv-sl-band.is-active {
+      background: linear-gradient(
+        180deg,
+        rgba(245, 197, 66, 0.5) 0%,
+        rgba(245, 197, 66, 0.24) 70%,
+        rgba(245, 197, 66, 0.06) 100%
+      );
+      border-left: 2.5px solid var(--vedit-accent);
+      border-right: 2.5px solid var(--vedit-accent);
+    }
+    .gv-sl-band-hdr {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      color: var(--vedit-ink);
+      text-align: center;
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.9);
+      padding: 0 calc(2px * {{SCALE_FACTOR}});
+    }
+    .gv-sl-band.is-active .gv-sl-band-hdr {
+      color: var(--vedit-accent);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-scrim" class="gv-sl-scrim"></div>
+      <div class="gv-sl-wrap">
+        <div id="{{SCENE_ID}}-title" class="gv-sl-title" data-var-text="title">{{VAR_TITLE|ELEVATION ZONES}}</div>
+
+        <div id="{{SCENE_ID}}-ladder" class="gv-sl-ladder">
+          <svg class="gv-sl-svg" viewBox="0 0 600 600" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <line id="{{SCENE_ID}}-spine" x1="28" y1="30" x2="28" y2="570"
+                  stroke="#F4F1EA" stroke-width="5" stroke-linecap="square"
+                  pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <line id="{{SCENE_ID}}-tick-1" x1="28" y1="88" x2="94" y2="88"
+                  stroke="#F5C542" stroke-width="4.5" stroke-linecap="square"
+                  pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <line id="{{SCENE_ID}}-tick-2" x1="28" y1="296" x2="94" y2="296"
+                  stroke="#F4F1EA" stroke-width="4" stroke-linecap="square"
+                  pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <line id="{{SCENE_ID}}-tick-3" x1="28" y1="504" x2="94" y2="504"
+                  stroke="#F4F1EA" stroke-width="4" stroke-linecap="square"
+                  pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <circle id="{{SCENE_ID}}-dot-1" cx="28" cy="88" r="9" fill="#F5C542" />
+            <circle id="{{SCENE_ID}}-dot-2" cx="28" cy="296" r="8" fill="#F4F1EA" />
+            <circle id="{{SCENE_ID}}-dot-3" cx="28" cy="504" r="8" fill="#F4F1EA" />
+          </svg>
+          <div id="{{SCENE_ID}}-r1" class="gv-sl-row" style="top: 8%;">
+            <span class="gv-sl-row-val" data-var-text="t1_val">{{VAR_T1_VAL|8,849 M}}</span>
+            <span class="gv-sl-row-lbl" data-var-text="t1_label">{{VAR_T1_LABEL|SUMMIT ZONE}}</span>
+          </div>
+          <div id="{{SCENE_ID}}-r2" class="gv-sl-row" style="top: 43%;">
+            <span class="gv-sl-row-val is-ink" data-var-text="t2_val">{{VAR_T2_VAL|4,500 M}}</span>
+            <span class="gv-sl-row-lbl" data-var-text="t2_label">{{VAR_T2_LABEL|HIGH PLATEAU}}</span>
+          </div>
+          <div id="{{SCENE_ID}}-r3" class="gv-sl-row" style="top: 78%;">
+            <span class="gv-sl-row-val is-ink" data-var-text="t3_val">{{VAR_T3_VAL|0 M}}</span>
+            <span class="gv-sl-row-lbl" data-var-text="t3_label">{{VAR_T3_LABEL|SEA LEVEL}}</span>
+          </div>
+        </div>
+
+        <div id="{{SCENE_ID}}-bands" class="gv-sl-bands gv-empty">
+          <div id="{{SCENE_ID}}-b1" class="gv-sl-band"><span class="gv-sl-band-hdr" data-var-text="b1">{{VAR_B1|UTC+5}}</span></div>
+          <div id="{{SCENE_ID}}-b2" class="gv-sl-band"><span class="gv-sl-band-hdr" data-var-text="b2">{{VAR_B2|UTC+6}}</span></div>
+          <div id="{{SCENE_ID}}-b3" class="gv-sl-band"><span class="gv-sl-band-hdr" data-var-text="b3">{{VAR_B3|UTC+7}}</span></div>
+          <div id="{{SCENE_ID}}-b4" class="gv-sl-band"><span class="gv-sl-band-hdr" data-var-text="b4">{{VAR_B4|UTC+8}}</span></div>
+          <div id="{{SCENE_ID}}-b5" class="gv-sl-band"><span class="gv-sl-band-hdr" data-var-text="b5">{{VAR_B5|UTC+9}}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_MODE|altitude_ladder}}").trim().toLowerCase();
+      const isBands = mode === "longitude_bands";
+      const activeIdx = Math.max(1, Math.min(5, Math.round(Number("{{VAR_ACTIVE_BAND|3}}") || 3)));
+
+      const titleEl = document.getElementById("{{SCENE_ID}}-title");
+      const ladderEl = document.getElementById("{{SCENE_ID}}-ladder");
+      const bandsEl = document.getElementById("{{SCENE_ID}}-bands");
+      const scrimEl = document.getElementById("{{SCENE_ID}}-scrim");
+
+      if (titleEl && !titleEl.textContent.trim()) {
+        titleEl.classList.add("gv-empty");
+      }
+
+      if (isBands) {
+        if (ladderEl) ladderEl.classList.add("gv-empty");
+        if (bandsEl) bandsEl.classList.remove("gv-empty");
+        if (scrimEl) {
+          scrimEl.style.background =
+            "linear-gradient(180deg, rgba(3,18,28,0.62) 0%, rgba(3,18,28,0.18) 55%, rgba(3,18,28,0) 100%)";
+        }
+        const activeBand = document.getElementById("{{SCENE_ID}}-b" + activeIdx);
+        if (activeBand) activeBand.classList.add("is-active");
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.34), dur * 0.28);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.16), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.65, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: 0.24, ease: "none" }, 0);
+      if (titleEl && !titleEl.classList.contains("gv-empty")) {
+        tl.fromTo("#{{SCENE_ID}}-title", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, ease: "expo.out" }, 0.04);
+      }
+
+      if (isBands) {
+        tl.fromTo(
+          ["#{{SCENE_ID}}-b1", "#{{SCENE_ID}}-b2", "#{{SCENE_ID}}-b3", "#{{SCENE_ID}}-b4", "#{{SCENE_ID}}-b5"],
+          { scaleY: 0, opacity: 0 },
+          { scaleY: 1, opacity: 1, duration: enterS, stagger: 0.08, ease: "expo.out" },
+          0.1
+        );
+      } else {
+        tl.fromTo("#{{SCENE_ID}}-spine", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: enterS, ease: "power2.out" }, 0.06);
+        tl.fromTo("#{{SCENE_ID}}-tick-1", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.16);
+        tl.fromTo("#{{SCENE_ID}}-dot-1", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.16);
+        tl.fromTo("#{{SCENE_ID}}-r1", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.2);
+
+        tl.fromTo("#{{SCENE_ID}}-tick-2", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.34);
+        tl.fromTo("#{{SCENE_ID}}-dot-2", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.34);
+        tl.fromTo("#{{SCENE_ID}}-r2", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.38);
+
+        tl.fromTo("#{{SCENE_ID}}-tick-3", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.52);
+        tl.fromTo("#{{SCENE_ID}}-dot-3", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.52);
+        tl.fromTo("#{{SCENE_ID}}-r3", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.56);
+      }
+
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

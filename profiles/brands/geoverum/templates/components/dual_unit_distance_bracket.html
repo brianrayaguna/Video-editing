@@ -1,0 +1,260 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-anchor {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(8px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-units {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(2px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-primary {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(48px * {{SCALE_FACTOR}});
+      line-height: 1.04;
+      letter-spacing: -0.02em;
+      color: var(--vedit-ink);
+      white-space: nowrap;
+      text-shadow:
+        0 3px 14px rgba(0, 0, 0, 0.94),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    #{{SCENE_ID}}-secondary {
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--vedit-accent);
+      white-space: nowrap;
+      text-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.94),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    #{{SCENE_ID}}-svg {
+      overflow: visible;
+    }
+    /* Radius Ring variant */
+    #{{SCENE_ID}}-ring-wrap {
+      position: absolute;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #{{SCENE_ID}}-ring-svg {
+      overflow: visible;
+    }
+    #{{SCENE_ID}}-ring-text {
+      position: absolute;
+      bottom: 54%;
+      left: 22%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(2px * {{SCALE_FACTOR}});
+    }
+    .gv-ring-pri {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(36px * {{SCALE_FACTOR}});
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    .gv-ring-sec {
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: var(--vedit-accent);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <!-- Linear styles: double_arrow | t_bracket | dashed_amber -->
+      <div id="{{SCENE_ID}}-anchor">
+        <div id="{{SCENE_ID}}-units">
+          <div id="{{SCENE_ID}}-primary" data-var-text="primary_distance">{{VAR_PRIMARY_DISTANCE|2.4 mi}}</div>
+          <div id="{{SCENE_ID}}-secondary" data-var-text="secondary_distance">{{VAR_SECONDARY_DISTANCE|(3.8 km)}}</div>
+        </div>
+        <svg id="{{SCENE_ID}}-svg" width="520" height="52" viewBox="0 0 520 52" xmlns="http://www.w3.org/2000/svg">
+          <line
+            id="{{SCENE_ID}}-shaft"
+            x1="20"
+            y1="26"
+            x2="500"
+            y2="26"
+            stroke="#F4F1EA"
+            stroke-width="4.5"
+            stroke-linecap="round"
+            pathLength="100"
+            stroke-dasharray="100 120"
+            stroke-dashoffset="110"
+          />
+          <polyline id="{{SCENE_ID}}-arrow-l" points="36,14 16,26 36,38" fill="none" stroke="#F4F1EA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+          <polyline id="{{SCENE_ID}}-arrow-r" points="484,14 504,26 484,38" fill="none" stroke="#F4F1EA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+          <line id="{{SCENE_ID}}-tick-l" x1="20" y1="6" x2="20" y2="46" stroke="#F4F1EA" stroke-width="4.5" stroke-linecap="round" />
+          <line id="{{SCENE_ID}}-tick-r" x1="500" y1="6" x2="500" y2="46" stroke="#F4F1EA" stroke-width="4.5" stroke-linecap="round" />
+        </svg>
+      </div>
+
+      <!-- Radial style: radius_ring -->
+      <div id="{{SCENE_ID}}-ring-wrap">
+        <svg id="{{SCENE_ID}}-ring-svg" width="520" height="520" viewBox="0 0 520 520" xmlns="http://www.w3.org/2000/svg">
+          <circle id="{{SCENE_ID}}-ring-fill" cx="260" cy="260" r="230" fill="rgba(244, 241, 234, 0.1)" stroke="#F4F1EA" stroke-width="4" />
+          <line id="{{SCENE_ID}}-rad-line" x1="260" y1="260" x2="36" y2="260" stroke="#F4F1EA" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+          <polyline id="{{SCENE_ID}}-rad-tip" points="54,248 34,260 54,272" fill="none" stroke="#F4F1EA" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          <circle id="{{SCENE_ID}}-rad-dot" cx="260" cy="260" r="8" fill="#F5C542" stroke="#03161F" stroke-width="2" />
+        </svg>
+        <div id="{{SCENE_ID}}-ring-text">
+          <span class="gv-ring-pri" data-var-text="primary_distance">{{VAR_PRIMARY_DISTANCE|8 km}}</span>
+          <span id="{{SCENE_ID}}-ring-sec" class="gv-ring-sec" data-var-text="secondary_distance">{{VAR_SECONDARY_DISTANCE|(5 mi)}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
+      const S = Number({{SCALE_FACTOR}});
+      const cx = (Number({{VAR_CENTER_X_PCT|50}}) / 100) * W;
+      const cy = (Number({{VAR_CENTER_Y_PCT|44}}) / 100) * H;
+      const spanPx = Math.max(180, Math.min(820, Number({{VAR_SPAN_PX|480}}))) * S;
+      const angleDeg = Number({{VAR_ANGLE_DEG|0}});
+      const style = ("{{VAR_LINE_STYLE|double_arrow}}").trim().toLowerCase();
+
+      const anchorEl = document.getElementById("{{SCENE_ID}}-anchor");
+      const ringWrap = document.getElementById("{{SCENE_ID}}-ring-wrap");
+      const ringSvg = document.getElementById("{{SCENE_ID}}-ring-svg");
+      const svgEl = document.getElementById("{{SCENE_ID}}-svg");
+      const shaftEl = document.getElementById("{{SCENE_ID}}-shaft");
+      const arrL = document.getElementById("{{SCENE_ID}}-arrow-l");
+      const arrR = document.getElementById("{{SCENE_ID}}-arrow-r");
+      const tickL = document.getElementById("{{SCENE_ID}}-tick-l");
+      const tickR = document.getElementById("{{SCENE_ID}}-tick-r");
+      const secEl = document.getElementById("{{SCENE_ID}}-secondary");
+      const ringSec = document.getElementById("{{SCENE_ID}}-ring-sec");
+
+      if (secEl && !secEl.textContent.trim()) secEl.classList.add("gv-empty");
+      if (ringSec && !ringSec.textContent.trim()) ringSec.classList.add("gv-empty");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.3), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.14), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+
+      if (style === "radius_ring") {
+        if (anchorEl) anchorEl.classList.add("gv-empty");
+        if (ringWrap) {
+          ringWrap.style.left = cx.toFixed(1) + "px";
+          ringWrap.style.top = cy.toFixed(1) + "px";
+        }
+        if (ringSvg) {
+          ringSvg.style.width = spanPx.toFixed(1) + "px";
+          ringSvg.style.height = spanPx.toFixed(1) + "px";
+        }
+        tl.fromTo(
+          "#{{SCENE_ID}}-ring-wrap",
+          { xPercent: -50, yPercent: -50, scale: 0.72, opacity: 0 },
+          { xPercent: -50, yPercent: -50, scale: 1, opacity: 1, duration: enterS * 1.15, ease: "expo.out" },
+          0
+        );
+        tl.fromTo(
+          "#{{SCENE_ID}}-rad-line",
+          { strokeDashoffset: 110 },
+          { strokeDashoffset: 0, duration: enterS, ease: "expo.out" },
+          0.16
+        );
+        tl.fromTo("#{{SCENE_ID}}-rad-tip", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, 0.16 + enterS * 0.8);
+        tl.fromTo("#{{SCENE_ID}}-ring-text", { opacity: 0, y: 10 * S }, { opacity: 1, y: 0, duration: 0.28, ease: "expo.out" }, 0.24);
+      } else {
+        if (ringWrap) ringWrap.classList.add("gv-empty");
+        if (anchorEl) {
+          anchorEl.style.left = cx.toFixed(1) + "px";
+          anchorEl.style.top = cy.toFixed(1) + "px";
+        }
+        if (svgEl) {
+          svgEl.style.width = spanPx.toFixed(1) + "px";
+          svgEl.style.height = (52 * S).toFixed(1) + "px";
+        }
+
+        const isBracket = style === "t_bracket";
+        const isDashed = style === "dashed_amber";
+
+        if (isBracket) {
+          if (arrL) arrL.classList.add("gv-empty");
+          if (arrR) arrR.classList.add("gv-empty");
+        } else {
+          if (tickL) tickL.classList.add("gv-empty");
+          if (tickR) tickR.classList.add("gv-empty");
+        }
+        if (isDashed) {
+          const accent = "{{ACCENT_COLOR}}";
+          if (shaftEl) {
+            shaftEl.setAttribute("stroke", accent);
+            shaftEl.setAttribute("stroke-dasharray", "12 10");
+            shaftEl.setAttribute("stroke-dashoffset", "0");
+          }
+          if (arrL) arrL.setAttribute("stroke", accent);
+          if (arrR) arrR.setAttribute("stroke", accent);
+        }
+
+        tl.set("#{{SCENE_ID}}-anchor", { xPercent: -50, yPercent: -50, rotation: angleDeg });
+        if (isDashed) {
+          tl.fromTo(
+            "#{{SCENE_ID}}-svg",
+            { scaleX: 0, opacity: 0, transformOrigin: "center center" },
+            { scaleX: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+            0
+          );
+        } else {
+          tl.fromTo(
+            "#{{SCENE_ID}}-shaft",
+            { strokeDashoffset: 110, opacity: 1 },
+            { strokeDashoffset: 0, duration: enterS, ease: "expo.out" },
+            0
+          );
+          const capTargets = isBracket
+            ? ["#{{SCENE_ID}}-tick-l", "#{{SCENE_ID}}-tick-r"]
+            : ["#{{SCENE_ID}}-arrow-l", "#{{SCENE_ID}}-arrow-r"];
+          tl.fromTo(capTargets, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: "none" }, enterS * 0.65);
+        }
+        tl.fromTo(
+          "#{{SCENE_ID}}-units",
+          { y: 14 * S, opacity: 0 },
+          { y: 0, opacity: 1, duration: enterS * 0.9, ease: "expo.out" },
+          enterS * 0.35
+        );
+      }
+
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

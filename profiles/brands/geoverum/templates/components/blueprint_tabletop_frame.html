@@ -1,0 +1,216 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #14427A;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-grid {
+      position: absolute;
+      inset: 0;
+      background-color: #14427A;
+      background-image:
+        linear-gradient(rgba(244, 241, 234, 0.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(244, 241, 234, 0.13) 1px, transparent 1px),
+        radial-gradient(circle at 50% 42%, rgba(28, 86, 156, 0.42) 0%, rgba(9, 32, 62, 0.72) 100%);
+      background-size:
+        calc(54px * {{SCALE_FACTOR}}) calc(54px * {{SCALE_FACTOR}}),
+        calc(54px * {{SCALE_FACTOR}}) calc(54px * {{SCALE_FACTOR}}),
+        100% 100%;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: {{SAFE_TOP_PCT}}%;
+      bottom: {{CAPTION_BOTTOM_PCT}}%;
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      perspective: 1400px;
+      pointer-events: none;
+    }
+    /* Variant 1: editorial_grid (boxless straight 0-deg directly on blueprint grid) */
+    #{{SCENE_ID}}-editorial {
+      width: 100%;
+      max-width: calc(640px * {{SCALE_FACTOR}});
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(16px * {{SCALE_FACTOR}});
+      will-change: transform, opacity;
+    }
+    .gv-bp-metric {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(82px * {{SCALE_FACTOR}});
+      line-height: 1.02;
+      letter-spacing: -0.025em;
+      color: var(--vedit-accent);
+      text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+    }
+    .gv-bp-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      line-height: 1.1;
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
+    }
+    .gv-bp-sub {
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 500;
+      line-height: 1.3;
+      color: #DCE8F5;
+      max-width: 92%;
+    }
+    /* Variant 2: silhouette_measure (country/region silhouette directly on blueprint grid) */
+    #{{SCENE_ID}}-sil-wrap {
+      width: 100%;
+      max-width: calc(660px * {{SCALE_FACTOR}});
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(18px * {{SCALE_FACTOR}});
+      will-change: transform, opacity;
+    }
+    #{{SCENE_ID}}-sil-stage {
+      position: relative;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: calc(10px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-sil-svg {
+      width: 84%;
+      max-width: calc(600px * {{SCALE_FACTOR}});
+      height: auto;
+      overflow: visible;
+    }
+    #{{SCENE_ID}}-sil-metric {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(46px * {{SCALE_FACTOR}});
+      color: var(--vedit-accent);
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.82);
+      white-space: nowrap;
+    }
+    /* Variant 3: media_plate (real photo/map asset in clean white border, zero KPI text card) */
+    #{{SCENE_ID}}-media-wrap {
+      width: 92%;
+      max-width: calc(720px * {{SCALE_FACTOR}});
+      border: calc(6px * {{SCALE_FACTOR}}) solid #F4F1EA;
+      background: #082342;
+      box-shadow: 0 calc(22px * {{SCALE_FACTOR}}) calc(48px * {{SCALE_FACTOR}}) rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+      will-change: transform, opacity;
+    }
+    #{{SCENE_ID}}-media-img {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-grid"></div>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <!-- Variant 1: editorial_grid (boxless, straight 0-deg) -->
+      <div id="{{SCENE_ID}}-editorial">
+        <div id="{{SCENE_ID}}-metric" class="gv-bp-metric" data-var-text="metric">{{VAR_METRIC|83,600 KM²}}</div>
+        <div id="{{SCENE_ID}}-title" class="gv-bp-title" data-var-text="title">{{VAR_TITLE|UNITED ARAB EMIRATES}}</div>
+        <div id="{{SCENE_ID}}-sub" class="gv-bp-sub" data-var-text="subtitle">{{VAR_SUBTITLE|}}</div>
+      </div>
+
+      <!-- Variant 2: silhouette_measure -->
+      <div id="{{SCENE_ID}}-sil-wrap">
+        <div id="{{SCENE_ID}}-sil-stage">
+          <div id="{{SCENE_ID}}-sil-metric" data-var-text="metric">{{VAR_METRIC|83,600 KM²}}</div>
+          <svg id="{{SCENE_ID}}-sil-svg" viewBox="0 0 600 320" xmlns="http://www.w3.org/2000/svg">
+            <line x1="95" y1="22" x2="520" y2="22" stroke="#F4F1EA" stroke-width="3.5" />
+            <line x1="95" y1="8" x2="95" y2="36" stroke="#F4F1EA" stroke-width="3.5" />
+            <line x1="520" y1="8" x2="520" y2="36" stroke="#F4F1EA" stroke-width="3.5" />
+            <path
+              id="{{SCENE_ID}}-sil-path"
+              d="M95,180 L170,162 L248,186 L340,155 L435,96 L505,58 L520,80 L486,138 L496,190 L438,224 L428,260 L322,248 L212,238 L122,226 Z"
+              fill="#2E74E6"
+              stroke="#F4F1EA"
+              stroke-width="4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+        <div id="{{SCENE_ID}}-sil-title" class="gv-bp-title" data-var-text="title">{{VAR_TITLE|UNITED ARAB EMIRATES}}</div>
+      </div>
+
+      <!-- Variant 3: media_plate -->
+      <div id="{{SCENE_ID}}-media-wrap">
+        <img id="{{SCENE_ID}}-media-img" alt="" data-src="{{VAR_IMAGE_SRC|}}" data-var-src="image_src" />
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const variant = ("{{VAR_VARIANT|editorial_grid}}").trim().toLowerCase();
+      const tiltDeg = Number({{VAR_TILT_DEG|0}});
+      const customPath = ("{{VAR_SILHOUETTE_SVG_PATH|}}").trim();
+      const imgSrc = ("{{VAR_IMAGE_SRC|}}").trim();
+
+      const edEl = document.getElementById("{{SCENE_ID}}-editorial");
+      const silEl = document.getElementById("{{SCENE_ID}}-sil-wrap");
+      const medEl = document.getElementById("{{SCENE_ID}}-media-wrap");
+      const sEl = document.getElementById("{{SCENE_ID}}-sub");
+      const silPathEl = document.getElementById("{{SCENE_ID}}-sil-path");
+      const mediaImgEl = document.getElementById("{{SCENE_ID}}-media-img");
+
+      if (sEl && !sEl.textContent.trim()) sEl.classList.add("gv-empty");
+      if (silPathEl && customPath) silPathEl.setAttribute("d", customPath);
+      if (mediaImgEl && imgSrc) mediaImgEl.setAttribute("src", imgSrc);
+
+      let activeSel = "#{{SCENE_ID}}-editorial";
+      if (variant === "silhouette_measure") {
+        if (edEl) edEl.classList.add("gv-empty");
+        if (medEl) medEl.classList.add("gv-empty");
+        activeSel = "#{{SCENE_ID}}-sil-wrap";
+      } else if (variant === "media_plate" && imgSrc) {
+        if (edEl) edEl.classList.add("gv-empty");
+        if (silEl) silEl.classList.add("gv-empty");
+        activeSel = "#{{SCENE_ID}}-media-wrap";
+      } else {
+        if (silEl) silEl.classList.add("gv-empty");
+        if (medEl) medEl.classList.add("gv-empty");
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.34), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.5, 0.18), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        activeSel,
+        { y: 24 * Number({{SCALE_FACTOR}}), rotation: tiltDeg, scale: 0.94, opacity: 0 },
+        { y: 0, rotation: tiltDeg, scale: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.04
+      );
+      tl.to(
+        activeSel,
+        { y: -16 * Number({{SCALE_FACTOR}}), opacity: 0, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+      tl.to("#{{SCENE_ID}}-grid", { opacity: 0, duration: exitS * 0.8, ease: "power2.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

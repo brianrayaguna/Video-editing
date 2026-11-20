@@ -8,10 +8,10 @@
       "overlay_kind": "caption_rail",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Plain true-centered 2-3 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). Hard-cut switch, proportional sizing.",
+      "description": "Plain true-centered 2-4 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). 1-frame hard cut (33ms), proportional sizing.",
       "safe_band": "lower_third",
       "variables": [
-        { "id": "text", "type": "string", "label": "Caption phrase (2-3 words)" },
+        { "id": "text", "type": "string", "label": "Caption phrase (2-4 words)" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
         {
@@ -28,7 +28,7 @@
       "overlay_kind": "lower_third",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Optional small text-only Geoverum watermark ('geoverum', no logo) placed top-right slightly down.",
+      "description": "Optional small text-only brand watermark ('geoverum', no logo) placed top-right slightly down.",
       "safe_band": "upper_safe",
       "variables": [
         { "id": "text", "type": "string", "default": "geoverum" },
@@ -42,10 +42,11 @@
       "overlay_kind": "kinetic_callout",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Tabular Archivo Black distance metric between two territories.",
+      "description": "Boxless Archivo Black tabular distance metric with baseline mask reveal, live count-up, and optional stacked dual unit.",
       "safe_band": "upper_safe",
       "variables": [
-        { "id": "label", "type": "string", "default": "±20 KM" },
+        { "id": "label", "type": "string", "default": "20 KM" },
+        { "id": "secondary_value", "type": "string", "default": "" },
         { "id": "subtitle", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
@@ -57,10 +58,11 @@
       "overlay_kind": "kinetic_callout",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Tabular Archivo Black metric callout beside map or live B-roll (elevation, length, capacity).",
+      "description": "Boxless Archivo Black tabular metric callout beside map or live B-roll with live count-up and optional stacked secondary unit.",
       "safe_band": "upper_safe",
       "variables": [
         { "id": "label", "type": "string", "default": "1.143 KM" },
+        { "id": "secondary_value", "type": "string", "default": "" },
         { "id": "subtitle", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
@@ -72,7 +74,7 @@
       "overlay_kind": "data_card",
       "supported_aspects": ["16:9"],
       "render_mode": "parameterized_html",
-      "description": "Long-form 16:9 documentary chapter plate. Amber surface with abyssal ink.",
+      "description": "Long-form 16:9 documentary chapter plate with sharp editorial edges and horizontal clip-path wipe reveal.",
       "safe_band": "lower_third",
       "variables": [
         { "id": "number", "type": "string", "default": "" },
@@ -101,7 +103,7 @@
       "overlay_kind": "title_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Topic-agnostic documentary closing prompt card.",
+      "description": "Boxless documentary closing plate with baseline mask-revealed prompt and quiet brand mark.",
       "safe_band": "center_safe",
       "variables": [
         { "id": "headline", "type": "string", "default": "geoverum" },
@@ -117,11 +119,10 @@
       "overlay_kind": "data_card",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "GSAP animated 3-bar tabular comparison chart with lead highlight and count-up, keeping y=70% caption band clear.",
+      "description": "Boxless editorial 3-bar tabular comparison over a subtle top scrim with sharp rectangular bars, amber lead highlight, and live count-up.",
       "safe_band": "upper_safe",
       "variables": [
-        { "id": "kicker", "type": "string", "default": "PERBANDINGAN DATA" },
-        { "id": "title", "type": "string", "default": "PERBANDINGAN UTAMA" },
+        { "id": "title", "type": "string", "default": "DATA COMPARISON" },
         { "id": "unit", "type": "string", "default": "KM" },
         { "id": "unit_lower", "type": "string", "default": "km" },
         { "id": "bar1_label", "type": "string", "default": "Item 1" },
@@ -144,14 +145,13 @@
       "overlay_kind": "full_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Layered GSAP+SVG cross-section explainer diagram revealing terrain, substructure, and cost impact.",
-      "safe_band": "upper_safe",
+      "description": "Full-bleed 2D exploded geological and infrastructure cross-section with staged strata separation and curved white SVG leader arrows.",
+      "safe_band": "center_safe",
       "variables": [
-        { "id": "kicker", "type": "string", "default": "PENAMPANG INFRASTRUKTUR" },
-        { "id": "title", "type": "string", "default": "STRUKTUR LAHAN" },
-        { "id": "layer1", "type": "string", "default": "RAWA GAMBUT LUNAK" },
-        { "id": "layer2", "type": "string", "default": "SUNGAI LEBAR" },
-        { "id": "layer3", "type": "string", "default": "LAPISAN TANAH KERAS" },
+        { "id": "title", "type": "string", "default": "GEOLOGICAL CROSS-SECTION" },
+        { "id": "layer1", "type": "string", "default": "SURFACE LAYER" },
+        { "id": "layer2", "type": "string", "default": "SUBSURFACE STRATA" },
+        { "id": "layer3", "type": "string", "default": "DEEP BEDROCK" },
         { "id": "foot_label", "type": "string", "default": "" },
         { "id": "foot_metric", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
@@ -164,11 +164,363 @@
       "overlay_kind": "title_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Kinetic chapter transition plate with motion blur support, landing dead still in upper-safe band.",
+      "description": "Boxless kinetic editorial title with per-word baseline mask reveal, optional single-word accent highlight, and dead-still landing.",
       "safe_band": "upper_safe",
       "variables": [
-        { "id": "kicker", "type": "string", "default": "BAB 01" },
-        { "id": "title", "type": "string", "default": "TOPIK UTAMA" },
+        { "id": "title", "type": "string", "default": "MAIN CHAPTER" },
+        { "id": "accent_word", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "coordinate_pin_callout",
+      "composition_path": "profiles/brands/geoverum/templates/components/coordinate_pin_callout.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Map callout supporting boxless vertical or elbow white SVG leader pins, tight 0px-radius highlight tags (amber/charcoal/crimson), or curved hand-drawn etymology arrows.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "label", "type": "string", "default": "LOCATION" },
+        { "id": "subtitle", "type": "string", "default": "" },
+        { "id": "population_badge", "type": "string", "default": "" },
+        { "id": "meaning_text", "type": "string", "default": "" },
+        { "id": "anchor_x_pct", "type": "number", "min": 10, "max": 90, "default": 50 },
+        { "id": "anchor_y_pct", "type": "number", "min": 25, "max": 75, "default": 54 },
+        { "id": "pin_height_px", "type": "number", "min": 70, "max": 420, "default": 160 },
+        {
+          "id": "pin_style",
+          "type": "enum",
+          "enum_values": ["vertical", "elbow", "highlight_tag", "etymology_arrow"],
+          "default": "vertical"
+        },
+        {
+          "id": "tag_tone",
+          "type": "enum",
+          "enum_values": ["amber", "charcoal", "crimson"],
+          "default": "amber"
+        },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" }
+      ]
+    },
+    {
+      "template_id": "dual_unit_distance_bracket",
+      "composition_path": "profiles/brands/geoverum/templates/components/dual_unit_distance_bracket.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "SVG stroke-dashoffset spatial span annotation in four styles: double-headed arrow, technical T-bracket calliper, dashed amber corridor, or expanding radius ring with stacked dual units.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "primary_distance", "type": "string", "default": "2.4 mi" },
+        { "id": "secondary_distance", "type": "string", "default": "(3.8 km)" },
+        { "id": "center_x_pct", "type": "number", "min": 15, "max": 85, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 20, "max": 68, "default": 44 },
+        { "id": "span_px", "type": "number", "min": 180, "max": 920, "default": 480 },
+        { "id": "angle_deg", "type": "number", "min": -75, "max": 75, "default": 0 },
+        {
+          "id": "line_style",
+          "type": "enum",
+          "enum_values": ["double_arrow", "t_bracket", "dashed_amber", "radius_ring"],
+          "default": "double_arrow"
+        },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "blueprint_tabletop_frame",
+      "composition_path": "profiles/brands/geoverum/templates/components/blueprint_tabletop_frame.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Full-frame deep blueprint drafting grid (#14427A) defaulting to straight 0-degree framing across three authentic variants: boxless editorial grid typography, continent/territory silhouette cutout with T-bracket span, or crisp media plate.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "variant",
+          "type": "enum",
+          "enum_values": ["editorial_grid", "silhouette_measure", "media_plate"],
+          "default": "editorial_grid"
+        },
+        { "id": "metric", "type": "string", "default": "83,600 KM²" },
+        { "id": "title", "type": "string", "default": "UNITED ARAB EMIRATES" },
+        { "id": "subtitle", "type": "string", "default": "" },
+        { "id": "silhouette_svg_path", "type": "string", "default": "" },
+        { "id": "image_src", "type": "string", "default": "" },
+        { "id": "tilt_deg", "type": "number", "min": -8, "max": 8, "default": 0 },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "split_wipe_divider",
+      "composition_path": "profiles/brands/geoverum/templates/components/split_wipe_divider.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Vertical white-bar split-wipe (clip-path inset) or diagonal 2-panel split (clip-path polygon) with direct boxless comparison copy.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "left_label", "type": "string", "default": "BEFORE" },
+        { "id": "left_metric", "type": "string", "default": "" },
+        { "id": "right_label", "type": "string", "default": "AFTER" },
+        { "id": "right_metric", "type": "string", "default": "" },
+        { "id": "split_pct", "type": "number", "min": 25, "max": 75, "default": 50 },
+        {
+          "id": "layout_mode",
+          "type": "enum",
+          "enum_values": ["vertical", "diagonal"],
+          "default": "vertical"
+        },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "historical_parchment_plate",
+      "composition_path": "profiles/brands/geoverum/templates/components/historical_parchment_plate.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Historical documentary treatment defaulting to straight 0-degree framing across three variants: boxless serif era stamp over footage, full-bleed sepia parchment canvas, or full archival manuscript sheet.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "variant",
+          "type": "enum",
+          "enum_values": ["era_stamp", "parchment_canvas", "archival_sheet"],
+          "default": "era_stamp"
+        },
+        { "id": "year", "type": "string", "default": "1803" },
+        { "id": "title", "type": "string", "default": "LOUISIANA PURCHASE" },
+        { "id": "excerpt", "type": "string", "default": "" },
+        { "id": "image_src", "type": "string", "default": "" },
+        { "id": "tilt_deg", "type": "number", "min": -8, "max": 8, "default": 0 }
+      ]
+    },
+    {
+      "template_id": "myth_debunk_badge",
+      "composition_path": "profiles/brands/geoverum/templates/components/myth_debunk_badge.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "High-contrast crimson circular X SVG draw-on debunk stamp or amber-initial acronym expansion overlay.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "mode",
+          "type": "enum",
+          "enum_values": ["red_x", "acronym"],
+          "default": "red_x"
+        },
+        { "id": "claim_text", "type": "string", "default": "" },
+        { "id": "correction_text", "type": "string", "default": "" },
+        { "id": "acronym", "type": "string", "default": "" },
+        { "id": "expansion_text", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "organic_focus_lasso",
+      "composition_path": "profiles/brands/geoverum/templates/components/organic_focus_lasso.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Hand-drawn overlapping SVG Bezier oval lasso drawing smoothly around a map island, territory, or subject via stroke-dashoffset with optional boxless label.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "center_x_pct", "type": "number", "min": 18, "max": 82, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 20, "max": 72, "default": 46 },
+        { "id": "width_px", "type": "number", "min": 160, "max": 860, "default": 540 },
+        { "id": "height_px", "type": "number", "min": 160, "max": 980, "default": 620 },
+        {
+          "id": "stroke_tone",
+          "type": "enum",
+          "enum_values": ["amber", "white", "crimson"],
+          "default": "amber"
+        },
+        { "id": "label", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "dual_metric_compare",
+      "composition_path": "profiles/brands/geoverum/templates/components/dual_metric_compare.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Boxless side-by-side color-coded dual-unit count-up metrics anchored directly over split footage or scientific comparisons.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "left_value", "type": "string", "default": "4,700°C" },
+        { "id": "left_secondary", "type": "string", "default": "(8,492°F)" },
+        { "id": "left_label", "type": "string", "default": "CAVITATION" },
+        { "id": "left_color", "type": "color", "default": "#7CE0F9" },
+        { "id": "right_value", "type": "string", "default": "5,500°C" },
+        { "id": "right_secondary", "type": "string", "default": "(9,932°F)" },
+        { "id": "right_label", "type": "string", "default": "SUN SURFACE" },
+        { "id": "right_color", "type": "color", "default": "#F5C542" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "physical_gauge_callout",
+      "composition_path": "profiles/brands/geoverum/templates/components/physical_gauge_callout.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Boxless live physical meter widget supporting a rising/dropping mercury thermometer with dual temperature units or a staggered SVG acoustic soundwave decibel counter.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "gauge_mode",
+          "type": "enum",
+          "enum_values": ["thermometer", "decibel"],
+          "default": "thermometer"
+        },
+        { "id": "start_value", "type": "number", "min": -100, "max": 500, "default": 20 },
+        { "id": "end_value", "type": "number", "min": -100, "max": 500, "default": -2 },
+        { "id": "unit", "type": "string", "default": "°C" },
+        { "id": "secondary_readout", "type": "string", "default": "(28°F)" },
+        { "id": "label", "type": "string", "default": "NEW YORK" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "multi_panel_split",
+      "composition_path": "profiles/brands/geoverum/templates/components/multi_panel_split.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Sharp white-seam multi-panel documentary collage supporting a 3-panel diagonal polygon split or a 2-panel horizontal analogy split.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "split_mode",
+          "type": "enum",
+          "enum_values": ["diagonal_3panel", "horizontal_analogy"],
+          "default": "diagonal_3panel"
+        },
+        { "id": "panel1_label", "type": "string", "default": "UAE" },
+        { "id": "panel1_metric", "type": "string", "default": "" },
+        { "id": "panel2_label", "type": "string", "default": "ABU DHABI" },
+        { "id": "panel2_metric", "type": "string", "default": "" },
+        { "id": "panel3_label", "type": "string", "default": "DUBAI" },
+        { "id": "panel3_metric", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "scale_ladder_and_bands",
+      "composition_path": "profiles/brands/geoverum/templates/components/scale_ladder_and_bands.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Boxless vertical calibrated elevation/depth ladder with 3 staggered SVG threshold ticks or 5 translucent vertical longitude/time-zone columns with one amber highlight.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "mode",
+          "type": "enum",
+          "enum_values": ["altitude_ladder", "longitude_bands"],
+          "default": "altitude_ladder"
+        },
+        { "id": "title", "type": "string", "default": "ELEVATION ZONES" },
+        { "id": "t1_val", "type": "string", "default": "8,849 M" },
+        { "id": "t1_label", "type": "string", "default": "SUMMIT ZONE" },
+        { "id": "t2_val", "type": "string", "default": "4,500 M" },
+        { "id": "t2_label", "type": "string", "default": "HIGH PLATEAU" },
+        { "id": "t3_val", "type": "string", "default": "0 M" },
+        { "id": "t3_label", "type": "string", "default": "SEA LEVEL" },
+        { "id": "b1", "type": "string", "default": "UTC+5" },
+        { "id": "b2", "type": "string", "default": "UTC+6" },
+        { "id": "b3", "type": "string", "default": "UTC+7" },
+        { "id": "b4", "type": "string", "default": "UTC+8" },
+        { "id": "b5", "type": "string", "default": "UTC+9" },
+        { "id": "active_band", "type": "number", "min": 1, "max": 5, "default": 3 },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "kinetic_portal_title",
+      "composition_path": "profiles/brands/geoverum/templates/components/kinetic_portal_title.html",
+      "overlay_kind": "title_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Oversized boxless Archivo Black title supporting a crisp horizontal sweep into a dead-still lock or a dramatic zoom-through scale portal transition.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "mode",
+          "type": "enum",
+          "enum_values": ["sweep", "zoom_through"],
+          "default": "sweep"
+        },
+        {
+          "id": "direction",
+          "type": "enum",
+          "enum_values": ["left", "right"],
+          "default": "left"
+        },
+        { "id": "title", "type": "string", "default": "SOVEREIGNTY" },
+        { "id": "accent_word", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "soft_curtain_transition",
+      "composition_path": "profiles/brands/geoverum/templates/components/soft_curtain_transition.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Feathered dark alpha-gradient curtain sweep (zero CSS blur) or optical circular spyglass iris aperture for mid-scene transitions.",
+      "safe_band": "center_safe",
+      "variables": [
+        {
+          "id": "mode",
+          "type": "enum",
+          "enum_values": ["curtain_sweep", "spyglass_iris"],
+          "default": "curtain_sweep"
+        },
+        {
+          "id": "direction",
+          "type": "enum",
+          "enum_values": ["ltr", "rtl"],
+          "default": "ltr"
+        },
+        { "id": "center_x_pct", "type": "number", "min": 20, "max": 80, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 20, "max": 75, "default": 46 },
+        { "id": "label", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "demographic_icon_grid",
+      "composition_path": "profiles/brands/geoverum/templates/components/demographic_icon_grid.html",
+      "overlay_kind": "data_card",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Boxless 10-figure crisp SVG human silhouette grid over a soft scrim splitting highlighted amber vs ink proportions with bold dual percentage readouts.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "title", "type": "string", "default": "POPULATION SPLIT" },
+        { "id": "highlight_count", "type": "number", "min": 0, "max": 10, "default": 2 },
+        { "id": "left_pct", "type": "string", "default": "20%" },
+        { "id": "left_label", "type": "string", "default": "CITIZENS" },
+        { "id": "right_pct", "type": "string", "default": "80%" },
+        { "id": "right_label", "type": "string", "default": "EXPATS" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]

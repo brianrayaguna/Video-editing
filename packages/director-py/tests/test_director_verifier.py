@@ -384,20 +384,20 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
 
     eff_9x16 = resolve_effective_policy(gv_policy, shorts_target)
     eff_16x9 = resolve_effective_policy(gv_policy, yt_target)
-    assert eff_9x16.hard_guardrails.max_uninterrupted_hold_s == 30.0
+    assert eff_9x16.hard_guardrails.max_uninterrupted_hold_s == 45.0
     assert eff_16x9.hard_guardrails.max_uninterrupted_hold_s == 20.0
 
-    # Long single 45s shot must be subdivided strictly <= max_uninterrupted_hold_s.
+    # Long single 65s shot must be subdivided strictly <= max_uninterrupted_hold_s.
     probe, _, _, _ = _build_fixture_bundle(tmp_path)
     long_probe = probe.model_copy(
         update={
-            "container": probe.container.model_copy(update={"duration_s": 45.0}),
+            "container": probe.container.model_copy(update={"duration_s": 65.0}),
             "shots": [
                 ProbeShotSegment(
                     shot_index=0,
                     start_s=0.0,
-                    end_s=45.0,
-                    duration_s=45.0,
+                    end_s=65.0,
+                    duration_s=65.0,
                     confidence=0.99,
                 )
             ],
@@ -407,7 +407,7 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
         source_hash="d" * 64,
         provider="xai",
         language="en",
-        duration_s=45.0,
+        duration_s=65.0,
         text="Three tectonic plates, colliding slowly, formed 42 percent of Sulawesi.",
         words=[
             TranscriptWord(text="Three", start_s=0.2, end_s=0.5),
@@ -438,12 +438,13 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
         for c in plan_9x16.video_tracks
     )
     assert all(c.role == "a_roll" for c in plan_9x16.video_tracks)
-    # 2-3 words max per caption group and plain caption style, no amber_fact_card on 9:16.
+    # Plain caption style within policy max_words_per_caption_group, no amber_fact_card on 9:16.
+    max_words = eff_9x16.soft_priors.visual_tokens.typography.max_words_per_caption_group
     captions = [ov for ov in plan_9x16.overlay_compositions if ov.kind == "caption_rail"]
     assert len(captions) >= 3
     for cap in captions:
         words = str(cap.props.get("text", "")).split()
-        assert 1 <= len(words) <= 3
+        assert 1 <= len(words) <= max_words
         assert cap.props.get("caption_style") == "plain"
     assert not any(ov.template_id == "amber_fact_card" for ov in plan_9x16.overlay_compositions)
 

@@ -58,7 +58,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
         "*.egg-info",
     ]
 
-    return (
+    img = (
         modal.Image.debian_slim(python_version="3.12")
         .apt_install(*_DEBIAN_PACKAGES)
         .run_commands(
@@ -140,6 +140,19 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
                 "HYPERFRAMES_CHROMIUM_FLAGS": WORKER_CHROMIUM_FLAGS,
                 "HYPERFRAMES_CHROME_SANDBOX": "0",
                 "PRODUCER_BROWSER_GPU_MODE": "software",
+                "PRODUCER_HEADLESS_SHELL_PATH": (
+                    "/root/.cache/puppeteer/chrome-headless-shell/"
+                    f"linux-{PINNED_CHROME_HEADLESS_VERSION}/"
+                    "chrome-headless-shell-linux64/chrome-headless-shell"
+                ),
             }
         )
     )
+    fonts_dir = root / "assets" / "geo" / "fonts"
+    if fonts_dir.is_dir():
+        img = img.add_local_dir(
+            fonts_dir,
+            "/usr/share/fonts/truetype/geoverum",
+            copy=True,
+        ).run_commands("fc-cache -fv /usr/share/fonts/truetype/geoverum")
+    return img

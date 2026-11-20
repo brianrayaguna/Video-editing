@@ -3,8 +3,6 @@
     #root {
       position: absolute;
       inset: 0;
-      width: {{WIDTH}}px;
-      height: {{HEIGHT}}px;
       overflow: hidden;
       background: transparent;
       --vedit-fg: {{FG_COLOR}};
@@ -26,13 +24,14 @@
     #{{SCENE_ID}}-inner {
       background: var(--vedit-bg);
       color: var(--vedit-fg);
-      border-radius: 4px;
-      padding: calc(12px * {{SCALE_FACTOR}}) calc(22px * {{SCALE_FACTOR}});
+      border-radius: 0;
+      padding: calc(12px * {{SCALE_FACTOR}}) calc(24px * {{SCALE_FACTOR}});
       display: inline-flex;
       align-items: baseline;
-      gap: calc(12px * {{SCALE_FACTOR}});
+      gap: calc(14px * {{SCALE_FACTOR}});
       max-width: 72%;
-      transform-origin: left bottom;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      will-change: clip-path, transform, opacity;
     }
     .fact-num {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
@@ -41,31 +40,48 @@
       opacity: 0.92;
     }
     .fact-title {
-      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-size: calc(28px * {{SCALE_FACTOR}});
       font-weight: 700;
       line-height: 1.2;
       letter-spacing: -0.01em;
     }
+    .gv-empty {
+      display: none;
+    }
   </style>
-  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
       <div id="{{SCENE_ID}}-inner">
-        <span class="fact-num">{{VAR_NUMBER|}}</span>
-        <span class="fact-title">{{VAR_TEXT|}}</span>
+        <span id="{{SCENE_ID}}-num" class="fact-num" data-var-text="number">{{VAR_NUMBER|}}</span>
+        <span id="{{SCENE_ID}}-txt" class="fact-title" data-var-text="text">{{VAR_TEXT|}}</span>
       </div>
     </div>
   </div>
   <script>
-    const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
-      "#{{SCENE_ID}}-inner",
-      { opacity: 0, scale: 0.96, y: 8 },
-      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
-      0
-    );
-    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+    (function () {
+      const numEl = document.getElementById("{{SCENE_ID}}-num");
+      if (numEl && !numEl.textContent.trim()) numEl.classList.add("gv-empty");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.24), dur * 0.3);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.14), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.15, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-inner",
+        { clipPath: "inset(0 100% 0 0)", x: -16 * Number({{SCALE_FACTOR}}), opacity: 0.2 },
+        { clipPath: "inset(0 0% 0 0)", x: 0, opacity: 1, duration: enterS, ease: "expo.out" },
+        0
+      );
+      tl.to(
+        "#{{SCENE_ID}}-inner",
+        { clipPath: "inset(0 0 0 100%)", opacity: 0, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

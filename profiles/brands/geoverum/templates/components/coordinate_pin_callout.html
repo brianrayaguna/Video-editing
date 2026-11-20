@@ -1,0 +1,383 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-ground: {{BG_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    /* Standard pin wrap (vertical / elbow) */
+    #{{SCENE_ID}}-label-wrap {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(6px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-label {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(48px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      letter-spacing: -0.015em;
+      color: var(--vedit-ink);
+      white-space: nowrap;
+      text-shadow:
+        0 3px 14px rgba(0, 0, 0, 0.94),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    #{{SCENE_ID}}-sub {
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--vedit-ink);
+      opacity: 0.92;
+      white-space: nowrap;
+      text-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.94),
+        0 1px 2px rgba(0, 0, 0, 0.98);
+    }
+    #{{SCENE_ID}}-pop {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(8px * {{SCALE_FACTOR}});
+      background: rgba(12, 16, 22, 0.88);
+      padding: calc(7px * {{SCALE_FACTOR}}) calc(14px * {{SCALE_FACTOR}});
+      border-radius: calc(4px * {{SCALE_FACTOR}});
+      color: var(--vedit-accent);
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      line-height: 1;
+      margin-top: calc(4px * {{SCALE_FACTOR}});
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+    }
+    .gv-pop-icon {
+      width: calc(20px * {{SCALE_FACTOR}});
+      height: calc(20px * {{SCALE_FACTOR}});
+      fill: var(--vedit-accent);
+      flex-shrink: 0;
+    }
+    /* Style 3: highlight_tag (tight 0px-radius amber/charcoal strip directly on map) */
+    #{{SCENE_ID}}-tag-wrap {
+      position: absolute;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      max-width: calc(640px * {{SCALE_FACTOR}});
+      gap: calc(6px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-tag-wrap #{{SCENE_ID}}-tag-sub {
+      white-space: normal;
+      max-width: calc(620px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-tag-box {
+      background: var(--vedit-accent);
+      color: #0B1116;
+      padding: calc(6px * {{SCALE_FACTOR}}) calc(16px * {{SCALE_FACTOR}});
+      border-radius: 0;
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(36px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
+    #{{SCENE_ID}}-tag-box.dark-tone {
+      background: #111317;
+      color: #F4F1EA;
+    }
+    /* Style 4: etymology_arrow (bold place + curved hand-drawn arrow to italic meaning) */
+    #{{SCENE_ID}}-ety-origin {
+      position: absolute;
+      display: inline-flex;
+      align-items: baseline;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .gv-ety-main {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.94);
+    }
+    .gv-ety-note {
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: calc(31px * {{SCALE_FACTOR}});
+      font-style: italic;
+      color: var(--vedit-accent);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    #{{SCENE_ID}}-ety-meaning {
+      position: absolute;
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: calc(42px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      font-style: italic;
+      line-height: 1.05;
+      color: var(--vedit-accent);
+      text-align: center;
+      white-space: nowrap;
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.95);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <svg id="{{SCENE_ID}}-svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" xmlns="http://www.w3.org/2000/svg">
+        <path
+          id="{{SCENE_ID}}-line"
+          d="M 0 0 L 0 0"
+          fill="none"
+          stroke="{{FG_COLOR}}"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          pathLength="100"
+          stroke-dasharray="100 120"
+          stroke-dashoffset="110"
+        />
+        <polyline id="{{SCENE_ID}}-ety-head" points="0,0 0,0 0,0" fill="none" stroke="{{ACCENT_COLOR}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        <circle id="{{SCENE_ID}}-dot-halo" cx="0" cy="0" r="11" fill="rgba(0,0,0,0.45)" />
+        <circle id="{{SCENE_ID}}-dot" cx="0" cy="0" r="7" fill="{{FG_COLOR}}" stroke="#03161F" stroke-width="2" />
+      </svg>
+
+      <!-- Vertical / Elbow Label -->
+      <div id="{{SCENE_ID}}-label-wrap">
+        <div id="{{SCENE_ID}}-label" data-var-text="label">{{VAR_LABEL|LOCATION}}</div>
+        <div id="{{SCENE_ID}}-sub" data-var-text="subtitle">{{VAR_SUBTITLE|}}</div>
+        <div id="{{SCENE_ID}}-pop">
+          <svg class="gv-pop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="7" r="4.5" />
+            <path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5z" />
+          </svg>
+          <span id="{{SCENE_ID}}-pop-val" data-var-text="population_badge">{{VAR_POPULATION_BADGE|}}</span>
+        </div>
+      </div>
+
+      <!-- Tight Highlight Tag -->
+      <div id="{{SCENE_ID}}-tag-wrap">
+        <div id="{{SCENE_ID}}-tag-box" data-var-text="label">{{VAR_LABEL|LOCATION}}</div>
+        <div id="{{SCENE_ID}}-tag-sub" style="font-size: calc(28px * {{SCALE_FACTOR}}); font-weight: 600; color: var(--vedit-ink); text-shadow: 0 2px 10px rgba(0,0,0,0.94);">{{VAR_SUBTITLE|}}</div>
+      </div>
+
+      <!-- Etymology Curved Arrow Callout -->
+      <div id="{{SCENE_ID}}-ety-origin">
+        <span class="gv-ety-main" data-var-text="label">{{VAR_LABEL|Florida}}</span>
+        <span id="{{SCENE_ID}}-ety-note" class="gv-ety-note" data-var-text="subtitle">{{VAR_SUBTITLE|}}</span>
+      </div>
+      <div id="{{SCENE_ID}}-ety-meaning" data-var-text="meaning_text">{{VAR_MEANING_TEXT|Land of flowers}}</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
+      const S = Number({{SCALE_FACTOR}});
+      const ax = (Number({{VAR_ANCHOR_X_PCT|50}}) / 100) * W;
+      const ay = (Number({{VAR_ANCHOR_Y_PCT|54}}) / 100) * H;
+      const pinH = Math.max(70, Number({{VAR_PIN_HEIGHT_PX|160}})) * S;
+      const style = ("{{VAR_PIN_STYLE|vertical}}").trim().toLowerCase();
+      const tagTone = ("{{VAR_TAG_TONE|amber}}").trim().toLowerCase();
+
+      const lineEl = document.getElementById("{{SCENE_ID}}-line");
+      const etyHead = document.getElementById("{{SCENE_ID}}-ety-head");
+      const dotEl = document.getElementById("{{SCENE_ID}}-dot");
+      const haloEl = document.getElementById("{{SCENE_ID}}-dot-halo");
+      const wrapEl = document.getElementById("{{SCENE_ID}}-label-wrap");
+      const subEl = document.getElementById("{{SCENE_ID}}-sub");
+      const popEl = document.getElementById("{{SCENE_ID}}-pop");
+      const popValEl = document.getElementById("{{SCENE_ID}}-pop-val");
+      const tagWrap = document.getElementById("{{SCENE_ID}}-tag-wrap");
+      const tagBox = document.getElementById("{{SCENE_ID}}-tag-box");
+      const tagSub = document.getElementById("{{SCENE_ID}}-tag-sub");
+      const etyOrigin = document.getElementById("{{SCENE_ID}}-ety-origin");
+      const etyNote = document.getElementById("{{SCENE_ID}}-ety-note");
+      const etyMean = document.getElementById("{{SCENE_ID}}-ety-meaning");
+
+      if (subEl && !subEl.textContent.trim()) subEl.classList.add("gv-empty");
+      if (tagSub && !tagSub.textContent.trim()) tagSub.classList.add("gv-empty");
+      if (etyNote && !etyNote.textContent.trim()) etyNote.classList.add("gv-empty");
+      if (popEl && (!popValEl || !popValEl.textContent.trim())) popEl.classList.add("gv-empty");
+      if (tagBox && tagTone === "charcoal") tagBox.classList.add("dark-tone");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.28), dur * 0.3);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.14), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+      const tl = gsap.timeline({ paused: true });
+
+      let useDot = false;
+      let useLine = false;
+      let lineDelay = 0.06;
+
+      if (style === "highlight_tag") {
+        useDot = true;
+        if (wrapEl) wrapEl.classList.add("gv-empty");
+        if (etyOrigin) etyOrigin.classList.add("gv-empty");
+        if (etyMean) etyMean.classList.add("gv-empty");
+        if (lineEl) lineEl.classList.add("gv-empty");
+        if (etyHead) etyHead.classList.add("gv-empty");
+        if (dotEl) {
+          dotEl.setAttribute("cx", ax.toFixed(1));
+          dotEl.setAttribute("cy", (ay + 36 * S).toFixed(1));
+          dotEl.setAttribute("r", String(Math.round(7 * S)));
+          dotEl.setAttribute("fill", "#C2412D");
+        }
+        if (haloEl) {
+          haloEl.setAttribute("cx", ax.toFixed(1));
+          haloEl.setAttribute("cy", (ay + 36 * S).toFixed(1));
+          haloEl.setAttribute("r", String(Math.round(12 * S)));
+        }
+        if (tagWrap) {
+          tagWrap.style.left = ax.toFixed(1) + "px";
+          tagWrap.style.top = ay.toFixed(1) + "px";
+        }
+        tl.fromTo(
+          "#{{SCENE_ID}}-tag-wrap",
+          { xPercent: -50, yPercent: -100, clipPath: "inset(0 100% 0 0)", opacity: 0 },
+          { xPercent: -50, yPercent: -100, clipPath: "inset(0 0% 0 0)", opacity: 1, duration: enterS, ease: "expo.out" },
+          0.05
+        );
+      } else if (style === "etymology_arrow") {
+        useLine = true;
+        lineDelay = 0.14;
+        if (wrapEl) wrapEl.classList.add("gv-empty");
+        if (tagWrap) tagWrap.classList.add("gv-empty");
+        if (dotEl) dotEl.classList.add("gv-empty");
+        if (haloEl) haloEl.classList.add("gv-empty");
+
+        const meanY = Math.max(H * 0.2, ay - 150 * S);
+        const startX = ax + 36 * S;
+        const startY = ay - 26 * S;
+        const endX = ax + 12 * S;
+        const endY = meanY + 42 * S;
+        const ctrlX = ax + 92 * S;
+        const ctrlY = (startY + endY) / 2;
+
+        if (lineEl) {
+          lineEl.setAttribute("d", `M ${startX.toFixed(1)} ${startY.toFixed(1)} Q ${ctrlX.toFixed(1)} ${ctrlY.toFixed(1)} ${endX.toFixed(1)} ${endY.toFixed(1)}`);
+          lineEl.setAttribute("stroke", "{{ACCENT_COLOR}}");
+          lineEl.setAttribute("stroke-width", String(Math.max(2.5, Math.round(3.5 * S))));
+        }
+        if (etyHead) {
+          etyHead.setAttribute(
+            "points",
+            `${(endX + 12 * S).toFixed(1)},${(endY + 14 * S).toFixed(1)} ${endX.toFixed(1)},${endY.toFixed(1)} ${(endX + 16 * S).toFixed(1)},${(endY - 4 * S).toFixed(1)}`
+          );
+        }
+        if (etyOrigin) {
+          etyOrigin.style.left = ax.toFixed(1) + "px";
+          etyOrigin.style.top = ay.toFixed(1) + "px";
+        }
+        if (etyMean) {
+          etyMean.style.left = ax.toFixed(1) + "px";
+          etyMean.style.top = meanY.toFixed(1) + "px";
+        }
+
+        tl.fromTo(
+          "#{{SCENE_ID}}-ety-origin",
+          { xPercent: -50, yPercent: -50, opacity: 0, y: 12 * S },
+          { xPercent: -50, yPercent: -50, opacity: 1, y: 0, duration: enterS * 0.85, ease: "expo.out" },
+          0
+        );
+        tl.fromTo("#{{SCENE_ID}}-ety-head", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 0.14 + enterS * 0.85);
+        tl.fromTo(
+          "#{{SCENE_ID}}-ety-meaning",
+          { xPercent: -50, yPercent: -50, opacity: 0, y: 10 * S },
+          { xPercent: -50, yPercent: -50, opacity: 1, y: 0, duration: enterS * 0.85, ease: "expo.out" },
+          0.14 + enterS * 0.65
+        );
+      } else {
+        useDot = true;
+        useLine = true;
+        if (tagWrap) tagWrap.classList.add("gv-empty");
+        if (etyOrigin) etyOrigin.classList.add("gv-empty");
+        if (etyMean) etyMean.classList.add("gv-empty");
+        if (etyHead) etyHead.classList.add("gv-empty");
+
+        const topY = Math.max(H * 0.18, ay - pinH);
+        let labelX = ax;
+        let labelY = topY - 12 * S;
+        let pathD = `M ${ax.toFixed(1)} ${(ay - 8 * S).toFixed(1)} L ${ax.toFixed(1)} ${topY.toFixed(1)}`;
+        if (style === "elbow") {
+          const dir = ax > W * 0.55 ? -1 : 1;
+          const elbowX = ax + dir * 72 * S;
+          const tipX = elbowX + dir * 130 * S;
+          pathD = `M ${ax.toFixed(1)} ${(ay - 8 * S).toFixed(1)} L ${elbowX.toFixed(1)} ${topY.toFixed(1)} L ${tipX.toFixed(1)} ${topY.toFixed(1)}`;
+          labelX = (elbowX + tipX) / 2;
+          labelY = topY - 10 * S;
+        }
+        if (lineEl) {
+          lineEl.setAttribute("d", pathD);
+          lineEl.setAttribute("stroke-width", String(Math.max(2, Math.round(3 * S))));
+        }
+        if (dotEl) {
+          dotEl.setAttribute("cx", ax.toFixed(1));
+          dotEl.setAttribute("cy", ay.toFixed(1));
+          dotEl.setAttribute("r", String(Math.round(7 * S)));
+        }
+        if (haloEl) {
+          haloEl.setAttribute("cx", ax.toFixed(1));
+          haloEl.setAttribute("cy", ay.toFixed(1));
+          haloEl.setAttribute("r", String(Math.round(12 * S)));
+        }
+        if (wrapEl) {
+          wrapEl.style.left = labelX.toFixed(1) + "px";
+          wrapEl.style.top = labelY.toFixed(1) + "px";
+        }
+        tl.fromTo(
+          "#{{SCENE_ID}}-label-wrap",
+          { xPercent: -50, yPercent: -100, opacity: 0, y: 12 * S },
+          { xPercent: -50, yPercent: -100, opacity: 1, y: 0, duration: enterS * 0.9, ease: "expo.out" },
+          0.06 + enterS * 0.45
+        );
+      }
+
+      if (useDot) {
+        tl.fromTo(
+          ["#{{SCENE_ID}}-dot", "#{{SCENE_ID}}-dot-halo"],
+          { opacity: 0, scale: 0.4, transformOrigin: "center center" },
+          { opacity: 1, scale: 1, duration: 0.18, ease: "expo.out" },
+          0
+        );
+      }
+      if (useLine) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-line",
+          { strokeDashoffset: 110, opacity: 1 },
+          { strokeDashoffset: 0, duration: enterS, ease: "expo.out" },
+          lineDelay
+        );
+      }
+
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

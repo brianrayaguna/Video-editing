@@ -142,6 +142,20 @@ def download_cas_file(volume: Any, remote_relpath: str, local_output_path: Path)
     return local_output_path
 
 
+def _resolve_headless_shell_path() -> str | None:
+    """Locate the pre-installed chrome-headless-shell executable inside the worker image."""
+    configured = os.environ.get("PRODUCER_HEADLESS_SHELL_PATH")
+    if configured and Path(configured).is_file():
+        return configured
+    cache_root = Path("/root/.cache/puppeteer/chrome-headless-shell")
+    if cache_root.is_dir():
+        matches = sorted(cache_root.rglob("chrome-headless-shell"), reverse=True)
+        for candidate in matches:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
+
+
 @app.function(
     image=worker_image,
     volumes={str(CAS_MOUNT_PATH): cas_volume},
@@ -162,6 +176,9 @@ def render_chunk_worker(
     os.environ["HYPERFRAMES_CHROMIUM_FLAGS"] = WORKER_CHROMIUM_FLAGS
     os.environ["HYPERFRAMES_CHROME_SANDBOX"] = "0"
     os.environ["PRODUCER_BROWSER_GPU_MODE"] = "software"
+    shell_path = _resolve_headless_shell_path()
+    if shell_path:
+        os.environ["PRODUCER_HEADLESS_SHELL_PATH"] = shell_path
     cas_volume.reload()
 
     plan_v2_dir = CAS_MOUNT_PATH / plan_v2_subpath

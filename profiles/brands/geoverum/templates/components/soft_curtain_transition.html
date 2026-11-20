@@ -1,0 +1,151 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    /* Mode 1: Soft feathered dark curtain sweep (pure alpha gradient, zero CSS blur) */
+    .gv-sc-curtain {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -60%;
+      width: 220%;
+      background: linear-gradient(
+        90deg,
+        rgba(3, 14, 22, 0) 0%,
+        rgba(3, 14, 22, 0.55) 18%,
+        rgba(3, 14, 22, 0.96) 34%,
+        rgba(3, 14, 22, 0.98) 66%,
+        rgba(3, 14, 22, 0.55) 82%,
+        rgba(3, 14, 22, 0) 100%
+      );
+    }
+    /* Mode 2: Spyglass / optical iris aperture */
+    .gv-sc-iris-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .gv-sc-label {
+      position: absolute;
+      left: 50%;
+      top: 44%;
+      max-width: calc(740px * {{SCALE_FACTOR}});
+      text-align: center;
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(48px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow: 0 4px 20px rgba(0, 0, 0, 0.92);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-curtain" class="gv-sc-curtain"></div>
+      <svg id="{{SCENE_ID}}-iris" class="gv-sc-iris-svg gv-empty" data-layout-allow-overflow="true" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <mask id="{{SCENE_ID}}-iris-mask">
+            <rect width="1000" height="1000" fill="#FFFFFF" />
+            <circle id="{{SCENE_ID}}-hole" cx="500" cy="460" r="240" fill="#000000" />
+          </mask>
+        </defs>
+        <rect width="1000" height="1000" fill="#030D14" fill-opacity="0.96" mask="url(#{{SCENE_ID}}-iris-mask)" />
+        <circle id="{{SCENE_ID}}-ring" cx="500" cy="460" r="240" fill="none" stroke="#F4F1EA" stroke-opacity="0.52" stroke-width="3.5" />
+      </svg>
+      <div id="{{SCENE_ID}}-label" class="gv-sc-label" data-var-text="label">{{VAR_LABEL|}}</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_MODE|curtain_sweep}}").trim().toLowerCase();
+      const isIris = mode === "spyglass_iris";
+      const dir = ("{{VAR_DIRECTION|ltr}}").trim().toLowerCase() === "rtl" ? -1 : 1;
+      const cxPct = Math.max(20, Math.min(80, Number("{{VAR_CENTER_X_PCT|50}}") || 50));
+      const cyPct = Math.max(20, Math.min(75, Number("{{VAR_CENTER_Y_PCT|46}}") || 46));
+
+      const curtainEl = document.getElementById("{{SCENE_ID}}-curtain");
+      const irisEl = document.getElementById("{{SCENE_ID}}-iris");
+      const holeEl = document.getElementById("{{SCENE_ID}}-hole");
+      const ringEl = document.getElementById("{{SCENE_ID}}-ring");
+      const labelEl = document.getElementById("{{SCENE_ID}}-label");
+
+      const hasLabel = Boolean(labelEl && labelEl.textContent.trim());
+      if (labelEl && !hasLabel) {
+        labelEl.classList.add("gv-empty");
+      }
+
+      if (isIris) {
+        if (curtainEl) curtainEl.classList.add("gv-empty");
+        if (irisEl) irisEl.classList.remove("gv-empty");
+        const cx = String(cxPct * 10);
+        const cy = String(cyPct * 10);
+        if (holeEl) { holeEl.setAttribute("cx", cx); holeEl.setAttribute("cy", cy); }
+        if (ringEl) { ringEl.setAttribute("cx", cx); ringEl.setAttribute("cy", cy); }
+      }
+
+      const dur = Number({{DURATION_S}});
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#{{SCENE_ID}}-label", { xPercent: -50, yPercent: -50 });
+
+      if (isIris) {
+        const openAt = Math.min(dur * 0.28, 0.45);
+        const closeAt = Math.max(openAt + 0.35, dur * 0.72);
+        tl.fromTo(
+          ["#{{SCENE_ID}}-hole", "#{{SCENE_ID}}-ring"],
+          { scale: 0.02, transformOrigin: "50% 50%" },
+          { scale: 1.0, duration: openAt, ease: "expo.out", transformOrigin: "50% 50%" },
+          0
+        );
+        tl.to(
+          ["#{{SCENE_ID}}-hole", "#{{SCENE_ID}}-ring"],
+          { scale: 0.02, duration: Math.max(0.22, dur - closeAt), ease: "power3.in", transformOrigin: "50% 50%" },
+          closeAt
+        );
+      } else {
+        const startX = -85 * dir;
+        const endX = 85 * dir;
+        tl.fromTo(
+          "#{{SCENE_ID}}-curtain",
+          { xPercent: startX },
+          { xPercent: endX, duration: dur, ease: "power2.inOut" },
+          0
+        );
+      }
+
+      if (hasLabel) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-label",
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: Math.min(0.28, dur * 0.28), ease: "expo.out" },
+          dur * 0.22
+        );
+        tl.to(
+          "#{{SCENE_ID}}-label",
+          { opacity: 0, duration: Math.min(0.22, dur * 0.22), ease: "power2.in" },
+          dur * 0.76
+        );
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

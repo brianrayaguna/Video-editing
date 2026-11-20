@@ -229,8 +229,8 @@ def write_ass_overlays_file(
             style_name = "CaptionCenter"
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
-        trans_ms = int(merged.get("caption_transition_ms", 50))
-        fade_tag = f"{{\\fad({trans_ms},{min(trans_ms, 50)})}}" if trans_ms > 0 else ""
+        trans_ms = int(merged.get("caption_transition_ms", 33))
+        fade_tag = f"{{\\fad({trans_ms},{min(trans_ms, 33)})}}" if trans_ms > 0 else ""
         escaped_text = _escape_ass_text(raw_text)
         lines.append(
             f"Dialogue: 1,{start_ts},{end_ts},{style_name},,0,0,0,,{fade_tag}{escaped_text}"

@@ -1,0 +1,160 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-left-pane {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 56, 71, 0.78);
+    }
+    #{{SCENE_ID}}-right-pane {
+      position: absolute;
+      inset: 0;
+      background: rgba(11, 14, 17, 0.88);
+    }
+    #{{SCENE_ID}}-bar {
+      position: absolute;
+      top: -12%;
+      bottom: -12%;
+      left: 0;
+      width: calc(5px * {{SCALE_FACTOR}});
+      background: #F4F1EA;
+      box-shadow: 0 0 18px rgba(0, 0, 0, 0.65);
+      transform-origin: center center;
+      will-change: transform, opacity;
+    }
+    .gv-side-copy {
+      position: absolute;
+      top: 30%;
+      width: 42%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: calc(8px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-copy-l {
+      left: 4%;
+    }
+    #{{SCENE_ID}}-copy-r {
+      right: 4%;
+    }
+    .gv-split-label {
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      opacity: 0.94;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
+    }
+    .gv-split-metric {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(64px * {{SCALE_FACTOR}});
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: var(--vedit-ink);
+      text-shadow: 0 4px 16px rgba(0, 0, 0, 0.92);
+    }
+    .gv-split-metric.accent {
+      color: var(--vedit-accent);
+    }
+    .gv-empty {
+      display: none;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-left-pane"></div>
+      <div id="{{SCENE_ID}}-right-pane"></div>
+      <div id="{{SCENE_ID}}-bar"></div>
+      <div id="{{SCENE_ID}}-copy-l" class="gv-side-copy">
+        <div id="{{SCENE_ID}}-ll" class="gv-split-label" data-var-text="left_label">{{VAR_LEFT_LABEL|BEFORE}}</div>
+        <div id="{{SCENE_ID}}-lm" class="gv-split-metric" data-var-text="left_metric">{{VAR_LEFT_METRIC|}}</div>
+      </div>
+      <div id="{{SCENE_ID}}-copy-r" class="gv-side-copy">
+        <div id="{{SCENE_ID}}-rl" class="gv-split-label" data-var-text="right_label">{{VAR_RIGHT_LABEL|AFTER}}</div>
+        <div id="{{SCENE_ID}}-rm" class="gv-split-metric accent" data-var-text="right_metric">{{VAR_RIGHT_METRIC|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_LAYOUT_MODE|vertical}}").trim().toLowerCase();
+      const splitPct = Math.max(25, Math.min(75, Number({{VAR_SPLIT_PCT|50}})));
+      const lm = document.getElementById("{{SCENE_ID}}-lm");
+      const rm = document.getElementById("{{SCENE_ID}}-rm");
+      if (lm && !lm.textContent.trim()) lm.classList.add("gv-empty");
+      if (rm && !rm.textContent.trim()) rm.classList.add("gv-empty");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.36), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.5, 0.18), dur * 0.2);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+
+      const W = Number({{WIDTH}});
+      const targetX = (splitPct / 100) * W;
+      const topX = Math.min(92, splitPct + 10);
+      const botX = Math.max(8, splitPct - 10);
+      const isDiag = mode === "diagonal";
+      const startClip = isDiag
+        ? "polygon(100% 0, 100% 0, 100% 100%, 100% 100%)"
+        : "inset(0 0 0 100%)";
+      const endClip = isDiag
+        ? `polygon(${topX}% 0, 100% 0, 100% 100%, ${botX}% 100%)`
+        : `inset(0 0 0 ${splitPct}%)`;
+      const barRot = isDiag ? 11 : 0;
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-left-pane",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.24, ease: "power2.out" },
+        0
+      );
+      tl.fromTo(
+        "#{{SCENE_ID}}-right-pane",
+        { clipPath: startClip },
+        { clipPath: endClip, duration: enterS, ease: "expo.out" },
+        0.04
+      );
+      tl.fromTo(
+        "#{{SCENE_ID}}-bar",
+        { x: W, rotation: barRot, opacity: 0 },
+        { x: targetX, rotation: barRot, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.04
+      );
+
+      tl.fromTo(
+        "#{{SCENE_ID}}-copy-l",
+        { x: -18 * Number({{SCALE_FACTOR}}), opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.28, ease: "expo.out" },
+        enterS * 0.35
+      );
+      tl.fromTo(
+        "#{{SCENE_ID}}-copy-r",
+        { x: 18 * Number({{SCALE_FACTOR}}), opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.28, ease: "expo.out" },
+        enterS * 0.55
+      );
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

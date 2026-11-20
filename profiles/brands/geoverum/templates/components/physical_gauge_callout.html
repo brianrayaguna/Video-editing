@@ -1,0 +1,215 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-hydro: #38BDF8;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: calc({{SAFE_TOP_PCT}}% + calc(48px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+    /* Mode 1: thermometer */
+    #{{SCENE_ID}}-thermo {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(22px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-thermo-svg {
+      width: calc(74px * {{SCALE_FACTOR}});
+      height: calc(184px * {{SCALE_FACTOR}});
+      overflow: visible;
+    }
+    .gv-pg-copy {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: calc(4px * {{SCALE_FACTOR}});
+    }
+    .gv-pg-loc {
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    .gv-pg-pri {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(64px * {{SCALE_FACTOR}});
+      line-height: 1.02;
+      color: var(--vedit-accent);
+      text-shadow: 0 4px 18px rgba(0, 0, 0, 0.94);
+      white-space: nowrap;
+    }
+    .gv-pg-sec {
+      font-size: calc(32px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: var(--vedit-ink);
+      opacity: 0.92;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
+    }
+    /* Mode 2: decibel */
+    #{{SCENE_ID}}-db {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(8px * {{SCALE_FACTOR}});
+    }
+    .gv-db-row {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(18px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-spk-svg {
+      width: calc(92px * {{SCALE_FACTOR}});
+      height: calc(76px * {{SCALE_FACTOR}});
+      overflow: visible;
+    }
+    #{{SCENE_ID}}-db-val {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(76px * {{SCALE_FACTOR}});
+      line-height: 1;
+      color: var(--vedit-ink);
+      text-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.94),
+        0 1px 4px rgba(0, 0, 0, 0.98);
+      white-space: nowrap;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <!-- Thermometer Mode -->
+      <div id="{{SCENE_ID}}-thermo">
+        <svg id="{{SCENE_ID}}-thermo-svg" viewBox="0 0 80 200" xmlns="http://www.w3.org/2000/svg">
+          <rect x="26" y="14" width="28" height="128" rx="14" fill="rgba(12, 22, 34, 0.85)" stroke="#F4F1EA" stroke-width="5" />
+          <circle cx="40" cy="158" r="28" fill="rgba(12, 22, 34, 0.85)" stroke="#F4F1EA" stroke-width="5" />
+          <rect id="{{SCENE_ID}}-mercury" x="32" y="26" width="16" height="122" rx="8" fill="#38BDF8" />
+          <circle id="{{SCENE_ID}}-bulb" cx="40" cy="158" r="20" fill="#38BDF8" />
+        </svg>
+        <div class="gv-pg-copy">
+          <div id="{{SCENE_ID}}-t-lbl" class="gv-pg-loc" data-var-text="label">{{VAR_LABEL|NEW YORK}}</div>
+          <div id="{{SCENE_ID}}-t-pri" class="gv-pg-pri" data-var-text="primary_readout">{{VAR_END_VALUE|-2}}°C</div>
+          <div id="{{SCENE_ID}}-t-sec" class="gv-pg-sec" data-var-text="secondary_readout">{{VAR_SECONDARY_READOUT|(28°F)}}</div>
+        </div>
+      </div>
+
+      <!-- Decibel Mode -->
+      <div id="{{SCENE_ID}}-db">
+        <div class="gv-db-row">
+          <svg id="{{SCENE_ID}}-spk-svg" viewBox="0 0 100 84" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="10,28 28,28 48,12 48,72 28,56 10,56" fill="#F4F1EA" />
+            <path id="{{SCENE_ID}}-w1" d="M 60 28 Q 70 42 60 56" fill="none" stroke="#F4F1EA" stroke-width="6" stroke-linecap="round" />
+            <path id="{{SCENE_ID}}-w2" d="M 72 18 Q 86 42 72 66" fill="none" stroke="#F4F1EA" stroke-width="6" stroke-linecap="round" />
+            <path id="{{SCENE_ID}}-w3" d="M 84 8 Q 102 42 84 76" fill="none" stroke="#F5C542" stroke-width="6" stroke-linecap="round" />
+          </svg>
+          <div id="{{SCENE_ID}}-db-val" data-var-text="primary_readout">{{VAR_END_VALUE|210}} dB</div>
+        </div>
+        <div id="{{SCENE_ID}}-db-lbl" class="gv-pg-loc" data-var-text="label">{{VAR_LABEL|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_GAUGE_MODE|thermometer}}").trim().toLowerCase();
+      const startVal = Number({{VAR_START_VALUE|20}});
+      const endVal = Number({{VAR_END_VALUE|-2}});
+      const unit = ("{{VAR_UNIT|°C}}").trim();
+      const S = Number({{SCALE_FACTOR}});
+
+      const thermoEl = document.getElementById("{{SCENE_ID}}-thermo");
+      const dbEl = document.getElementById("{{SCENE_ID}}-db");
+      const tLbl = document.getElementById("{{SCENE_ID}}-t-lbl");
+      const tSec = document.getElementById("{{SCENE_ID}}-t-sec");
+      const dbLbl = document.getElementById("{{SCENE_ID}}-db-lbl");
+      const tPri = document.getElementById("{{SCENE_ID}}-t-pri");
+      const dbVal = document.getElementById("{{SCENE_ID}}-db-val");
+
+      if (tLbl && !tLbl.textContent.trim()) tLbl.classList.add("gv-empty");
+      if (tSec && !tSec.textContent.trim()) tSec.classList.add("gv-empty");
+      if (dbLbl && !dbLbl.textContent.trim()) dbLbl.classList.add("gv-empty");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.3), dur * 0.25);
+      const exitS = Math.min(Math.max(enterS * 0.48, 0.14), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.5, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      const isDecibel = mode === "decibel";
+      const counterFrom = isDecibel ? Math.max(0, startVal) : startVal;
+      const counter = { v: counterFrom };
+      const countDur = Math.min(isDecibel ? 0.85 : 1.0, exitAt - 0.3);
+      const countAt = isDecibel ? 0.06 : 0.16;
+
+      if (isDecibel) {
+        if (thermoEl) thermoEl.classList.add("gv-empty");
+        tl.fromTo("#{{SCENE_ID}}-db", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+        tl.fromTo("#{{SCENE_ID}}-w1", { opacity: 0, x: -6 }, { opacity: 1, x: 0, duration: 0.2, ease: "expo.out" }, 0.12);
+        tl.fromTo("#{{SCENE_ID}}-w2", { opacity: 0, x: -6 }, { opacity: 1, x: 0, duration: 0.2, ease: "expo.out" }, 0.24);
+        tl.fromTo("#{{SCENE_ID}}-w3", { opacity: 0, x: -6 }, { opacity: 1, x: 0, duration: 0.2, ease: "expo.out" }, 0.36);
+      } else {
+        if (dbEl) dbEl.classList.add("gv-empty");
+        const startRatio = Math.max(0.18, Math.min(1, (startVal + 20) / 60));
+        const endRatio = Math.max(0.18, Math.min(1, (endVal + 20) / 60));
+        const warm = endVal >= 25;
+        const fillHex = warm ? "#F59E0B" : "#38BDF8";
+        const mercEl = document.getElementById("{{SCENE_ID}}-mercury");
+        const bulbEl = document.getElementById("{{SCENE_ID}}-bulb");
+        if (mercEl) mercEl.setAttribute("fill", fillHex);
+        if (bulbEl) bulbEl.setAttribute("fill", fillHex);
+
+        tl.fromTo("#{{SCENE_ID}}-thermo", { y: 16 * S, opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+        tl.fromTo(
+          "#{{SCENE_ID}}-mercury",
+          { scaleY: startRatio, transformOrigin: "center bottom" },
+          { scaleY: endRatio, transformOrigin: "center bottom", duration: countDur, ease: "expo.out" },
+          countAt
+        );
+      }
+
+      tl.fromTo(
+        counter,
+        { v: counterFrom },
+        {
+          v: endVal,
+          duration: countDur,
+          ease: "expo.out",
+          onUpdate: () => {
+            const cur = Math.round(counter.v);
+            if (isDecibel) {
+              if (dbVal) dbVal.textContent = cur + " " + (unit || "dB");
+            } else {
+              if (tPri) tPri.textContent = cur + (unit || "°C");
+              if (tSec && unit === "°C") {
+                const f = Math.round(cur * 1.8 + 32);
+                tSec.textContent = "(" + f + "°F)";
+              }
+            }
+          },
+        },
+        countAt
+      );
+
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

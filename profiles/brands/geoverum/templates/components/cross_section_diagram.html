@@ -4,154 +4,216 @@
       position: absolute;
       inset: 0;
       overflow: hidden;
-      background: transparent;
-      font-family: '{{BODY_FONT}}', sans-serif;
+      background: #1B2440;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-hydro: #38BDF8;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
-      color: {{VAR_FG_COLOR|#F4F1EA}};
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 24%, #2B3966 0%, #19223B 58%, #0E1526 100%);
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
-      top: 15.5%;
-      left: 6%;
-      right: 6%;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-header {
+      position: absolute;
+      top: calc({{SAFE_TOP_PCT}}% + calc(48px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      text-align: center;
+    }
+    .gv-xs-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(46px * {{SCALE_FACTOR}});
+      line-height: 1.06;
+      letter-spacing: -0.02em;
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 16px rgba(0, 0, 0, 0.55);
+    }
+    #{{SCENE_ID}}-stage {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 25%;
+      height: 45%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #{{SCENE_ID}}-svg {
+      width: 94%;
+      height: 100%;
+      max-width: calc(1020px * {{SCALE_FACTOR}});
+      overflow: visible;
+    }
+    .gv-xs-svg-label {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-weight: 700;
+      fill: #F4F1EA;
+      font-size: 29px;
+      letter-spacing: 0.01em;
+    }
+    .gv-xs-svg-metric {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      fill: #F5C542;
+      font-size: 30px;
+    }
+    #{{SCENE_ID}}-footer {
+      position: absolute;
+      top: 76%;
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
       display: flex;
       justify-content: center;
-      align-items: flex-start;
+      align-items: baseline;
+      gap: calc(14px * {{SCALE_FACTOR}});
+      text-align: center;
     }
-    .gv-diag-panel {
-      width: 100%;
-      max-width: 920px;
-      background: rgba(3, 22, 31, 0.90);
-      border: 1.5px solid rgba(124, 224, 249, 0.32);
-      border-left: 5px solid {{VAR_ACCENT_COLOR|#F5C542}};
-      border-radius: 10px;
-      padding: 24px 28px 26px;
-      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .gv-diag-kicker {
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #7CE0F9;
-    }
-    .gv-diag-title {
-      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
-      font-size: 31px;
-      line-height: 1.15;
-      color: {{VAR_FG_COLOR|#F4F1EA}};
-    }
-    .gv-diag-svg {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-    .gv-diag-metric-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(244, 241, 234, 0.16);
-    }
-    .gv-diag-tag {
-      font-size: 17px;
+    .gv-xs-foot-label {
+      font-size: calc(28px * {{SCALE_FACTOR}});
       font-weight: 600;
-      color: rgba(244, 241, 234, 0.85);
+      color: #CBD5E1;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
     }
-    .gv-diag-callout {
-      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
-      font-size: 24px;
-      color: {{VAR_ACCENT_COLOR|#F5C542}};
+    .gv-xs-foot-metric {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(32px * {{SCALE_FACTOR}});
+      color: var(--vedit-accent);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+    }
+    .gv-empty {
+      display: none;
     }
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-bg"></div>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
-      <div id="{{SCENE_ID}}-panel" class="gv-diag-panel">
-        <div>
-          <div class="gv-diag-kicker">{{VAR_KICKER|PENAMPANG INFRASTRUKTUR}}</div>
-          <div class="gv-diag-title">{{VAR_TITLE|MENGAPA JALAN DARAT MAHAL}}</div>
-        </div>
+      <div id="{{SCENE_ID}}-header">
+        <div id="{{SCENE_ID}}-title" class="gv-xs-title" data-var-text="title">{{VAR_TITLE|GEOLOGICAL CROSS-SECTION}}</div>
+      </div>
 
-        <svg class="gv-diag-svg" viewBox="0 0 840 330" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="{{SCENE_ID}}-peat-pat" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
-              <line x1="0" y1="0" x2="0" y2="14" stroke="#C2412D" stroke-width="2" stroke-opacity="0.45"/>
-            </pattern>
-          </defs>
-
-          <!-- Layer 1: Bedrock / deep stable clay -->
-          <g id="{{SCENE_ID}}-l-bedrock">
-            <rect x="20" y="248" width="800" height="62" rx="4" fill="#0B2938" stroke="#7CE0F9" stroke-opacity="0.25" stroke-width="1.5"/>
-            <text x="42" y="286" font-family="{{BODY_FONT}}, sans-serif" font-size="18" font-weight="600" fill="#F4F1EA" opacity="0.72">{{VAR_LAYER3|LAPISAN TANAH KERAS (DALAM)}}</text>
+      <div id="{{SCENE_ID}}-stage">
+        <svg id="{{SCENE_ID}}-svg" viewBox="0 0 960 660" xmlns="http://www.w3.org/2000/svg">
+          <!-- Layer 3: Deep Bedrock / Aquifer Stratum (lowest exploded slab) -->
+          <g id="{{SCENE_ID}}-slab-3">
+            <polygon points="100,455 770,492 860,442 190,405" fill="#1E5F9E" />
+            <polygon points="100,455 770,492 770,564 100,527" fill="#6F3626" />
+            <polygon points="770,492 860,442 860,514 770,564" fill="#2A75B8" />
+            <!-- Subsurface channel cut -->
+            <path d="M140,468 Q340,452 510,484 T770,498 L770,524 Q520,510 340,484 T140,494 Z" fill="#38BDF8" opacity="0.88" />
           </g>
 
-          <!-- Layer 2: Soft peat swamp + wide river channel -->
-          <g id="{{SCENE_ID}}-l-peat">
-            <rect x="20" y="138" width="490" height="110" fill="#3D1C18" fill-opacity="0.82"/>
-            <rect x="20" y="138" width="490" height="110" fill="url(#{{SCENE_ID}}-peat-pat)" stroke="#C2412D" stroke-width="2"/>
-
-            <!-- Wide river cut -->
-            <path d="M 510 138 L 820 138 L 820 248 L 540 248 Q 515 215 510 138 Z" fill="#0A3A4E" stroke="#7CE0F9" stroke-width="2"/>
-            <path d="M 530 162 Q 610 152 680 162 T 805 162" fill="none" stroke="#7CE0F9" stroke-width="2.5" stroke-opacity="0.75"/>
+          <!-- Layer 2: Unstable Clay / Peat Overburden (middle exploded slab) -->
+          <g id="{{SCENE_ID}}-slab-2">
+            <polygon points="100,322 770,359 860,309 190,272" fill="#D4B895" />
+            <polygon points="100,322 770,359 770,406 100,369" fill="#B89B76" />
+            <polygon points="770,359 860,309 860,356 770,406" fill="#9E825E" />
+            <!-- Subtle mineral speckles -->
+            <circle cx="220" cy="348" r="3" fill="#6B5338" opacity="0.55" />
+            <circle cx="385" cy="364" r="2.5" fill="#6B5338" opacity="0.55" />
+            <circle cx="560" cy="370" r="3" fill="#6B5338" opacity="0.55" />
+            <circle cx="690" cy="378" r="2.5" fill="#6B5338" opacity="0.55" />
           </g>
 
-          <!-- Layer 3: Deep pilings (rendered behind text labels for clean legibility) -->
-          <g id="{{SCENE_ID}}-l-pilings">
-            <rect x="95" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
-            <rect x="225" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
-            <rect x="355" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
-            <rect x="470" y="114" width="12" height="156" fill="#F5C542" opacity="0.65"/>
-            <rect x="655" y="114" width="16" height="156" fill="#F5C542" opacity="0.72"/>
-            <rect x="780" y="114" width="16" height="156" fill="#F5C542" opacity="0.72"/>
+          <!-- Layer 1: Surface Terrain + River Channel (top slab) -->
+          <g id="{{SCENE_ID}}-slab-1">
+            <polygon points="100,192 770,229 860,179 190,142" fill="#77B13E" />
+            <polygon points="100,192 770,229 770,268 100,231" fill="#D97828" />
+            <polygon points="770,229 860,179 860,218 770,268" fill="#B55E19" />
+            <!-- River ribbon across top terrain -->
+            <path d="M135,173 Q310,164 475,193 T822,197 L800,212 Q475,209 305,181 T115,189 Z" fill="#22C8E8" />
+            <path d="M135,173 Q310,164 475,193 T822,197" fill="none" stroke="#99F6FF" stroke-width="3" opacity="0.7" />
           </g>
 
-          <!-- Labels rendered above pilings with crisp dark outline for 100% readability -->
-          <g id="{{SCENE_ID}}-l-labels">
-            <text x="42" y="182" font-family="{{BODY_FONT}}, sans-serif" font-size="20" font-weight="700" fill="#F4F1EA" style="paint-order:stroke;stroke:#03161F;stroke-width:5px;">{{VAR_LAYER1|RAWA GAMBUT LUNAK}}</text>
-            <text x="42" y="210" font-family="{{BODY_FONT}}, sans-serif" font-size="16" font-weight="500" fill="#F4F1EA" opacity="0.92" style="paint-order:stroke;stroke:#03161F;stroke-width:4px;">Rawan amblas, butuh pondasi dalam</text>
-            <text x="556" y="206" font-family="{{BODY_FONT}}, sans-serif" font-size="20" font-weight="700" fill="#7CE0F9" style="paint-order:stroke;stroke:#03161F;stroke-width:5px;">{{VAR_LAYER2|SUNGAI LEBAR}}</text>
+          <!-- Vertical amber depth comparator / structural reference axis -->
+          <g id="{{SCENE_ID}}-axis">
+            <line id="{{SCENE_ID}}-axis-line" x1="892" y1="184" x2="892" y2="520" stroke="#F5C542" stroke-width="3" stroke-dasharray="8 8" pathLength="100" />
+            <line x1="880" y1="184" x2="904" y2="184" stroke="#F5C542" stroke-width="3" />
+            <line x1="880" y1="520" x2="904" y2="520" stroke="#F5C542" stroke-width="3" />
           </g>
 
-          <!-- Layer 4: Asphalt deck & bridge arch -->
-          <g id="{{SCENE_ID}}-l-deck">
-            <rect x="20" y="96" width="800" height="22" rx="3" fill="#F4F1EA"/>
-            <line x1="36" y1="107" x2="804" y2="107" stroke="#03161F" stroke-width="2.5" stroke-dasharray="18 14"/>
-            <path d="M 500 96 Q 665 18 820 96" fill="none" stroke="#F5C542" stroke-width="5"/>
-            <text x="660" y="42" text-anchor="middle" font-family="{{BODY_FONT}}, sans-serif" font-size="18" font-weight="700" letter-spacing="0.08em" fill="#F5C542">JEMBATAN BENTANG PANJANG</text>
+          <!-- Curved white editorial leader arrows (no HUD boxes!) -->
+          <g id="{{SCENE_ID}}-callouts">
+            <!-- Top Layer Callout -->
+            <path id="{{SCENE_ID}}-arr-1" d="M292,98 Q265,126 276,166" fill="none" stroke="#F4F1EA" stroke-width="3.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <polygon id="{{SCENE_ID}}-tip-1" points="276,170 267,156 284,158" fill="#F4F1EA" />
+            <text id="{{SCENE_ID}}-lbl-1" x="292" y="84" text-anchor="middle" class="gv-xs-svg-label" data-var-text="layer1">{{VAR_LAYER1|SURFACE LAYER}}</text>
+
+            <!-- Middle Layer Callout (kept cleanly inside right safe margin) -->
+            <path id="{{SCENE_ID}}-arr-2" d="M640,282 Q608,290 582,318" fill="none" stroke="#F4F1EA" stroke-width="3.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <polygon id="{{SCENE_ID}}-tip-2" points="578,322 593,318 583,306" fill="#F4F1EA" />
+            <text id="{{SCENE_ID}}-lbl-2" x="820" y="286" text-anchor="end" class="gv-xs-svg-label" data-var-text="layer2">{{VAR_LAYER2|SUBSURFACE STRATA}}</text>
+
+            <!-- Deep Layer Callout -->
+            <path id="{{SCENE_ID}}-arr-3" d="M510,598 Q565,588 592,526" fill="none" stroke="#F4F1EA" stroke-width="3.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100 120" stroke-dashoffset="110" />
+            <polygon id="{{SCENE_ID}}-tip-3" points="594,520 582,532 598,536" fill="#F4F1EA" />
+            <text id="{{SCENE_ID}}-lbl-3" x="495" y="614" text-anchor="end" class="gv-xs-svg-label" data-var-text="layer3">{{VAR_LAYER3|DEEP BEDROCK}}</text>
           </g>
         </svg>
+      </div>
 
-        <div id="{{SCENE_ID}}-foot" class="gv-diag-metric-row">
-          <span class="gv-diag-tag">{{VAR_FOOT_LABEL|Populasi jarang · Perawatan tinggi}}</span>
-          <span class="gv-diag-callout">{{VAR_FOOT_METRIC|BIAYA / KAPITA TINGGI}}</span>
-        </div>
+      <div id="{{SCENE_ID}}-footer">
+        <span id="{{SCENE_ID}}-fl" class="gv-xs-foot-label" data-var-text="foot_label">{{VAR_FOOT_LABEL|}}</span>
+        <span id="{{SCENE_ID}}-fm" class="gv-xs-foot-metric" data-var-text="foot_metric">{{VAR_FOOT_METRIC|}}</span>
       </div>
     </div>
   </div>
   <script>
-    const dur = {{DURATION_S}};
-    const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
-      "#{{SCENE_ID}}-panel",
-      { opacity: 0, y: 24, scale: 0.97 },
-      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "expo.out" },
-      0
-    );
-    tl.fromTo("#{{SCENE_ID}}-l-bedrock", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.25);
-    tl.fromTo("#{{SCENE_ID}}-l-peat", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.55, ease: "expo.out" }, 0.65);
-    tl.fromTo("#{{SCENE_ID}}-l-labels", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 0.80);
-    tl.fromTo("#{{SCENE_ID}}-l-pilings", { opacity: 0, y: -24 }, { opacity: 1, y: 0, duration: 0.6, ease: "expo.out" }, 1.25);
-    tl.fromTo("#{{SCENE_ID}}-l-deck", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.65, ease: "expo.out" }, 1.85);
-    tl.fromTo("#{{SCENE_ID}}-foot", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 2.45);
+    (function () {
+      const flEl = document.getElementById("{{SCENE_ID}}-fl");
+      const fmEl = document.getElementById("{{SCENE_ID}}-fm");
+      if (flEl && !flEl.textContent.trim()) flEl.classList.add("gv-empty");
+      if (fmEl && !fmEl.textContent.trim()) fmEl.classList.add("gv-empty");
 
-    const exitAt = Math.max(0.6, dur - 0.30);
-    tl.to("#{{SCENE_ID}}-panel", { opacity: 0, y: -14, duration: 0.28, ease: "power3.in" }, exitAt);
+      const dur = Number({{DURATION_S}});
+      const exitS = Math.min(0.24, dur * 0.14);
+      const exitAt = Math.max(0.8, dur - exitS);
 
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+      const tl = gsap.timeline({ paused: true });
+
+      // Header mask reveal
+      tl.fromTo(
+        "#{{SCENE_ID}}-header",
+        { clipPath: "inset(0 0 100% 0)", y: 16, opacity: 0 },
+        { clipPath: "inset(0 0 0% 0)", y: 0, opacity: 1, duration: 0.36, ease: "expo.out" },
+        0.04
+      );
+
+      // Slabs start stacked compactly, then explode vertically per beat (inspired by ref_amazon_no_bridges)
+      tl.fromTo("#{{SCENE_ID}}-slab-1", { y: 80, opacity: 0 }, { y: -22, opacity: 1, duration: 0.55, ease: "expo.out" }, 0.08);
+      tl.fromTo("#{{SCENE_ID}}-slab-2", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 0.32);
+      tl.fromTo("#{{SCENE_ID}}-slab-3", { y: -45, opacity: 0 }, { y: 24, opacity: 1, duration: 0.65, ease: "expo.out" }, 0.58);
+
+      // Vertical depth comparator
+      tl.fromTo("#{{SCENE_ID}}-axis", { opacity: 0, scaleY: 0 }, { opacity: 1, scaleY: 1, transformOrigin: "center top", duration: 0.45, ease: "expo.out" }, 0.72);
+
+      // Curved arrows draw-on sequentially (film.md anti-dot dashoffset pattern)
+      const beats = [
+        { arr: "#{{SCENE_ID}}-arr-1", tip: "#{{SCENE_ID}}-tip-1", lbl: "#{{SCENE_ID}}-lbl-1", t: 0.45 },
+        { arr: "#{{SCENE_ID}}-arr-2", tip: "#{{SCENE_ID}}-tip-2", lbl: "#{{SCENE_ID}}-lbl-2", t: 0.85 },
+        { arr: "#{{SCENE_ID}}-arr-3", tip: "#{{SCENE_ID}}-tip-3", lbl: "#{{SCENE_ID}}-lbl-3", t: 1.25 },
+      ];
+      beats.forEach((b) => {
+        tl.fromTo(b.lbl, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.28, ease: "expo.out" }, b.t);
+        tl.fromTo(b.arr, { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.42, ease: "expo.out" }, b.t + 0.06);
+        tl.fromTo(b.tip, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, b.t + 0.42);
+      });
+
+      if ((flEl && !flEl.classList.contains("gv-empty")) || (fmEl && !fmEl.classList.contains("gv-empty"))) {
+        tl.fromTo("#{{SCENE_ID}}-footer", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "expo.out" }, 1.5);
+      }
+
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

@@ -3,12 +3,10 @@
     #root {
       position: absolute;
       inset: 0;
-      width: {{WIDTH}}px;
-      height: {{HEIGHT}}px;
       overflow: hidden;
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
-      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -26,27 +24,29 @@
       letter-spacing: 0.12em;
       line-height: 1;
       color: var(--vedit-ink);
-      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.68);
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
       white-space: nowrap;
       opacity: 0;
     }
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
-    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}" data-layout-ignore="true">
       <span id="{{SCENE_ID}}-inner" data-var-text="text">{{VAR_TEXT|geoverum}}</span>
     </div>
   </div>
   <script>
-    const tl = gsap.timeline({ paused: true });
-    const targetOpacity = Number({{VAR_OPACITY|0.72}});
-    tl.fromTo(
-      "#{{SCENE_ID}}-inner",
-      { opacity: 0 },
-      { opacity: targetOpacity, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
-      0
-    );
-    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const targetOpacity = Number({{VAR_OPACITY|0.72}});
+      tl.fromTo(
+        "#{{SCENE_ID}}-inner",
+        { opacity: 0 },
+        { opacity: targetOpacity, duration: {{ENTRANCE_S}}, ease: "power2.out" },
+        0
+      );
+      tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power3.in" }, {{EXIT_AT_S}});
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

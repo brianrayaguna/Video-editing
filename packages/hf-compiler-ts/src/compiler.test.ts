@@ -341,8 +341,8 @@ test("caption centering is symmetric (x=50%) with y=70% portrait band and propor
   // Plain documentary style (no pill box) and 44px proportional font size.
   assert.match(capHtml, /class="vedit-caption-plain"/);
   assert.match(capHtml, /font-size: 44px;/);
-  // Hard cut transition (0.05s <= 50ms).
-  assert.match(capHtml, /duration: 0\.05/);
+  // Hard cut transition (0.033s <= 33ms @ 30fps).
+  assert.match(capHtml, /duration: 0\.033/);
 
   const cardHtml = fs.readFileSync(compiledShorts.compositionFiles[1]!, "utf8");
   assert.match(cardHtml, /justify-content: center;\s*align-items: center;/);
@@ -641,7 +641,6 @@ test("hero explainer Geoverum templates support data-motion-blur and pass offici
               "profiles/brands/geoverum/templates/components/chapter_morph_card.html",
           },
           variables: {
-            kicker: "BAB 02",
             title: "KONEKTIVITAS DARAT",
           },
         },
@@ -660,6 +659,525 @@ test("hero explainer Geoverum templates support data-motion-blur and pass offici
     lintResult.totalErrors,
     0,
     `Expected 0 lint errors for hero explainer templates, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});
+
+test("all cartographic editorial Geoverum templates compile cleanly with zero dashboard slop", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-carto-suite-"));
+  const target: PlatformTarget = {
+    platform_id: "shorts_9x16_1080p",
+    aspect_ratio: "9:16",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    safe_zone: { top_pct: 0.14, bottom_pct: 0.22, left_pct: 0.06, right_pct: 0.16 },
+  };
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: 20.0,
+      assets: [
+        {
+          asset_id: "font_sg",
+          sha256: "d".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceGrotesk-Variable.ttf",
+        },
+        {
+          asset_id: "font_ab",
+          sha256: "e".repeat(64),
+          kind: "font",
+          path: "/nonexistent/ArchivoBlack-Regular.ttf",
+        },
+      ],
+      overlay_compositions: [
+        {
+          overlay_id: "pin_1",
+          kind: "kinetic_callout",
+          template_id: "coordinate_pin_callout",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/coordinate_pin_callout.html",
+          },
+          variables: {
+            label: "MADRID",
+            subtitle: "40.4° N",
+            population_badge: "3.3M",
+            anchor_x_pct: 52,
+            anchor_y_pct: 54,
+            pin_style: "vertical",
+          },
+        },
+        {
+          overlay_id: "dist_1",
+          kind: "kinetic_callout",
+          template_id: "dual_unit_distance_bracket",
+          timeline_start_s: 3.2,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/dual_unit_distance_bracket.html",
+          },
+          variables: {
+            primary_distance: "2.4 mi",
+            secondary_distance: "(3.8 km)",
+            line_style: "double_arrow",
+            angle_deg: -14,
+          },
+        },
+        {
+          overlay_id: "bp_1",
+          kind: "full_scene",
+          template_id: "blueprint_tabletop_frame",
+          timeline_start_s: 6.4,
+          timeline_duration_s: 3.0,
+          transparent: false,
+          safe_band: "fullscreen",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/blueprint_tabletop_frame.html",
+          },
+          variables: {
+            metric: "83,600 KM²",
+            title: "UNITED ARAB EMIRATES",
+          },
+        },
+        {
+          overlay_id: "split_1",
+          kind: "full_scene",
+          template_id: "split_wipe_divider",
+          timeline_start_s: 9.6,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/split_wipe_divider.html",
+          },
+          variables: {
+            left_label: "GIBRALTAR",
+            left_metric: "945 m",
+            right_label: "CHANNEL",
+            right_metric: "75 m",
+            layout_mode: "vertical",
+          },
+        },
+        {
+          overlay_id: "arch_1",
+          kind: "data_card",
+          template_id: "historical_parchment_plate",
+          timeline_start_s: 12.8,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/historical_parchment_plate.html",
+          },
+          variables: {
+            year: "1803",
+            title: "LOUISIANA PURCHASE",
+            excerpt: "828,000 square miles transferred west of the Mississippi.",
+          },
+        },
+        {
+          overlay_id: "debunk_1",
+          kind: "kinetic_callout",
+          template_id: "myth_debunk_badge",
+          timeline_start_s: 16.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/myth_debunk_badge.html",
+          },
+          variables: {
+            mode: "red_x",
+            claim_text: "MOUNT EVEREST",
+            correction_text: "FARTHEST: MT. CHIMBORAZO",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { platformTarget: target, copyAssets: false }
+  );
+
+  for (const file of compiled.compositionFiles) {
+    const html = fs.readFileSync(file, "utf8");
+    assert.match(html, /data-motion-blur="on"/);
+    assert.doesNotMatch(html, /metric-rule|outro-rule|125,\s*211,\s*252|border-left:\s*[457]px|border-top:\s*4px/);
+  }
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors for cartographic suite, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});
+
+test("expanded documentary components and multi-family italic fonts compile lint-clean", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-expanded-suite-"));
+  const target: PlatformTarget = {
+    platform_id: "shorts_9x16_1080p",
+    aspect_ratio: "9:16",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    safe_zone: { top_pct: 0.14, bottom_pct: 0.22, left_pct: 0.06, right_pct: 0.16 },
+  };
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: 40.0,
+      assets: [
+        {
+          asset_id: "font_sg",
+          sha256: "1".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceGrotesk-Variable.ttf",
+        },
+        {
+          asset_id: "font_ab",
+          sha256: "2".repeat(64),
+          kind: "font",
+          path: "/nonexistent/ArchivoBlack-Regular.ttf",
+        },
+        {
+          asset_id: "font_ebg",
+          sha256: "3".repeat(64),
+          kind: "font",
+          path: "/nonexistent/EBGaramond-Variable.ttf",
+        },
+        {
+          asset_id: "font_ebg_it",
+          sha256: "4".repeat(64),
+          kind: "font",
+          path: "/nonexistent/EBGaramond-Italic-Variable.ttf",
+        },
+        {
+          asset_id: "font_playfair",
+          sha256: "5".repeat(64),
+          kind: "font",
+          path: "/nonexistent/PlayfairDisplay-Variable.ttf",
+        },
+        {
+          asset_id: "font_mono_reg",
+          sha256: "6".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceMono-Regular.ttf",
+        },
+        {
+          asset_id: "font_mono_bold",
+          sha256: "7".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceMono-Bold.ttf",
+        },
+        {
+          asset_id: "font_mont",
+          sha256: "8".repeat(64),
+          kind: "font",
+          path: "/nonexistent/Montserrat-Variable.ttf",
+        },
+      ],
+      overlay_compositions: [
+        {
+          overlay_id: "tag_1",
+          kind: "kinetic_callout",
+          template_id: "coordinate_pin_callout",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/coordinate_pin_callout.html",
+          },
+          variables: {
+            pin_style: "highlight_tag",
+            tag_tone: "amber",
+            label: "2,000,000+ LAKES",
+            anchor_x_pct: 50,
+            anchor_y_pct: 46,
+          },
+        },
+        {
+          overlay_id: "etym_1",
+          kind: "kinetic_callout",
+          template_id: "coordinate_pin_callout",
+          timeline_start_s: 3.2,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/coordinate_pin_callout.html",
+          },
+          variables: {
+            pin_style: "etymology_arrow",
+            label: "FLORIDA",
+            meaning_text: "Land of flowers",
+          },
+        },
+        {
+          overlay_id: "rad_1",
+          kind: "kinetic_callout",
+          template_id: "dual_unit_distance_bracket",
+          timeline_start_s: 6.4,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/dual_unit_distance_bracket.html",
+          },
+          variables: {
+            line_style: "radius_ring",
+            primary_distance: "8 km",
+            secondary_distance: "(5 mi)",
+          },
+        },
+        {
+          overlay_id: "lasso_1",
+          kind: "kinetic_callout",
+          template_id: "organic_focus_lasso",
+          timeline_start_s: 9.6,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/organic_focus_lasso.html",
+          },
+          variables: {
+            stroke_tone: "amber",
+            label: "GREAT BRITAIN",
+          },
+        },
+        {
+          overlay_id: "dual_1",
+          kind: "kinetic_callout",
+          template_id: "dual_metric_compare",
+          timeline_start_s: 12.8,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/dual_metric_compare.html",
+          },
+          variables: {
+            left_value: "4,700°C",
+            left_secondary: "(8,492°F)",
+            left_label: "CAVITATION",
+            right_value: "5,500°C",
+            right_secondary: "(9,932°F)",
+            right_label: "SUN SURFACE",
+          },
+        },
+        {
+          overlay_id: "gauge_1",
+          kind: "kinetic_callout",
+          template_id: "physical_gauge_callout",
+          timeline_start_s: 16.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/physical_gauge_callout.html",
+          },
+          variables: {
+            gauge_mode: "decibel",
+            start_value: 80,
+            end_value: 210,
+            unit: "dB",
+            label: "PISTOL SHRIMP",
+          },
+        },
+        {
+          overlay_id: "mp_1",
+          kind: "full_scene",
+          template_id: "multi_panel_split",
+          timeline_start_s: 19.2,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/multi_panel_split.html",
+          },
+          variables: {
+            split_mode: "diagonal_3panel",
+            panel1_label: "UAE",
+            panel2_label: "ABU DHABI",
+            panel3_label: "DUBAI",
+          },
+        },
+        {
+          overlay_id: "scale_1",
+          kind: "full_scene",
+          template_id: "scale_ladder_and_bands",
+          timeline_start_s: 22.4,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/scale_ladder_and_bands.html",
+          },
+          variables: {
+            mode: "altitude_ladder",
+            title: "TIBETAN CEILING",
+            t1_val: "33,000 FT",
+            t1_label: "CRUISE ALTITUDE",
+            t2_val: "14,800 FT",
+            t2_label: "PLATEAU FLOOR",
+            t3_val: "10,000 FT",
+            t3_label: "OXYGEN LIMIT",
+          },
+        },
+        {
+          overlay_id: "portal_1",
+          kind: "title_scene",
+          template_id: "kinetic_portal_title",
+          timeline_start_s: 25.6,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/kinetic_portal_title.html",
+          },
+          variables: {
+            mode: "zoom_through",
+            title: "ISLANDS",
+          },
+        },
+        {
+          overlay_id: "curtain_1",
+          kind: "full_scene",
+          template_id: "soft_curtain_transition",
+          timeline_start_s: 28.8,
+          timeline_duration_s: 2.4,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/soft_curtain_transition.html",
+          },
+          variables: {
+            mode: "curtain_sweep",
+            direction: "ltr",
+            label: "NEXT CHAPTER",
+          },
+        },
+        {
+          overlay_id: "demo_1",
+          kind: "data_card",
+          template_id: "demographic_icon_grid",
+          timeline_start_s: 31.4,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {
+            font_family: "Space Grotesk",
+            display_family: "Archivo Black",
+            motion_blur: true,
+            composition_path:
+              "profiles/brands/geoverum/templates/components/demographic_icon_grid.html",
+          },
+          variables: {
+            title: "100TH MERIDIAN SPLIT",
+            highlight_count: 2,
+            left_pct: "20%",
+            left_label: "WEST",
+            right_pct: "80%",
+            right_label: "EAST",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { platformTarget: target, copyAssets: false }
+  );
+
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /font-family: 'EB Garamond';[\s\S]*?font-style: italic;/);
+  assert.match(indexHtml, /font-family: 'Playfair Display';/);
+  assert.match(indexHtml, /font-family: 'Space Mono';[\s\S]*?font-weight: 700;/);
+  assert.match(indexHtml, /font-family: 'Montserrat';/);
+
+  for (const file of compiled.compositionFiles) {
+    const html = fs.readFileSync(file, "utf8");
+    assert.match(html, /data-motion-blur="on"/);
+    assert.doesNotMatch(
+      html,
+      /metric-rule|outro-rule|gv-bp-cross|gv-bp-kicker|gv-chap-kicker|gv-kp-kicker|gv-xs-kicker|gv-kicker|125,\s*211,\s*252|border-left:\s*[457]px|border-top:\s*4px|filter:\s*blur|backdrop-filter/
+    );
+  }
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors for expanded documentary suite, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
   );
   assert.equal(lintResult.ok, true);
 });

@@ -4,235 +4,664 @@
   "schema_note": "Advisory directing playbook only. Not consumed by planner, verifier, compile, master, or audit. Runtime BrandStylePolicy uses soft_priors, hard_guardrails, calibration, and provenance.",
   "grammar_triggers": [
     {
-      "trigger_id": "hook_opening_map_dive",
-      "condition": "timeline.section == 'hook' and timeline.t_s <= 2.5",
-      "action": "camera.dive_globe_and_draw_crimson_silhouette()",
+      "trigger_id": "blueprint_tabletop_hook",
+      "condition": "timeline.section == 'hook' and timeline.t_s <= 10.0",
+      "action": "camera.open_blueprint_tabletop_and_dive_into_region()",
       "weight": 0.94,
-      "rationale": "Establish geographic scale from dark bathymetric ocean before drawing the crimson territory silhouette."
+      "rationale": "Open on a straight 0-degree full-frame deep blueprint drafting grid (#14427A) with boxless editorial typography, continent silhouette cutout + T-bracket span, or clean media plate, then dive into the focal region."
     },
     {
-      "trigger_id": "single_signal_callout",
-      "condition": "speech.contains_geography_or_metric and speech.duration_s >= 1.4",
-      "action": "overlay.spawn(kind='kinetic_callout', band='dynamic_away_from_subject')",
+      "trigger_id": "kinetic_sfx_on_label_reveal",
+      "condition": "overlay.spawns_label_metric_or_fill",
+      "action": "audio.sync_short_sfx(kinds=['pop','ding','click'], offset_ms=0)",
+      "weight": 0.96,
+      "rationale": "Lock short acoustic accents directly to territory fills, text labels, metric counters, and transition cuts at 15-28 hits per minute."
+    },
+    {
+      "trigger_id": "whip_zoom_iris_or_card_flip_transition",
+      "condition": "transition.kind in {'whip_zoom_blur', 'wipe', 'soft_iris_wipe', '3d_card_flip'}",
+      "action": "audio.sync_whoosh_midpoint(duration_s_range=[0.3, 1.0])",
+      "weight": 0.93,
+      "rationale": "Use pre-rendered 0.3-1.0s radial whip-zooms, vertical white-bar split wipes, soft dark-iris wipes, and 3D card flips for vertical regional leaps."
+    },
+    {
+      "trigger_id": "continuous_map_glide_internal_beats",
+      "condition": "shot.duration_s >= 12.0 and shot.kind == 'cartographic'",
+      "action": "camera.maintain_continuous_motion(active_ratio>=0.94) and overlay.cycle_state_every_s(3.0, 6.0)",
+      "weight": 0.94,
+      "rationale": "Sustained continuous map takes (15-60s) maintain active camera motion across >= 94% of half-second windows while cycling graphic overlays every 3-6 seconds."
+    },
+    {
+      "trigger_id": "diagonal_multi_panel_and_analogy_split",
+      "condition": "speech.disambiguates_nested_entities_or_draws_country_analogy and platform.aspect == '9:16'",
+      "action": "layout.spawn(kind='diagonal_2_or_3_panel_split_or_horizontal_analogy', border='white_4px')",
       "weight": 0.9,
-      "rationale": "Place one primary cartographic signal per beat with generous open-water margins and no redundant badges."
+      "rationale": "Diagonal white-bordered 2- or 3-panel splits and horizontal top/bottom analogies disambiguate nested political entities and federal structures immediately."
     },
     {
-      "trigger_id": "optical_transition_anchor",
-      "condition": "transition.kind in {'whip_zoom_blur', 'amber_light_leak'}",
-      "action": "audio.sync_sfx_peak_to_transition_midpoint()",
+      "trigger_id": "split_wipe_basemap_compare",
+      "condition": "speech.contrasts_apparent_vs_actual_geography and platform.aspect == '9:16'",
+      "action": "transition.vertical_white_split_wipe(left='satellite', right='dark_vector_or_blueprint')",
       "weight": 0.91,
-      "rationale": "Lock pre-rendered optical whip and solar amber light-leak midpoints to Epidemic SFX waveform peaks."
+      "rationale": "Sweep a vertical white divider bar between satellite relief and dark monochrome vector or blueprint measurement cards to isolate border anomalies and metrics."
+    },
+    {
+      "trigger_id": "multi_territory_rimmed_compare",
+      "condition": "speech.compares_two_or_more_territories",
+      "action": "overlay.stagger_fills(order='mention_order', gap_s=0.5, border='white_2_3px', texture='terrain_multiply_or_hatch')",
+      "weight": 0.92,
+      "rationale": "Stagger comparative territory fills in narration mention order using 2-3px white exterior coastline rims and terrain-preserving multiply or diagonal-hatch fills."
+    },
+    {
+      "trigger_id": "dual_unit_distance_bracket",
+      "condition": "speech.states_distance_or_dimension",
+      "action": "overlay.spawn(kind='dual_unit_distance_bracket', style='white_double_arrow_or_dashed_amber', units=['imperial','metric'], angle='aligned_to_route')",
+      "weight": 0.94,
+      "rationale": "Pair white double-headed arrows or dashed amber lines with stacked imperial and metric values aligned to the geographic axis."
+    },
+    {
+      "trigger_id": "true_scale_silhouette_or_anchor_overlay",
+      "condition": "speech.compares_geographic_size_to_familiar_reference",
+      "action": "overlay.drag_silhouette_onto_reference_region_or_place_real_scale_anchor()",
+      "weight": 0.89,
+      "rationale": "Overlay a true-scale territory silhouette onto a familiar continent or place a scaled real-world aerial anchor beside a micro-feature."
+    },
+    {
+      "trigger_id": "animated_2d_mechanism_cross_section",
+      "condition": "speech.explains_physical_geological_underwater_or_ecological_cause",
+      "action": "scene.cut_via_whip_zoom_to(kind='2d_vector_cross_section', duration_s_range=[6.0, 19.0], optional_vertical_split_compare=True)",
+      "weight": 0.92,
+      "rationale": "Cut via radial whip-zoom from overhead maps into flat-vector 2D cross-sections (soil layers, elevation ladders, underwater trenches, or vertical split depth comparisons) to clarify physical mechanisms."
+    },
+    {
+      "trigger_id": "historical_parchment_mode_or_ink_cutaway",
+      "condition": "speech.steps_back_into_historical_era",
+      "action": "basemap.shift_to_parchment_texture(hex='#B9A386', ocean='#5A7D80', optional_ink_sketch_cutaway=True)",
+      "weight": 0.9,
+      "rationale": "Shift into straight 0-degree sepia parchment canvases, boxless serif era stamps directly over footage, full archival manuscript sheets, or monochrome 2D ink-sketch cutaways to separate historical eras from modern satellite geography."
+    },
+    {
+      "trigger_id": "myth_debunk_red_x_and_3d_model",
+      "condition": "speech.debunks_popular_geographic_misconception",
+      "action": "overlay.stamp_crimson_circle_x() and scene.transition_to_3d_scientific_globe_model()",
+      "weight": 0.87,
+      "rationale": "Stamp a high-contrast crimson circular X over the common assumption before revealing a 3D scientific globe or geoid model."
+    },
+    {
+      "trigger_id": "acronym_and_etymology_header_reveal",
+      "condition": "speech.explains_acronym_or_country_name_origin",
+      "action": "overlay.spawn(kind='yellow_initial_acronym_or_etymology_plate', band='upper_safe')",
+      "weight": 0.85,
+      "rationale": "Highlight amber initial letters during acronym expansion or display a bold amber etymology header in the upper safe band."
+    },
+    {
+      "trigger_id": "compact_population_pill_and_flag_cluster",
+      "condition": "speech.cites_settlement_population_or_multi_party_presence",
+      "action": "overlay.spawn(kind='white_vertical_pin_plus_amber_pop_pill_or_circular_flag_tokens')",
+      "weight": 0.88,
+      "rationale": "Anchor compact dark-and-amber population pills above vertical white coordinate pins or connect circular flag and portrait tokens with thin white leader lines."
+    },
+    {
+      "trigger_id": "rapid_broll_sensory_proof_burst",
+      "condition": "speech.emphasizes_extreme_terrain_or_hazard and platform.aspect == '9:16'",
+      "action": "timeline.insert_aerial_broll_burst(clip_count=3_to_4, shot_duration_s_range=[0.85, 2.2], entry='whip_zoom_blur')",
+      "weight": 0.87,
+      "rationale": "Follow a whip-zoom dive with 3-4 concise real aerial landscape clips (0.85-2.2s each) to ground cartographic claims in real terrain."
+    },
+    {
+      "trigger_id": "vertical_elevation_or_longitude_bands",
+      "condition": "speech.explains_altitude_thresholds_or_longitude_zones",
+      "action": "overlay.spawn(kind='calibrated_scale_bars_or_vertical_columns', accent='hydro_or_amber')",
+      "weight": 0.88,
+      "rationale": "Use left-anchored altitude or depth ticks and alternating translucent longitude columns with a single active spotlight strip."
+    },
+    {
+      "trigger_id": "flag_masked_territory_or_coordinate_pin",
+      "condition": "speech.establishes_national_sovereignty_or_border_split",
+      "action": "overlay.apply_flag_mask_or_rectangular_flag_leader(clean_white_leader=True)",
+      "weight": 0.86,
+      "rationale": "Clip national flags cleanly inside exterior territory coastlines or attach rectangular flag markers with thin white leader lines on high-resolution ortho imagery."
     },
     {
       "trigger_id": "clause_pause_cut_anchor",
-      "condition": "audio.silence_gap_s >= 0.25",
+      "condition": "audio.silence_gap_s >= 0.18",
       "action": "timeline.prefer_cut_boundary()",
-      "weight": 0.92,
-      "rationale": "Align visual transitions cleanly inside natural inter-word speech gaps without slicing words."
-    },
-    {
-      "trigger_id": "relief_climax_crossfade",
-      "condition": "timeline.section == 'climax'",
-      "action": "video.reveal_sentinel2_aerial_relief()",
-      "weight": 0.86,
-      "rationale": "Shift from vector cartography into Copernicus Sentinel-2 true-color z11 relief imagery during geological climax."
-    },
-    {
-      "trigger_id": "staggered_dual_territory_compare",
-      "condition": "speech.compares_two_territories and overlay.active_fill_count == 0",
-      "action": "overlay.stagger_fills(order='mention_order', gap_s=0.65, palette=['secondary_accent','cobalt_azure'])",
-      "weight": 0.88,
-      "rationale": "When narration compares two territories, stagger fills by mention order; never light two neon accents on the same frame."
-    },
-    {
-      "trigger_id": "influence_flag_pin",
-      "condition": "speech.mentions_foreign_presence_in_third_country",
-      "action": "overlay.spawn(kind='circular_flag_pin', band='coordinate_anchor')",
-      "weight": 0.84,
-      "rationale": "Mark foreign presence with a single-family circular flag pin at geographic coordinates; exclude thematic raster icons."
-    },
-    {
-      "trigger_id": "heat_pulse_after_fill_hold",
-      "condition": "overlay.fill_hold_s >= 1.2 and speech.contains_tension_or_hazard",
-      "action": "overlay.spawn(kind='amber_pulse_nodes', stagger_ms='nonuniform')",
-      "weight": 0.82,
-      "rationale": "After a territory fill holds long enough to read, fire amber pulse nodes at named hazard points."
-    },
-    {
-      "trigger_id": "map_to_live_broll_handoff",
-      "condition": "timeline.section in {'body','escalation','climax'} and shot.kind == 'cartographic' and next_shot.kind == 'live_aerial_or_broll'",
-      "action": "transition.prefer(kind in {'clean_crossfade','amber_light_leak'})",
-      "weight": 0.87,
-      "rationale": "Hand cartographic context into live landscape or wildlife B-roll with a clean dissolve or amber light-leak; never a violet flash."
+      "weight": 0.91,
+      "rationale": "Align transitions cleanly to natural narration clause boundaries under continuous narration-led pacing."
     },
     {
       "trigger_id": "numbered_fact_card_longform",
       "condition": "platform.aspect == '16:9' and speech.starts_numbered_chapter",
       "action": "overlay.spawn(kind='amber_fact_card', band='lower_third_safe')",
       "weight": 0.8,
-      "rationale": "Long-form chapter beats use amber #F5C542 plates with #03161F ink rather than shouty multi-color chrome."
-    },
-    {
-      "trigger_id": "dual_territory_distance_metric",
-      "condition": "speech.states_distance_between_two_places and overlay.active_fill_count >= 1",
-      "action": "overlay.spawn(kind='distance_metric', band='open_water', tabular=True)",
-      "weight": 0.9,
-      "rationale": "Place a tabular \u00b1KM bracket in open water between two territories after fills are readable; never cover landmass interiors."
-    },
-    {
-      "trigger_id": "maritime_corridor_draw_on",
-      "condition": "speech.mentions_trade_route_or_strategic_strait and overlay.active_corridor_count == 0",
-      "action": "overlay.spawn(kind='amber_stroke_dash_corridor', band='route_path')",
-      "weight": 0.88,
-      "rationale": "Draw one amber maritime corridor as the sole flow signal; forbid red neon bloom and competing spears."
-    },
-    {
-      "trigger_id": "asymmetric_dual_fill_compare",
-      "condition": "speech.contrasts_sovereignty_or_neighbor and overlay.active_fill_count == 0",
-      "action": "overlay.stagger_fills(order='mention_order', modes=['multiply_tint','terrain_preserve'], gap_s=0.65)",
-      "weight": 0.87,
-      "rationale": "Compare two sides with staggered treatments: one terrain-preserving tint and one quieter terrain hold\u2014never simultaneous neon paints."
-    },
-    {
-      "trigger_id": "geometric_vs_natural_border_diagram",
-      "condition": "speech.explains_border_anomaly_or_river_deviation",
-      "action": "overlay.spawn(kind='border_diagram', strokes=['amber_geodesic','hydro_meander'])",
-      "weight": 0.86,
-      "rationale": "Explain meridian-vs-river bites with two stroke families only; keep labels in quiet margins."
-    },
-    {
-      "trigger_id": "map_to_archival_or_live_broll_handoff",
-      "condition": "timeline.section in {'body','escalation','climax'} and shot.kind == 'cartographic' and next_shot.kind in {'archival','live_aerial_or_broll'}",
-      "action": "transition.prefer(kind in {'hard_cut','clean_crossfade','amber_light_leak'})",
-      "weight": 0.85,
-      "rationale": "Hand cartographic context into archival or contemporary B-roll without double-exposure chrome."
-    },
-    {
-      "trigger_id": "continent_to_country_zoom_chain",
-      "condition": "timeline.section in {'hook','setup'} and overlay.active_fill_count == 0",
-      "action": "camera.zoom_chain(steps=['basin_or_continent','country_fill','optional_detail'])",
-      "weight": 0.89,
-      "rationale": "Orient the viewer with a wide recognizable shape before the country fill and any detail push; never open on an unlocated close-up."
-    },
-    {
-      "trigger_id": "hydro_lake_outline_stack",
-      "condition": "speech.names_rift_or_highland_lakes and overlay.active_hydro_count == 0",
-      "action": "overlay.spawn(kind='hydro_lake_outlines', accent='hydro_accent', band='open_water')",
-      "weight": 0.83,
-      "rationale": "Draw one hydro cyan lake group per beat with curved labels only when shoreline clearance allows."
-    },
-    {
-      "trigger_id": "tectonic_triple_junction_vectors",
-      "condition": "speech.mentions_rift_junction_or_plate_divergence and overlay.active_fill_count >= 1",
-      "action": "overlay.spawn(kind='plate_vectors', stagger_after_fill_s=0.65)",
-      "weight": 0.84,
-      "rationale": "After a single territory fill holds, add staggered plate vectors for tectonic divergence zones; never add a second neon wash on the same still."
+      "rationale": "Long-form 16:9 chapter beats use compact amber #F5C542 plates with #03161F ink in the lower-third safe band."
     },
     {
       "trigger_id": "tabular_metric_on_broll",
       "condition": "speech.states_elevation_capacity_or_length and shot.kind == 'live_aerial_or_broll'",
       "action": "overlay.spawn(kind='tabular_metric', band='dynamic_away_from_subject')",
       "weight": 0.86,
-      "rationale": "Place Archivo Black tabular metrics beside live evidence with clearance from the subject silhouette."
+      "rationale": "Place boxless Archivo Black tabular metrics beside live evidence with clearance from the focal silhouette and zero dashboard card chrome."
+    },
+    {
+      "trigger_id": "exploded_2d_strata_cross_section",
+      "condition": "speech.explains_subsurface_aquifer_geology_or_mine_layers",
+      "action": "scene.cut_to(kind='full_bleed_exploded_2d_cross_section', curved_white_arrows=True)",
+      "weight": 0.91,
+      "rationale": "Separate subsurface strata vertically layer-by-layer across a full-bleed dark canvas with curved white hand-drawn leader arrows rather than enclosing a small diagram inside a card."
+    },
+    {
+      "trigger_id": "boxless_vertical_or_elbow_city_pin",
+      "condition": "speech.identifies_city_or_latitude_anchor_on_map",
+      "action": "overlay.spawn(kind='coordinate_pin_callout', style='white_vertical_or_elbow_pin_boxless')",
+      "weight": 0.93,
+      "rationale": "Draw a crisp 2px white vertical or angled elbow leader line from a minimal coordinate dot directly to shadowed bold text with zero HUD box."
+    },
+    {
+      "trigger_id": "boxless_dual_unit_numeric_comparison",
+      "condition": "speech.contrasts_two_physical_measurements",
+      "action": "overlay.spawn(kind='dual_unit_countup_pair', boxless=True, color_coded=True)",
+      "weight": 0.89,
+      "rationale": "Place color-coded primary and secondary unit measurements side by side directly on the dark visual canvas with live tabular count-up and zero dashboard frame."
+    },
+    {
+      "trigger_id": "giant_kinetic_title_sweep_or_portal",
+      "condition": "speech.introduces_competing_geopolitical_terms_or_core_concept",
+      "action": "overlay.spawn(kind='kinetic_portal_title', style='oversized_boxless_sweep_or_zoom_through')",
+      "weight": 0.88,
+      "rationale": "Sweep bold white display titles directly across glowing cobalt, crimson, or emerald rimmed territory highlights or use oversized lettering as a zoom-through scale portal."
+    },
+    {
+      "trigger_id": "tight_highlight_tag_and_etymology_arrow",
+      "condition": "speech.cites_single_line_map_fact_or_place_name_origin",
+      "action": "overlay.spawn(kind='coordinate_pin_callout', pin_style='highlight_tag_or_etymology_arrow')",
+      "weight": 0.9,
+      "rationale": "Use tight 0px-radius amber/charcoal/crimson highlight tags for compact single-line map facts and curved hand-drawn white SVG arrows for place-name etymology links."
+    },
+    {
+      "trigger_id": "organic_hand_drawn_focus_lasso",
+      "condition": "speech.isolates_island_archipelago_or_subregion_on_map",
+      "action": "overlay.spawn(kind='organic_focus_lasso', stroke_tone='amber_or_white')",
+      "weight": 0.89,
+      "rationale": "Draw an organic hand-drawn overlapping SVG Bezier oval via stroke-dashoffset directly around the focal landmass without enclosing it in a rigid rectangular box."
+    },
+    {
+      "trigger_id": "t_bracket_and_radius_ring_span",
+      "condition": "speech.measures_corridor_width_or_acoustic_blast_radius",
+      "action": "overlay.spawn(kind='dual_unit_distance_bracket', line_style='t_bracket_or_radius_ring')",
+      "weight": 0.9,
+      "rationale": "Use crisp T-bracket callipers on technical blueprint or map widths and expanding concentric radius rings for acoustic or geographic reach."
+    },
+    {
+      "trigger_id": "live_physical_gauge_callout",
+      "condition": "speech.describes_temperature_drop_or_extreme_sound_level",
+      "action": "overlay.spawn(kind='physical_gauge_callout', gauge_mode='thermometer_or_decibel')",
+      "weight": 0.87,
+      "rationale": "Pair narration of physical extremes with a boxless animated mercury thermometer or staggered SVG acoustic soundwave decibel counter directly over the map or dark footage."
+    },
+    {
+      "trigger_id": "soft_curtain_or_spyglass_transition",
+      "condition": "transition.kind in {'curtain_sweep', 'spyglass_iris'}",
+      "action": "overlay.spawn(kind='soft_curtain_transition', mode='curtain_sweep_or_spyglass_iris')",
+      "weight": 0.86,
+      "rationale": "Pivot between chapters with a pure alpha-gradient feathered dark curtain sweep (zero CSS blur) or circular optical spyglass iris while keeping captions crisp."
     }
   ],
   "exemplar_bank": [
     {
-      "exemplar_id": "ref_sulawesi_hook_s0",
-      "source_video_id": "ref_sulawesi",
+      "exemplar_id": "ref_global_walk_hook_card_flip",
+      "source_video_id": "ref_global_walk",
       "role": "hook",
       "start_s": 0.0,
-      "end_s": 10.067,
-      "hyperframes_pattern": "globe_dive_crimson_silhouette",
+      "end_s": 10.833,
+      "hyperframes_pattern": "avatar_pin_route_to_blueprint_card_flip",
       "measured_metrics": {
         "shot_index": 0,
-        "duration_s": 10.067,
-        "confidence": 1.0,
-        "cuts_per_min_ref": 4.25,
+        "duration_s": 10.833,
+        "cuts_per_min_ref": 3.5,
+        "sfx_count_ref": 38,
+        "motion_active_ratio": 1.0,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Hook establishing Sulawesi fracture silhouette from orthographic Pacific dive."
+      "notes": "Moving hexagonal photo pin and tilted crimson metric badge over Europe, transitioning to a blueprint tabletop icon flip and 3D horizontal card-flip whip."
     },
     {
-      "exemplar_id": "ref_sulawesi_body_s1",
-      "source_video_id": "ref_sulawesi",
+      "exemplar_id": "ref_darien_gap_broll_burst",
+      "source_video_id": "ref_darien_gap",
       "role": "broll_bridge",
-      "start_s": 10.067,
-      "end_s": 30.8,
-      "hyperframes_pattern": "unified_peninsula_and_bay_glide",
+      "start_s": 19.2,
+      "end_s": 24.7,
+      "hyperframes_pattern": "whip_zoom_into_rapid_aerial_broll_quartet",
+      "measured_metrics": {
+        "shot_index": 3,
+        "duration_s": 5.5,
+        "subshot_durations_s": [2.5, 1.2, 0.9, 0.9],
+        "cuts_per_min_ref": 10.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Radial whip-zoom plunge into four consecutive aerial rainforest, river-swamp, and mountain-ridge clips (0.9-2.5s each) beneath fixed plain centered captions."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_split_wipe",
+      "source_video_id": "ref_spain_borders",
+      "role": "setup",
+      "start_s": 3.8,
+      "end_s": 10.2,
+      "hyperframes_pattern": "vertical_split_wipe_hatched_neighbor_counter",
       "measured_metrics": {
         "shot_index": 1,
-        "duration_s": 20.733,
-        "confidence": 0.234,
-        "cuts_per_min_ref": 4.25,
+        "duration_s": 6.4,
+        "cuts_per_min_ref": 6.2,
+        "sfx_aligned_ref": 27,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Continuous coastal framing highlighting peninsulas and curved open-water bay labels."
+      "notes": "Vertical white split-wipe from satellite relief to dark monochrome vector map featuring diagonal-hatched territory fills and an animated amber neighbor counter."
     },
     {
-      "exemplar_id": "ref_sulawesi_climax_s4",
-      "source_video_id": "ref_sulawesi",
-      "role": "climax",
-      "start_s": 56.767,
-      "end_s": 65.967,
-      "hyperframes_pattern": "sentinel2_aerial_relief_reveal",
-      "measured_metrics": {
-        "shot_index": 4,
-        "duration_s": 9.2,
-        "confidence": 0.386,
-        "cuts_per_min_ref": 4.25,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Sentinel-2 orbital relief transition for tectonic hazard climax."
-    },
-    {
-      "exemplar_id": "ref_sulawesi_outro_s5",
-      "source_video_id": "ref_sulawesi",
-      "role": "outro",
-      "start_s": 65.967,
-      "end_s": 70.6,
-      "hyperframes_pattern": "clean_broadcast_cta_dip",
-      "measured_metrics": {
-        "shot_index": 5,
-        "duration_s": 4.633,
-        "confidence": 0.177,
-        "cuts_per_min_ref": 4.25,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Quiet typographic end-card cue paired with 200ms dip-out."
-    },
-    {
-      "exemplar_id": "ref_tectonics_proof_s0",
-      "source_video_id": "ref_tectonics",
+      "exemplar_id": "ref_us_meridian_continuous_glide",
+      "source_video_id": "ref_us_meridian",
       "role": "proof",
       "start_s": 0.0,
-      "end_s": 33.8,
-      "hyperframes_pattern": "tapered_fault_and_marine_labels",
+      "end_s": 60.0,
+      "hyperframes_pattern": "single_take_meridian_split_and_rain_shadow_clouds",
       "measured_metrics": {
         "shot_index": 0,
-        "duration_s": 33.8,
-        "confidence": 1.0,
-        "cuts_per_min_ref": 0.92,
+        "duration_s": 60.0,
+        "cuts_per_min_ref": 0.0,
+        "motion_active_ratio": 1.0,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Continuous cartographic glide with curved hydrography labels and tapered fault spine."
+      "notes": "Unbroken 60s continuous satellite glide cycling a 20%/80% split human-icon infographic, hydro-cyan meridian divider, amber mountain mask, and drifting rain-shadow clouds."
     },
     {
-      "exemplar_id": "ref_tectonics_callout_s1",
-      "source_video_id": "ref_tectonics",
-      "role": "data_callout",
-      "start_s": 33.8,
-      "end_s": 65.267,
-      "hyperframes_pattern": "split_tectonic_vector_diagram",
+      "exemplar_id": "ref_shelterbelt_soil_cross_section",
+      "source_video_id": "ref_shelterbelt",
+      "role": "proof",
+      "start_s": 31.0,
+      "end_s": 39.7,
+      "hyperframes_pattern": "whip_zoom_to_2d_layered_soil_root_cross_section",
       "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 31.467,
-        "confidence": 0.184,
-        "cuts_per_min_ref": 0.92,
+        "shot_index": 3,
+        "duration_s": 8.7,
+        "cuts_per_min_ref": 6.4,
+        "sfx_count_ref": 27,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Caucasus/Aegean influence pins, dual fills, heat pulses; adapt with staggered single-signal Geoverum palette."
+      "notes": "Flat-vector 2D soil and root cross-section explaining prairie erosion, followed by a vertical dashed storm-height ruler and a tilted vintage parchment map plate."
+    },
+    {
+      "exemplar_id": "ref_chile_length_scale_overlay",
+      "source_video_id": "ref_chile_length",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 16.5,
+      "hyperframes_pattern": "blueprint_dive_and_true_scale_silhouette_overlay",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 16.5,
+        "cuts_per_min_ref": 11.9,
+        "bpm_ref": 90.7,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Blueprint world dive lifting a crimson country silhouette onto Europe with perpendicular stacked dual-unit dimension brackets."
+    },
+    {
+      "exemplar_id": "ref_tibetan_airspace_radar_altitude",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "data_callout",
+      "start_s": 8.6,
+      "end_s": 40.9,
+      "hyperframes_pattern": "dark_radar_capture_to_3d_elevation_ruler",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 32.3,
+        "cuts_per_min_ref": 4.0,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Dark air-traffic radar capture with red avoidance oval transitioning to a 3D mountain altitude ladder (33,000 ft / 14,800 ft / 10,000 ft); strip vendor basemap attribution chrome."
+    },
+    {
+      "exemplar_id": "ref_time_zones_utc_columns",
+      "source_video_id": "ref_time_zones",
+      "role": "climax",
+      "start_s": 50.5,
+      "end_s": 60.0,
+      "hyperframes_pattern": "crimson_multiply_title_to_vertical_utc_stripes",
+      "measured_metrics": {
+        "shot_index": 4,
+        "duration_s": 9.5,
+        "cuts_per_min_ref": 5.0,
+        "bpm_ref": 132.5,
+        "sfx_aligned_ref": 14,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Crimson terrain-preserving country fill with bold multiply title wiping into five translucent vertical cobalt time-zone columns with amber UTC offsets."
+    },
+    {
+      "exemplar_id": "ref_atlantic_tracks_jet_stream",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "proof",
+      "start_s": 18.3,
+      "end_s": 33.2,
+      "hyperframes_pattern": "chevron_jet_stream_and_dual_flight_compare",
+      "measured_metrics": {
+        "shot_index": 4,
+        "duration_s": 14.9,
+        "cuts_per_min_ref": 7.0,
+        "sfx_aligned_ref": 15,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Translucent directional jet-stream chevrons comparing eastbound and westbound dashed flight arcs with duration callouts, exiting via soft dark iris wipe."
+    },
+    {
+      "exemplar_id": "ref_chimborazo_geoid_debunk",
+      "source_video_id": "ref_chimborazo_geoid",
+      "role": "climax",
+      "start_s": 29.1,
+      "end_s": 64.8,
+      "hyperframes_pattern": "red_x_myth_debunk_to_3d_geoid_gravity_globe",
+      "measured_metrics": {
+        "shot_index": 5,
+        "duration_s": 35.7,
+        "cuts_per_min_ref": 7.8,
+        "sfx_count_ref": 27,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Crimson circular X myth debunk transitioning to a rotating 3D geoid globe with polar compression arrows and an exaggerated gravity model with vertical scale bar."
+    },
+    {
+      "exemplar_id": "ref_wallace_line_trench_proof",
+      "source_video_id": "ref_wallace_line",
+      "role": "proof",
+      "start_s": 14.3,
+      "end_s": 52.0,
+      "hyperframes_pattern": "glowing_dashed_divider_cutouts_to_2d_trench",
+      "measured_metrics": {
+        "shot_index": 2,
+        "duration_s": 37.7,
+        "cuts_per_min_ref": 6.0,
+        "sfx_count_ref": 21,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Glowing dashed biogeographic line with white-outlined regional fauna cutouts and stacked strait-distance brackets transitioning to a paleogeographic map and 2D underwater trench diagram."
+    },
+    {
+      "exemplar_id": "ref_uae_emirates_diagonal_split",
+      "source_video_id": "ref_uae_emirates",
+      "role": "hook",
+      "start_s": 3.4,
+      "end_s": 35.3,
+      "hyperframes_pattern": "diagonal_3panel_split_acronym_and_numbered_leaders",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 31.9,
+        "cuts_per_min_ref": 6.6,
+        "sfx_aligned_ref": 19,
+        "motion_active_ratio": 0.993,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Three-panel diagonal white-bordered split screen, amber-initial acronym expansion, dark blueprint area card, numbered vertical leaders, horizontal analogy split, and circular portrait pins."
+    },
+    {
+      "exemplar_id": "ref_gibraltar_strait_depth_split",
+      "source_video_id": "ref_gibraltar_strait",
+      "role": "proof",
+      "start_s": 27.2,
+      "end_s": 46.2,
+      "hyperframes_pattern": "2d_underwater_cross_section_amber_depth_split",
+      "measured_metrics": {
+        "shot_index": 5,
+        "duration_s": 19.0,
+        "cuts_per_min_ref": 6.0,
+        "sfx_count_ref": 14,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Flat-vector underwater engineering cross-section animating deep-water bridge piers, bedrock drilling, and an amber vertical split comparing 945 m vs 75 m crossing depths."
+    },
+    {
+      "exemplar_id": "ref_korea_division_frontline_glide",
+      "source_video_id": "ref_korea_division",
+      "role": "proof",
+      "start_s": 23.2,
+      "end_s": 67.8,
+      "hyperframes_pattern": "continuous_geopolitical_lasso_and_frontline_glide",
+      "measured_metrics": {
+        "shot_index": 2,
+        "duration_s": 44.6,
+        "cuts_per_min_ref": 2.0,
+        "sfx_count_ref": 31,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous 44.6s geopolitical map glide pairing a hand-drawn white focus lasso, circular national flag beacons, and smooth animated territorial front-line transitions."
+    },
+    {
+      "exemplar_id": "ref_oklahoma_panhandle_ink_cutaway",
+      "source_video_id": "ref_oklahoma_panhandle",
+      "role": "setup",
+      "start_s": 38.3,
+      "end_s": 60.0,
+      "hyperframes_pattern": "parchment_decree_to_2d_ink_sketch_and_ortho_square",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 21.7,
+        "cuts_per_min_ref": 2.0,
+        "sfx_aligned_ref": 15,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Tilted archival decree plate transitioning into a monochrome 2D historical ink sketch, aerial agricultural ortho with amber plot square, and animated state-merger polygons."
+    },
+    {
+      "exemplar_id": "ref_north_border_exclaves_pop_pill",
+      "source_video_id": "ref_north_border_exclaves",
+      "role": "data_callout",
+      "start_s": 17.9,
+      "end_s": 60.0,
+      "hyperframes_pattern": "white_pin_amber_population_pill_and_ortho_crimson_line",
+      "measured_metrics": {
+        "shot_index": 2,
+        "duration_s": 42.1,
+        "cuts_per_min_ref": 6.0,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Vertical white coordinate pin topped by a compact dark-and-amber population pill, diagonal maritime border detour, and stark crimson border stroke across ortho town imagery."
+    },
+    {
+      "exemplar_id": "ref_longest_sea_line_card_flip",
+      "source_video_id": "ref_longest_sea_line",
+      "role": "climax",
+      "start_s": 0.0,
+      "end_s": 60.0,
+      "hyperframes_pattern": "flat_map_geodesic_3d_card_flip_to_sphere",
+      "measured_metrics": {
+        "shot_index": 0,
+        "duration_s": 60.0,
+        "cuts_per_min_ref": 1.0,
+        "sfx_aligned_ref": 15,
+        "motion_active_ratio": 0.992,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous flat-map geodesic glide with dual-unit ocean measurements executing a 3D horizontal card-flip onto a spherical globe to reveal a straight great-circle path."
+    },
+    {
+      "exemplar_id": "ref_netherlands_holland_etymology",
+      "source_video_id": "ref_netherlands_holland",
+      "role": "outro",
+      "start_s": 18.0,
+      "end_s": 80.7,
+      "hyperframes_pattern": "archival_plate_elevation_mask_and_etymology_header",
+      "measured_metrics": {
+        "shot_index": 3,
+        "duration_s": 62.7,
+        "cuts_per_min_ref": 5.9,
+        "sfx_aligned_ref": 33,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Tilted archival map plate transitioning to emerald-vs-cyan elevation masking, parchment historical population icons, and an amber etymology closing header."
+    },
+    {
+      "exemplar_id": "ref_centralia_subsurface_fire_cutaway",
+      "source_video_id": "ref_centralia_mine_fire",
+      "role": "proof",
+      "start_s": 18.5,
+      "end_s": 38.9,
+      "hyperframes_pattern": "full_bleed_2d_subsurface_fire_and_sepia_street_grid",
+      "measured_metrics": {
+        "shot_index": 4,
+        "duration_s": 20.4,
+        "cuts_per_min_ref": 13.0,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Full-bleed 2D underground cross-section with boxless '1962' year header, direct '3,700 ac' glowing overlay, 1s field fissure clips, and a sepia street-grid depopulation graphic."
+    },
+    {
+      "exemplar_id": "ref_ny_washington_elbow_pin_acronym",
+      "source_video_id": "ref_ny_washington_names",
+      "role": "proof",
+      "start_s": 21.0,
+      "end_s": 60.0,
+      "hyperframes_pattern": "angled_elbow_leader_pin_and_parchment_acronym_arrows",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 39.0,
+        "cuts_per_min_ref": 1.0,
+        "motion_active_ratio": 0.958,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Continuous satellite cartography pairing angled elbow leader pins, tight single-line stat highlight bars, coast-to-coast city pins, and a sepia graph-grid acronym diagram with curved arrows."
+    },
+    {
+      "exemplar_id": "ref_europe_us_climate_latitude_pins",
+      "source_video_id": "ref_europe_vs_us_climate",
+      "role": "proof",
+      "start_s": 21.3,
+      "end_s": 74.6,
+      "hyperframes_pattern": "luminous_latitude_parallel_boxless_vertical_pins",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 53.3,
+        "cuts_per_min_ref": 1.4,
+        "sfx_aligned_ref": 17,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Glowing horizontal latitude parallel linking crisp boxless vertical white city pins (Madrid, Paris, Toronto) followed by animated warm/cold ocean current arrows and Arctic wind ribbons."
+    },
+    {
+      "exemplar_id": "ref_amazon_exploded_geological_strata",
+      "source_video_id": "ref_amazon_no_bridges",
+      "role": "proof",
+      "start_s": 39.0,
+      "end_s": 52.4,
+      "hyperframes_pattern": "exploded_2d_geological_strata_and_light_choropleth",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 13.4,
+        "cuts_per_min_ref": 4.0,
+        "sfx_aligned_ref": 14,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Full-bleed dark-indigo 2D isometric cross-section separating sedimentary layers vertically to reveal an underground river with curved white arrows, followed by a clean light-neutral population choropleth."
+    },
+    {
+      "exemplar_id": "ref_greenland_iceland_parchment_iris",
+      "source_video_id": "ref_greenland_iceland_names",
+      "role": "setup",
+      "start_s": 17.5,
+      "end_s": 30.4,
+      "hyperframes_pattern": "sepia_compass_map_to_circular_spyglass_iris",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 12.9,
+        "cuts_per_min_ref": 5.0,
+        "sfx_count_ref": 31,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Full-frame vintage sepia compass-grid map transitioning to a crisp circular black-masked iris aperture framing an ocean horizon."
+    },
+    {
+      "exemplar_id": "ref_louisiana_purchase_parchment_empires",
+      "source_video_id": "ref_louisiana_purchase",
+      "role": "climax",
+      "start_s": 62.4,
+      "end_s": 100.9,
+      "hyperframes_pattern": "color_coded_historical_parchment_empires",
+      "measured_metrics": {
+        "shot_index": 9,
+        "duration_s": 38.5,
+        "cuts_per_min_ref": 5.4,
+        "sfx_count_ref": 49,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Cohesive sepia parchment continent map using flat crimson, cobalt, teal, and amber historical empire blocks with crisp dark borders."
+    },
+    {
+      "exemplar_id": "ref_tornado_alley_neutral_heatmap",
+      "source_video_id": "ref_tornado_alley_geography",
+      "role": "proof",
+      "start_s": 3.7,
+      "end_s": 14.4,
+      "hyperframes_pattern": "light_neutral_choropleth_heatmap_and_vortex",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 10.7,
+        "cuts_per_min_ref": 3.0,
+        "motion_active_ratio": 1.0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Minimal light-grey continental vector map hosting a vivid tornado-frequency density heatmap without card chrome, returning to continuous satellite topography."
+    },
+    {
+      "exemplar_id": "ref_recursive_islands_letter_portal",
+      "source_video_id": "ref_recursive_islands_canada",
+      "role": "setup",
+      "start_s": 13.3,
+      "end_s": 25.8,
+      "hyperframes_pattern": "oversized_kinetic_letter_zoom_through_to_vector_map",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 12.5,
+        "cuts_per_min_ref": 7.0,
+        "sfx_count_ref": 20,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Oversized bold white display typography zooming through into a pastel topographic vector map with nested glowing amber and cyan island-lake outlines."
+    },
+    {
+      "exemplar_id": "ref_pistol_shrimp_boxless_dual_metrics",
+      "source_video_id": "ref_pistol_shrimp_cavitation",
+      "role": "data_callout",
+      "start_s": 40.9,
+      "end_s": 48.6,
+      "hyperframes_pattern": "boxless_dual_unit_countup_and_decibel_counter",
+      "measured_metrics": {
+        "shot_index": 4,
+        "duration_s": 7.7,
+        "cuts_per_min_ref": 8.0,
+        "sfx_count_ref": 19,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Dark-canvas scientific comparison placing color-coded dual-unit temperature count-ups and a boxless '210 dB' counter with speaker glyph directly on screen—zero HUD cards or floating accent bars."
+    },
+    {
+      "exemplar_id": "ref_uk_gb_england_kinetic_title_trio",
+      "source_video_id": "ref_uk_great_britain_england",
+      "role": "hook",
+      "start_s": 1.8,
+      "end_s": 5.4,
+      "hyperframes_pattern": "rapid_boxless_kinetic_title_sweeps_over_rimmed_fills",
+      "measured_metrics": {
+        "shot_index": 1,
+        "duration_s": 3.6,
+        "cuts_per_min_ref": 5.0,
+        "sfx_count_ref": 35,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Three rapid 1.2s beats sweeping giant bold white boxless titles over glowing cobalt, crimson, and emerald island outlines with crisp white exterior rims."
     },
     {
       "exemplar_id": "ref_ethiopia_hook_map_s0",
@@ -250,23 +679,7 @@
         "mad_events_section": 6,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Full-frame: Horn collage map (strip 3D inserts) into extreme-landscape B-roll by ~23.6s; remap purple rims to crimson."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_setup_zoom_chain",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "setup",
-      "start_s": 40.8,
-      "end_s": 94.8,
-      "hyperframes_pattern": "continent_to_country_fill_then_rift_detail",
-      "measured_metrics": {
-        "duration_s": 54.0,
-        "confidence": 0.88,
-        "cuts_per_min_ref": 10.13,
-        "peak_mad_event": 6,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "MAD E006 Africa-wide \u2192 solid Ethiopia fill + yellow chip; reject on-map volcano props; keep single crimson fill."
+      "notes": "Long-form 16:9 regional map opening into extreme-landscape B-roll; remap purple rims to crimson."
     },
     {
       "exemplar_id": "ref_ethiopia_body_fact_broll",
@@ -283,23 +696,7 @@
         "mad_events_section": 155,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Full-frame body: numbered amber fact plate \u2192 2\u20138 live B-roll shots \u2192 optional map return; densest MAD section."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_escalation_hydro_metric",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "proof",
-      "start_s": 720.0,
-      "end_s": 1080.0,
-      "hyperframes_pattern": "hydro_corridor_and_tabular_metric_on_broll",
-      "measured_metrics": {
-        "duration_s": 360.0,
-        "confidence": 0.86,
-        "cuts_per_min_ref": 10.13,
-        "mad_events_section": 72,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Nile/GERD/lake-label escalation; stagger dual neighbor fills; tabular megawatt/elevation metrics; reject cargo-ship props."
+      "notes": "Long-form 16:9 numbered amber fact plate followed by 2-8 live B-roll shots and optional cartographic return."
     },
     {
       "exemplar_id": "ref_ethiopia_climax_afar",
@@ -315,88 +712,7 @@
         "mad_events_section": 78,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Evidence-led climax (ash/Danakil/Afar) with intermittent maps; stagger plate vectors after one fill; Sentinel-2 relief analogue."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_outro_afar_settle",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "outro",
-      "start_s": 1450.0,
-      "end_s": 1587.0,
-      "hyperframes_pattern": "staggered_afar_fill_then_country_settle",
-      "measured_metrics": {
-        "duration_s": 137.0,
-        "confidence": 0.84,
-        "cuts_per_min_ref": 10.13,
-        "mad_events_section": 29,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Fissure B-roll + Ethiopia settle; remap purple+blue dual wash to staggered crimson then cobalt."
-    },
-    {
-      "exemplar_id": "ref_batam_hook_sovereignty",
-      "source_video_id": "ref_batam",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 11.2,
-      "hyperframes_pattern": "globe_dive_flag_pin_and_distance_metric",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 11.2,
-        "confidence": 1.0,
-        "cuts_per_min_ref": 1.155,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Globe dive to Batam fill + dual Singapore/Batam compare with \u00b120 KM bracket; remap neon and land labels."
-    },
-    {
-      "exemplar_id": "ref_batam_body_corridor",
-      "source_video_id": "ref_batam",
-      "role": "proof",
-      "start_s": 11.2,
-      "end_s": 51.95,
-      "hyperframes_pattern": "maritime_corridor_and_economy_callouts",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 40.75,
-        "confidence": 0.176,
-        "cuts_per_min_ref": 1.155,
-        "asl_p50_s": 25.975,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Continuous map body with trade corridor; reject isometric economy props and dual light beams."
-    },
-    {
-      "exemplar_id": "ref_png_border_hook_meridian",
-      "source_video_id": "ref_png_border",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 29.062,
-      "hyperframes_pattern": "asymmetric_fill_and_border_bite",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 29.062,
-        "confidence": 1.0,
-        "cuts_per_min_ref": 1.301,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Asymmetric Indonesia/PNG fill with meridian bite; strip vendor basemap chrome."
-    },
-    {
-      "exemplar_id": "ref_png_border_body_archive_diagram",
-      "source_video_id": "ref_png_border",
-      "role": "broll_bridge",
-      "start_s": 29.062,
-      "end_s": 46.113,
-      "hyperframes_pattern": "archival_broll_plus_meridian_river_diagram",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 17.05,
-        "confidence": 0.137,
-        "cuts_per_min_ref": 1.301,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Archival/live handoff with geometric-vs-natural border diagram; reject double-exposure faces."
+      "notes": "Long-form 16:9 evidence-led tectonic climax pairing staggered plate vectors with high-resolution satellite relief."
     }
   ]
 }

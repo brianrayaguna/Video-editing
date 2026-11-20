@@ -3,19 +3,23 @@
     #root {
       position: absolute;
       inset: 0;
-      width: {{WIDTH}}px;
-      height: {{HEIGHT}}px;
       overflow: hidden;
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
-      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-scrim {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 48%, rgba(3, 18, 26, 0.72) 0%, rgba(3, 18, 26, 0.25) 75%, rgba(3, 18, 26, 0) 100%);
+      pointer-events: none;
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
       top: {{SAFE_TOP_PCT}}%;
-      bottom: {{SAFE_BOTTOM_PCT}}%;
+      bottom: {{CAPTION_BOTTOM_PCT}}%;
       left: {{SYM_X_PCT}}%;
       right: {{SYM_X_PCT}}%;
       display: flex;
@@ -28,57 +32,89 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
-      gap: calc(14px * {{SCALE_FACTOR}});
+      gap: calc(18px * {{SCALE_FACTOR}});
+      max-width: 92%;
     }
-    .outro-wordmark {
+    .gv-outro-mask {
+      overflow: hidden;
+    }
+    #{{SCENE_ID}}-prompt {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
-      font-size: calc(36px * {{SCALE_FACTOR}});
-      letter-spacing: 0.08em;
+      font-size: calc(46px * {{SCALE_FACTOR}});
+      line-height: 1.12;
+      letter-spacing: -0.02em;
       color: var(--vedit-ink);
-      line-height: 1;
-      text-shadow: 0 3px 12px rgba(0, 0, 0, 0.78);
+      text-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.9),
+        0 2px 4px rgba(0, 0, 0, 0.98);
     }
-    .outro-rule {
-      width: calc(56px * {{SCALE_FACTOR}});
-      height: 2px;
-      background: var(--vedit-accent);
-    }
-    .outro-prompt {
-      font-size: calc(24px * {{SCALE_FACTOR}});
-      font-weight: 500;
-      color: var(--vedit-ink);
-      opacity: 0.92;
-      line-height: 1.3;
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
-    }
-    .outro-cta {
-      font-size: calc(18px * {{SCALE_FACTOR}});
-      font-weight: 600;
-      letter-spacing: 0.05em;
+    #{{SCENE_ID}}-cta {
+      font-size: calc(29px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
       color: var(--vedit-accent);
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
+    }
+    #{{SCENE_ID}}-brand {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: lowercase;
+      color: var(--vedit-ink);
+      opacity: 0.72;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+    }
+    .gv-empty {
+      display: none;
     }
   </style>
-  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-scrim"></div>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
       <div id="{{SCENE_ID}}-inner">
-        <div class="outro-wordmark">{{VAR_HEADLINE|geoverum}}</div>
-        <div class="outro-rule"></div>
-        <div class="outro-prompt">{{VAR_PROMPT|}}</div>
-        <div class="outro-cta">{{VAR_CTA_TAG|}}</div>
+        <div class="gv-outro-mask">
+          <div id="{{SCENE_ID}}-prompt" data-var-text="prompt">{{VAR_PROMPT|}}</div>
+        </div>
+        <div class="gv-outro-mask">
+          <div id="{{SCENE_ID}}-cta" data-var-text="cta_tag">{{VAR_CTA_TAG|}}</div>
+        </div>
+        <div class="gv-outro-mask">
+          <div id="{{SCENE_ID}}-brand" data-var-text="headline">{{VAR_HEADLINE|geoverum}}</div>
+        </div>
       </div>
     </div>
   </div>
   <script>
-    const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
-      "#{{SCENE_ID}}-inner",
-      { opacity: 0, scale: 0.96, y: 10 },
-      { opacity: 1, scale: 1, y: 0, duration: {{ENTRANCE_S}}, ease: "{{EASE_NAME}}" },
-      0
-    );
-    tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: {{EXIT_S}}, ease: "power2.in" }, {{EXIT_AT_S}});
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+    (function () {
+      const promptEl = document.getElementById("{{SCENE_ID}}-prompt");
+      const ctaEl = document.getElementById("{{SCENE_ID}}-cta");
+      const brandEl = document.getElementById("{{SCENE_ID}}-brand");
+      if (promptEl && !promptEl.textContent.trim()) promptEl.classList.add("gv-empty");
+      if (ctaEl && !ctaEl.textContent.trim()) ctaEl.classList.add("gv-empty");
+      if (brandEl && !brandEl.textContent.trim()) brandEl.classList.add("gv-empty");
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.28), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.5, 0.16), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.3, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: enterS, ease: "power2.out" }, 0);
+      if (promptEl && !promptEl.classList.contains("gv-empty")) {
+        tl.fromTo("#{{SCENE_ID}}-prompt", { yPercent: 108, opacity: 0 }, { yPercent: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0.04);
+      }
+      if (ctaEl && !ctaEl.classList.contains("gv-empty")) {
+        tl.fromTo("#{{SCENE_ID}}-cta", { yPercent: 105, opacity: 0 }, { yPercent: 0, opacity: 1, duration: enterS * 0.9, ease: "expo.out" }, 0.18);
+      }
+      if (brandEl && !brandEl.classList.contains("gv-empty")) {
+        tl.fromTo("#{{SCENE_ID}}-brand", { yPercent: 100, opacity: 0 }, { yPercent: 0, opacity: 0.72, duration: enterS * 0.85, ease: "expo.out" }, 0.28);
+      }
+      tl.to(["#{{SCENE_ID}}-inner", "#{{SCENE_ID}}-scrim"], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>

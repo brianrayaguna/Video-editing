@@ -1,0 +1,121 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .gv-kp-scrim {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse 82% 52% at 50% 46%,
+        rgba(3, 16, 26, 0.72) 0%,
+        rgba(3, 16, 26, 0.28) 58%,
+        rgba(3, 16, 26, 0) 100%
+      );
+    }
+    .gv-kp-stage {
+      position: relative;
+      z-index: 2;
+      max-width: calc(640px * {{SCALE_FACTOR}});
+      padding: 0 calc(16px * {{SCALE_FACTOR}});
+      text-align: center;
+      transform-origin: 50% 50%;
+    }
+    .gv-kp-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(78px * {{SCALE_FACTOR}});
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.92),
+        0 2px 6px rgba(0, 0, 0, 0.98);
+      word-break: break-word;
+    }
+    .gv-kp-title .is-accent {
+      color: var(--vedit-accent);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-scrim" class="gv-kp-scrim"></div>
+      <div id="{{SCENE_ID}}-stage" class="gv-kp-stage">
+        <div id="{{SCENE_ID}}-title" class="gv-kp-title" data-var-text="title">{{VAR_TITLE|SOVEREIGNTY}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const mode = ("{{VAR_MODE|sweep}}").trim().toLowerCase();
+      const isZoom = mode === "zoom_through";
+      const dir = ("{{VAR_DIRECTION|left}}").trim().toLowerCase() === "right" ? -1 : 1;
+      const accentWord = ("{{VAR_ACCENT_WORD|}}").trim().toUpperCase();
+
+      const titleEl = document.getElementById("{{SCENE_ID}}-title");
+
+      if (titleEl && accentWord) {
+        const raw = titleEl.textContent.trim();
+        const words = raw.split(/\s+/);
+        titleEl.textContent = "";
+        words.forEach((word, idx) => {
+          const span = document.createElement("span");
+          const clean = word.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+          if (clean === accentWord) span.className = "is-accent";
+          span.textContent = idx === words.length - 1 ? word : word + " ";
+          titleEl.appendChild(span);
+        });
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.3), dur * 0.32);
+      const exitS = isZoom
+        ? Math.min(Math.max(dur * 0.34, 0.36), 0.65)
+        : Math.min(Math.max(enterS * 0.45, 0.16), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.3, dur - exitS);
+
+      const startX = isZoom ? 0 : 180 * dir;
+      const startScale = isZoom ? 0.84 : 1.04;
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: 0.22, ease: "none" }, 0);
+      tl.fromTo(
+        "#{{SCENE_ID}}-stage",
+        { x: startX, scale: startScale, opacity: 0 },
+        { x: 0, scale: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.02
+      );
+      if (isZoom) {
+        tl.to(
+          "#{{SCENE_ID}}-stage",
+          { scale: 14, opacity: 0, duration: exitS, ease: "power3.in" },
+          exitAt
+        );
+        tl.to("#{{SCENE_ID}}-scrim", { opacity: 0, duration: exitS * 0.85, ease: "power2.in" }, exitAt);
+      } else {
+        tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

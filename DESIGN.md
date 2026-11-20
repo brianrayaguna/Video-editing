@@ -23,9 +23,11 @@ Engine code must stay brand-agnostic and free of historical episode artifacts. B
 
 - Keep most of the frame calm; isolate **one** primary visual signal per beat.
 - Never invent SaaS-style watermark chrome (pill containers, glowing status dots, film-strip viewfinders).
+- Never render generic dashboard HUD chrome over footage or maps: prohibit dark translucent rounded cards with thin cyan/neon borders, thick left/top accent border strips on callout boxes, floating short decorative accent bars above metrics or titles, decorative corner-bracket viewfinder KPI boxes (`┌ ┐ └ ┘`), floating mini quote cards, forced decorative tilt (`-2°` to `-3°`) on text containers, and uppercase presentation-style eyebrow/kicker labels (such as `PART 02`, `TERRITORY SCALE`, `POLITICAL GEOGRAPHY`) stacked above short-form display titles or diagrams.
 - Never render internal schema kind names (`KINETIC CALLOUT`, `DATA CARD`, `LOWER THIRD`) as on-screen badge copy.
 - Caption and card placement must respect platform safe zones and clear detected subject boxes.
-- Prefer surface contrast over decorative borders for readable text.
+- Prefer direct boxless typography with crisp readability shadows, full-bleed vector diagrams, straight `0°` framing by default, or functional pointers/brackets/lassos over decorative containers.
+- Stage local font binaries explicitly for both browser `@font-face` compilation and headless worker fontconfig registration so Chromium and `libass` never silently fall back to system sans fonts.
 
 Brand palettes, typography families, and cartographic label rules belong in the brand profile craft document—not here.
 
@@ -33,12 +35,18 @@ Brand palettes, typography families, and cartographic label rules belong in the 
 
 ## Part III — Motion & Choreography
 
+### Execution boundary (HyperFrames vs. engine fast-paths)
+
+- **MapLibre / offline basemap baking (`tools/geo-assets/`)**: Owns all deterministic 2.5D/3D satellite and terrain camera A-roll. Never fetch live tiles during HyperFrames renders.
+- **FFmpeg native `libass` fast-path (`ass_captions.py`)**: Owns static/hard-cut plain captions, text-only watermarks, and quiet source credits in `hybrid` mode.
+- **HyperFrames (`packages/hf-compiler-ts/` + brand templates)**: Owns high-value animated overlays rendered over sparse active windows (`ProRes 4444` alpha `.mov`)—vector draw-on (`SVG stroke-dashoffset`), full-bleed layered 2D cross-sections, `clip-path` wipes and splits, 3D CSS perspective flips, kinetic typography, tabular count-ups, and native shutter motion blur (`data-motion-blur="on"`).
+
 ### Physicality & easing
 
-- Entrances start from `scale(0.92)`–`scale(0.96)` with opacity, never `scale(0)`.
-- Pointer-led callouts set `transform-origin` at the pointer tip / anchor.
-- Enter with ease-out (`150–240ms`). Camera morphs use ease-in-out (`700–1350ms`). Exits are `40–50%` shorter than entrances and simultaneous within a group.
-- Caption phrase switches are hard cuts (`<= 80ms`), not bouncy slides.
+- Entrances start from `scale(0.92)`–`scale(0.96)` with opacity, or use `clip-path` mask reveals and SVG `stroke-dashoffset` draw-ons—never `scale(0)` and never uniform `power2.out` fade-and-slide-up on every element.
+- Pointer-led callouts set `transform-origin` at the pointer tip / anchor and draw leader lines outward from the coordinate dot.
+- Enter with long-tail ease-out (`expo.out` / `power4.out`, `180–360ms`). Camera morphs use ease-in-out (`700–1350ms`). Exits are `40–50%` shorter than entrances using `power3.in` and simultaneous within a group. Landed titles hold dead still with zero idle drift or breathing loops.
+- Caption phrase switches are 1-frame hard cuts (`<= 33ms` @ `30 fps`), never bouncy slides.
 
 ### Choreography roles (one lead per beat)
 

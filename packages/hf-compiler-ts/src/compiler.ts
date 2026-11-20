@@ -54,6 +54,7 @@ interface StagedFontFace {
   relPath: string;
   format: string;
   weight: string;
+  style: "normal" | "italic";
 }
 
 function readTtfFamilyName(filePath: string): string | null {
@@ -102,16 +103,26 @@ function readTtfFamilyName(filePath: string): string | null {
   }
 }
 
-function inferFontDescriptor(assetPath: string, assetId: string): { family: string; weight: string } {
+function inferFontDescriptor(
+  assetPath: string,
+  assetId: string
+): { family: string; weight: string; style: "normal" | "italic" } {
   const knownMap: Record<string, string> = {
     spacegrotesk: "Space Grotesk",
     archivoblack: "Archivo Black",
     unbounded: "Unbounded",
     spacemono: "Space Mono",
     inter: "Inter",
+    montserrat: "Montserrat",
+    ebgaramond: "EB Garamond",
+    ebgaramonditalic: "EB Garamond",
+    playfairdisplay: "Playfair Display",
   };
   const base = path.basename(assetPath, path.extname(assetPath));
-  const stem = base.replace(/[-_](Variable|Regular|Medium|SemiBold|Bold|Black|Light|Italic)$/i, "");
+  const style: "normal" | "italic" = /italic/i.test(base) || /italic/i.test(assetId) ? "italic" : "normal";
+  const stem = base
+    .replace(/[-_](Italic[-_])?(Variable|Regular|Medium|SemiBold|Bold|Black|Light|Italic)$/i, "")
+    .replace(/[-_]Italic$/i, "");
   const pathCompact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
   const idClean = assetId.replace(/^font[_-]?/i, "");
   const idCompact = idClean.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -124,14 +135,17 @@ function inferFontDescriptor(assetPath: string, assetId: string): { family: stri
     (stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim() || assetId);
 
   let weight = "400";
-  if (/variable/i.test(base) || /space.?grotesk|unbounded/i.test(family)) {
+  if (
+    /variable/i.test(base) ||
+    /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display/i.test(family)
+  ) {
     weight = "100 900";
   } else if (/black/i.test(base) || /archivo.?black/i.test(family)) {
     weight = "400 900";
   } else if (/bold/i.test(base)) {
     weight = "700";
   }
-  return { family, weight };
+  return { family, weight, style };
 }
 
 function resolveFontFormat(relPath: string): string {
@@ -411,7 +425,7 @@ function buildOverlayCompositionHtml(
   const isCaption = ov.kind === "caption_rail";
   const scaleFactor = Math.min(width, height) / 1080;
   const captionFontPx = computeProportionalCaptionFontPx(width, height);
-  const headlineFontPx = Math.round(38 * scaleFactor);
+  const headlineFontPx = Math.round(48 * scaleFactor);
   const subtitleFontPx = Math.round(24 * scaleFactor);
   const badgeFontPx = Math.round(16 * scaleFactor);
 
@@ -422,12 +436,12 @@ function buildOverlayCompositionHtml(
   const captionTransitionMs =
     typeof ov.props.caption_transition_ms === "number" && Number.isFinite(ov.props.caption_transition_ms)
       ? Math.max(0, Math.min(200, Number(ov.props.caption_transition_ms)))
-      : 50;
+      : 33;
   const easingFeel =
     typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "snappy_ease_out";
   const easeName =
     easingFeel === "smooth_editorial"
-      ? "power2.out"
+      ? "expo.out"
       : easingFeel === "energetic_pop"
         ? "back.out(1.4)"
         : easingFeel === "minimal_static"
@@ -438,10 +452,10 @@ function buildOverlayCompositionHtml(
       ? Math.min(captionTransitionMs / 1000, duration * 0.2)
       : entranceMs != null
         ? Math.min(entranceMs / 1000, duration * 0.45)
-        : Math.min(0.22, duration * 0.25)
+        : Math.min(0.26, duration * 0.25)
     ).toFixed(3)
   );
-  const exitDur = Number((isCaption ? Math.min(captionTransitionMs / 1000, 0.05) : 0.13).toFixed(3));
+  const exitDur = Number((isCaption ? Math.min(captionTransitionMs / 1000, 0.033) : Math.max(0.11, enterDur * 0.48)).toFixed(3));
   const exitAt = Number(Math.max(0.05, duration - exitDur).toFixed(3));
   const posCss = hasCustomHtml
     ? "inset: 0;"
@@ -478,17 +492,17 @@ function buildOverlayCompositionHtml(
       { opacity: 1, duration: ${enterDur}, ease: "${easeName}" },
       0
     );
-    tl.to("#${innerId}", { opacity: 0, duration: ${exitDur}, ease: "power2.in" }, ${exitAt});
+    tl.to("#${innerId}", { opacity: 0, duration: ${exitDur}, ease: "power3.in" }, ${exitAt});
     window.__timelines = window.__timelines || {};
     window.__timelines["${sceneId}"] = tl;`
           : `const tl = gsap.timeline({ paused: true });
     tl.fromTo(
       "#${innerId}",
-      { opacity: 0, scale: 0.96, y: 8 },
-      { opacity: 1, scale: 1, y: 0, duration: ${enterDur}, ease: "${easeName}" },
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: ${enterDur}, ease: "${easeName}" },
       0
     );
-    tl.to("#${innerId}", { opacity: 0, duration: ${exitDur}, ease: "power2.in" }, ${exitAt});
+    tl.to("#${innerId}", { opacity: 0, y: -8, duration: ${exitDur}, ease: "power3.in" }, ${exitAt});
     window.__timelines = window.__timelines || {};
     window.__timelines["${sceneId}"] = tl;`;
 
@@ -541,34 +555,35 @@ function buildOverlayCompositionHtml(
       letter-spacing: -0.01em;
     }
     .vedit-card {
-      background: var(--vedit-ground);
+      background: transparent;
       color: var(--vedit-ink);
-      border-left: 4px solid var(--vedit-accent);
-      border-radius: 8px;
-      padding: ${Math.round(16 * scaleFactor)}px ${Math.round(22 * scaleFactor)}px;
+      padding: 0;
       max-width: 100%;
       display: flex;
       flex-direction: column;
+      align-items: center;
+      text-align: center;
       gap: ${Math.round(6 * scaleFactor)}px;
-      transform-origin: left center;
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.92), 0 1px 3px rgba(0, 0, 0, 0.98);
     }
     .vedit-badge {
       color: var(--vedit-accent);
       font-size: ${badgeFontPx}px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
     .vedit-headline {
       font-size: ${headlineFontPx}px;
-      font-weight: 700;
-      line-height: 1.18;
+      font-weight: 800;
+      line-height: 1.08;
       letter-spacing: -0.02em;
     }
     .vedit-subtitle {
       font-size: ${subtitleFontPx}px;
-      font-weight: 500;
-      line-height: 1.35;
-      opacity: 0.88;
+      font-weight: 600;
+      line-height: 1.3;
+      opacity: 0.9;
     }
     ${customCss}
   </style>
@@ -608,21 +623,21 @@ function renderParameterizedTemplate(
   const captionTransitionMs =
     typeof ov.props.caption_transition_ms === "number" && Number.isFinite(ov.props.caption_transition_ms)
       ? Math.max(0, Math.min(200, Number(ov.props.caption_transition_ms)))
-      : 50;
+      : 33;
   const captionTransitionS = Number(Math.min(captionTransitionMs / 1000, duration * 0.2).toFixed(3));
   const entranceMs =
     typeof ov.props.entrance_ms === "number" && Number.isFinite(ov.props.entrance_ms)
       ? Math.max(40, Math.min(2000, Number(ov.props.entrance_ms)))
-      : 200;
+      : 260;
   const enterS = Number(Math.min(entranceMs / 1000, duration * 0.45).toFixed(3));
-  const exitS = Number(Math.min(0.14, duration * 0.25).toFixed(3));
+  const exitS = Number(Math.min(Math.max(0.12, enterS * 0.48), duration * 0.25).toFixed(3));
   const exitAtS = Number(Math.max(0.05, duration - exitS).toFixed(3));
   const captionExitAtS = Number(Math.max(0.02, duration - captionTransitionS).toFixed(3));
   const easingFeel =
     typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "smooth_editorial";
   const easeName =
     easingFeel === "smooth_editorial"
-      ? "power2.out"
+      ? "expo.out"
       : easingFeel === "energetic_pop"
         ? "back.out(1.4)"
         : easingFeel === "minimal_static"
@@ -741,6 +756,7 @@ function stageLocalAssets(plan: EditPlan, outDir: string, copyAssets: boolean): 
         relPath,
         format: resolveFontFormat(relPath),
         weight: desc.weight,
+        style: desc.style,
       });
     }
   }
@@ -757,7 +773,7 @@ function buildLocalFontFaceCss(fonts: readonly StagedFontFace[]): string {
       font-family: '${f.family}';
       src: url('${f.relPath}') format('${f.format}');
       font-weight: ${f.weight};
-      font-style: normal;
+      font-style: ${f.style};
       font-display: block;
     }`
     )

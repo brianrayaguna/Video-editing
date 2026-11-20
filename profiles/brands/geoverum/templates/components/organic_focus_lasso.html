@@ -1,0 +1,131 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-wrap {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-svg {
+      overflow: visible;
+    }
+    #{{SCENE_ID}}-label {
+      position: absolute;
+      top: calc(-56px * {{SCALE_FACTOR}});
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      line-height: 1.06;
+      letter-spacing: -0.015em;
+      color: var(--vedit-accent);
+      text-align: center;
+      white-space: nowrap;
+      text-shadow:
+        0 3px 16px rgba(0, 0, 0, 0.94),
+        0 1px 3px rgba(0, 0, 0, 0.98);
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-wrap">
+        <svg id="{{SCENE_ID}}-svg" viewBox="0 0 560 640" xmlns="http://www.w3.org/2000/svg">
+          <!-- Organic hand-drawn oval lasso with authentic overlapping start/end tails -->
+          <path
+            id="{{SCENE_ID}}-lasso"
+            d="M 332 42 C 472 56, 536 184, 524 342 C 512 496, 412 604, 258 602 C 102 600, 26 488, 34 320 C 42 152, 146 34, 304 38 C 344 40, 378 48, 404 62"
+            fill="none"
+            stroke="{{ACCENT_COLOR}}"
+            stroke-width="11"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            pathLength="100"
+            stroke-dasharray="100 120"
+            stroke-dashoffset="110"
+          />
+        </svg>
+        <div id="{{SCENE_ID}}-label" data-var-text="label">{{VAR_LABEL|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
+      const S = Number({{SCALE_FACTOR}});
+      const cx = (Number({{VAR_CENTER_X_PCT|50}}) / 100) * W;
+      const cy = (Number({{VAR_CENTER_Y_PCT|46}}) / 100) * H;
+      const boxW = Math.max(220, Math.min(820, Number({{VAR_WIDTH_PX|540}}))) * S;
+      const boxH = Math.max(220, Math.min(920, Number({{VAR_HEIGHT_PX|620}}))) * S;
+      const strokeTone = ("{{VAR_STROKE_TONE|amber}}").trim().toLowerCase();
+
+      const wrapEl = document.getElementById("{{SCENE_ID}}-wrap");
+      const svgEl = document.getElementById("{{SCENE_ID}}-svg");
+      const lassoEl = document.getElementById("{{SCENE_ID}}-lasso");
+      const labelEl = document.getElementById("{{SCENE_ID}}-label");
+
+      if (labelEl && !labelEl.textContent.trim()) labelEl.classList.add("gv-empty");
+      if (wrapEl) {
+        wrapEl.style.left = cx.toFixed(1) + "px";
+        wrapEl.style.top = cy.toFixed(1) + "px";
+        wrapEl.style.width = boxW.toFixed(1) + "px";
+        wrapEl.style.height = boxH.toFixed(1) + "px";
+      }
+      if (svgEl) {
+        svgEl.style.width = "100%";
+        svgEl.style.height = "100%";
+      }
+      if (lassoEl && strokeTone === "white") {
+        lassoEl.setAttribute("stroke", "{{FG_COLOR}}");
+        if (labelEl) labelEl.style.color = "{{FG_COLOR}}";
+      } else if (lassoEl && strokeTone === "crimson") {
+        lassoEl.setAttribute("stroke", "#C2412D");
+        if (labelEl) labelEl.style.color = "#F4F1EA";
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.42), dur * 0.36);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.16), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.35, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#{{SCENE_ID}}-wrap", { xPercent: -50, yPercent: -50 });
+      tl.fromTo(
+        "#{{SCENE_ID}}-lasso",
+        { strokeDashoffset: 110, opacity: 1 },
+        { strokeDashoffset: 0, duration: enterS, ease: "expo.out" },
+        0
+      );
+      if (labelEl && !labelEl.classList.contains("gv-empty")) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-label",
+          { y: 14 * S, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.28, ease: "expo.out" },
+          enterS * 0.55
+        );
+      }
+      tl.to("#{{SCENE_ID}}-clip", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

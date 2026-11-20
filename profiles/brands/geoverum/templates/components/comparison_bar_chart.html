@@ -5,194 +5,259 @@
       inset: 0;
       overflow: hidden;
       background: transparent;
-      font-family: '{{BODY_FONT}}', sans-serif;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-muted: #C2D0D8;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
-      color: {{VAR_FG_COLOR|#F4F1EA}};
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-scrim {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 66%;
+      background: linear-gradient(
+        180deg,
+        rgba(3, 18, 26, 0.72) 0%,
+        rgba(3, 18, 26, 0.52) 66%,
+        rgba(3, 18, 26, 0) 100%
+      );
+      pointer-events: none;
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
-      top: 16%;
-      left: 6%;
-      right: 6%;
+      top: calc({{SAFE_TOP_PCT}}% + calc(48px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
       display: flex;
       justify-content: center;
       align-items: flex-start;
+      pointer-events: none;
     }
-    .gv-chart-card {
+    #{{SCENE_ID}}-board {
       width: 100%;
-      max-width: 920px;
-      background: rgba(3, 22, 31, 0.90);
-      border: 1.5px solid rgba(124, 224, 249, 0.34);
-      border-top: 4px solid {{VAR_ACCENT_COLOR|#F5C542}};
-      border-radius: 10px;
-      padding: 28px 32px 30px;
+      max-width: calc(740px * {{SCALE_FACTOR}});
       display: flex;
       flex-direction: column;
-      gap: 20px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.52);
+      gap: calc(20px * {{SCALE_FACTOR}});
     }
-    .gv-chart-head {
+    .gv-head-row {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      border-bottom: 1px solid rgba(244, 241, 234, 0.16);
-      padding-bottom: 14px;
+      align-items: flex-end;
+      gap: calc(16px * {{SCALE_FACTOR}});
     }
-    .gv-chart-kicker {
-      font-size: 16px;
+    .gv-title {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(40px * {{SCALE_FACTOR}});
+      line-height: 1.06;
+      letter-spacing: -0.02em;
+      color: var(--vedit-ink);
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.94);
+    }
+    .gv-unit {
+      font-size: calc(28px * {{SCALE_FACTOR}});
       font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #7CE0F9;
-    }
-    .gv-chart-title {
-      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
-      font-size: 32px;
-      line-height: 1.15;
-      letter-spacing: -0.01em;
-      color: {{VAR_FG_COLOR|#F4F1EA}};
-      margin-top: 4px;
-    }
-    .gv-chart-unit {
-      font-size: 16px;
-      font-weight: 600;
       letter-spacing: 0.08em;
-      color: rgba(244, 241, 234, 0.72);
+      text-transform: uppercase;
+      color: var(--vedit-muted);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
       white-space: nowrap;
+    }
+    #{{SCENE_ID}}-hairline {
+      width: 100%;
+      height: 1.5px;
+      background: rgba(244, 241, 234, 0.34);
+      transform-origin: left center;
     }
     .gv-bars {
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: calc(18px * {{SCALE_FACTOR}});
     }
-    .gv-bar-row {
+    .gv-row {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: calc(7px * {{SCALE_FACTOR}});
     }
-    .gv-bar-meta {
+    .gv-meta {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: 12px;
+      gap: calc(12px * {{SCALE_FACTOR}});
     }
-    .gv-bar-label {
-      font-size: 21px;
+    .gv-name {
+      font-size: calc(29px * {{SCALE_FACTOR}});
       font-weight: 700;
-      letter-spacing: 0.04em;
-      color: {{VAR_FG_COLOR|#F4F1EA}};
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
     }
-    .gv-bar-val {
-      font-family: '{{DISPLAY_FONT}}', '{{BODY_FONT}}', sans-serif;
-      font-size: 26px;
-      letter-spacing: 0.01em;
-      color: #7CE0F9;
+    .gv-val {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(30px * {{SCALE_FACTOR}});
+      letter-spacing: -0.015em;
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
+      white-space: nowrap;
     }
-    .gv-bar-val.lead {
-      color: {{VAR_ACCENT_COLOR|#F5C542}};
+    .gv-val.lead {
+      color: var(--vedit-accent);
     }
-    .gv-bar-track {
-      position: relative;
-      height: 22px;
-      background: rgba(244, 241, 234, 0.10);
-      border-radius: 4px;
+    .gv-track {
+      width: 100%;
+      height: calc(18px * {{SCALE_FACTOR}});
+      background: rgba(244, 241, 234, 0.12);
       overflow: hidden;
     }
-    .gv-bar-fill {
-      position: absolute;
-      inset: 0;
+    .gv-fill {
+      height: 100%;
       transform-origin: left center;
-      border-radius: 4px;
-      background: #7CE0F9;
     }
-    .gv-bar-fill.lead {
-      background: {{VAR_ACCENT_COLOR|#F5C542}};
+    .gv-fill.lead {
+      background: var(--vedit-accent);
     }
-    .gv-chart-foot {
-      font-size: 14px;
+    .gv-fill.secondary {
+      background: rgba(244, 241, 234, 0.88);
+    }
+    .gv-fill.tertiary {
+      background: rgba(194, 208, 216, 0.62);
+    }
+    .gv-foot {
+      font-size: calc(16px * {{SCALE_FACTOR}});
       font-weight: 500;
-      letter-spacing: 0.04em;
-      color: rgba(244, 241, 234, 0.64);
+      color: var(--vedit-muted);
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.92);
+    }
+    .gv-empty {
+      display: none;
     }
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-scrim"></div>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
-      <div id="{{SCENE_ID}}-card" class="gv-chart-card">
-        <div class="gv-chart-head">
-          <div>
-            <div class="gv-chart-kicker">{{VAR_KICKER|PERBANDINGAN DATA}}</div>
-            <div class="gv-chart-title">{{VAR_TITLE|TIGA SUNGAI TERPANJANG}}</div>
-          </div>
-          <div class="gv-chart-unit">{{VAR_UNIT|KM}}</div>
+      <div id="{{SCENE_ID}}-board">
+        <div id="{{SCENE_ID}}-head" class="gv-head-row">
+          <div id="{{SCENE_ID}}-title" class="gv-title" data-var-text="title">{{VAR_TITLE|DATA COMPARISON}}</div>
+          <div id="{{SCENE_ID}}-unit" class="gv-unit" data-var-text="unit">{{VAR_UNIT|KM}}</div>
         </div>
+        <div id="{{SCENE_ID}}-hairline"></div>
         <div class="gv-bars">
-          <div id="{{SCENE_ID}}-r1" class="gv-bar-row">
-            <div class="gv-bar-meta">
-              <span class="gv-bar-label">{{VAR_BAR1_LABEL|Kapuas}}</span>
-              <span id="{{SCENE_ID}}-v1" class="gv-bar-val lead">{{VAR_BAR1_TEXT|1.143 km}}</span>
+          <div class="gv-row" id="{{SCENE_ID}}-r1">
+            <div class="gv-meta">
+              <span class="gv-name" data-var-text="bar1_label">{{VAR_BAR1_LABEL|Item 1}}</span>
+              <span class="gv-val lead" id="{{SCENE_ID}}-v1" data-var-text="bar1_text">{{VAR_BAR1_TEXT|100}}</span>
             </div>
-            <div class="gv-bar-track">
-              <div id="{{SCENE_ID}}-f1" class="gv-bar-fill lead"></div>
-            </div>
+            <div class="gv-track"><div class="gv-fill lead" id="{{SCENE_ID}}-f1"></div></div>
           </div>
-          <div id="{{SCENE_ID}}-r2" class="gv-bar-row">
-            <div class="gv-bar-meta">
-              <span class="gv-bar-label">{{VAR_BAR2_LABEL|Barito}}</span>
-              <span id="{{SCENE_ID}}-v2" class="gv-bar-val">{{VAR_BAR2_TEXT|1.090 km}}</span>
+          <div class="gv-row" id="{{SCENE_ID}}-r2">
+            <div class="gv-meta">
+              <span class="gv-name" data-var-text="bar2_label">{{VAR_BAR2_LABEL|Item 2}}</span>
+              <span class="gv-val" id="{{SCENE_ID}}-v2" data-var-text="bar2_text">{{VAR_BAR2_TEXT|85}}</span>
             </div>
-            <div class="gv-bar-track">
-              <div id="{{SCENE_ID}}-f2" class="gv-bar-fill"></div>
-            </div>
+            <div class="gv-track"><div class="gv-fill secondary" id="{{SCENE_ID}}-f2"></div></div>
           </div>
-          <div id="{{SCENE_ID}}-r3" class="gv-bar-row">
-            <div class="gv-bar-meta">
-              <span class="gv-bar-label">{{VAR_BAR3_LABEL|Mahakam}}</span>
-              <span id="{{SCENE_ID}}-v3" class="gv-bar-val">{{VAR_BAR3_TEXT|980 km}}</span>
+          <div class="gv-row" id="{{SCENE_ID}}-r3">
+            <div class="gv-meta">
+              <span class="gv-name" data-var-text="bar3_label">{{VAR_BAR3_LABEL|Item 3}}</span>
+              <span class="gv-val" id="{{SCENE_ID}}-v3" data-var-text="bar3_text">{{VAR_BAR3_TEXT|70}}</span>
             </div>
-            <div class="gv-bar-track">
-              <div id="{{SCENE_ID}}-f3" class="gv-bar-fill"></div>
-            </div>
+            <div class="gv-track"><div class="gv-fill tertiary" id="{{SCENE_ID}}-f3"></div></div>
           </div>
         </div>
-        <div class="gv-chart-foot">{{VAR_SOURCE|Sumber: BPS & Kementerian PUPR}}</div>
+        <div id="{{SCENE_ID}}-foot" class="gv-foot" data-layout-ignore="true" data-var-text="source">{{VAR_SOURCE|}}</div>
       </div>
     </div>
   </div>
   <script>
-    const dur = {{DURATION_S}};
-    const v1Max = Number("{{VAR_BAR1_VALUE|1143}}") || 1143;
-    const v2Max = Number("{{VAR_BAR2_VALUE|1090}}") || 1090;
-    const v3Max = Number("{{VAR_BAR3_VALUE|980}}") || 980;
-    const refMax = Math.max(v1Max, v2Max, v3Max, 1);
-    const unitSuffix = " {{VAR_UNIT_LOWER|km}}";
-    const fmtNum = (n) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    (function () {
+      const footEl = document.getElementById("{{SCENE_ID}}-foot");
+      if (footEl && !footEl.textContent.trim()) footEl.classList.add("gv-empty");
 
-    const el1 = document.getElementById("{{SCENE_ID}}-v1");
-    const el2 = document.getElementById("{{SCENE_ID}}-v2");
-    const el3 = document.getElementById("{{SCENE_ID}}-v3");
-    const c1 = { val: 0 }, c2 = { val: 0 }, c3 = { val: 0 };
+      const vals = [
+        Number({{VAR_BAR1_VALUE|100}}),
+        Number({{VAR_BAR2_VALUE|85}}),
+        Number({{VAR_BAR3_VALUE|70}}),
+      ];
+      const maxVal = Math.max(1, vals[0], vals[1], vals[2]);
+      const unitSuffix = "{{VAR_UNIT_LOWER|km}}";
+      const fmtInt = (n) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-    const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
-      "#{{SCENE_ID}}-card",
-      { opacity: 0, y: 26, scale: 0.97 },
-      { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: "expo.out" },
-      0
-    );
-    tl.fromTo("#{{SCENE_ID}}-f1", { scaleX: 0.01 }, { scaleX: v1Max / refMax, duration: 1.25, ease: "expo.out" }, 0.25);
-    tl.to(c1, { val: v1Max, duration: 1.25, ease: "expo.out", onUpdate: () => { el1.textContent = fmtNum(c1.val) + unitSuffix; } }, 0.25);
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.24), dur * 0.25);
+      const exitS = Math.min(Math.max(enterS * 0.5, 0.14), dur * 0.18);
+      const exitAt = Math.max(enterS + 0.4, dur - exitS);
 
-    tl.fromTo("#{{SCENE_ID}}-f2", { scaleX: 0.01 }, { scaleX: v2Max / refMax, duration: 1.25, ease: "expo.out" }, 0.45);
-    tl.to(c2, { val: v2Max, duration: 1.25, ease: "expo.out", onUpdate: () => { el2.textContent = fmtNum(c2.val) + unitSuffix; } }, 0.45);
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: enterS, ease: "power2.out" }, 0);
+      tl.fromTo(
+        "#{{SCENE_ID}}-head",
+        { clipPath: "inset(0 0 100% 0)", y: 14, opacity: 0 },
+        { clipPath: "inset(0 0 0% 0)", y: 0, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.02
+      );
+      tl.fromTo(
+        "#{{SCENE_ID}}-hairline",
+        { scaleX: 0, opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: enterS * 1.15, ease: "expo.out" },
+        enterS * 0.35
+      );
 
-    tl.fromTo("#{{SCENE_ID}}-f3", { scaleX: 0.01 }, { scaleX: v3Max / refMax, duration: 1.25, ease: "expo.out" }, 0.65);
-    tl.to(c3, { val: v3Max, duration: 1.25, ease: "expo.out", onUpdate: () => { el3.textContent = fmtNum(c3.val) + unitSuffix; } }, 0.65);
+      [1, 2, 3].forEach((idx, i) => {
+        const pct = Math.max(0.06, Math.min(1, vals[i] / maxVal));
+        const fillEl = document.getElementById("{{SCENE_ID}}-f" + idx);
+        const valEl = document.getElementById("{{SCENE_ID}}-v" + idx);
+        if (fillEl) fillEl.style.width = (pct * 100).toFixed(2) + "%";
 
-    const exitAt = Math.max(0.5, dur - 0.30);
-    tl.to("#{{SCENE_ID}}-card", { opacity: 0, y: -16, duration: 0.28, ease: "power3.in" }, exitAt);
+        const rowStart = enterS * 0.45 + i * 0.14;
+        tl.fromTo(
+          "#{{SCENE_ID}}-r" + idx,
+          { opacity: 0, x: -16 * Number({{SCALE_FACTOR}}) },
+          { opacity: 1, x: 0, duration: 0.28, ease: "expo.out" },
+          rowStart
+        );
+        tl.fromTo(
+          "#{{SCENE_ID}}-f" + idx,
+          { scaleX: 0 },
+          { scaleX: 1, duration: 0.72, ease: "expo.out" },
+          rowStart + 0.06
+        );
 
-    window.__timelines = window.__timelines || {};
-    window.__timelines["{{SCENE_ID}}"] = tl;
+        const counter = { v: 0 };
+        const target = vals[i];
+        tl.fromTo(
+          counter,
+          { v: 0 },
+          {
+            v: target,
+            duration: 0.72,
+            ease: "expo.out",
+            onUpdate: () => {
+              if (valEl) valEl.textContent = fmtInt(counter.v) + (unitSuffix ? " " + unitSuffix : "");
+            },
+          },
+          rowStart + 0.06
+        );
+      });
+
+      if (footEl && !footEl.classList.contains("gv-empty")) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-foot",
+          { opacity: 0 },
+          { opacity: 0.85, duration: 0.24, ease: "power2.out" },
+          enterS + 0.45
+        );
+      }
+
+      tl.to(
+        ["#{{SCENE_ID}}-board", "#{{SCENE_ID}}-scrim"],
+        { opacity: 0, y: -12 * Number({{SCALE_FACTOR}}), duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
   </script>
 </template>
