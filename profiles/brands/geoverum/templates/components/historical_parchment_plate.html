@@ -136,6 +136,56 @@
       color: #2A1E12;
       text-align: center;
     }
+    /* Variant 4: timeline_bar (horizontal golden historical era bar in upper safe band + compass rose) */
+    #{{SCENE_ID}}-timeline {
+      position: absolute;
+      top: calc({{SAFE_TOP_PCT}}% + calc(36px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    .gv-tl-years {
+      font-family: '{{BODY_FONT}}', 'Space Grotesk', sans-serif;
+      font-size: calc(34px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #F4E6C3;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+    }
+    .gv-tl-track {
+      position: relative;
+      width: 100%;
+      max-width: calc(680px * {{SCALE_FACTOR}});
+      height: calc(5px * {{SCALE_FACTOR}});
+      background: rgba(244, 230, 195, 0.34);
+    }
+    #{{SCENE_ID}}-tl-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #D9B76E 0%, #F5C542 100%);
+      transform-origin: left center;
+      box-shadow: 0 0 12px rgba(245, 197, 66, 0.65);
+    }
+    .gv-tl-title {
+      font-family: 'Playfair Display', 'EB Garamond', Georgia, serif;
+      font-size: calc(30px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: #F4F1EA;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.88);
+    }
+    #{{SCENE_ID}}-compass {
+      position: absolute;
+      left: calc(14% * 1);
+      bottom: calc({{CAPTION_BOTTOM_PCT}}% + calc(70px * {{SCALE_FACTOR}}));
+      width: calc(150px * {{SCALE_FACTOR}});
+      height: calc(150px * {{SCALE_FACTOR}});
+      opacity: 0.58;
+      pointer-events: none;
+    }
     .gv-empty {
       display: none !important;
     }
@@ -164,6 +214,25 @@
         <div id="{{SCENE_ID}}-sheet-cap" data-var-text="title">{{VAR_YEAR|1803}} · {{VAR_TITLE|HISTORICAL ARCHIVE}}</div>
       </div>
     </div>
+
+    <!-- Variant 4: timeline_bar (positioned in upper safe band + vintage open-water compass rose) -->
+    <div id="{{SCENE_ID}}-timeline">
+      <div id="{{SCENE_ID}}-tl-years" class="gv-tl-years" data-var-text="year">{{VAR_YEAR|756 – 1870}}</div>
+      <div class="gv-tl-track"><div id="{{SCENE_ID}}-tl-fill"></div></div>
+      <div id="{{SCENE_ID}}-tl-title" class="gv-tl-title" data-var-text="title">{{VAR_TITLE|}}</div>
+    </div>
+    <svg id="{{SCENE_ID}}-compass" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="60" cy="60" r="46" fill="none" stroke="#8C6239" stroke-width="2.5" />
+      <circle cx="60" cy="60" r="36" fill="none" stroke="#8C6239" stroke-width="1.2" />
+      <polygon points="60,12 68,52 60,60 52,52" fill="#8C6239" />
+      <polygon points="60,108 68,68 60,60 52,68" fill="#C2A378" stroke="#8C6239" stroke-width="1.2" />
+      <polygon points="108,60 68,68 60,60 68,52" fill="#8C6239" />
+      <polygon points="12,60 52,68 60,60 52,52" fill="#C2A378" stroke="#8C6239" stroke-width="1.2" />
+      <text x="60" y="9" text-anchor="middle" font-size="11" font-weight="700" fill="#6E4A27">N</text>
+      <text x="60" y="119" text-anchor="middle" font-size="11" font-weight="700" fill="#6E4A27">S</text>
+      <text x="115" y="64" text-anchor="middle" font-size="11" font-weight="700" fill="#6E4A27">E</text>
+      <text x="5" y="64" text-anchor="middle" font-size="11" font-weight="700" fill="#6E4A27">W</text>
+    </svg>
   </div>
   <script>
     (function () {
@@ -177,32 +246,50 @@
       const parchEl = document.getElementById("{{SCENE_ID}}-parch");
       const sheetEl = document.getElementById("{{SCENE_ID}}-sheet");
       const sheetImgEl = document.getElementById("{{SCENE_ID}}-sheet-img");
+      const tlEl = document.getElementById("{{SCENE_ID}}-timeline");
+      const tlTitleEl = document.getElementById("{{SCENE_ID}}-tl-title");
+      const compassEl = document.getElementById("{{SCENE_ID}}-compass");
       if (sheetImgEl && imgSrc) sheetImgEl.setAttribute("src", imgSrc);
 
       ["{{SCENE_ID}}-e-year", "{{SCENE_ID}}-p-year", "{{SCENE_ID}}-e-ex", "{{SCENE_ID}}-p-ex"].forEach((id) => {
         const el = document.getElementById(id);
         if (el && !el.textContent.trim()) el.classList.add("gv-empty");
       });
+      if (tlTitleEl && !tlTitleEl.textContent.trim()) tlTitleEl.classList.add("gv-empty");
 
       let activeSel = "#{{SCENE_ID}}-era";
       let bgSel = "#{{SCENE_ID}}-wash";
+      const isTimeline = variant === "timeline_bar";
 
-      if (variant === "parchment_canvas") {
+      if (isTimeline) {
+        if (bgEl) bgEl.classList.add("gv-empty");
+        if (washEl) washEl.classList.add("gv-empty");
+        if (eraEl) eraEl.classList.add("gv-empty");
+        if (parchEl) parchEl.classList.add("gv-empty");
+        if (sheetEl) sheetEl.classList.add("gv-empty");
+        activeSel = "#{{SCENE_ID}}-timeline";
+      } else if (variant === "parchment_canvas") {
         if (washEl) washEl.classList.add("gv-empty");
         if (eraEl) eraEl.classList.add("gv-empty");
         if (sheetEl) sheetEl.classList.add("gv-empty");
+        if (tlEl) tlEl.classList.add("gv-empty");
+        if (compassEl) compassEl.classList.add("gv-empty");
         activeSel = "#{{SCENE_ID}}-parch";
         bgSel = "#{{SCENE_ID}}-canvas-bg";
       } else if (variant === "archival_sheet" && imgSrc) {
         if (bgEl) bgEl.classList.add("gv-empty");
         if (eraEl) eraEl.classList.add("gv-empty");
         if (parchEl) parchEl.classList.add("gv-empty");
+        if (tlEl) tlEl.classList.add("gv-empty");
+        if (compassEl) compassEl.classList.add("gv-empty");
         activeSel = "#{{SCENE_ID}}-sheet";
         bgSel = "#{{SCENE_ID}}-wash";
       } else {
         if (bgEl) bgEl.classList.add("gv-empty");
         if (parchEl) parchEl.classList.add("gv-empty");
         if (sheetEl) sheetEl.classList.add("gv-empty");
+        if (tlEl) tlEl.classList.add("gv-empty");
+        if (compassEl) compassEl.classList.add("gv-empty");
       }
 
       const dur = Number({{DURATION_S}});
@@ -211,14 +298,21 @@
       const exitAt = Math.max(enterS + 0.35, dur - exitS);
 
       const tl = gsap.timeline({ paused: true });
-      tl.fromTo(bgSel, { opacity: 0 }, { opacity: 1, duration: enterS * 0.8, ease: "power2.out" }, 0);
-      tl.fromTo(
-        activeSel,
-        { y: 26 * Number({{SCALE_FACTOR}}), rotation: tiltDeg, opacity: 0 },
-        { y: 0, rotation: tiltDeg, opacity: 1, duration: enterS, ease: "expo.out" },
-        0.04
-      );
-      tl.to([activeSel, bgSel], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+      if (isTimeline) {
+        tl.fromTo(activeSel, { y: -12 * Number({{SCALE_FACTOR}}), opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+        tl.fromTo("#{{SCENE_ID}}-tl-fill", { scaleX: 0 }, { scaleX: 1, duration: Math.max(0.6, exitAt - 0.15), ease: "none" }, 0.08);
+        tl.fromTo("#{{SCENE_ID}}-compass", { opacity: 0, rotation: -12 }, { opacity: 0.58, rotation: 0, duration: enterS * 1.2, ease: "expo.out" }, 0.08);
+        tl.to([activeSel, "#{{SCENE_ID}}-compass"], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+      } else {
+        tl.fromTo(bgSel, { opacity: 0 }, { opacity: 1, duration: enterS * 0.8, ease: "power2.out" }, 0);
+        tl.fromTo(
+          activeSel,
+          { y: 26 * Number({{SCALE_FACTOR}}), rotation: tiltDeg, opacity: 0 },
+          { y: 0, rotation: tiltDeg, opacity: 1, duration: enterS, ease: "expo.out" },
+          0.04
+        );
+        tl.to([activeSel, bgSel], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+      }
 
       window.__timelines = window.__timelines || {};
       window.__timelines["{{SCENE_ID}}"] = tl;

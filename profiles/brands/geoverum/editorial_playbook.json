@@ -205,6 +205,48 @@
       "action": "overlay.spawn(kind='soft_curtain_transition', mode='curtain_sweep_or_spyglass_iris')",
       "weight": 0.86,
       "rationale": "Pivot between chapters with a pure alpha-gradient feathered dark curtain sweep (zero CSS blur) or circular optical spyglass iris while keeping captions crisp."
+    },
+    {
+      "trigger_id": "quad_panel_disambiguation_hook",
+      "condition": "timeline.section == 'hook' and speech.disambiguates_three_or_four_nested_entities and platform.aspect == '9:16'",
+      "action": "layout.spawn(kind='multi_panel_split', split_mode='quad_2x2', border='white_4_6px')",
+      "weight": 0.91,
+      "rationale": "Open with a crisp 2x2 white-seamed satellite map grid showing four color-coded 45-degree diagonal-hatched territory blocks simultaneously, then expand the active pane full-screen on narration dive-in."
+    },
+    {
+      "trigger_id": "dark_obsidian_vector_network_or_districts",
+      "condition": "speech.explains_highway_numbering_corridors_or_urban_district_blocks",
+      "action": "basemap.shift_to_dark_obsidian_vector(bg='#0B0E11', land='#16191D', road_grid='#262B32') and overlay.draw_glowing_routes_or_hatched_districts()",
+      "weight": 0.92,
+      "rationale": "Switch from satellite relief to a near-black vector road basemap so luminous dual-color route networks or 45-degree diagonal-hatched urban districts with tight solid color-matched labels pop cleanly."
+    },
+    {
+      "trigger_id": "three_layer_luminous_border_or_enclave_glow",
+      "condition": "speech.highlights_border_line_archipelago_chain_or_urban_enclave",
+      "action": "map.stroke_three_layer_glow(outer_px=14, mid_px=7, core_px=3, palette=['amber','crimson','hydro'])",
+      "weight": 0.93,
+      "rationale": "Render international borders, island chains, and highlighted enclaves with a three-layer luminous bloom, mid-glow, and hot white-tinted core over graded terrain."
+    },
+    {
+      "trigger_id": "historical_parchment_timeline_and_compass",
+      "condition": "speech.traces_multi_century_border_or_sovereignty_evolution",
+      "action": "basemap.shift_to_parchment_relief(compass_rose=True) and overlay.spawn(kind='historical_parchment_plate', variant='timeline_bar')",
+      "weight": 0.9,
+      "rationale": "Pair warm sepia relief cartography and an open-water vintage compass rose with a thin horizontal golden year timeline bar in the upper safe band to anchor multi-century territorial transitions."
+    },
+    {
+      "trigger_id": "blueprint_lifted_cutout_or_scale_ruler",
+      "condition": "speech.compares_physical_size_continent_outline_or_architectural_footprint",
+      "action": "basemap.shift_to_blueprint_grid(hex='#14427A', mode='lifted_cutout_or_framed_card_or_scale_ruler')",
+      "weight": 0.91,
+      "rationale": "Use the deep blueprint drafting grid for lifted relief cutouts over faint world outlines, white-bordered framed world map cards, glowing side-by-side footprint wireframes, or horizontal calibrated scale rulers."
+    },
+    {
+      "trigger_id": "axis_aligned_in_world_map_measurements",
+      "condition": "speech.states_dimensions_of_angled_crater_chain_or_border_segment",
+      "action": "overlay.spawn(kind='dual_unit_distance_bracket', angle='aligned_to_feature_axis', keep_captions_horizontal=True)",
+      "weight": 0.9,
+      "rationale": "Rotate dual-unit double-headed measurement arrows and short map annotations directly parallel to the geographic feature axis while keeping y=70% screen captions strictly horizontal."
     }
   ],
   "exemplar_bank": [
@@ -713,6 +755,136 @@
         "easing_feel": "smooth_editorial"
       },
       "notes": "Long-form 16:9 evidence-led tectonic climax pairing staggered plate vectors with high-resolution satellite relief."
+    },
+    {
+      "exemplar_id": "ref_penguin_equator_boundary",
+      "source_video_id": "ref_penguin_equator",
+      "role": "proof",
+      "start_s": 12.0,
+      "end_s": 43.0,
+      "hyperframes_pattern": "framed_blueprint_card_to_dive_cutaway_and_scale_ruler",
+      "measured_metrics": {
+        "duration_s": 31.0,
+        "cuts_per_min_ref": 9.9,
+        "sfx_count_ref": 30,
+        "voice_density_ref": 0.72,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "White-bordered framed world map card with glowing red habitat perimeter over #14427A blueprint grid, diving into a vertical underwater depth cutaway (130 m to 561 m) and a horizontal calibrated blueprint height ruler (0 m / 1 m / 2 m)."
+    },
+    {
+      "exemplar_id": "ref_us_canada_border_slash",
+      "source_video_id": "ref_us_canada_slash",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 26.0,
+      "hyperframes_pattern": "three_layer_amber_border_glow_and_aerial_broll_measure",
+      "measured_metrics": {
+        "duration_s": 26.0,
+        "cuts_per_min_ref": 17.0,
+        "sfx_count_ref": 16,
+        "voice_density_ref": 0.7,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Immediate map-first hook tracing a three-layer glowing amber continental border seam (5,525 mi) alternating with brisk aerial forest-corridor B-roll and a direct white double-headed 20 ft width bracket."
+    },
+    {
+      "exemplar_id": "ref_us_interstate_numbering",
+      "source_video_id": "ref_us_interstate_grid",
+      "role": "proof",
+      "start_s": 8.0,
+      "end_s": 58.0,
+      "hyperframes_pattern": "dark_obsidian_vector_corridors_to_parchment_branch_grid",
+      "measured_metrics": {
+        "duration_s": 50.0,
+        "cuts_per_min_ref": 4.0,
+        "bpm_ref": 95.7,
+        "sfx_count_ref": 27,
+        "voice_density_ref": 0.67,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Near-black obsidian vector map isolating luminous coral-crimson east-west and electric-blue north-south highway corridors with numbered shields, pivoting to a warm parchment drafting grid explaining three-digit loop vs spur branches."
+    },
+    {
+      "exemplar_id": "ref_hawaii_hotspot_chain",
+      "source_video_id": "ref_hawaii_archipelago",
+      "role": "proof",
+      "start_s": 18.0,
+      "end_s": 40.0,
+      "hyperframes_pattern": "glowing_archipelago_t_bracket_to_2d_volcanic_plume",
+      "measured_metrics": {
+        "duration_s": 22.0,
+        "cuts_per_min_ref": 14.0,
+        "bpm_ref": 95.7,
+        "sfx_count_ref": 23,
+        "voice_density_ref": 0.7,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Glowing amber 137-island chain paired with an angled 1,600 mi T-bracket cutting into a full-bleed 2D tectonic hotspot magma-plume cross-section featuring white plume outlines and a subtle bottom-left NOT TO SCALE disclaimer."
+    },
+    {
+      "exemplar_id": "ref_nyc_boroughs_quad_split",
+      "source_video_id": "ref_nyc_boroughs",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 48.0,
+      "hyperframes_pattern": "quad_2x2_hatched_split_to_dark_obsidian_districts",
+      "measured_metrics": {
+        "duration_s": 48.0,
+        "cuts_per_min_ref": 2.4,
+        "sfx_count_ref": 34,
+        "voice_density_ref": 0.61,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Opens on a 2x2 white-seamed quad split of four 45-degree diagonal-hatched satellite map blocks, glides through stacked population counts (19.9M / 8.5M 42.8%), and pivots to a dark obsidian vector road map with color-matched district tags."
+    },
+    {
+      "exemplar_id": "ref_europe_regions_blueprint",
+      "source_video_id": "ref_europe_subregions",
+      "role": "setup",
+      "start_s": 26.0,
+      "end_s": 68.0,
+      "hyperframes_pattern": "blueprint_lifted_continent_cutout_to_multi_bloc_fills",
+      "measured_metrics": {
+        "duration_s": 42.0,
+        "cuts_per_min_ref": 8.2,
+        "sfx_count_ref": 48,
+        "voice_density_ref": 0.62,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Lifted satellite continent cutout floating with drop shadow over faint world coastline outlines on a #14427A blueprint grid, pivoting into solid multi-bloc geopolitical fills using luminance spotlighting and crisp white internal borders."
+    },
+    {
+      "exemplar_id": "ref_vatican_parchment_timeline",
+      "source_video_id": "ref_vatican_sovereignty",
+      "role": "setup",
+      "start_s": 2.0,
+      "end_s": 56.0,
+      "hyperframes_pattern": "glowing_enclave_blueprint_compare_to_parchment_timeline",
+      "measured_metrics": {
+        "duration_s": 54.0,
+        "cuts_per_min_ref": 4.0,
+        "sfx_count_ref": 18,
+        "voice_density_ref": 0.49,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Luminous cobalt urban enclave outline and side-by-side glowing blueprint footprint comparison (0.17 mi2 vs 0.18 mi2), transitioning to warm sepia parchment relief with compass rose, golden top year timeline bar (756-1870), and full treaty sheet."
+    },
+    {
+      "exemplar_id": "ref_taiga_canal_crater_dims",
+      "source_video_id": "ref_taiga_nuclear_canal",
+      "role": "data_callout",
+      "start_s": 30.0,
+      "end_s": 36.0,
+      "hyperframes_pattern": "axis_aligned_dual_unit_crater_measurements",
+      "measured_metrics": {
+        "duration_s": 6.0,
+        "cuts_per_min_ref": 6.0,
+        "sfx_count_ref": 7,
+        "voice_density_ref": 0.54,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "High-resolution aerial crater view annotated with rotated white double-headed arrows and stacked metric/imperial measurements (700 m / 2300 ft, 380 m / 1250 ft, 160 m / 527 ft) aligned directly along the crater axes."
     }
   ]
 }

@@ -186,7 +186,7 @@
         0.04
       );
 
-      // Slabs start stacked compactly, then explode vertically per beat (inspired by ref_amazon_no_bridges)
+      // Slabs start stacked compactly, then separate vertically per beat
       tl.fromTo("#{{SCENE_ID}}-slab-1", { y: 80, opacity: 0 }, { y: -22, opacity: 1, duration: 0.55, ease: "expo.out" }, 0.08);
       tl.fromTo("#{{SCENE_ID}}-slab-2", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 0.32);
       tl.fromTo("#{{SCENE_ID}}-slab-3", { y: -45, opacity: 0 }, { y: 24, opacity: 1, duration: 0.65, ease: "expo.out" }, 0.58);
@@ -194,7 +194,7 @@
       // Vertical depth comparator
       tl.fromTo("#{{SCENE_ID}}-axis", { opacity: 0, scaleY: 0 }, { opacity: 1, scaleY: 1, transformOrigin: "center top", duration: 0.45, ease: "expo.out" }, 0.72);
 
-      // Curved arrows draw-on sequentially (film.md anti-dot dashoffset pattern)
+      // Curved arrows draw on sequentially using stroke-dashoffset without leading dots
       const beats = [
         { arr: "#{{SCENE_ID}}-arr-1", tip: "#{{SCENE_ID}}-tip-1", lbl: "#{{SCENE_ID}}-lbl-1", t: 0.45 },
         { arr: "#{{SCENE_ID}}-arr-2", tip: "#{{SCENE_ID}}-tip-2", lbl: "#{{SCENE_ID}}-lbl-2", t: 0.85 },

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "brand_id": "geoverum",
   "display_name": "Geoverum",
-  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): marine deep-teal satellite oceans (#083847) over abyssal dark ground (#03161F), continuous 2.5D/3D satellite cartography paired with 2D mechanism cross-sections and grounded aerial B-roll, terrain-preserving hatched or rimmed territory fills, plain true-centered 2-4 word captions with 1-frame hard cuts, zero default watermark, narration-led pacing with whip-zoom/wipe transitions, and visual-locked kinetic SFX.",
+  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): paradox-first five-beat storytelling anchored on five distinct basemap surfaces (marine deep-teal 2.5D/3D satellite relief #083847 over #03161F ground, #14427A blueprint drafting grid, #0B0E11 dark obsidian vector road networks, #B9A386 sepia parchment relief with compass rose and era timeline bars, and full-bleed 2D geological/depth cutaways), paired with 45-degree diagonal-hatched or multi-bloc rimmed territory fills, three-layer luminous glowing borders and routes, 2x2 quad and diagonal multi-panel splits, axis-aligned in-world map typography, plain true-centered 2-4 word captions with 1-frame hard cuts, zero default watermark, narration-led pacing, and visual-locked kinetic SFX.",
   "soft_priors": {
     "temporal_curve": [
       {
@@ -148,7 +148,7 @@
       ],
       "bpm_range": [
         76.0,
-        135.0
+        136.0
       ],
       "ducking_strength": 0.9,
       "sfx_policy": "kinetic_accents"
@@ -192,7 +192,8 @@
       "corner_crosshair_kpi_box",
       "viewfinder_corner_brackets",
       "floating_mini_quote_card",
-      "eyebrow_kicker_above_title"
+      "eyebrow_kicker_above_title",
+      "cartoon_character_skit"
     ],
     "avoid_heavy_css_blur": true
   },
@@ -436,12 +437,13 @@
       "corner_crosshair_kpi_box",
       "viewfinder_corner_brackets",
       "floating_mini_quote_card",
-      "eyebrow_kicker_above_title"
+      "eyebrow_kicker_above_title",
+      "cartoon_character_skit"
     ],
-    "last_calibrated_at": "2026-11-20T00:25:00+00:00"
+    "last_calibrated_at": "2026-11-20T10:35:00+00:00"
   },
   "provenance": {
-    "reference_video_count": 31,
+    "reference_video_count": 42,
     "reference_hashes": [
       "9ff0d54f8ff3d104ad2515e2393374f8be1c64631df2721eb33fa5c8198519d1",
       "2268d380cf4e0fa35af60d5430541249f294fd1ae5a5dfae01ec15473c2a15ef",
@@ -473,7 +475,18 @@
       "fe728213a497b8fbb85cbbdf1ae8699bf0233a8b6c8125e4145774cff1f7dbab",
       "ff4f8e9cf8399151fb2515fb17e24f573848108c4bdd4dad37cb20a98ee3ceb4",
       "ece71fa96eae727b2eaa7513611d5b9cb01fa9cc2d55e22089cec406fdb85c07",
-      "0719155d7f16d20cd16819b696657c022d0e2bb4c255fe5d8f6aadf64cbaa686"
+      "0719155d7f16d20cd16819b696657c022d0e2bb4c255fe5d8f6aadf64cbaa686",
+      "89bb3efd2553a08cef912fe07d643df6b2e53c6340b1967d017d2d2ec9d14289",
+      "a028f27a9c3806205d5ee5b75062b343d7daf9a4e3cdf174514df38fe4dc662d",
+      "db038e4695cc3b3d3c047d737ddd03404122449d77a65e7321868fbe323d792c",
+      "6e234fe1d7c18b382d8db92c1b96e84c17a06a09e971cf8285e8dd13f2068400",
+      "ad4742c9a6d690e3486ffe21f61198c2136f6dca92c8952b52e83039587c32e3",
+      "795395a411e06f7bd75c11facf238a8f89c0c1fc48b53739fcb09ce6c6c05b5f",
+      "e1011e24048e49f05b45dc9ffb2aeb7262f327f4ff4a58daa411281c6881d1c8",
+      "60263d7aef307772e8f3285d06cc88db97cd3557e270e12010d57061789f6d32",
+      "eb85ad6932e8f0aa6af27dc9e1bc78f50207d493b24e5b9778cac39dd9ba65d1",
+      "44d954e4af819df75d24b4e5c854f8b6307bd6d7e304e2c426eb8240b352c434",
+      "c26721712859a1cc75b9cf03bd08ed8e8d6d895b3a73e06ff7a23266fc7551f7"
     ],
     "confidence": 0.98,
     "created_at": "2026-11-18T10:45:00+00:00"

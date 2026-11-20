@@ -286,13 +286,13 @@
       "overlay_kind": "full_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Historical documentary treatment defaulting to straight 0-degree framing across three variants: boxless serif era stamp over footage, full-bleed sepia parchment canvas, or full archival manuscript sheet.",
+      "description": "Historical documentary treatment defaulting to straight 0-degree framing across four variants: boxless serif era stamp over footage, full-bleed sepia parchment canvas, full archival manuscript sheet, or upper-safe horizontal golden timeline bar with open-water compass rose.",
       "safe_band": "center_safe",
       "variables": [
         {
           "id": "variant",
           "type": "enum",
-          "enum_values": ["era_stamp", "parchment_canvas", "archival_sheet"],
+          "enum_values": ["era_stamp", "parchment_canvas", "archival_sheet", "timeline_bar"],
           "default": "era_stamp"
         },
         { "id": "year", "type": "string", "default": "1803" },
@@ -400,13 +400,13 @@
       "overlay_kind": "full_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Sharp white-seam multi-panel documentary collage supporting a 3-panel diagonal polygon split or a 2-panel horizontal analogy split.",
+      "description": "Sharp white-seam multi-panel documentary collage with 45-degree diagonal-hatched overlays supporting a 3-panel diagonal polygon split, a 2-panel horizontal analogy split, or a 2x2 quad disambiguation grid.",
       "safe_band": "center_safe",
       "variables": [
         {
           "id": "split_mode",
           "type": "enum",
-          "enum_values": ["diagonal_3panel", "horizontal_analogy"],
+          "enum_values": ["diagonal_3panel", "horizontal_analogy", "quad_2x2"],
           "default": "diagonal_3panel"
         },
         { "id": "panel1_label", "type": "string", "default": "UAE" },
@@ -415,6 +415,8 @@
         { "id": "panel2_metric", "type": "string", "default": "" },
         { "id": "panel3_label", "type": "string", "default": "DUBAI" },
         { "id": "panel3_metric", "type": "string", "default": "" },
+        { "id": "panel4_label", "type": "string", "default": "" },
+        { "id": "panel4_metric", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
