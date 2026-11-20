@@ -19,6 +19,13 @@ Apply these rules unconditionally to every code file, brand profile (`profiles/b
 3. **Zero Third-Party Brand Leakage**: Never embed third-party product/app names, commercial software names, reference channel names, consumer brands, or social platform brand names into permanent brand profiles, rules, or schemas—use neutral technical terminology instead (keep open-data license credits only in designated provenance sections). Never embed user-specific local paths (`/Users/...`).
 4. **Mandatory Pre-Completion Audit**: Before claiming work is done, run a hygiene check over modified repository files for leaked batch/chat history, third-party names, and local paths alongside the verification commands below.
 
+## Autonomous Production Protocol (Zero-CLI User Experience)
+
+When a user asks to produce, edit, or render a new video episode in natural language (supplying a topic, script, voiceover, or raw clips):
+1. **Execute autonomously without handing off CLI commands**: Never instruct the user to run `vedit` terminal commands manually for routine production steps (`project init`, `clean-audio`, `transcribe`, `probe`, `director verify`, `compile --lint`, `project validate`, `cloud render`, `audit`). Run every command automatically on the user's behalf.
+2. **Auto-initialize external workspaces**: Derive a concise domain-based `project_id` slug from the episode topic, select sensible defaults (`brand_id: geoverum`, `9:16 -> shorts_9x16_1080p`, `16:9 -> youtube_16x9_1080p`) unless specified otherwise, immediately run `packages/director-py/.venv/bin/vedit project init <slug> --brand <brand_id> --platform <platform_id> --json` outside the engine repository (`VEDIT_PROJECTS_ROOT`), stage raw inputs under `inputs/`, and record `brief.md`.
+3. **Ask only for creative inputs or approvals**: Pause for user input only when required creative source material (topic/script/audio) or target aspect ratio is genuinely missing, or when presenting a storyboard/plan or visual preview for creative sign-off. Deliver final outputs directly (`output/master.mp4` and `output/audit.json`).
+
 ## Quick Verification Commands
 
 - Rust probe: `cd packages/media-probe-rs && cargo test && cargo build --release`

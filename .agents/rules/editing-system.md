@@ -37,6 +37,7 @@ These rules govern all media pipelines, composition compilers, and provider inte
 ## 4c. Engine vs. External Project Boundary
 - Never create active editing projects, episode voiceovers, or render outputs inside the engine repository.
 - Initialize and execute all active editing projects outside the repository under `VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/` using `vedit project init`, storing strictly project-relative paths in `project.json` and `plan/edit_plan.json`.
+- AI directing clients must invoke `vedit project init` and all downstream pipeline stages (`clean-audio`, `transcribe`, `probe`, `director verify`, `compile --lint`, `project validate`, `cloud render`, `audit`) autonomously on the user's behalf from natural-language requests rather than instructing the user to execute manual CLI commands.
 
 ## 5. Brand Style Policy Semantics
 - Runtime `BrandStylePolicy` (`profiles/brands/<brand_id>/brand_style_policy.json`) carries section-conditioned pacing priors, visual/audio soft tokens, hard guardrails, and calibration/provenance. Planner and verifier consume those fields only—never treat the policy as a rigid shot-length template.
