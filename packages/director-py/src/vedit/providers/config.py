@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,22 @@ class CapabilityProviderConfig(BaseModel):
     def has_credentials(self) -> bool:
         kind = self.auth_type
         if kind == "local":
+            if self.primary == "rea_video":
+                configured_bin = str(self.options.get("binary") or "").strip()
+                if configured_bin:
+                    return Path(configured_bin).expanduser().is_file()
+                env_bin = os.environ.get("VEDIT_REA_VIDEO_BIN", "").strip()
+                if env_bin:
+                    return Path(env_bin).expanduser().is_file()
+                try:
+                    repo_bin = (
+                        find_repo_root() / "tools" / "rea-video" / ".venv" / "bin" / "rea-video"
+                    )
+                    if repo_bin.is_file():
+                        return True
+                except FileNotFoundError:
+                    pass
+                return shutil.which("rea-video") is not None
             return True
         if kind == "openedit_oauth":
             return has_openedit_oauth_login()

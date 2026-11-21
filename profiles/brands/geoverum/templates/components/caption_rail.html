@@ -8,6 +8,7 @@
       --vedit-ink: {{FG_COLOR}};
       --vedit-ground: {{BG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-text-glow: {{TEXT_GLOW_CSS}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
@@ -32,9 +33,7 @@
       letter-spacing: -0.01em;
       background: transparent;
       padding: 0;
-      text-shadow:
-        0 2px 8px rgba(0, 0, 0, 0.92),
-        0 0 2px rgba(0, 0, 0, 0.98);
+      text-shadow: var(--vedit-text-glow);
     }
     #{{SCENE_ID}}-inner.style-chip {
       background: {{BG_RGBA_78}};

@@ -4,7 +4,8 @@
   "pan_modes": {
     "hold": "Center stays fixed.",
     "drift": "Center drifts at a constant screen velocity (`drift_px_per_s`, x right / y down, measured before bearing rotation).",
-    "to_target": "Center travels to `target` [lng, lat] along `pan_curve` in Web Mercator space.",
+    "to_target": "Center travels to `target` [lng, lat] along `pan_curve` in Web Mercator space (scale-coupled when zoom changes > 0.25).",
+    "fly_to": "Center and zoom follow a Van Wijk & Nuij (2003) optimal smooth hyperbolic flight curve to `target` [lng, lat].",
     "path": "Center travels along `path` ([[lng, lat], ...], unwrapped longitudes) by cumulative Mercator length along `pan_curve`."
   },
   "presets": [
@@ -89,6 +90,50 @@
       "bearing_delta": 0.0,
       "pan": "to_target",
       "pan_curve": [[0.0, 0.0], [0.5, 0.62], [1.0, 1.0]]
+    },
+    {
+      "preset_id": "cinema_fly_dive",
+      "purpose": "Silky Van Wijk & Nuij smooth dive from regional/continental context straight onto a focal territory with gentle bearing roll.",
+      "default_duration_s": 1.8,
+      "zoom_delta": 4.2,
+      "zoom_curve": [[0.0, 0.0], [0.2, 0.14], [0.5, 0.52], [0.8, 0.89], [1.0, 1.0]],
+      "bearing_delta": -18.0,
+      "bearing_curve": [[0.0, 0.0], [0.35, 0.30], [0.7, 0.82], [1.0, 1.0]],
+      "pan": "fly_to",
+      "rho": 1.38,
+      "pan_curve": [[0.0, 0.0], [0.22, 0.12], [0.5, 0.50], [0.78, 0.88], [1.0, 1.0]]
+    },
+    {
+      "preset_id": "whip_plunge_blur",
+      "purpose": "High-velocity accelerating plunge into a cross-section or B-roll cut, triggering optical shutter motion blur.",
+      "default_duration_s": 0.35,
+      "zoom_delta": 2.1,
+      "zoom_curve": [[0.0, 0.0], [0.4, 0.16], [0.75, 0.56], [1.0, 1.0]],
+      "bearing_delta": 6.0,
+      "bearing_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "pan": "hold"
+    },
+    {
+      "preset_id": "impact_settle_shake",
+      "purpose": "Punch-in landing with damped sinusoidal camera shake on dramatic reveals, hazard slams, or stamp impacts.",
+      "default_duration_s": 1.2,
+      "zoom_delta": 0.45,
+      "zoom_curve": [[0.0, 0.0], [0.22, 0.78], [0.55, 0.96], [1.0, 1.0]],
+      "bearing_delta": 2.5,
+      "bearing_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "pan": "hold",
+      "shake": { "amplitude_px": 14.0, "freq_hz": 18.0, "decay_s": 0.32, "start_u": 0.04 }
+    },
+    {
+      "preset_id": "orbital_vignette_drift",
+      "purpose": "Slow living orbital rotation and micro-push during vignette mood-dip question beats.",
+      "default_duration_s": 2.6,
+      "zoom_delta": 0.35,
+      "zoom_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "bearing_delta": 8.0,
+      "bearing_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "pan": "hold",
+      "ambient_drift": { "zoom_per_s": 0.04, "bearing_per_s": 1.2 }
     }
   ]
 }

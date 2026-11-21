@@ -20,8 +20,10 @@ from vedit.contracts import (
 from vedit.director.planner import build_edit_plan
 from vedit.director.verifier import verify_edit_plan
 from vedit.interop.otio_bridge import export_edit_plan_to_otio
+from vedit.mastering.ass_captions import partition_overlays_for_hybrid
 from vedit.mastering.ffmpeg_master import assemble_hybrid_deliverable
-from vedit.mastering.qc_audit import audit_mastered_deliverable
+from vedit.mastering.qc_audit import audit_mastered_deliverable, generate_diff_contact_sheet
+from vedit.mastering.sparse_hf import render_sparse_hf_windows
 from vedit.models import (
     BrandStylePolicy,
     BrandTemplateCatalog,
@@ -89,7 +91,12 @@ def director_plan_cmd(
         if transcript_file is not None
         else None
     )
-    catalog = _load_optional_template_catalog(template_catalog, brand_dir)
+    effective_brand_dir = brand_dir
+    if effective_brand_dir is None and template_catalog is None:
+        sibling_catalog = policy_file.parent / "templates" / "catalog.json"
+        if sibling_catalog.is_file():
+            effective_brand_dir = policy_file.parent
+    catalog = _load_optional_template_catalog(template_catalog, effective_brand_dir)
     decision_port = build_default_registry().resolve("decision") if use_decision else None
     plan, report = build_edit_plan(
         job_id=job_id,
@@ -125,6 +132,17 @@ def director_verify_cmd(
     template_catalog: Annotated[
         Path | None, typer.Option("--template-catalog", help="Brand template catalog JSON.")
     ] = None,
+    update_plan: Annotated[
+        bool,
+        typer.Option(
+            "--update-plan/--no-update-plan",
+            help="Write verifier_passed back to the EditPlan JSON file.",
+        ),
+    ] = False,
+    report_out: Annotated[
+        Path | None,
+        typer.Option("--report-out", help="Optional path to persist the verification report JSON."),
+    ] = None,
 ) -> None:
     """Verify an EditPlan deterministically against BrandStylePolicy and PlatformTarget."""
     platforms = load_platform_targets()
@@ -138,7 +156,12 @@ def director_verify_cmd(
         if transcript_file is not None
         else None
     )
-    catalog = _load_optional_template_catalog(template_catalog, brand_dir)
+    effective_brand_dir = brand_dir
+    if effective_brand_dir is None and template_catalog is None:
+        sibling_catalog = policy_file.parent / "templates" / "catalog.json"
+        if sibling_catalog.is_file():
+            effective_brand_dir = policy_file.parent
+    catalog = _load_optional_template_catalog(template_catalog, effective_brand_dir)
     report = verify_edit_plan(
         plan,
         policy,
@@ -146,7 +169,15 @@ def director_verify_cmd(
         transcript=transcript,
         template_catalog=catalog,
     )
-    typer.echo(json.dumps(report.to_dict(), indent=2))
+    report_json = json.dumps(report.to_dict(), indent=2)
+    if report_out is not None:
+        report_out.parent.mkdir(parents=True, exist_ok=True)
+        report_out.write_text(report_json + "\n", encoding="utf-8")
+    if update_plan:
+        raw_plan = json.loads(plan_file.read_text(encoding="utf-8"))
+        raw_plan["verifier_passed"] = bool(report.passed)
+        plan_file.write_text(json.dumps(raw_plan, indent=2) + "\n", encoding="utf-8")
+    typer.echo(report_json)
     if not report.passed:
         raise typer.Exit(code=1)
 
@@ -273,6 +304,20 @@ def master_cmd(
     overlay_video: Annotated[
         Path | None, typer.Option("--overlay-video", help="Rendered transparent HyperFrames MOV.")
     ] = None,
+    overlay_segment: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--overlay-segment",
+            help="Sparse overlay segment spec 'start_s:end_s:path.mov' (repeatable).",
+        ),
+    ] = None,
+    render_overlays: Annotated[
+        bool,
+        typer.Option(
+            "--render-overlays/--no-render-overlays",
+            help="Locally render sparse animated HyperFrames overlay windows before mastering.",
+        ),
+    ] = False,
     preset: Annotated[
         Literal["ultrafast", "veryfast", "fast", "medium", "slow"],
         typer.Option("--preset", help="x264/x265 encode preset."),
@@ -298,11 +343,35 @@ def master_cmd(
     if target_id not in platforms:
         raise typer.BadParameter(f"Unknown platform target: {target_id}")
     platform_target = PlatformTarget.model_validate(platforms[target_id])
+
+    parsed_segments: list[tuple[float, float, Path]] = []
+    for raw_seg in overlay_segment or []:
+        parts = raw_seg.split(":", 2)
+        if len(parts) != 3:
+            raise typer.BadParameter(
+                f"Invalid --overlay-segment {raw_seg!r}; expected 'start_s:end_s:path.mov'."
+            )
+        parsed_segments.append((float(parts[0]), float(parts[1]), Path(parts[2]).expanduser()))
+
+    if render_overlays and overlay_video is None and not parsed_segments:
+        _, hf_overlays = partition_overlays_for_hybrid(plan, force_hyperframes=not ass_fastpath)
+        if hf_overlays:
+            project_root = find_project_root(plan_path.parent)
+            sparse_dir = (
+                project_root / "build" / "hf_sparse_windows"
+                if project_root is not None
+                else output.parent / "hf_sparse_windows"
+            )
+            parsed_segments, _ = render_sparse_hf_windows(
+                plan, hf_overlays, platform_target, sparse_dir
+            )
+
     res = assemble_hybrid_deliverable(
         plan,
         platform_target,
         output,
         overlay_video_path=overlay_video,
+        overlay_segments=parsed_segments or None,
         use_ass_fastpath=ass_fastpath,
         encode_preset=preset,
         use_hardware_encoder=hw_encode,
@@ -350,7 +419,17 @@ def audit_cmd(
     ] = True,
     reference: Annotated[
         Path | None,
-        typer.Option("--reference", help="Optional reference video for perceptual VMAF scoring."),
+        typer.Option(
+            "--reference",
+            help="Optional reference video for perceptual VMAF/SSIM scoring.",
+        ),
+    ] = None,
+    diff_sheet: Annotated[
+        Path | None,
+        typer.Option(
+            "--diff-sheet",
+            help="Optional JPEG path to render a side-by-side REF vs deliverable contact sheet.",
+        ),
     ] = None,
 ) -> None:
     """Run deterministic ffprobe, EBU R128, and visual QC verification on a deliverable video."""
@@ -365,6 +444,10 @@ def audit_cmd(
         check_visual=check_visual,
         reference_path=reference,
     )
+    if diff_sheet is not None and reference is not None:
+        sheet = generate_diff_contact_sheet(media_file, reference, diff_sheet)
+        if sheet is not None:
+            qc.metrics["diff_sheet_path"] = str(sheet)
     typer.echo(json.dumps(qc.to_dict(), indent=2, default=str))
     if not qc.passed:
         raise typer.Exit(code=1)

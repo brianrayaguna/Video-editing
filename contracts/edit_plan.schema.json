@@ -61,6 +61,11 @@
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "source_start_s": { "type": "number", "minimum": 0 },
           "role": { "type": "string", "enum": ["a_roll", "b_roll", "screen_recording", "cutaway"] },
+          "content_type": {
+            "type": "string",
+            "enum": ["live_action", "map", "landscape", "diagram", "archival"]
+          },
+          "visual_beat_count": { "type": "integer", "minimum": 0 },
           "reframed_to_target": { "type": "boolean", "default": true },
           "scale": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
           "transition_in": { "type": ["string", "null"] },
@@ -110,7 +115,7 @@
         "properties": {
           "track_id": { "type": "string" },
           "asset_id": { "type": "string" },
-          "audio_group": { "type": "string", "enum": ["voiceover", "music", "sfx"] },
+          "audio_group": { "type": "string", "enum": ["voiceover", "music", "sfx", "program_mix"] },
           "timeline_start_s": { "type": "number", "minimum": 0 },
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "source_start_s": { "type": "number", "minimum": 0 },

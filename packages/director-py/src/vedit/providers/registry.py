@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from vedit.providers.config import ProvidersConfig, load_providers_config
+from vedit.providers.http import ProviderAPIError
+
+T = TypeVar("T")
 
 Capability = Literal[
     "transcription", "decision", "media_ops", "audio_catalog", "video_breakdown"
@@ -74,6 +77,49 @@ class ProviderRegistry:
             else:
                 options = {}
         return spec.factory(options)
+
+    def candidate_chain(
+        self, capability: Capability, provider_name: str | None = None
+    ) -> list[str]:
+        """Return ordered provider names (explicit override or primary + fallbacks)."""
+        if provider_name:
+            return [provider_name]
+        cap_cfg = self._config.defaults.get(capability)
+        if cap_cfg is None:
+            raise ProviderNotFoundError(
+                f"No default provider configured for capability '{capability}'."
+            )
+        ordered: list[str] = [cap_cfg.primary]
+        for fb in cap_cfg.fallback:
+            if fb not in ordered and (capability, fb) in self._specs:
+                ordered.append(fb)
+        return ordered
+
+    def call_with_fallback(
+        self,
+        capability: Capability,
+        fn: Callable[[Any], T],
+        *,
+        provider_name: str | None = None,
+    ) -> T:
+        """Invoke `fn(provider)` across the configured primary and fallback chain on API errors."""
+        candidates = self.candidate_chain(capability, provider_name=provider_name)
+        errors: list[str] = []
+        for idx, name in enumerate(candidates):
+            provider = self.resolve(capability, provider_name=name)
+            try:
+                return fn(provider)
+            except (ProviderAPIError, RuntimeError, FileNotFoundError) as exc:
+                errors.append(f"{name}: {exc}")
+                if idx == len(candidates) - 1:
+                    if len(candidates) == 1:
+                        raise
+                    raise ProviderAPIError(
+                        name,
+                        getattr(exc, "status_code", None),
+                        f"All configured '{capability}' providers failed: {' | '.join(errors)}",
+                    ) from exc
+        raise ProviderNotFoundError(f"No providers available for capability '{capability}'.")
 
     def status_report(self) -> dict[str, dict[str, Any]]:
         """Summarize configured vs registered capabilities without leaking credentials."""

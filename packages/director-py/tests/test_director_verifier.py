@@ -548,3 +548,128 @@ def test_verifier_detects_violet_scale_zero_collision_and_allows_corner_watermar
     codes = {i.code for i in bad_report.errors}
     assert "BANNED_PATTERN" in codes
     assert "OVERLAY_COLLISION" in codes
+
+
+def test_verifier_map_content_type_visual_beats_program_mix_and_caption_glow() -> None:
+    from vedit.contracts import find_repo_root, load_brand_template_catalog
+    from vedit.models import BrandTemplateCatalog, VideoClipOp
+
+    root = find_repo_root()
+    policy = BrandStylePolicy.model_validate_json(
+        (root / "profiles" / "brands" / "geoverum" / "brand_style_policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(
+            root / "profiles" / "brands" / "geoverum" / "templates" / "catalog.json",
+            repo_root=root,
+        )
+    )
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    transcript = NormalizedTranscript(
+        source_hash="a" * 64,
+        provider="xai",
+        language="en",
+        duration_s=12.0,
+        text="the isthmus",
+        words=[
+            TranscriptWord(text="the", start_s=2.95, end_s=3.08, confidence=0.99),
+            TranscriptWord(text="isthmus", start_s=3.10, end_s=3.60, confidence=0.99),
+        ],
+    )
+    plan = EditPlan(
+        schema_version="1.0",
+        job_id="map_doc_job",
+        project_id="proj_map",
+        brand_id=policy.brand_id,
+        platform_target_id=target.platform_id,
+        render_strategy="hybrid",
+        duration_s=12.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(
+                asset_id="map_a",
+                sha256="a" * 64,
+                kind="video",
+                path="media/maps/act1.mp4",
+                duration_s=12.0,
+                has_audio=False,
+            ),
+            AssetRef(
+                asset_id="mix_a",
+                sha256="b" * 64,
+                kind="audio_speech",
+                path="media/audio/mix.wav",
+                duration_s=12.0,
+                has_audio=True,
+            ),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="m1",
+                asset_id="map_a",
+                timeline_start_s=0.0,
+                timeline_duration_s=3.0,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                visual_beat_count=3,
+                reframed_to_target=True,
+            ),
+            VideoClipOp(
+                clip_id="m2",
+                asset_id="map_a",
+                timeline_start_s=3.0,
+                timeline_duration_s=9.0,
+                source_start_s=3.0,
+                role="b_roll",
+                content_type="landscape",
+                visual_beat_count=5,
+                reframed_to_target=True,
+            ),
+        ],
+        overlay_compositions=[
+            OverlayCompositionOp(
+                overlay_id="cap_glow",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.5,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    "text": "The isthmus",
+                    "caption_shadow_blur_px": 10,
+                    "caption_glow_px": 14,
+                    "caption_glow_color": "#F5C542",
+                },
+            )
+        ],
+        audio_tracks=[
+            AudioTrackOp(
+                track_id="mix",
+                asset_id="mix_a",
+                audio_group="program_mix",
+                timeline_start_s=0.0,
+                timeline_duration_s=12.0,
+                source_start_s=0.0,
+                gain_db=0.0,
+                cleaned_speech_stem=True,
+            )
+        ],
+    )
+    report = verify_edit_plan(
+        plan,
+        policy,
+        target,
+        transcript=transcript,
+        template_catalog=catalog,
+    )
+    assert report.passed is True, f"Errors: {report.errors}"
+    warn_codes = {w.code for w in report.warnings}
+    assert "MISSING_SUBJECT_BOX_GROUNDING" not in warn_codes
+    assert "HEAVY_CSS_BLUR" not in {e.code for e in report.errors}
+    assert "CUT_WITHIN_KEYWORD_WINDOW" not in {e.code for e in report.errors}

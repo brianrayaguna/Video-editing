@@ -1,0 +1,81 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-swarm-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <svg id="{{SCENE_ID}}-svg" class="gv-swarm-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <g id="{{SCENE_ID}}-dots"></g>
+      </svg>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const count = Math.max(4, Math.min(30, Math.round(Number("{{VAR_DOT_COUNT|18}}") || 18)));
+      const lossRatio = Math.max(0, Math.min(0.8, Number("{{VAR_LOSS_RATIO|0.28}}") || 0.28));
+      const activeCol = ("{{VAR_ACTIVE_COLOR|#38BDF8}}").trim() || "#38BDF8";
+      const lossCol = ("{{VAR_LOSS_COLOR|#EF4444}}").trim() || "#EF4444";
+      const sx = (Number("{{VAR_START_X_PCT|58}}") || 58) * 10;
+      const sy = (Number("{{VAR_START_Y_PCT|62}}") || 62) * 10;
+      const ex = (Number("{{VAR_END_X_PCT|42}}") || 42) * 10;
+      const ey = (Number("{{VAR_END_Y_PCT|28}}") || 28) * 10;
+
+      const ns = "http://www.w3.org/2000/svg";
+      const group = document.getElementById("{{SCENE_ID}}-dots");
+      const dur = Number({{DURATION_S}});
+      const tl = gsap.timeline({ paused: true });
+      const lossCutoff = Math.round(count * lossRatio);
+
+      for (let i = 0; i < count; i += 1) {
+        const s1 = ((i * 73 + 19) % 100) / 100 - 0.5;
+        const s2 = ((i * 131 + 41) % 100) / 100 - 0.5;
+        const x0 = sx + s1 * 180;
+        const y0 = sy + s2 * 140;
+        const x1 = ex + s1 * 150;
+        const y1 = ey + s2 * 120;
+
+        const cOuter = document.createElementNS(ns, "circle");
+        cOuter.setAttribute("cx", String(x0));
+        cOuter.setAttribute("cy", String(y0));
+        cOuter.setAttribute("r", "12");
+        cOuter.setAttribute("fill", activeCol);
+        cOuter.setAttribute("opacity", "0");
+        if (group) group.appendChild(cOuter);
+
+        const delay = (i % 6) * Math.min(0.18, dur * 0.06);
+        const travel = Math.max(0.4, dur - delay - 0.15);
+        tl.to(cOuter, { opacity: 0.92, duration: 0.18, ease: "power2.out" }, delay);
+        tl.to(cOuter, { attr: { cx: x1, cy: y1 }, duration: travel, ease: "none" }, delay);
+
+        if (i < lossCutoff) {
+          const lossAt = delay + travel * (0.45 + (i % 3) * 0.12);
+          tl.to(cOuter, { attr: { fill: lossCol, r: 15 }, duration: 0.16, ease: "power2.out" }, lossAt);
+          tl.to(cOuter, { opacity: 0, duration: 0.35, ease: "power3.in" }, lossAt + 0.16);
+        } else {
+          tl.to(cOuter, { opacity: 0, duration: 0.22, ease: "power3.in" }, Math.max(0.1, dur - 0.22));
+        }
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

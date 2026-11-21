@@ -285,6 +285,8 @@ class VideoClipOp(StrictModel):
     timeline_duration_s: float = Field(gt=0.0)
     source_start_s: float = Field(ge=0.0)
     role: Literal["a_roll", "b_roll", "screen_recording", "cutaway"]
+    content_type: Literal["live_action", "map", "landscape", "diagram", "archival"] | None = None
+    visual_beat_count: int = Field(ge=0, default=0)
     reframed_to_target: bool = True
     scale: float = Field(ge=0.1, le=4.0, default=1.0)
     transition_in: str | None = None
@@ -310,7 +312,7 @@ class OverlayCompositionOp(StrictModel):
 class AudioTrackOp(StrictModel):
     track_id: str
     asset_id: str
-    audio_group: Literal["voiceover", "music", "sfx"]
+    audio_group: Literal["voiceover", "music", "sfx", "program_mix"]
     timeline_start_s: float = Field(ge=0.0)
     timeline_duration_s: float = Field(gt=0.0)
     source_start_s: float = Field(ge=0.0)

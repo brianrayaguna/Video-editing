@@ -129,6 +129,13 @@ def _caption_style(
     opacity = _num("caption_opacity")
     shadow_opacity = _num("caption_shadow_opacity")
     blur = _num("caption_shadow_blur_px")
+    glow_px = _num("caption_glow_px")
+    glow_color_raw = merged.get("caption_glow_color") or merged.get("glow_color")
+    glow_color = (
+        str(glow_color_raw).strip().upper()
+        if isinstance(glow_color_raw, str) and _HEX_RE.fullmatch(glow_color_raw.strip())
+        else None
+    )
     spacing = _num("caption_letter_spacing")
     bold_raw = merged.get("caption_bold", True)
     return {
@@ -146,6 +153,8 @@ def _caption_style(
         if shadow_opacity is not None
         else 0.88,
         "shadow_blur_px": max(blur, 0.0) if blur is not None else 0.0,
+        "glow_color": glow_color,
+        "glow_px": max(glow_px, 0.0) if glow_px is not None else 0.0,
         "letter_spacing": spacing if spacing is not None else -0.3,
     }
 
@@ -291,11 +300,22 @@ def write_ass_overlays_file(
             style_name = "CaptionCenter"
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
-        trans_ms = int(merged.get("caption_transition_ms", 33))
-        fade = f"\\fad({trans_ms},{min(trans_ms, 33)})" if trans_ms > 0 else ""
+        trans_ms = max(0, min(200, int(merged.get("caption_transition_ms", 120))))
+        fade = f"\\fad({trans_ms},{trans_ms})" if trans_ms > 0 else ""
         fade_tag = f"{{{fade}}}" if fade else ""
         escaped_text = _escape_ass_text(raw_text)
-        if soft_shadow:
+        if cap_style["glow_color"] and cap_style["glow_px"] > 0:
+            gc = cap_style["glow_color"]
+            bgr = f"&H{gc[5:7]}{gc[3:5]}{gc[1:3]}&"
+            glow_tags = (
+                f"{{{fade}\\1c{bgr}\\1a&H55&\\3c{bgr}\\3a&H66&"
+                f"\\bord{max(2.0, cap_style['glow_px'] * 0.45):g}\\shad0"
+                f"\\blur{cap_style['glow_px']:g}}}"
+            )
+            lines.append(
+                f"Dialogue: 0,{start_ts},{end_ts},{style_name},,0,0,0,,{glow_tags}{escaped_text}"
+            )
+        elif soft_shadow:
             # Soft drop shadow: a blurred dark copy on a lower layer, offset by the shadow distance.
             dx = round(soft_shadow_px)
             margin_v = {"CaptionLower": cap_margin_v, "CaptionUpper": upper_margin_v}.get(

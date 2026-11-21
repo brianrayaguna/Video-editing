@@ -11,7 +11,16 @@
  * `TECTONICS_GEOJSON` (relative paths under `/vector/` on the local tile server).
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -30,8 +39,17 @@ const REPO_ROOT = resolve(__dirname, "../..");
 const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
 const puppeteer = require("puppeteer-core");
 
+function isExecutable(p) {
+  try {
+    accessSync(p, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveChrome() {
-  if (process.env.CHROME && existsSync(process.env.CHROME)) return process.env.CHROME;
+  if (process.env.CHROME && isExecutable(process.env.CHROME)) return process.env.CHROME;
   const exe = process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
   const base = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   if (existsSync(base)) {
@@ -39,7 +57,7 @@ function resolveChrome() {
       try {
         for (const inner of readdirSync(join(base, v))) {
           const bin = join(base, v, inner, exe);
-          if (existsSync(bin)) return bin;
+          if (isExecutable(bin)) return bin;
         }
       } catch {
         /* ignore */
@@ -51,7 +69,7 @@ function resolveChrome() {
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
   ]) {
-    if (existsSync(c)) return c;
+    if (isExecutable(c)) return c;
   }
   throw new Error("Chrome / chrome-headless-shell not found.");
 }

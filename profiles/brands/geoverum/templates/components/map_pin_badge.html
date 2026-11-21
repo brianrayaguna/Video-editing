@@ -1,0 +1,132 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-text-glow: {{TEXT_GLOW_CSS}};
+      font-family: '{{DISPLAY_FONT}}', 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-pin-wrap {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      transform-origin: 50% 100%;
+    }
+    .gv-pin-svg {
+      overflow: visible;
+    }
+    .gv-pin-label {
+      font-size: calc(34px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      color: var(--vedit-ink);
+      text-shadow: var(--vedit-text-glow);
+      white-space: nowrap;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-wrap" class="gv-pin-wrap">
+        <svg id="{{SCENE_ID}}-svg" class="gv-pin-svg" viewBox="-120 -220 240 240" width="220" height="220" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="{{SCENE_ID}}-aura" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="{{VAR_BADGE_COLOR|#DC2626}}" stop-opacity="0.72" />
+              <stop offset="55%" stop-color="{{VAR_BADGE_COLOR|#DC2626}}" stop-opacity="0.28" />
+              <stop offset="100%" stop-color="{{VAR_BADGE_COLOR|#DC2626}}" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <circle id="{{SCENE_ID}}-glow" cx="0" cy="-110" r="110" fill="url(#{{SCENE_ID}}-aura)" />
+          <path id="{{SCENE_ID}}-teardrop" d="M0 0 C-38 -52 -74 -76 -74 -118 A74 74 0 1 1 74 -118 C74 -76 38 -52 0 0 Z" fill="#FFFFFF" stroke="{{VAR_BADGE_COLOR|#DC2626}}" stroke-width="10" stroke-linejoin="round" />
+          <circle id="{{SCENE_ID}}-circle" class="gv-empty" cx="0" cy="-110" r="82" fill="#FFFFFF" stroke="{{VAR_BADGE_COLOR|#DC2626}}" stroke-width="14" />
+          <g id="{{SCENE_ID}}-icon-hazard" fill="{{VAR_BADGE_COLOR|#DC2626}}">
+            <polygon points="0,-154 -40,-84 40,-84" fill="none" stroke="{{VAR_BADGE_COLOR|#DC2626}}" stroke-width="10" stroke-linejoin="round" />
+            <rect x="-5" y="-132" width="10" height="24" rx="4" />
+            <circle cx="0" cy="-97" r="6" />
+          </g>
+          <g id="{{SCENE_ID}}-icon-prohibit" class="gv-empty" stroke="{{VAR_BADGE_COLOR|#DC2626}}" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M-28 -142 L-16 -158 L0 -164 L16 -158 L28 -142 Z" stroke-width="6" />
+            <path d="M-22 -136 Q0 -128 22 -136" stroke-width="6" />
+            <path d="M-16 -122 A16 16 0 0 0 16 -122" stroke-width="6" />
+            <path d="M-38 -74 Q-34 -102 -12 -106 L0 -94 L12 -106 Q34 -102 38 -74" stroke-width="6" />
+            <line x1="-56" y1="-166" x2="56" y2="-54" stroke-width="14" />
+          </g>
+        </svg>
+        <div id="{{SCENE_ID}}-label" class="gv-pin-label" data-var-text="label">{{VAR_LABEL|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const ax = Math.max(12, Math.min(88, Number("{{VAR_ANCHOR_X_PCT|50}}") || 50));
+      const ay = Math.max(18, Math.min(72, Number("{{VAR_ANCHOR_Y_PCT|46}}") || 46));
+      const styleMode = ("{{VAR_BADGE_STYLE|teardrop}}").trim().toLowerCase();
+      const sizePx = Math.max(90, Math.min(440, Number("{{VAR_SIZE_PX|190}}") || 190));
+
+      const wrap = document.getElementById("{{SCENE_ID}}-wrap");
+      const svg = document.getElementById("{{SCENE_ID}}-svg");
+      const tear = document.getElementById("{{SCENE_ID}}-teardrop");
+      const circ = document.getElementById("{{SCENE_ID}}-circle");
+      const iconHazard = document.getElementById("{{SCENE_ID}}-icon-hazard");
+      const iconProhibit = document.getElementById("{{SCENE_ID}}-icon-prohibit");
+      const labelEl = document.getElementById("{{SCENE_ID}}-label");
+
+      if (wrap) {
+        wrap.style.left = ax + "%";
+        wrap.style.top = ay + "%";
+      }
+      if (svg) {
+        const s = Math.round(sizePx * Number({{SCALE_FACTOR}}));
+        svg.setAttribute("width", String(s));
+        svg.setAttribute("height", String(s));
+      }
+      if (styleMode === "prohibition") {
+        if (tear) tear.classList.add("gv-empty");
+        if (circ) circ.classList.remove("gv-empty");
+        if (iconHazard) iconHazard.classList.add("gv-empty");
+        if (iconProhibit) iconProhibit.classList.remove("gv-empty");
+      } else if (styleMode === "circle") {
+        if (tear) tear.classList.add("gv-empty");
+        if (circ) circ.classList.remove("gv-empty");
+      }
+      if (labelEl && !labelEl.textContent.trim()) {
+        labelEl.classList.add("gv-empty");
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(0.32, dur * 0.25);
+      const exitS = Math.min(0.18, dur * 0.20);
+      const exitAt = Math.max(enterS + 0.05, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#{{SCENE_ID}}-wrap", { xPercent: -50, yPercent: -100 });
+      tl.fromTo(
+        "#{{SCENE_ID}}-wrap",
+        { opacity: 0, scale: 0.86 },
+        { opacity: 1, scale: 1, duration: enterS, ease: "back.out(1.6)" },
+        0
+      );
+      tl.to(
+        "#{{SCENE_ID}}-wrap",
+        { opacity: 0, scale: 0.92, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

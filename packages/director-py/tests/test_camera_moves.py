@@ -138,3 +138,87 @@ def test_cli_list_and_expand(tmp_path) -> None:
     assert res.exit_code == 0, res.stdout
     keys = json.loads(out.read_text())
     assert len(keys) == 31 and keys[-1]["frame"] == 30
+
+
+def test_fly_to_blend_shake_and_shutter_samples() -> None:
+    plan = {
+        "start": {"center": [-78.0, 8.0], "zoom": 2.0, "bearing": 0.0, "pitch": 0.0},
+        "blend_s": 0.2,
+        "optical_shutter_blur": True,
+        "moves": [
+            {
+                "preset": "cinema_fly_dive",
+                "duration_s": 2.0,
+                "target": [-77.5, 8.2],
+                "zoom_to": 7.5,
+            },
+            {
+                "preset": "impact_settle_shake",
+                "duration_s": 1.0,
+                "zoom_delta": 0.6,
+            },
+            {
+                "preset": "orbital_vignette_drift",
+                "duration_s": 1.0,
+            },
+        ],
+    }
+    samples = expand_move_plan(plan, fps=30)
+    assert len(samples) == 121
+    assert samples[0]["zoom"] == pytest.approx(2.0, abs=0.05)
+    assert samples[-1]["zoom"] > 7.5
+    assert any(s.get("shutter_samples", 1) > 1 for s in samples)
+    assert "zoom_vel" in samples[30] and "bearing_vel" in samples[30]
+    assert samples[60]["center"][0] == pytest.approx(-77.5, abs=0.15)
+
+
+def _noisy_track() -> list[list[float]]:
+    keys = []
+    for i in range(41):
+        t = i * 0.25
+        wobble = 0.004 * (1 if i % 2 else -1)
+        zoom = 5.0 + 0.02 * t + 0.03 * (i % 2)
+        keys.append([t, 10.0 + 0.05 * t + wobble, 45.0 + wobble, zoom, 0.0])
+    return keys
+
+
+def test_smoothing_removes_shake_and_respects_caps_cuts_and_anchors() -> None:
+    from vedit.director.camera_moves import camera_jitter_report, smooth_scene_keys
+
+    keys = _noisy_track()
+    before = camera_jitter_report(keys, cuts=[5.0])
+    assert before["zoom_reversals"] > 0
+    out = smooth_scene_keys(keys, window_s=0.6, cuts=[5.0], anchors=[2.5], max_zoom_shift=0.05)
+    after = camera_jitter_report(out, cuts=[5.0])
+    assert after["zoom_reversals"] < before["zoom_reversals"]
+    by_t = {k[0]: k for k in out}
+    assert by_t[2.5] == keys[10]  # anchor kept exactly
+    assert by_t[0.0] == keys[0] and by_t[10.0] == keys[-1]  # span ends kept
+    assert by_t[4.75] == keys[19] and by_t[5.0] == keys[20]  # cut boundary keys kept
+    for a, b in zip(keys, out, strict=True):
+        assert abs(a[3] - b[3]) <= 0.05 + 1e-9
+
+
+def test_smoothing_unwraps_antimeridian() -> None:
+    from vedit.director.camera_moves import smooth_scene_keys
+
+    keys = [
+        [0.0, 179.0, 60.0, 4.0, 0.0],
+        [0.5, -179.5, 60.0, 4.0, 0.0],
+        [1.0, -178.0, 60.0, 4.0, 0.0],
+    ]
+    out = smooth_scene_keys(keys, window_s=0.6)
+    assert out[1][1] > 179.0 and out[2][1] == 182.0
+
+
+def test_camera_track_cli_writes_denoised_track(tmp_path) -> None:
+    src = tmp_path / "track.json"
+    dst = tmp_path / "smooth.json"
+    src.write_text(json.dumps(_noisy_track()), encoding="utf-8")
+    result = CliRunner().invoke(
+        app, ["geo", "camera-track", str(src), "-o", str(dst), "--cut", "5.0", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["after"]["zoom_reversals"] <= report["before"]["zoom_reversals"]
+    assert len(json.loads(dst.read_text(encoding="utf-8"))) == 41

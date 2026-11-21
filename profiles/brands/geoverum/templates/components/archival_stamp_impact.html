@@ -1,0 +1,71 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      font-family: '{{DISPLAY_FONT}}', 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-stamp-mark {
+      position: absolute;
+      left: 50%;
+      top: 46%;
+      padding: calc(14px * {{SCALE_FACTOR}}) calc(34px * {{SCALE_FACTOR}});
+      border: calc(8px * {{SCALE_FACTOR}}) solid {{VAR_STAMP_COLOR|#991B1B}};
+      outline: calc(3px * {{SCALE_FACTOR}}) solid {{VAR_STAMP_COLOR|#991B1B}};
+      outline-offset: calc(-14px * {{SCALE_FACTOR}});
+      color: {{VAR_STAMP_COLOR|#991B1B}};
+      font-size: calc(64px * {{SCALE_FACTOR}});
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-stamp" class="gv-stamp-mark" data-var-text="stamp_text">{{VAR_STAMP_TEXT|FAILED}}</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const cx = Math.max(15, Math.min(85, Number("{{VAR_CENTER_X_PCT|50}}") || 50));
+      const cy = Math.max(18, Math.min(72, Number("{{VAR_CENTER_Y_PCT|46}}") || 46));
+      const angle = Number("{{VAR_ANGLE_DEG|-18}}") || -18;
+      const el = document.getElementById("{{SCENE_ID}}-stamp");
+      if (el) {
+        el.style.left = cx + "%";
+        el.style.top = cy + "%";
+      }
+
+      const dur = Number({{DURATION_S}});
+      const slamAt = Math.min(0.28, dur * 0.2);
+      const exitAt = Math.max(slamAt + 0.25, dur - 0.18);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#{{SCENE_ID}}-stamp", { xPercent: -50, yPercent: -50, rotation: angle });
+      tl.fromTo(
+        "#{{SCENE_ID}}-stamp",
+        { opacity: 0, scale: 1.85 },
+        { opacity: 0.94, scale: 1.0, duration: 0.16, ease: "expo.in" },
+        slamAt
+      );
+      tl.to("#{{SCENE_ID}}-stamp", { x: "+=8", y: "-=6", duration: 0.04, ease: "none" }, slamAt + 0.16);
+      tl.to("#{{SCENE_ID}}-stamp", { x: "-=12", y: "+=9", duration: 0.04, ease: "none" }, slamAt + 0.20);
+      tl.to("#{{SCENE_ID}}-stamp", { x: "+=4", y: "-=3", duration: 0.05, ease: "power2.out" }, slamAt + 0.24);
+      tl.to("#{{SCENE_ID}}-stamp", { opacity: 0, duration: 0.18, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

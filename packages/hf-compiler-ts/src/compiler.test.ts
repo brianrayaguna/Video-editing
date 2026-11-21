@@ -1181,3 +1181,166 @@ test("expanded documentary components and multi-family italic fonts compile lint
   );
   assert.equal(lintResult.ok, true);
 });
+
+test("template_id auto-resolves catalog, multi-ring text glow compiles, single caption lane has zero lint warnings, and VFX suite passes lint", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-vfx-autoresolve-"));
+  const target: PlatformTarget = {
+    platform_id: "shorts_9x16_1080p",
+    aspect_ratio: "9:16",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    safe_zone: { top_pct: 0.14, bottom_pct: 0.22, left_pct: 0.06, right_pct: 0.16 },
+  };
+
+  // Unknown template_id fails loud instead of silently leaking overlay_id text.
+  assert.throws(
+    () =>
+      compileEditPlanToHyperframes(
+        makeSamplePlan({
+          brand_id: "geoverum",
+          overlay_compositions: [
+            {
+              overlay_id: "ov_should_never_leak",
+              kind: "data_card",
+              template_id: "nonexistent_template_xyz",
+              timeline_start_s: 0.0,
+              timeline_duration_s: 1.5,
+              transparent: true,
+              safe_band: "upper_safe",
+              props: {},
+            },
+          ],
+        }),
+        path.join(tmpDir, "bad"),
+        { platformTarget: target, copyAssets: false }
+      ),
+    /unknown template_id/i
+  );
+
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      width: 1080,
+      height: 1920,
+      duration_s: 20.0,
+      overlay_compositions: [
+        // Two captions should compile onto ONE single captionLane (0 multiple_caption_tracks warnings).
+        {
+          overlay_id: "cap_a",
+          kind: "caption_rail",
+          template_id: "caption_rail",
+          timeline_start_s: 0.2,
+          timeline_duration_s: 1.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: { text: "First beat", caption_shadow_blur_px: 8, caption_glow_px: 10 },
+        },
+        {
+          overlay_id: "cap_b",
+          kind: "caption_rail",
+          template_id: "caption_rail",
+          timeline_start_s: 1.3,
+          timeline_duration_s: 1.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: { text: "Second beat", glow_color: "#F5C542", glow_strength: 0.9 },
+        },
+        // Auto-resolved via template_id WITHOUT props.composition_path!
+        {
+          overlay_id: "vfx_vignette",
+          kind: "full_scene",
+          template_id: "vignette_mood_dip",
+          timeline_start_s: 2.5,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: { glow_color: "#FF4D4D", glow_strength: 0.8 },
+          variables: { intensity: 0.72 },
+        },
+        {
+          overlay_id: "vfx_pin",
+          kind: "data_card",
+          template_id: "map_pin_badge",
+          timeline_start_s: 4.7,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { label: "JAGUAR", glyph: "●" },
+        },
+        {
+          overlay_id: "vfx_radar",
+          kind: "data_card",
+          template_id: "radar_pulse_rings",
+          timeline_start_s: 6.9,
+          timeline_duration_s: 2.2,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { ring_color: "#DC2626", ring_count: 3 },
+        },
+        {
+          overlay_id: "vfx_swarm",
+          kind: "data_card",
+          template_id: "migrant_dot_flow",
+          timeline_start_s: 9.3,
+          timeline_duration_s: 2.5,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { dot_count: 14 },
+        },
+        {
+          overlay_id: "vfx_weather",
+          kind: "full_scene",
+          template_id: "weather_cloud_rain",
+          timeline_start_s: 12.0,
+          timeline_duration_s: 2.5,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { rain_density: 18 },
+        },
+        {
+          overlay_id: "vfx_stamp",
+          kind: "data_card",
+          template_id: "archival_stamp_impact",
+          timeline_start_s: 14.8,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { stamp_text: "BLOCKED" },
+        },
+      ],
+    }),
+    tmpDir,
+    { platformTarget: target, copyAssets: false }
+  );
+
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  const capATrack = indexHtml.match(/id="cap_a"[^>]*data-track-index="(\d+)"/)?.[1];
+  const capBTrack = indexHtml.match(/id="cap_b"[^>]*data-track-index="(\d+)"/)?.[1];
+  assert.ok(capATrack !== undefined && capATrack === capBTrack);
+  // Multi-ring glow CSS variable emitted on glowing caption
+  const capBHtml = fs.readFileSync(compiled.compositionFiles[1]!, "utf8");
+  assert.match(capBHtml, /--vedit-text-glow:/);
+  assert.doesNotMatch(capBHtml, /filter:\s*blur|backdrop-filter/);
+  // Auto-resolved VFX templates render their real markup, never raw overlay_id fallback text
+  const stampHtml = fs.readFileSync(compiled.compositionFiles[7]!, "utf8");
+  assert.match(stampHtml, />BLOCKED</);
+  assert.doesNotMatch(stampHtml, />vfx_stamp</);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors for VFX auto-resolve suite, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  const multiCapWarnings = lintResult.hyperframesFindings.filter(
+    (f) => f.code === "multiple_caption_tracks"
+  );
+  assert.equal(multiCapWarnings.length, 0);
+  assert.equal(lintResult.ok, true);
+});

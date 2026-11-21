@@ -20,6 +20,8 @@ _BLACK_RE = re.compile(
 _FREEZE_START_RE = re.compile(r"freeze_start:\s*([\d.]+)", re.I)
 _FREEZE_DUR_RE = re.compile(r"freeze_duration:\s*([\d.]+)", re.I)
 _VMAF_SCORE_RE = re.compile(r"VMAF score:\s*([\d.]+)", re.I)
+_SSIM_ALL_RE = re.compile(r"All:([\d.]+)", re.I)
+_PSNR_AVG_RE = re.compile(r"average:([\d.inf]+)", re.I)
 
 
 @dataclass(slots=True)
@@ -148,6 +150,153 @@ def compute_vmaf_score(
     return round(float(match.group(1)), 3) if match else None
 
 
+def compute_ssim_psnr_scores(
+    distorted_path: Path,
+    reference_path: Path,
+) -> dict[str, float] | None:
+    """Compute FFmpeg SSIM and PSNR metrics as a portable fallback when libvmaf is absent."""
+    if not distorted_path.is_file() or not reference_path.is_file():
+        return None
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(distorted_path),
+            "-i",
+            str(reference_path),
+            "-lavfi",
+            "[0:v]setpts=PTS-STARTPTS,split[d1][d2];"
+            "[1:v]setpts=PTS-STARTPTS,split[r1][r2];"
+            "[d1][r1]ssim;[d2][r2]psnr",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stderr = proc.stderr or ""
+    ssim_m = _SSIM_ALL_RE.search(stderr)
+    psnr_m = _PSNR_AVG_RE.search(stderr)
+    out: dict[str, float] = {}
+    if ssim_m:
+        out["ssim"] = round(float(ssim_m.group(1)), 4)
+    if psnr_m:
+        raw_psnr = psnr_m.group(1).lower()
+        out["psnr_db"] = 99.0 if raw_psnr == "inf" else round(float(raw_psnr), 2)
+    return out or None
+
+
+def generate_diff_contact_sheet(
+    deliverable_path: Path,
+    reference_path: Path,
+    output_jpg: Path,
+    *,
+    samples: int = 12,
+) -> Path | None:
+    """Render a side-by-side contact sheet (REF left vs DELIVERABLE right) across the timeline."""
+    if not deliverable_path.is_file() or not reference_path.is_file():
+        return None
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(deliverable_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        dur = max(0.5, float((probe.stdout or "0").strip()))
+    except ValueError:
+        return None
+
+    import tempfile
+
+    n = max(2, min(samples, 24))
+    cols = 3
+    stamps = [round((dur * (i + 0.5)) / n, 3) for i in range(n)]
+    cell_w, cell_h = 240, 426
+    output_jpg.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="vedit_diff_sheet_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        cells: list[Path] = []
+        for idx, t in enumerate(stamps):
+            cell = tmp / f"cell_{idx:02d}.jpg"
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-y",
+                    "-ss",
+                    f"{t:.3f}",
+                    "-i",
+                    str(reference_path),
+                    "-ss",
+                    f"{t:.3f}",
+                    "-i",
+                    str(deliverable_path),
+                    "-filter_complex",
+                    f"[0:v]scale={cell_w}:{cell_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={cell_w}:{cell_h}:(ow-iw)/2:(oh-ih)/2,drawtext=text='REF {t:.1f}s':"
+                    "x=6:y=6:fontsize=16:fontcolor=yellow:box=1:boxcolor=black@0.75[a];"
+                    f"[1:v]scale={cell_w}:{cell_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={cell_w}:{cell_h}:(ow-iw)/2:(oh-ih)/2,drawtext=text='OUT {t:.1f}s':"
+                    "x=6:y=6:fontsize=16:fontcolor=cyan:box=1:boxcolor=black@0.75[b];"
+                    "[a][b]hstack=inputs=2",
+                    "-frames:v",
+                    "1",
+                    "-q:v",
+                    "3",
+                    str(cell),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode == 0 and cell.is_file():
+                cells.append(cell)
+        if not cells:
+            return None
+        inputs: list[str] = []
+        for c in cells:
+            inputs.extend(["-i", str(c)])
+        pair_w = cell_w * 2
+        layout = "|".join(
+            f"{(i % cols) * pair_w}_{(i // cols) * cell_h}" for i in range(len(cells))
+        )
+        fc = "".join(f"[{i}:v]" for i in range(len(cells))) + (
+            f"xstack=inputs={len(cells)}:layout={layout}"
+        )
+        grid = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                *inputs,
+                "-filter_complex",
+                fc,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                str(output_jpg),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return output_jpg if grid.returncode == 0 and output_jpg.is_file() else None
+
+
 def audit_mastered_deliverable(
     media_path: Path,
     platform_target: PlatformTarget,
@@ -208,10 +357,17 @@ def audit_mastered_deliverable(
         r_fps = _parse_rate(v_stream.get("r_frame_rate"))
         avg_fps = _parse_rate(v_stream.get("avg_frame_rate"))
         is_cfr = abs(r_fps - avg_fps) <= 0.15 and r_fps > 0
+        dur_raw = (
+            info.get("format", {}).get("duration")
+            or v_stream.get("duration")
+            or 0.0
+        )
         metrics.update(
             {
                 "width": w,
                 "height": h,
+                "duration_s": round(float(dur_raw), 3),
+                "video_duration_s": round(float(v_stream.get("duration") or dur_raw), 3),
                 "r_fps": round(r_fps, 3),
                 "avg_fps": round(avg_fps, 3),
                 "is_cfr": is_cfr,
@@ -306,13 +462,17 @@ def audit_mastered_deliverable(
                         )
                     )
             else:
-                warnings.append(
-                    QCIssue(
-                        severity="warning",
-                        code="VMAF_UNAVAILABLE",
-                        message="FFmpeg libvmaf filter not available on this host.",
+                fallback_scores = compute_ssim_psnr_scores(media_path, reference_path)
+                if fallback_scores:
+                    metrics.update(fallback_scores)
+                else:
+                    warnings.append(
+                        QCIssue(
+                            severity="warning",
+                            code="VMAF_UNAVAILABLE",
+                            message="FFmpeg libvmaf filter not available on this host.",
+                        )
                     )
-                )
 
     if a_stream is None:
         if require_audio:
@@ -389,6 +549,20 @@ def audit_mastered_deliverable(
                 )
             )
 
+        if a_stream is not None and v_stream is not None:
+            v_dur = float(v_stream.get("duration") or 0.0)
+            a_dur = float(a_stream.get("duration") or 0.0)
+            if v_dur > 0 and a_dur > 0 and abs(v_dur - a_dur) > 0.5:
+                errors.append(
+                    QCIssue(
+                        severity="error",
+                        code="VIDEO_AUDIO_DURATION_MISMATCH",
+                        message=(
+                            f"Video stream ({v_dur:.2f}s) and audio stream ({a_dur:.2f}s) "
+                            "differ by more than 0.5s."
+                        ),
+                    )
+                )
         if tp_match:
             tp = float(tp_match.group(1))
             metrics["true_peak_dbtp"] = tp

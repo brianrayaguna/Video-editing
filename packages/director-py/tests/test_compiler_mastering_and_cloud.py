@@ -708,3 +708,140 @@ def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
         line.startswith("Dialogue: 1,") and line.endswith("has been walking")
         for line in styled_ass.splitlines()
     )
+
+    glow_ass = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="cap_glow",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    **base,
+                    "caption_glow_color": "#F5C542",
+                    "caption_glow_px": 12,
+                    "caption_transition_ms": 140,
+                },
+            )
+        ],
+        target,
+        tmp_path / "glow.ass",
+    ).read_text(encoding="utf-8")
+    glow_layer = next(line for line in glow_ass.splitlines() if line.startswith("Dialogue: 0,"))
+    assert "\\blur12" in glow_layer and "\\1c&H42C5F5&" in glow_layer
+    assert "\\fad(140,140)" in glow_layer
+
+
+def test_ffmpeg_xfade_preserves_timeline_duration_and_ssim_fallback(tmp_path: Path) -> None:
+    shorts_target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    src_a = tmp_path / "a.mp4"
+    src_b = tmp_path / "b.mp4"
+    mix_wav = tmp_path / "mix.wav"
+    _synth_video(src_a, duration_s=2.0, color="0x1E293B")
+    _synth_video(src_b, duration_s=2.0, color="0x0B3D4E")
+    _synth_audio(mix_wav, freq_hz=330, duration_s=4.5)
+
+    plan = EditPlan(
+        schema_version="1.0",
+        job_id="xfade_test",
+        project_id="proj_xf",
+        brand_id="geoverum",
+        platform_target_id=shorts_target.platform_id,
+        render_strategy="hybrid",
+        duration_s=4.5,
+        fps=shorts_target.fps,
+        width=shorts_target.width,
+        height=shorts_target.height,
+        assets=[
+            AssetRef(
+                asset_id="va",
+                sha256=hash_media(src_a)["sha256"],
+                kind="video",
+                path=str(src_a),
+                duration_s=2.0,
+                has_audio=False,
+            ),
+            AssetRef(
+                asset_id="vb",
+                sha256=hash_media(src_b)["sha256"],
+                kind="video",
+                path=str(src_b),
+                duration_s=2.0,
+                has_audio=False,
+            ),
+            AssetRef(
+                asset_id="am",
+                sha256=hash_media(mix_wav)["sha256"],
+                kind="audio_speech",
+                path=str(mix_wav),
+                duration_s=4.5,
+                has_audio=True,
+            ),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="va",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.5,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                reframed_to_target=True,
+            ),
+            VideoClipOp(
+                clip_id="c2",
+                asset_id="vb",
+                timeline_start_s=1.5,
+                timeline_duration_s=1.5,
+                source_start_s=0.0,
+                role="b_roll",
+                content_type="map",
+                reframed_to_target=True,
+                transition_in="hard_cut",
+            ),
+            VideoClipOp(
+                clip_id="c3",
+                asset_id="va",
+                timeline_start_s=3.0,
+                timeline_duration_s=1.5,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                reframed_to_target=True,
+                transition_in="clean_crossfade",
+            ),
+        ],
+        overlay_compositions=[],
+        audio_tracks=[
+            AudioTrackOp(
+                track_id="mix",
+                asset_id="am",
+                audio_group="program_mix",
+                timeline_start_s=0.0,
+                timeline_duration_s=4.5,
+                source_start_s=0.0,
+                gain_db=0.0,
+                cleaned_speech_stem=True,
+            )
+        ],
+        verifier_passed=True,
+    )
+    out_mp4 = tmp_path / "master_xfade.mp4"
+    res = assemble_hybrid_deliverable(
+        plan,
+        shorts_target,
+        out_mp4,
+        encode_preset="veryfast",
+    )
+    assert res.output_path.is_file()
+    audit = audit_mastered_deliverable(out_mp4, shorts_target, reference_path=out_mp4)
+    assert audit.passed is True, f"Audit failed: {audit.errors}"
+    assert abs(audit.metrics["video_duration_s"] - 4.5) < 0.15
+    assert (
+        audit.metrics.get("ssim") is not None
+        or audit.metrics.get("vmaf_score") is not None
+    )

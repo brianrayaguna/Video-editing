@@ -37,9 +37,9 @@ Brand palettes, typography families, and cartographic label rules belong in the 
 
 ### Execution boundary (HyperFrames vs. engine fast-paths)
 
-- **MapLibre / offline basemap baking (`tools/geo-assets/`)**: Owns all deterministic 2.5D/3D satellite and terrain camera A-roll. Never fetch live tiles during HyperFrames renders.
-- **FFmpeg native `libass` fast-path (`ass_captions.py`)**: Owns static/hard-cut plain captions, text-only watermarks, and quiet source credits in `hybrid` mode.
-- **HyperFrames (`packages/hf-compiler-ts/` + brand templates)**: Owns high-value animated overlays rendered over sparse active windows (`ProRes 4444` alpha `.mov`)—vector draw-on (`SVG stroke-dashoffset`), full-bleed layered 2D cross-sections, `clip-path` wipes and splits, 3D CSS perspective flips, kinetic typography, tabular count-ups, and native shutter motion blur (`data-motion-blur="on"`).
+- **MapLibre / offline basemap baking (`tools/geo-assets/`)**: Owns all deterministic 2.5D/3D satellite, terrain, and world-space vector map A-roll (`vedit geo prepare` and `vedit geo bake-scene`). Never fetch live tiles during HyperFrames renders.
+- **FFmpeg native `libass` fast-path (`ass_captions.py`)**: Owns static/hard-cut or cross-faded (`120–200ms`) plain captions with optional outer glow halos (`caption_glow_color`, `caption_glow_px`), text-only watermarks, and quiet source credits in `hybrid` mode.
+- **HyperFrames (`packages/hf-compiler-ts/` + brand templates)**: Owns high-value animated overlays rendered over sparse active windows (`ProRes 4444` alpha `.mov`)—vector draw-on (`SVG stroke-dashoffset`), full-bleed layered 2D cross-sections, `clip-path` wipes and splits, 3D CSS perspective flips, kinetic typography with multi-ring `text-shadow` glow (`glow_color`, `glow_strength`), tabular count-ups, and native shutter motion blur (`data-motion-blur="on"`). All `template_id` references auto-resolve from `profiles/brands/<brand_id>/templates/catalog.json` and fail loud when unknown.
 
 ### Physicality & easing
 
@@ -58,5 +58,5 @@ Brand palettes, typography families, and cartographic label rules belong in the 
 ### Rendering performance
 
 - Animate only `transform`, `opacity`, `clip-path`, or SVG `stroke-dashoffset`.
-- Never animate layout properties or runtime CSS `filter: blur()` / `backdrop-filter`.
-- Pre-bake whip/blur optical transitions into media; do not compute them live in Chromium.
+- Never animate layout properties or runtime CSS `filter: blur()` / `backdrop-filter`. For luminous glowing typography, use multi-ring `text-shadow` stacks (`glow_color`, `glow_strength`) in HTML or native `libass` blur tags (`\blur`) on subtitles rather than CSS filter blurs.
+- Pre-bake whip/blur optical transitions and high-velocity camera motion blur (`shutter_samples` sub-frame accumulation) into map media; do not compute live filter blurs in Chromium.

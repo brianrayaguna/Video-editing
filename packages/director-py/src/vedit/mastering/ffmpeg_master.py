@@ -109,7 +109,7 @@ def _build_audio_mix_graph(
         input_args.extend(["-i", str(src_path)])
         label = f"trk_{idx}"
         chains.append(_build_track_chain(idx, track, label))
-        if track.audio_group == "voiceover":
+        if track.audio_group in ("voiceover", "program_mix"):
             vo_labels.append(f"[{label}]")
         elif track.audio_group == "music":
             bgm_labels.append(f"[{label}]")
@@ -433,8 +433,7 @@ def assemble_hybrid_deliverable(
 
     input_args: list[str] = []
     chains: list[str] = []
-    concat_inputs: list[str] = []
-
+    clip_nodes: list[tuple[str, float, str]] = []
     ordered_clips = sorted(plan.video_tracks, key=lambda c: c.timeline_start_s)
     cursor_s = 0.0
     gap_idx = 0
@@ -451,7 +450,7 @@ def assemble_hybrid_deliverable(
             chains.append(
                 f"color=c=black:s={width}x{height}:r={fps}:d={gap_s:.4f},format=yuv420p[{gap_lbl}]"
             )
-            concat_inputs.append(f"[{gap_lbl}]")
+            clip_nodes.append((f"[{gap_lbl}]", gap_s, "hard_cut"))
 
         input_args.extend(["-i", str(src)])
         lbl = f"vclip_{idx}"
@@ -467,18 +466,75 @@ def assemble_hybrid_deliverable(
             "setsar=1",
             "format=yuv420p",
         ]
-        trans = (clip.transition_in or "").lower()
-        if trans in ("clean_fade", "clean_crossfade") and clip.timeline_duration_s >= 0.4:
+        trans = (clip.transition_in or "hard_cut").lower().strip()
+        if (
+            idx == 0
+            and trans in ("clean_fade", "clean_crossfade")
+            and clip.timeline_duration_s >= 0.4
+        ):
             fade_d = min(0.28, round(clip.timeline_duration_s * 0.15, 3))
             vf_parts.append(f"fade=t=in:st=0:d={fade_d:.3f}")
         chains.append(f"[{idx}:v]{','.join(vf_parts)}[{lbl}]")
-        concat_inputs.append(f"[{lbl}]")
+        clip_nodes.append((f"[{lbl}]", clip.timeline_duration_s, trans))
         cursor_s = clip.timeline_start_s + clip.timeline_duration_s
 
-    if len(concat_inputs) == 1:
-        chains.append(f"{concat_inputs[0]}copy[v_base]")
+    _XFADE_MAP = {
+        "clean_crossfade": ("fade", 0.30),
+        "clean_fade": ("fade", 0.28),
+        "wipe": ("wipeleft", 0.32),
+        "wipe_left": ("wipeleft", 0.32),
+        "wipe_right": ("wiperight", 0.32),
+        "whip_zoom_blur": ("smoothleft", 0.20),
+        "color_flash": ("fadewhite", 0.18),
+    }
+
+    if len(clip_nodes) == 1:
+        chains.append(f"{clip_nodes[0][0]}copy[v_base]")
+    elif any(trans in _XFADE_MAP for _, _, trans in clip_nodes[1:]):
+        fps_int = max(1, round(fps))
+        cur_lbl, cur_dur, _ = clip_nodes[0]
+        cur_frames = max(1, round(cur_dur * fps_int))
+        for step_idx, (nxt_lbl, nxt_dur, trans) in enumerate(clip_nodes[1:], start=1):
+            nxt_frames = max(1, round(nxt_dur * fps_int))
+            out_lbl = "[v_base]" if step_idx == len(clip_nodes) - 1 else f"[vx_{step_idx}]"
+            if trans in _XFADE_MAP and cur_dur >= 0.35 and nxt_dur >= 0.35:
+                xf_name, default_d = _XFADE_MAP[trans]
+                d_frames = max(
+                    2,
+                    min(
+                        round(default_d * fps_int),
+                        cur_frames // 4,
+                        nxt_frames // 4,
+                    ),
+                )
+                d = round(d_frames / fps_int, 4)
+                offset_s = round(cur_frames / fps_int, 4)
+                # Pad outgoing tail by d_frames (+1 guard frame) with uniform CFR timebase
+                # so xfade always overlaps cleanly and preserves exact timeline duration.
+                pad_lbl = f"[vpad_{step_idx}]"
+                chains.append(
+                    f"{cur_lbl}fps={fps_int},setpts=PTS-STARTPTS,"
+                    f"tpad=stop_mode=clone:stop={d_frames + 1},"
+                    f"settb=1/{fps_int}{pad_lbl};"
+                    f"{nxt_lbl}fps={fps_int},setpts=PTS-STARTPTS,"
+                    f"settb=1/{fps_int}[vnxt_{step_idx}];"
+                    f"{pad_lbl}[vnxt_{step_idx}]xfade=transition={xf_name}:"
+                    f"duration={d:.4f}:offset={offset_s:.4f},"
+                    f"fps={fps_int},setpts=PTS-STARTPTS,format=yuv420p{out_lbl}"
+                )
+            else:
+                chains.append(
+                    f"{cur_lbl}fps={fps_int},setpts=PTS-STARTPTS[vca_{step_idx}];"
+                    f"{nxt_lbl}fps={fps_int},setpts=PTS-STARTPTS[vcb_{step_idx}];"
+                    f"[vca_{step_idx}][vcb_{step_idx}]concat=n=2:v=1:a=0,"
+                    f"fps={fps_int},setpts=PTS-STARTPTS,format=yuv420p{out_lbl}"
+                )
+            cur_lbl = out_lbl
+            cur_frames += nxt_frames
+            cur_dur = round(cur_frames / fps_int, 4)
     else:
-        chains.append(f"{''.join(concat_inputs)}concat=n={len(concat_inputs)}:v=1:a=0[v_base]")
+        concat_tags = "".join(lbl for lbl, _, _ in clip_nodes)
+        chains.append(f"{concat_tags}concat=n={len(clip_nodes)}:v=1:a=0[v_base]")
 
     final_v_label = "[v_base]"
     used_overlay = False

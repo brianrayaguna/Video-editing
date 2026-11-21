@@ -22,6 +22,7 @@ const sharp = require("sharp");
 
 const GEO_ROOT = join(REPO_ROOT, "assets/geo");
 const TILES_DIR = join(GEO_ROOT, "tiles");
+const TILES_HQ_DIR = join(GEO_ROOT, "tiles_hq");
 const DEM_DIR = join(GEO_ROOT, "dem");
 
 const PORT = Number(process.env.PORT || 8765);
@@ -133,6 +134,43 @@ export function startTileServer(port = PORT, host = HOST) {
       if (pathname === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", root: "assets/geo" }));
+        return;
+      }
+
+      const hqMatch = pathname.match(/^\/tiles_hq\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
+      if (hqMatch) {
+        const z = Number(hqMatch[1]);
+        const x = Number(hqMatch[2]);
+        const y = Number(hqMatch[3]);
+        const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
+        let buf = existsSync(exactHq) ? readFileSync(exactHq) : null;
+        if (!buf) {
+          for (let pz = z - 1; pz >= 5; pz--) {
+            const scale = 1 << (z - pz);
+            const px = Math.floor(x / scale);
+            const py = Math.floor(y / scale);
+            const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
+            if (existsSync(parentHq)) {
+              const subSize = Math.max(1, Math.floor(256 / scale));
+              const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+              const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+              buf = await sharp(parentHq)
+                .extract({ left, top, width: subSize, height: subSize })
+                .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+                .jpeg({ quality: 88 })
+                .toBuffer();
+              break;
+            }
+          }
+        }
+        if (!buf) buf = await resolveTileBuffer(z, x, y);
+        if (!buf) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.end(buf);
         return;
       }
 

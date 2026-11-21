@@ -1,0 +1,100 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+      --vedit-text-glow: {{TEXT_GLOW_CSS}};
+      font-family: '{{DISPLAY_FONT}}', 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-vig-layer {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+    }
+    .gv-vig-label {
+      position: absolute;
+      left: 50%;
+      top: 26%;
+      max-width: calc(760px * {{SCALE_FACTOR}});
+      text-align: center;
+      font-family: '{{DISPLAY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(52px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.01em;
+      color: var(--vedit-ink);
+      text-shadow: var(--vedit-text-glow);
+      opacity: 0;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-vig" class="gv-vig-layer"></div>
+      <div id="{{SCENE_ID}}-label" class="gv-vig-label" data-var-text="label">{{VAR_LABEL|}}</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const cx = Math.max(15, Math.min(85, Number("{{VAR_CENTER_X_PCT|50}}") || 50));
+      const cy = Math.max(15, Math.min(85, Number("{{VAR_CENTER_Y_PCT|48}}") || 48));
+      const strength = Math.max(0.2, Math.min(0.96, Number("{{VAR_STRENGTH|0.88}}") || 0.88));
+      const innerPct = Math.max(8, Math.min(45, Number("{{VAR_CLEAR_RADIUS_PCT|18}}") || 18));
+      const tint = ("{{VAR_TINT_MODE|dark}}").trim().toLowerCase();
+
+      const vigEl = document.getElementById("{{SCENE_ID}}-vig");
+      const labelEl = document.getElementById("{{SCENE_ID}}-label");
+      const hasLabel = Boolean(labelEl && labelEl.textContent.trim());
+      if (labelEl && !hasLabel) labelEl.classList.add("gv-empty");
+
+      if (vigEl) {
+        if (tint === "amber_catastrophe") {
+          vigEl.style.background =
+            "radial-gradient(circle at " + cx + "% " + cy + "%, " +
+            "rgba(66,34,12,0.12) " + innerPct + "%, rgba(44,22,8," + (strength * 0.72).toFixed(2) + ") 56%, " +
+            "rgba(18,9,4," + strength.toFixed(2) + ") 100%)";
+        } else {
+          vigEl.style.background =
+            "radial-gradient(circle at " + cx + "% " + cy + "%, " +
+            "rgba(3,12,18,0.08) " + innerPct + "%, rgba(3,10,16," + (strength * 0.75).toFixed(2) + ") 54%, " +
+            "rgba(1,5,8," + strength.toFixed(2) + ") 100%)";
+        }
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(0.42, dur * 0.25);
+      const exitS = Math.min(0.32, dur * 0.22);
+      const exitAt = Math.max(enterS + 0.05, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#{{SCENE_ID}}-label", { xPercent: -50, yPercent: -50 });
+      tl.fromTo("#{{SCENE_ID}}-vig", { opacity: 0 }, { opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+      tl.to("#{{SCENE_ID}}-vig", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      if (hasLabel) {
+        tl.fromTo(
+          "#{{SCENE_ID}}-label",
+          { opacity: 0, scale: 0.94 },
+          { opacity: 1, scale: 1, duration: enterS, ease: "expo.out" },
+          0.08
+        );
+        tl.to("#{{SCENE_ID}}-label", { opacity: 0, duration: exitS * 0.8, ease: "power3.in" }, exitAt);
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

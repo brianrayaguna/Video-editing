@@ -92,7 +92,7 @@ def test_geoverum_catalog_editorial_templates_resolve_and_validate() -> None:
         )
     )
     ids = {t.template_id for t in catalog.templates}
-    assert len(catalog.templates) == 24
+    assert len(catalog.templates) == 30
     expected_new = {
         "coordinate_pin_callout",
         "dual_unit_distance_bracket",
@@ -108,6 +108,12 @@ def test_geoverum_catalog_editorial_templates_resolve_and_validate() -> None:
         "kinetic_portal_title",
         "soft_curtain_transition",
         "demographic_icon_grid",
+        "vignette_mood_dip",
+        "map_pin_badge",
+        "radar_pulse_rings",
+        "migrant_dot_flow",
+        "weather_cloud_rain",
+        "archival_stamp_impact",
     }
     assert expected_new.issubset(ids)
 

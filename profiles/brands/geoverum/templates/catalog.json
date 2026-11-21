@@ -526,6 +526,115 @@
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
+    },
+    {
+      "template_id": "vignette_mood_dip",
+      "composition_path": "profiles/brands/geoverum/templates/components/vignette_mood_dip.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Atmospheric radial vignette darkening or catastrophe amber grade isolating a focal map anchor during question or tension beats.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "center_x_pct", "type": "number", "min": 15, "max": 85, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 15, "max": 85, "default": 48 },
+        { "id": "strength", "type": "number", "min": 0.2, "max": 0.96, "default": 0.88 },
+        { "id": "clear_radius_pct", "type": "number", "min": 8, "max": 45, "default": 18 },
+        { "id": "tint_mode", "type": "enum", "enum_values": ["dark", "amber_catastrophe"], "default": "dark" },
+        { "id": "label", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "map_pin_badge",
+      "composition_path": "profiles/brands/geoverum/templates/components/map_pin_badge.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Anchored teardrop, circular hazard, or crimson prohibition map badge with spring-overshoot pop from the anchor tip and optional glowing label.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "badge_style", "type": "enum", "enum_values": ["teardrop", "circle", "prohibition"], "default": "teardrop" },
+        { "id": "anchor_x_pct", "type": "number", "min": 12, "max": 88, "default": 50 },
+        { "id": "anchor_y_pct", "type": "number", "min": 18, "max": 72, "default": 46 },
+        { "id": "size_px", "type": "number", "min": 90, "max": 440, "default": 190 },
+        { "id": "badge_color", "type": "color", "default": "#DC2626" },
+        { "id": "label", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "radar_pulse_rings",
+      "composition_path": "profiles/brands/geoverum/templates/components/radar_pulse_rings.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Expanding concentric crimson or amber radar threat rings anchored at a focal map coordinate.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "center_x_pct", "type": "number", "min": 12, "max": 88, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 15, "max": 78, "default": 46 },
+        { "id": "max_radius", "type": "number", "min": 70, "max": 340, "default": 180 },
+        { "id": "ring_color", "type": "color", "default": "#EF4444" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "migrant_dot_flow",
+      "composition_path": "profiles/brands/geoverum/templates/components/migrant_dot_flow.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Abstract population marker swarm traveling across a corridor with mid-journey status color transition and attrition fade-out.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "dot_count", "type": "number", "min": 4, "max": 30, "default": 18 },
+        { "id": "loss_ratio", "type": "number", "min": 0, "max": 0.8, "default": 0.28 },
+        { "id": "start_x_pct", "type": "number", "min": 10, "max": 90, "default": 58 },
+        { "id": "start_y_pct", "type": "number", "min": 15, "max": 85, "default": 62 },
+        { "id": "end_x_pct", "type": "number", "min": 10, "max": 90, "default": 42 },
+        { "id": "end_y_pct", "type": "number", "min": 15, "max": 85, "default": 28 },
+        { "id": "active_color", "type": "color", "default": "#38BDF8" },
+        { "id": "loss_color", "type": "color", "default": "#EF4444" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "weather_cloud_rain",
+      "composition_path": "profiles/brands/geoverum/templates/components/weather_cloud_rain.html",
+      "overlay_kind": "full_scene",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Layered volumetric SVG cloud cluster with drifting motion and animated diagonal rain streaks over a geographic zone.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "center_x_pct", "type": "number", "min": 15, "max": 85, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 15, "max": 75, "default": 44 },
+        { "id": "rain_streaks", "type": "number", "min": 8, "max": 36, "default": 24 },
+        { "id": "rain_color", "type": "color", "default": "#BAE6FD" }
+      ]
+    },
+    {
+      "template_id": "archival_stamp_impact",
+      "composition_path": "profiles/brands/geoverum/templates/components/archival_stamp_impact.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Double-bordered crimson archival verdict rubber stamp slamming onto a map or document with damped impact camera shake.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "stamp_text", "type": "string", "default": "FAILED" },
+        { "id": "center_x_pct", "type": "number", "min": 15, "max": 85, "default": 50 },
+        { "id": "center_y_pct", "type": "number", "min": 18, "max": 72, "default": 46 },
+        { "id": "angle_deg", "type": "number", "min": -45, "max": 45, "default": -18 },
+        { "id": "stamp_color", "type": "color", "default": "#991B1B" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
     }
   ]
 }

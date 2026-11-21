@@ -30,7 +30,10 @@ from vedit.providers.veed_oauth import VeedOAuthTokenStore
 def test_builtin_registry_marks_all_providers_implemented() -> None:
     registry = build_default_registry()
     report = registry.status_report()
-    assert {s["name"] for s in report["transcription"]["registered"]} == {"veed", "xai"}
+    assert {s["name"] for s in report["transcription"]["registered"]} == {
+        "veed",
+        "xai",
+    }
     assert {s["name"] for s in report["media_ops"]["registered"]} == {
         "ffmpeg",
         "modal_cloud",
@@ -536,3 +539,38 @@ def test_epidemic_mcp_transport_search_and_download(tmp_path: Path) -> None:
         "tools/call",
         "tools/call",
     ]
+
+
+def test_registry_call_with_fallback_promotes_secondary_provider() -> None:
+    from vedit.providers.config import CapabilityProviderConfig, ProvidersConfig
+    from vedit.providers.registry import ProviderRegistry, ProviderSpec
+
+    class _FailProvider:
+        def __init__(self, _cfg: dict) -> None:
+            pass
+
+        def ping(self) -> str:
+            raise ProviderAPIError("primary", 402, "insufficient credits")
+
+    class _OkProvider:
+        def __init__(self, _cfg: dict) -> None:
+            pass
+
+        def ping(self) -> str:
+            return "recovered"
+
+    cfg = ProvidersConfig(
+        defaults={
+            "transcription": CapabilityProviderConfig(
+                primary="primary",
+                fallback=["backup"],
+                options={},
+            )
+        }
+    )
+    reg = ProviderRegistry(config=cfg)
+    reg.register(ProviderSpec("transcription", "primary", _FailProvider))
+    reg.register(ProviderSpec("transcription", "backup", _OkProvider))
+
+    value = reg.call_with_fallback("transcription", lambda p: p.ping())
+    assert value == "recovered"

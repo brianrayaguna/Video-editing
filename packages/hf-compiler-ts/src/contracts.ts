@@ -62,6 +62,8 @@ export interface VideoClipOp {
   timeline_duration_s: number;
   source_start_s: number;
   role: ClipRole;
+  content_type?: "live_action" | "map" | "landscape" | "diagram" | "archival";
+  visual_beat_count?: number;
   reframed_to_target?: boolean;
   scale?: number;
   transition_in?: string | null;
@@ -83,7 +85,7 @@ export interface OverlayCompositionOp {
 export interface AudioTrackOp {
   track_id: string;
   asset_id: string;
-  audio_group: "voiceover" | "music" | "sfx";
+  audio_group: "voiceover" | "music" | "sfx" | "program_mix";
   timeline_start_s: number;
   timeline_duration_s: number;
   source_start_s: number;

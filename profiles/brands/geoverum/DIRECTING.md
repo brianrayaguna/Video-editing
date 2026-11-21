@@ -170,6 +170,20 @@ The *story need* column is mandatory. A visual answer without a stated need is d
 | Show time of day or darkness | Grade and vignette as proof |
 | Show a repeated bureaucratic loop | Repeating pulse rings at one spot, then pull out with a duration numeral |
 
+### 5.4 Journey-chain storyboard
+
+A route-driven film is storyboarded as a **head schedule**, not as a list of shots. The route is one continuous path; the storyboard decides where its drawn head is at each spoken beat.
+
+1. **Name the path markers.** Split the route at every place, obstacle, or turn the narration mentions and give each split a named marker (`start`, `jungle_entry`, `jungle_exit`, `strait`, `shore`, `capital`).
+2. **Bind markers to words.** For each clause write `t | clause | head marker | head motion (draw / hold / pause) | camera regime | callout in | callout out`. The head reaches a named place on (or up to `0.3 s` before) the word that names it; it holds while the narration explains an obstacle and resumes on the clause that resolves it.
+3. **One map event per stressed phrase.** Dense narration lands a visual event every `0.25–1.5 s`: a draw segment, a fill, a label, an icon pop, a numeral, or a camera regime change. A clause with no event is a hold and must be justified by a pause in the voice.
+4. **Obstacles alternate kinds.** Consecutive obstacles use different treatments (fill colour, texture, icon family, camera regime) so the chain reads as escalation rather than repetition.
+5. **Camera rides the head.** Wide regime for long transits, regional for legs, close for obstacles; each regime change is one eased move that starts `~0.5 s` before the place is named. Recap and totals return to a whole-route view (globe or continental) before the open ending.
+6. **Callouts trail the head.** Every callout is placed relative to the head (see `CRAFT.md` *Layout relative to the route head*) and retired when its leg is finished.
+
+Validate the storyboard by reading only the `head marker` column aloud with the timings: it must tell the journey in order with no backtracking except where the narration describes a forced return.
+
+
 ---
 
 ## 6. Surfaces, registers, and transitions
@@ -235,6 +249,8 @@ Colours are cast per story, not fixed per role across all films.
 | Dives toward a named place | Start about 0.5 s early to arrive with the name |
 | Tint flashes, stamps, tool actions | On the action verb |
 | Joke beats | May lag deliberately; let a visual gag fill the pause |
+
+Camera moves follow the same sync table: a regime change (wide → regional → close) is one eased move that arrives with the place name, and between beats the camera keeps a slow drift rather than stopping dead. Measured or hand-keyed camera tracks are denoised before baking (`CRAFT.md` *Core motion*); a visible back-and-forth wobble reads as an error, never as energy.
 
 Pacing follows story pressure: fastest at the hook and the escalation, a near-still hold only on a structural promise ("three main reasons"), a palate-cleanser clean frame before a new "why". A visual must never contradict a spoken number.
 

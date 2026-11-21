@@ -197,6 +197,98 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${Number(clamped.toFixed(2))})`;
 }
 
+function buildTextGlowCss(glowColorRaw: unknown, glowStrengthRaw: unknown): {
+  glowColor: string;
+  textShadow: string;
+} {
+  const defaultShadow = "0 2px 6px rgba(0, 0, 0, 0.88), 0 0 2px rgba(0, 0, 0, 0.96)";
+  let strength = "none";
+  if (typeof glowStrengthRaw === "number" && Number.isFinite(glowStrengthRaw)) {
+    if (glowStrengthRaw > 0.8) strength = "intense";
+    else if (glowStrengthRaw > 0.4) strength = "luminous";
+    else if (glowStrengthRaw > 0) strength = "subtle";
+  } else if (typeof glowStrengthRaw === "string") {
+    strength = glowStrengthRaw.trim().toLowerCase();
+  }
+  if (strength === "none" || strength === "" || strength === "off") {
+    return { glowColor: "", textShadow: defaultShadow };
+  }
+  const color = resolveCssHex(glowColorRaw, "");
+  if (!color) {
+    return { glowColor: "", textShadow: defaultShadow };
+  }
+  if (strength === "subtle") {
+    return {
+      glowColor: color,
+      textShadow: `0 0 10px ${hexToRgba(color, 0.72)}, 0 0 22px ${hexToRgba(color, 0.42)}, ${defaultShadow}`,
+    };
+  }
+  if (strength === "intense") {
+    return {
+      glowColor: color,
+      textShadow: `0 0 8px ${hexToRgba(color, 0.98)}, 0 0 20px ${hexToRgba(color, 0.86)}, 0 0 42px ${hexToRgba(color, 0.62)}, 0 0 72px ${hexToRgba(color, 0.36)}, ${defaultShadow}`,
+    };
+  }
+  // Default luminous glow
+  return {
+    glowColor: color,
+    textShadow: `0 0 8px ${hexToRgba(color, 0.92)}, 0 0 22px ${hexToRgba(color, 0.68)}, 0 0 46px ${hexToRgba(color, 0.4)}, ${defaultShadow}`,
+  };
+}
+
+interface CatalogTemplateMatch {
+  compositionPath: string;
+  defaults: Record<string, unknown>;
+}
+
+const brandCatalogCache = new Map<string, Map<string, CatalogTemplateMatch> | null>();
+
+function resolveBrandTemplateEntry(
+  brandId: string,
+  templateId: string
+): CatalogTemplateMatch | null {
+  if (!brandId || !templateId) return null;
+  const repoRoot = findRepoRootForTemplates();
+  if (!repoRoot) return null;
+  const cacheKey = `${repoRoot}::${brandId}`;
+  let table = brandCatalogCache.get(cacheKey);
+  if (table === undefined) {
+    const catalogFile = path.join(repoRoot, "profiles", "brands", brandId, "templates", "catalog.json");
+    if (!fs.existsSync(catalogFile)) {
+      brandCatalogCache.set(cacheKey, null);
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as {
+        templates?: Array<{
+          template_id?: string;
+          composition_path?: string;
+          variables?: Array<{ id?: string; default?: unknown }>;
+        }>;
+      };
+      table = new Map<string, CatalogTemplateMatch>();
+      for (const entry of parsed.templates ?? []) {
+        if (!entry.template_id || !entry.composition_path) continue;
+        const defaults: Record<string, unknown> = {};
+        for (const v of entry.variables ?? []) {
+          if (v.id && v.default !== undefined) {
+            defaults[v.id] = v.default;
+          }
+        }
+        table.set(entry.template_id, {
+          compositionPath: entry.composition_path,
+          defaults,
+        });
+      }
+      brandCatalogCache.set(cacheKey, table);
+    } catch {
+      brandCatalogCache.set(cacheKey, null);
+      return null;
+    }
+  }
+  return table?.get(templateId) ?? null;
+}
+
 function findRepoRootForTemplates(): string | null {
   const envRoot = process.env.VEDIT_REPO_ROOT?.trim();
   if (envRoot && fs.existsSync(path.join(envRoot, "contracts"))) {
@@ -419,6 +511,10 @@ function buildOverlayCompositionHtml(
   const bg = resolveCssHex(ov.props.bg_color, "#0F172A");
   const accent = resolveCssHex(ov.props.accent_color, "#38BDF8");
   const bgRgba = hexToRgba(bg, 0.8);
+  const { textShadow: glowTextShadow } = buildTextGlowCss(
+    ov.props.glow_color,
+    ov.props.glow_strength
+  );
   const clipId = `${sceneId}-clip`;
   const innerId = `${sceneId}-inner`;
   const duration = Number(ov.timeline_duration_s.toFixed(3));
@@ -524,6 +620,7 @@ function buildOverlayCompositionHtml(
       --vedit-ground: ${bg};
       --vedit-ink: ${fg};
       --vedit-accent: ${accent};
+      --vedit-text-glow: ${glowTextShadow};
       font-variant-numeric: tabular-nums;
     }
     #${clipId} {
@@ -540,7 +637,7 @@ function buildOverlayCompositionHtml(
       font-weight: 600;
       line-height: 1.24;
       letter-spacing: -0.01em;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.88), 0 0 2px rgba(0, 0, 0, 0.96);
+      text-shadow: var(--vedit-text-glow);
     }
     .vedit-caption-pill {
       background: ${bgRgba};
@@ -564,7 +661,7 @@ function buildOverlayCompositionHtml(
       align-items: center;
       text-align: center;
       gap: ${Math.round(6 * scaleFactor)}px;
-      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.92), 0 1px 3px rgba(0, 0, 0, 0.98);
+      text-shadow: var(--vedit-text-glow);
     }
     .vedit-badge {
       color: var(--vedit-accent);
@@ -659,6 +756,10 @@ function renderParameterizedTemplate(
           ? ov.props.headline
           : "";
   const captionMarkup = renderCaptionHtml(rawText, ov.props.highlight_text, accent);
+  const { glowColor, textShadow: textGlowCss } = buildTextGlowCss(
+    ov.props.glow_color ?? accent,
+    ov.props.glow_strength ?? "none"
+  );
 
   const tokens: Record<string, string> = {
     SCENE_ID: sceneId,
@@ -682,6 +783,8 @@ function renderParameterizedTemplate(
     BG_COLOR: bg,
     BG_RGBA_78: hexToRgba(bg, 0.78),
     ACCENT_COLOR: accent,
+    GLOW_COLOR: glowColor || accent,
+    TEXT_GLOW_CSS: textGlowCss,
     BODY_FONT: bodyFont,
     DISPLAY_FONT: displayFont,
     EASE_NAME: easeName,
@@ -732,6 +835,9 @@ function stageLocalAssets(plan: EditPlan, outDir: string, copyAssets: boolean): 
   const stagedFonts: StagedFontFace[] = [];
 
   for (const asset of plan.assets) {
+    if (plan.render_strategy === "hybrid" && asset.kind !== "font" && asset.kind !== "image") {
+      continue;
+    }
     const cleanId = sanitizeId(asset.asset_id);
     const fallbackExt =
       asset.kind === "font"
@@ -845,10 +951,24 @@ export function compileEditPlanToHyperframes(
     }
   }
 
+  const hasCaptions = plan.overlay_compositions.some((ov) => ov.kind === "caption_rail");
+  const captionLane = hasCaptions ? assignTrackLane(lanes, 0, plan.duration_s) : -1;
+
   for (const ov of plan.overlay_compositions) {
     const sceneId = sanitizeId(ov.overlay_id);
     const scenePath = path.join(compDir, `${sceneId}.html`);
-    const mergedProps = { ...(ov.variables ?? {}), ...ov.props };
+    const catalogMatch =
+      ov.template_id && typeof ov.props.composition_path !== "string"
+        ? resolveBrandTemplateEntry(plan.brand_id, ov.template_id)
+        : null;
+    const mergedProps: Record<string, unknown> = {
+      ...(catalogMatch?.defaults ?? {}),
+      ...(ov.variables ?? {}),
+      ...ov.props,
+    };
+    if (catalogMatch && typeof mergedProps.composition_path !== "string") {
+      mergedProps.composition_path = catalogMatch.compositionPath;
+    }
     const effectiveOv: OverlayCompositionOp = { ...ov, props: mergedProps };
     const catalogPathRaw =
       typeof mergedProps.composition_path === "string" ? String(mergedProps.composition_path).trim() : "";
@@ -856,6 +976,18 @@ export function compileEditPlanToHyperframes(
     if (catalogPathRaw && !resolvedTemplatePath) {
       throw new Error(
         `Overlay ${ov.overlay_id} (template_id=${ov.template_id ?? "none"}) references missing composition_path: ${catalogPathRaw}`
+      );
+    }
+    if (
+      ov.template_id &&
+      !resolvedTemplatePath &&
+      findRepoRootForTemplates() !== null &&
+      fs.existsSync(
+        path.join(findRepoRootForTemplates()!, "profiles", "brands", plan.brand_id, "templates", "catalog.json")
+      )
+    ) {
+      throw new Error(
+        `Overlay ${ov.overlay_id} references unknown template_id '${ov.template_id}' for brand '${plan.brand_id}'.`
       );
     }
     if (resolvedTemplatePath) {
@@ -885,7 +1017,7 @@ export function compileEditPlanToHyperframes(
 
     const start = Number(ov.timeline_start_s.toFixed(3));
     const dur = Number(ov.timeline_duration_s.toFixed(3));
-    const lane = assignTrackLane(lanes, start, dur);
+    const lane = ov.kind === "caption_rail" ? captionLane : assignTrackLane(lanes, start, dur);
     const trackKind = ov.kind === "caption_rail" ? "captions" : "graphics";
     const templateAttr = ov.template_id
       ? ` data-template-id="${escapeHtml(ov.template_id)}"`

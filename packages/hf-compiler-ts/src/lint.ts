@@ -44,6 +44,9 @@ export function scanValueForCssBlur(
   if (typeof value === "object") {
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
       const lower = key.toLowerCase();
+      if (lower === "caption_shadow_blur_px" || lower === "caption_glow_px") {
+        continue;
+      }
       if ((lower === "backdropfilter" || lower === "backdrop_filter") && Boolean(nested)) {
         out.push({
           code: "FORBIDDEN_CSS_BLUR",

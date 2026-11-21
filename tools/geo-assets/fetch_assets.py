@@ -564,6 +564,11 @@ def main() -> int:
             '[{"zoom": 8, "bbox": [west, south, east, north]}].'
         ),
     )
+    parser.add_argument(
+        "--update-manifest",
+        action="store_true",
+        help="Rewrite assets/geo/MANIFEST.json even when fetching project-specific AOI tiles.",
+    )
     args = parser.parse_args()
 
     if args.verify:
@@ -615,12 +620,18 @@ def main() -> int:
                     f"{total_bytes / (1024 * 1024):.1f} MB ({completed / elapsed:.1f} tiles/s)"
                 )
 
-    manifest = write_manifest(tile_tasks)
-    print(
-        f"Manifest written to {MANIFEST_PATH.relative_to(REPO_ROOT)} "
-        f"({len(manifest['static_assets'])} static assets, "
-        f"{sum(c['tile_count'] for c in manifest['tile_collections'])} tiles)."
-    )
+    if args.aoi_config is None or args.update_manifest:
+        manifest = write_manifest(tile_tasks)
+        print(
+            f"Manifest written to {MANIFEST_PATH.relative_to(REPO_ROOT)} "
+            f"({len(manifest['static_assets'])} static assets, "
+            f"{sum(c['tile_count'] for c in manifest['tile_collections'])} tiles)."
+        )
+    else:
+        print(
+            f"Fetched {len(tile_tasks)} tiles for project AOI without modifying "
+            f"{MANIFEST_PATH.relative_to(REPO_ROOT)}."
+        )
     return 0
 
 

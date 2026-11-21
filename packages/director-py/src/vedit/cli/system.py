@@ -5,12 +5,14 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from vedit.cli._app import JsonOption
+from vedit.cli._app import JsonOption, app
 from vedit.contracts import (
     find_repo_root,
     load_platform_targets,
@@ -139,3 +141,93 @@ def providers_auth(
             typer.echo(f"  {env_name}: SAVED (0600)")
         else:
             typer.echo(f"  {env_name}: SKIPPED")
+
+
+def _find_executable_chrome() -> str | None:
+    env_chrome = os.environ.get("CHROME", "").strip()
+    if env_chrome and os.access(env_chrome, os.X_OK):
+        return env_chrome
+    cache_root = Path.home() / ".cache" / "puppeteer" / "chrome-headless-shell"
+    try:
+        if cache_root.is_dir():
+            for cand in sorted(cache_root.rglob("chrome-headless-shell"), reverse=True):
+                if cand.is_file() and os.access(cand, os.X_OK):
+                    return str(cand)
+    except OSError:
+        pass
+    for system_cand in (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+    ):
+        if Path(system_cand).is_file() and os.access(system_cand, os.X_OK):
+            return system_cand
+    return None
+
+
+@app.command("doctor", rich_help_panel="System & registry")
+def doctor_cmd(json_output: JsonOption = False) -> None:
+    """Verify local runtime dependencies, FFmpeg filters, Chrome, probe binary, and providers."""
+    root = find_repo_root()
+    ffmpeg_bin = shutil.which("ffmpeg")
+    ffprobe_bin = shutil.which("ffprobe")
+    node_bin = shutil.which("node")
+    probe_bin = root / "packages" / "media-probe-rs" / "target" / "release" / "vedit-probe"
+    hf_cli = root / "packages" / "hf-compiler-ts" / "dist" / "cli.js"
+    rea_bin = root / "tools" / "rea-video" / ".venv" / "bin" / "rea-video"
+    chrome_bin = _find_executable_chrome()
+
+    filters_out = ""
+    if ffmpeg_bin:
+        proc = subprocess.run(
+            [ffmpeg_bin, "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        filters_out = proc.stdout or ""
+
+    required_filters = ("scdet", "ebur128", "silencedetect", "blackdetect", "freezedetect", "xfade")
+    filter_status = {name: (name in filters_out) for name in required_filters}
+    filter_status["libvmaf"] = "libvmaf" in filters_out
+    filter_status["ssim"] = "ssim" in filters_out
+    filter_status["psnr"] = "psnr" in filters_out
+
+    registry = build_default_registry()
+    providers_report = registry.status_report()
+
+    checks = {
+        "ffmpeg": bool(ffmpeg_bin),
+        "ffprobe": bool(ffprobe_bin),
+        "node": bool(node_bin),
+        "vedit_probe_release": probe_bin.is_file() and os.access(probe_bin, os.X_OK),
+        "hf_compiler_built": hf_cli.is_file(),
+        "chrome_executable": chrome_bin is not None,
+        "rea_video_installed": rea_bin.is_file() or shutil.which("rea-video") is not None,
+    }
+    report = {
+        "ok": all(
+            checks[k]
+            for k in ("ffmpeg", "ffprobe", "node", "vedit_probe_release", "hf_compiler_built")
+        )
+        and all(filter_status[f] for f in required_filters),
+        "checks": checks,
+        "chrome_path": chrome_bin,
+        "ffmpeg_filters": filter_status,
+        "providers": providers_report,
+    }
+    if json_output:
+        typer.echo(json.dumps(report, indent=2))
+        return
+    status = "OK" if report["ok"] else "DEGRADED"
+    typer.echo(f"vedit doctor: {status}")
+    for key, val in checks.items():
+        typer.echo(f"  {key:<22} {'READY' if val else 'MISSING'}")
+    missing_filters = [k for k in required_filters if not filter_status[k]]
+    if missing_filters:
+        typer.echo(f"  missing FFmpeg filters: {', '.join(missing_filters)}")
+    typer.echo(
+        f"  reference metrics:     libvmaf={'yes' if filter_status['libvmaf'] else 'no'}, "
+        f"ssim={'yes' if filter_status['ssim'] else 'no'}, "
+        f"psnr={'yes' if filter_status['psnr'] else 'no'}"
+    )

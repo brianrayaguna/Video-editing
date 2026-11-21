@@ -11,7 +11,7 @@ from __future__ import annotations
 # isort: off
 from vedit.cli import media
 from vedit.cli import production
-from vedit.cli import analysis, camera, system
+from vedit.cli import analysis, camera, geo, system
 from vedit.cli._app import app
 
 # isort: on
@@ -30,5 +30,6 @@ app.add_typer(production.project_app, name="project", rich_help_panel=_PRODUCTIO
 app.add_typer(production.director_app, name="director", rich_help_panel=_PRODUCTION)
 app.add_typer(production.cloud_app, name="cloud", rich_help_panel=_PRODUCTION)
 app.add_typer(camera.camera_app, name="camera", rich_help_panel=_PRODUCTION)
+app.add_typer(geo.geo_app, name="geo", rich_help_panel=_PRODUCTION)
 
-__all__ = ["analysis", "app", "camera", "media", "production", "system"]
+__all__ = ["analysis", "app", "camera", "geo", "media", "production", "system"]

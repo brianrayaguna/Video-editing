@@ -47,13 +47,15 @@ def has_openedit_oauth_login(token_path: Path | None = None) -> bool:
     if os.environ.get("VEED_ACCESS_TOKEN", "").strip():
         return True
     path = resolve_openedit_token_path(token_path)
-    if not path.is_file():
-        return False
     try:
+        if not path.is_file():
+            return False
         import json
 
         data = json.loads(path.read_text(encoding="utf-8"))
         return bool(data.get("accessToken") or data.get("refreshToken"))
+    except OSError:
+        return False
     except Exception:
         return False
 

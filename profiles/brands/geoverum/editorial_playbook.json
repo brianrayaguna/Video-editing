@@ -394,6 +394,41 @@
       "action": "overlay.flat_vector_character_or_reaction_performs_narrated_action(); director.return_to_map_after_beat()",
       "weight": 0.74,
       "rationale": "Characters, flag avatars with faces, reaction faces, and speech bubbles turn irony into a visible beat when they perform what the narration states, stand on their own territory, and hand back to the map after one beat."
+    },
+    {
+      "trigger_id": "duration_numeral_on_route_leg",
+      "condition": "narration.has_duration_phrase and scene.has_route",
+      "action": "overlay.place_duration_numeral_along_leg(); route.hold_width_regime_for_zoom()",
+      "weight": 0.78,
+      "rationale": "A spoken duration ('after two years', 'it took six years', 'in 30 days') becomes a large white numeral laid along the route segment it measures, so time is read as distance on the map."
+    },
+    {
+      "trigger_id": "route_width_by_camera_regime",
+      "condition": "scene.has_route and camera.zoom_regime_changes",
+      "action": "route.ease_stroke_width(continental=6, regional=14, close=26)",
+      "weight": 0.7,
+      "rationale": "A screen-constant stroke tied to the camera regime keeps the route legible on a phone at every zoom; a map-scaled hairline disappears on wide shots."
+    },
+    {
+      "trigger_id": "route_head_schedule_on_place_names",
+      "condition": "scene.has_route and narration.names_place_on_route",
+      "action": "route.head_reach(marker=place, lead_s=0.3); route.hold_until(clause_resolves_obstacle)",
+      "weight": 0.8,
+      "rationale": "Chronological narration over a route is followed by where the drawn tip is; the tip arriving with each place name lets the map tell the story without extra labels."
+    },
+    {
+      "trigger_id": "callouts_trail_route_head",
+      "condition": "scene.has_route and overlay.kind in ['avatar','icon_cluster','speech_bubble','numeral']",
+      "action": "overlay.place(relative_to='route_head', side='behind_travel', distance_px=[200,320], clear_radius_px=120); overlay.max_concurrent(3)",
+      "weight": 0.72,
+      "rationale": "Callouts placed behind the head keep the next second of route visible, and a three-callout cap keeps the route as the single dominant element."
+    },
+    {
+      "trigger_id": "denoise_measured_camera_track",
+      "condition": "camera.source in ['measured','hand_keyed'] and camera.direction_flips_per_15s > 1",
+      "action": "camera.denoise(window_s=0.6, max_shift_px=24, max_zoom_shift=0.08, keep=['cuts','anchors'])",
+      "weight": 0.75,
+      "rationale": "Solver or keying noise becomes visible shake after interpolation; capped smoothing removes direction flips while keeping deliberate fast moves and story-beat framings."
     }
   ],
   "exemplar_bank": [
@@ -1235,6 +1270,33 @@
       "end_s": 40.3,
       "hyperframes_pattern": "horizon_terrain_flight_altitude_chips",
       "notes": "The longest reason gets the richest surface: a horizon-level terrain flight with screen-fixed dual-unit altitude chips, and an aircraft drawn under the terrain line before 'impossible' is spoken."
+    },
+    {
+      "exemplar_id": "ref_global_walk_route_width_regimes",
+      "source_video_id": "ref_global_walk",
+      "role": "proof",
+      "start_s": 18.0,
+      "end_s": 70.0,
+      "hyperframes_pattern": "screen_constant_route_width_by_zoom_regime",
+      "notes": "The route stroke widens from about 8 px on the continental leg to about 30 px in the jungle close-up and 40 px at the arrest point, then eases back to 6 px for the wide Siberian sweep; width changes ride the zoom, never a cut."
+    },
+    {
+      "exemplar_id": "ref_global_walk_ninety_day_returns",
+      "source_video_id": "ref_global_walk",
+      "role": "climax",
+      "start_s": 60.2,
+      "end_s": 66.5,
+      "hyperframes_pattern": "pulse_rings_then_route_dots",
+      "notes": "'Every 90 days' pulses rings at the exit point; the route then advances with one solid dot per forced return, each popping as the head passes it."
+    },
+    {
+      "exemplar_id": "ref_global_walk_rule_preserving_swim",
+      "source_video_id": "ref_global_walk",
+      "role": "climax",
+      "start_s": 79.0,
+      "end_s": 92.4,
+      "hyperframes_pattern": "blocked_neighbours_hatch_then_water_crossing",
+      "notes": "The two forbidden detours are hatched red and green with a white U-turn arrow; the chosen solution follows: the portrait pops at the shore, a ripple marks the entry, and white support-boat silhouettes trail the route across the water before a parallel '32 days' numeral lands."
     }
   ]
 }

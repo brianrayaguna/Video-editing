@@ -115,8 +115,12 @@ Maintain a strict visual separation between screen-fixed documentary captions an
 
 ## Core motion, transition & storytelling grammar
 
-1. **Continuous Camera Motion (`>= 94%` active)**: Keep virtual map cameras smoothly pushing, pulling, tilting, or tracking across nearly every `0.5s` window. Avoid unmotivated static holds.
-2. **Transition Grammar (`9:16`)**:
+1. **Continuous Camera Motion (`>= 94%` active)**: Keep virtual map cameras smoothly pushing, pulling, tilting, or tracking across nearly every `0.5s` window using Van Wijk & Nuij `fly_to` arcs or scale-coupled Mercator pans, `C¹` velocity blending across chained moves (`blend_s`), subtle `ambient_drift` during holds, damped impulse `shake` on verdict stamps, and optical sub-frame shutter blur (`shutter_samples`) during rapid zoom plunges. Avoid abrupt velocity corners or unmotivated static holds.
+   - *Measured tracks are denoised before baking*: a camera track solved from reference frames or hand-keyed at irregular times carries small direction flips that monotone interpolation turns into visible shake. Run `vedit geo camera-track <track.json> -o <smoothed.json> --cut <t> --anchor <t>` (Gaussian window `0.6 s`, per-key correction capped at `24 px` and `0.08` zoom so deliberate snap moves keep their timing). Pass every hard cut as `--cut` and every deliberate story-beat framing as `--anchor`.
+   - *Shake budget*: shake is measured as direction flips, not as acceleration (a snap zoom is large but one-directional). Accept a baked track with at most one pan flip per `15 s` and one zoom flip per `30 s` of continuous camera; fast moves are always one-directional with eased ends.
+   - *Zoom and route width move together*: when a move changes zoom regime, the route stroke eases across the same frames (see *Journey route & overlay scale*), so the line neither pops nor thins mid-move.
+2. **Luminous Cartographic Typography**: Pair dark contrast grounding with multi-ring `text-shadow` / Canvas shadow halos (`glow_color`, `glow_strength`) on hero place names and route titles so high-energy labels radiate against satellite relief without runtime CSS `filter: blur()`.
+3. **Transition Grammar (`9:16`)**:
    - **Radial whip-zoom blur (`0.3–1.0s`)** for regional leaps and plunges into 2D cross-sections or aerial B-roll.
    - **Vertical white-bar split wipe (`0.3–0.6s`)** between satellite relief and dark obsidian vector or blueprint measurement surfaces.
    - **Feathered dark curtain sweep & optical spyglass iris (`0.4–0.7s`)** using pure alpha gradients (zero CSS blur) or circular SVG masks so `y = 70%` plain captions remain legible in front.
@@ -147,6 +151,42 @@ Maintain a strict visual separation between screen-fixed documentary captions an
    - *Absence icon*: one facility icon with a prohibition mark, then the few real items placed one at a time on a wide shot.
    - *Real-data credibility*: the same focal outline redrawn over real imagery or a procedurally rebuilt data visualization.
 9. **Non-Generative Asset Policy**: Produce all cartography, 2D cross-sections, weather/ice animations, gauges, and charts deterministically via MapLibre and procedural HyperFrames HTML/SVG/GSAP alongside real archival or stock B-roll—never generative video synthesis.
+
+---
+
+## Journey route & overlay scale (`9:16`)
+
+Route-driven films (story shape *Journey chain* in [`DIRECTING.md`](DIRECTING.md) §3) read on a phone only when the route and its markers are drawn at screen-constant, generous sizes. Measured on `1080x1920` frames:
+
+- **Route stroke follows the camera regime, not the map scale**: `4–8 px` on continental and recap shots, `10–16 px` on regional legs, `20–30 px` on close obstacle shots, up to `40 px` on a held close-up of a single event (arrest, crossing point). Ease the width between regimes in step with the zoom so the line never thins to a hairline mid-move. Pure saturated yellow (`#FBEA12`), round joins, no casing.
+- **The drawn head is the camera's subject**: the camera keeps the growing route tip inside the middle `60%` of the frame and leads it slightly in the direction of travel; the line never draws off-screen except when a whip-out reveals the full leg.
+- **Duration numerals ride the leg they measure**: `2 years`, `6 years`, `11 years`, `32 days` in heavy (optionally italic) white with a soft dark shadow, `60–120 px` cap height, placed along the measured segment and kept close to upright (`|angle| <= 12°`) unless the numeral is set parallel to a straight crossing.
+- **Character and icon scale**: travelling portrait avatar `180–240 px` diameter with a `4–6 px` white rim; detention cage or stamp icon `~300 px`; speech bubble `~380 px` wide with `38–48 px` black heavy text; hazard icon clusters (rebels, viruses) `80–140 px` each, popping one per stressed noun. Markers smaller than `~100 px` read as noise at phone scale.
+- **Repetition marker**: a forced periodic return ("every 90 days") shows as pulse rings at the exit point, then one solid route dot per return, each dot popping as the head passes it.
+- **Obstacle → fill pairing**: each obstacle on the route gets one distinct territory treatment (glowing jungle-green region, edge-grown ice mask, flat national red fill, cyan water body with glow, hatched red/green neighbour pair for "can't go through X or Y"), so no two consecutive obstacles share a colour or texture.
+- **Recap globe**: totals are spoken over the whole route on a globe filling `80–90%` of the frame width, with the totals stacked top-centre as solid saturated blue chips with yellow heavy text (`~60 px`). The globe then flies down into the flat map for the remaining leg.
+- **Future path**: the not-yet-walked remainder is a dashed white line (`4–6 px`, `10/10` dash) from the current position to a yellow destination label carrying the year.
+- **Journey captions**: dense chronological narration over a busy satellite route reads better with a larger plain caption than the default rail: `60–66 px` medium-weight geometric sans, white at `~0.9` opacity with a soft `2 px / 6 px blur` shadow, bottom edge at `~27%` of frame height. The caption band (`y ≈ 66–76%`) stays free of route heads and callouts.
+
+### Visual hierarchy
+
+Every journey frame has one reading order, enforced by size, contrast, and layer order (top to bottom):
+
+1. **Route head and the leg being drawn**: the only element allowed to move continuously; highest saturation in frame.
+2. **Travelling avatar or event icon** at the head: the human subject of the current clause.
+3. **Duration numeral or count** on the measured leg: the largest type in frame while present.
+4. **Place labels and territory fills**: lower contrast than the route; fills sit under the route, never over it.
+5. **Caption rail**: screen-fixed, neutral white, never competing in colour with the route yellow.
+
+At most **three transient callouts** (avatar, icon cluster, bubble, numeral) are on screen at once; a new one entering on a stressed word retires the oldest within `0.3 s` (one in, one out). Callouts that belong to a finished leg exit before the camera leaves that leg.
+
+### Layout relative to the route head
+
+- Callouts **trail the head**: place them `200–320 px` from the head on the side the route came from (opposite the direction of travel) and slightly above it, so the next `1 s` of route stays visible.
+- Keep a `~120 px` clear radius around the head; a callout never overlaps the head or the segment drawn in the next second.
+- Numerals sit on the midpoint of the leg they measure, offset `~30–40 px` perpendicular to the line and rotated with it (within the `|angle| <= 12°` rule).
+- Speech bubbles point their tail at the speaker and stay inside the upper `60%` of the frame; dashed connector arrows (`~20 px` width, `2:1` dash) link a callout to a remote place instead of moving the callout there.
+- Horizontal side margins of `>= 60 px` for every callout; nothing crosses into the caption band.
 
 ---
 

@@ -1,0 +1,90 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-wx-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <svg id="{{SCENE_ID}}-svg" class="gv-wx-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="{{SCENE_ID}}-puff" cx="38%" cy="32%" r="64%">
+            <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.96" />
+            <stop offset="70%" stop-color="#DCE7EE" stop-opacity="0.88" />
+            <stop offset="100%" stop-color="#9EB2C0" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <g id="{{SCENE_ID}}-group" opacity="0">
+          <g id="{{SCENE_ID}}-rain" stroke="{{VAR_RAIN_COLOR|#BAE6FD}}" stroke-width="3" stroke-linecap="round" opacity="0.62"></g>
+          <g id="{{SCENE_ID}}-clouds">
+            <circle cx="430" cy="400" r="88" fill="url(#{{SCENE_ID}}-puff)" />
+            <circle cx="515" cy="380" r="108" fill="url(#{{SCENE_ID}}-puff)" />
+            <circle cx="592" cy="410" r="82" fill="url(#{{SCENE_ID}}-puff)" />
+            <circle cx="465" cy="465" r="95" fill="url(#{{SCENE_ID}}-puff)" />
+            <circle cx="555" cy="472" r="88" fill="url(#{{SCENE_ID}}-puff)" />
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const cx = (Number("{{VAR_CENTER_X_PCT|50}}") || 50) * 10 - 500;
+      const cy = (Number("{{VAR_CENTER_Y_PCT|44}}") || 44) * 10 - 440;
+      const group = document.getElementById("{{SCENE_ID}}-group");
+      const rain = document.getElementById("{{SCENE_ID}}-rain");
+      if (group) group.setAttribute("transform", "translate(" + cx + "," + cy + ")");
+
+      const ns = "http://www.w3.org/2000/svg";
+      const dur = Number({{DURATION_S}});
+      const tl = gsap.timeline({ paused: true });
+
+      const streakCount = Math.max(8, Math.min(36, Math.round(Number("{{VAR_RAIN_STREAKS|24}}") || 24)));
+      for (let i = 0; i < streakCount; i += 1) {
+        const rx = 385 + ((i * 59) % 240);
+        const ry = 430 + ((i * 37) % 120);
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", String(rx));
+        line.setAttribute("y1", String(ry));
+        line.setAttribute("x2", String(rx - 14));
+        line.setAttribute("y2", String(ry + 36));
+        if (rain) rain.appendChild(line);
+        const cycle = 0.52 + (i % 4) * 0.08;
+        const startOff = (i % 5) * 0.1;
+        for (let t = startOff; t < dur; t += cycle) {
+          const span = Math.min(cycle, dur - t);
+          tl.fromTo(
+            line,
+            { y: -15, x: 0, opacity: 0.78 },
+            { y: 155, x: -58, opacity: 0.0, duration: span, ease: "none" },
+            t
+          );
+        }
+      }
+
+      const enterS = Math.min(0.45, dur * 0.25);
+      const exitS = Math.min(0.25, dur * 0.20);
+      const exitAt = Math.max(enterS + 0.05, dur - exitS);
+      tl.fromTo("#{{SCENE_ID}}-group", { opacity: 0 }, { opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+      tl.to("#{{SCENE_ID}}-clouds", { x: 24, duration: dur, ease: "none" }, 0);
+      tl.to("#{{SCENE_ID}}-group", { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

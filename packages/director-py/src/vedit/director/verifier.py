@@ -39,6 +39,30 @@ _SECTION_SPAN: dict[str, tuple[float, float]] = {
 _BLUR_CSS_RE = re.compile(r"(backdrop-filter\s*:|filter\s*:[^;]*blur\s*\(|blur\s*\()", re.I)
 _SCALE_ZERO_RE = re.compile(r"\bscale\s*:\s*0(?:\.0+)?(?![0-9])", re.I)
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_FUNCTION_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+)
+_LIBASS_SAFE_BLUR_KEYS = frozenset({"caption_shadow_blur_px", "caption_glow_px"})
+_UNGROUNDED_CONTENT_TYPES = frozenset({"map", "landscape", "diagram", "archival"})
 
 
 def _is_saturated_violet_hex(hex_color: str) -> bool:
@@ -110,6 +134,8 @@ def _contains_css_blur(value: Any, *, key_name: str = "") -> bool:
     if isinstance(value, dict):
         for k, v in value.items():
             kl = str(k).lower()
+            if kl in _LIBASS_SAFE_BLUR_KEYS:
+                continue
             if kl in ("backdropfilter", "backdrop_filter") and v:
                 return True
             if kl in ("blur_px", "css_blur_px") and isinstance(v, (int, float)) and v > 0:
@@ -276,15 +302,19 @@ def _check_assets_and_video_tracks(
                 )
             )
 
-        if not clip.subject_safe_boxes and any(
-            intervals_overlap(
-                clip.timeline_start_s,
-                clip.timeline_duration_s,
-                ov.timeline_start_s,
-                ov.timeline_duration_s,
+        if (
+            not clip.subject_safe_boxes
+            and clip.content_type not in _UNGROUNDED_CONTENT_TYPES
+            and any(
+                intervals_overlap(
+                    clip.timeline_start_s,
+                    clip.timeline_duration_s,
+                    ov.timeline_start_s,
+                    ov.timeline_duration_s,
+                )
+                and (ov.transparent or ov.safe_band != "fullscreen")
+                for ov in plan.overlay_compositions
             )
-            and (ov.transparent or ov.safe_band != "fullscreen")
-            for ov in plan.overlay_compositions
         ):
             warnings.append(
                 VerificationIssue(
@@ -311,17 +341,20 @@ def _check_keyword_cut_windows(
         for i in range(len(ordered) - 1)
     ]
     margin_s = policy.hard_guardrails.no_cut_within_keyword_ms / 1000.0
-    boundary_tol = 0.012
 
     for clip_id, cut_t in cut_boundaries:
         for word in transcript.words:
             if word.is_filler:
                 continue
+            cleaned_tok = re.sub(r"[^a-z0-9]", "", word.text.lower())
+            if cleaned_tok in _FUNCTION_WORDS:
+                continue
             word_len = max(0.0, word.end_s - word.start_s)
             if word_len <= 0.0:
                 continue
-            # Strictly interior word cut OR slicing inside keyword boundary margin.
-            in_core = (word.start_s + boundary_tol) < cut_t < (word.end_s - boundary_tol)
+            # Strictly interior content-word cut (allow brief J-cut onset/offset edge tolerance).
+            edge_tol = min(0.045, word_len * 0.22)
+            in_core = (word.start_s + edge_tol) < cut_t < (word.end_s - edge_tol)
             if in_core:
                 errors.append(
                     VerificationIssue(
@@ -558,6 +591,8 @@ def _check_overlays_and_spatial_grounding(
             ov_b, rect_b = resolved_boxes[j]
             if ov_b.safe_band == "fullscreen" and not isinstance(ov_b.props.get("box"), dict):
                 continue
+            if ov_a.props.get("allow_overlap") or ov_b.props.get("allow_overlap"):
+                continue
             if not intervals_overlap(
                 ov_a.timeline_start_s,
                 ov_a.timeline_duration_s,
@@ -675,7 +710,17 @@ def _check_soft_temporal_priors(
             for clip in plan.video_tracks
             if sec_start <= clip.timeline_start_s < sec_end and clip.timeline_start_s > 0.01
         )
-        cpm = (cuts / sec_dur) * 60.0
+        # Account for internal visual beats inside continuous-camera clips (maps/explainers).
+        visual_beats = 0.0
+        for clip in plan.video_tracks:
+            if clip.visual_beat_count <= 0:
+                continue
+            c_start = clip.timeline_start_s
+            c_end = clip.timeline_start_s + clip.timeline_duration_s
+            overlap = max(0.0, min(c_end, sec_end) - max(c_start, sec_start))
+            if overlap > 0:
+                visual_beats += clip.visual_beat_count * (overlap / clip.timeline_duration_s)
+        cpm = ((cuts + visual_beats) / sec_dur) * 60.0
         lo_cpm, hi_cpm = prior.cuts_per_min_range
         if cpm < lo_cpm * 0.55 or cpm > hi_cpm * 1.45:
             warnings.append(

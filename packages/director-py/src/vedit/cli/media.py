@@ -32,14 +32,15 @@ def transcribe_cmd(
 ) -> None:
     """Transcribe speech to word-level timestamps using the configured TranscriptionPort."""
     registry = build_default_registry()
-    stt = registry.resolve("transcription", provider_name=provider)
-    transcript = stt.transcribe(
-        media_file,
-        TranscriptionOptions(
-            language=language,
-            diarize=diarize,
-            keyterms=keyterm or [],
-        ),
+    opts = TranscriptionOptions(
+        language=language,
+        diarize=diarize,
+        keyterms=keyterm or [],
+    )
+    transcript = registry.call_with_fallback(
+        "transcription",
+        lambda stt: stt.transcribe(media_file, opts),
+        provider_name=provider,
     )
     if json_output:
         typer.echo(transcript.model_dump_json(indent=2))
@@ -125,8 +126,11 @@ def clean_audio_cmd(
 ) -> None:
     """Denoise spoken audio using the configured MediaOpsPort."""
     registry = build_default_registry()
-    ops = registry.resolve("media_ops", provider_name=provider)
-    result = ops.clean_audio(speech_input, output_path, strength=strength)
+    result = registry.call_with_fallback(
+        "media_ops",
+        lambda ops: ops.clean_audio(speech_input, output_path, strength=strength),
+        provider_name=provider,
+    )
     typer.echo(json.dumps(asdict(result), indent=2, default=str))
 
 
@@ -142,8 +146,11 @@ def reframe_cmd(
 ) -> None:
     """Reframe video to a target aspect ratio using the configured MediaOpsPort."""
     registry = build_default_registry()
-    ops = registry.resolve("media_ops", provider_name=provider)
-    result = ops.reframe(video_input, output_path, target_aspect_ratio=aspect_ratio)
+    result = registry.call_with_fallback(
+        "media_ops",
+        lambda ops: ops.reframe(video_input, output_path, target_aspect_ratio=aspect_ratio),
+        provider_name=provider,
+    )
     typer.echo(json.dumps(asdict(result), indent=2, default=str))
 
 
@@ -155,8 +162,11 @@ def remove_background_cmd(
 ) -> None:
     """Remove video background using the configured MediaOpsPort."""
     registry = build_default_registry()
-    ops = registry.resolve("media_ops", provider_name=provider)
-    result = ops.remove_background(video_input, output_path)
+    result = registry.call_with_fallback(
+        "media_ops",
+        lambda ops: ops.remove_background(video_input, output_path),
+        provider_name=provider,
+    )
     typer.echo(json.dumps(asdict(result), indent=2, default=str))
 
 

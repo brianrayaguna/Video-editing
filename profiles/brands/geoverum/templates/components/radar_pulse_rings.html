@@ -1,0 +1,81 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{FG_COLOR}};
+      --vedit-accent: {{ACCENT_COLOR}};
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gv-radar-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <svg id="{{SCENE_ID}}-svg" class="gv-radar-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <g id="{{SCENE_ID}}-hub">
+          <circle id="{{SCENE_ID}}-r1" cx="500" cy="460" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
+          <circle id="{{SCENE_ID}}-r2" cx="500" cy="460" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
+          <circle id="{{SCENE_ID}}-r3" cx="500" cy="460" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
+          <circle id="{{SCENE_ID}}-core" cx="500" cy="460" r="18" fill="{{VAR_RING_COLOR|#EF4444}}" />
+        </g>
+      </svg>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const cx = Math.max(12, Math.min(88, Number("{{VAR_CENTER_X_PCT|50}}") || 50)) * 10;
+      const cy = Math.max(15, Math.min(78, Number("{{VAR_CENTER_Y_PCT|46}}") || 46)) * 10;
+      const maxR = Math.max(70, Math.min(340, Number("{{VAR_MAX_RADIUS|180}}") || 180));
+
+      for (const suffix of ["r1", "r2", "r3", "core"]) {
+        const el = document.getElementById("{{SCENE_ID}}-" + suffix);
+        if (el) {
+          el.setAttribute("cx", String(cx));
+          el.setAttribute("cy", String(cy));
+        }
+      }
+
+      const dur = Number({{DURATION_S}});
+      const tl = gsap.timeline({ paused: true });
+      const pulseDur = Math.min(1.15, Math.max(0.55, dur * 0.45));
+      const rings = ["#{{SCENE_ID}}-r1", "#{{SCENE_ID}}-r2", "#{{SCENE_ID}}-r3"];
+
+      tl.fromTo(
+        "#{{SCENE_ID}}-core",
+        { opacity: 0, scale: 0.85, transformOrigin: "50% 50%" },
+        { opacity: 1, scale: 1, duration: 0.22, ease: "expo.out", transformOrigin: "50% 50%" },
+        0
+      );
+
+      rings.forEach((sel, idx) => {
+        const offset = idx * (pulseDur / 3);
+        for (let t = offset; t < dur - 0.12; t += pulseDur) {
+          const span = Math.min(pulseDur, dur - t);
+          tl.fromTo(
+            sel,
+            { attr: { r: 22 }, opacity: 0.92 },
+            { attr: { r: maxR }, opacity: 0.0, duration: span, ease: "power2.out" },
+            t
+          );
+        }
+      });
+
+      const exitAt = Math.max(0.15, dur - 0.18);
+      tl.to("#{{SCENE_ID}}-hub", { opacity: 0, duration: 0.18, ease: "power3.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>
