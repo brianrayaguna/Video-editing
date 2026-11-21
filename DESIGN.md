@@ -11,7 +11,7 @@ Read this file with [`.agents/rules/engineering-standards.md`](.agents/rules/eng
 | Layer | Paths | Responsibility |
 | :--- | :--- | :--- |
 | **1. Core engine (`vedit`)** | `packages/*`, `contracts/`, `profiles/platforms/` | Probe, ports/providers, external project lifecycle, `EditPlan` verify, HyperFrames compile, EBU R128 master, visual/technical QC audit, OTIO export, MCP server. |
-| **2. Domain asset tooling** | `tools/geo-assets/`, `tools/rea-video/`, `assets/` | Shared deterministic geospatial fetch/grade/serve helpers, isolated forensic breakdown toolchain, and gitignored shared asset caches. |
+| **2. Domain asset tooling** | `tools/geo-assets/`, `tools/rea-video/`, `tools/spatial-forensics/`, `assets/` | Shared deterministic geospatial fetch/grade/serve helpers, isolated forensic breakdown and spatial/grid/hierarchy vision toolchains, and gitignored shared asset caches. |
 | **3. Brand profiles** | `profiles/brands/<brand_id>/` | Runtime `brand_style_policy.json`, optional `editorial_playbook.json`, craft docs, and parameterized brand templates. |
 | **4. Active editing projects** | External directory (`VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/`) | Self-contained editing projects managed by `vedit project init|status|validate`, completely separate from the engine repository. |
 

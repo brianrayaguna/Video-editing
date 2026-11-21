@@ -592,3 +592,125 @@ class ProjectManifest(StrictModel):
     directories: ProjectDirectories = Field(default_factory=ProjectDirectories)
     artifacts: ProjectArtifacts = Field(default_factory=ProjectArtifacts)
     notes: str | None = None
+
+
+class SpatialGridSummary(StrictModel):
+    inferred_columns: int = Field(ge=1)
+    margin_left_pct: float = Field(ge=0.0, le=1.0)
+    margin_right_pct: float = Field(ge=0.0, le=1.0)
+    margin_top_pct: float = Field(ge=0.0, le=1.0)
+    margin_bottom_pct: float = Field(ge=0.0, le=1.0)
+    alignment_snap_score: float = Field(ge=0.0, le=1.0)
+    dominant_alignment: Literal["left", "center", "right", "mixed", "none"] = "none"
+    structural_dividers_detected: int = Field(default=0, ge=0)
+
+
+class SpatialTypographySummary(StrictModel):
+    text_block_count: int = Field(ge=0)
+    display_height_pct_p50: float | None = Field(default=None, ge=0.0, le=1.0)
+    body_height_pct_p50: float | None = Field(default=None, ge=0.0, le=1.0)
+    caption_height_pct_p50: float | None = Field(default=None, ge=0.0, le=1.0)
+    display_to_caption_ratio: float | None = Field(default=None, ge=0.0)
+    median_wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
+    min_wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
+    tilted_text_count: int = Field(ge=0)
+    boxed_text_ratio: float = Field(ge=0.0, le=1.0)
+
+
+class SpatialHierarchySummary(StrictModel):
+    mean_competing_signals: float = Field(ge=0.0)
+    mean_whitespace_ratio: float = Field(ge=0.0, le=1.0)
+    focal_centroid_norm: tuple[float, float]
+    safe_zone_violation_rate: float = Field(ge=0.0, le=1.0)
+    face_present_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    median_eye_line_y_norm: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class SpatialMotionSummary(StrictModel):
+    dominant_camera_regime: Literal["static", "slow_drift", "pan", "zoom", "complex"] = "static"
+    median_entrance_ms: int | None = Field(default=None, ge=0)
+    dominant_easing_class: Literal[
+        "snappy_ease_out", "smooth_editorial", "linear", "overshoot", "hard_cut", "unknown"
+    ] = "unknown"
+    idle_drift_detected: bool = False
+
+
+class SpatialSummary(StrictModel):
+    grid: SpatialGridSummary
+    typography: SpatialTypographySummary
+    hierarchy: SpatialHierarchySummary
+    motion: SpatialMotionSummary
+
+
+class SpatialElement(StrictModel):
+    element_id: str = Field(min_length=1)
+    kind: Literal["text", "graphic_container", "subject_foreground", "face"]
+    bbox_px: tuple[int, int, int, int]
+    bbox_norm: tuple[float, float, float, float]
+    hierarchy_tier: int = Field(ge=1, le=3)
+    visual_weight: float = Field(ge=0.0, le=1.0)
+    text: str | None = None
+    text_role: Literal["display", "body", "caption", "micro"] | None = None
+    container_style: Literal["boxless", "chip", "card"] | None = None
+    tilt_deg: float | None = None
+    wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
+    fg_hex: str | None = None
+    bg_hex: str | None = None
+    safe_zone_violation: bool = False
+
+
+class SpatialFrameAnalysis(StrictModel):
+    frame_index: int = Field(ge=0)
+    shot_index: int | None = Field(default=None, ge=0)
+    timestamp_s: float = Field(ge=0.0)
+    blueprint_path: str | None = None
+    saliency_centroid_norm: tuple[float, float]
+    whitespace_ratio: float = Field(ge=0.0, le=1.0)
+    competing_signals: int = Field(default=0, ge=0)
+    eye_line_y_norm: float | None = Field(default=None, ge=0.0, le=1.0)
+    grid_lines_x_norm: list[float] = Field(default_factory=list)
+    grid_lines_y_norm: list[float] = Field(default_factory=list)
+    safe_zone_violations: list[str] = Field(default_factory=list)
+    elements: list[SpatialElement] = Field(default_factory=list)
+
+
+class SpatialEntranceTrack(StrictModel):
+    track_id: int = Field(ge=0)
+    text: str | None = None
+    duration_ms: int = Field(ge=0)
+    vector: Literal[
+        "slide_up", "slide_down", "slide_left", "slide_right", "scale_in", "static_pop"
+    ]
+    easing_class: Literal[
+        "snappy_ease_out", "smooth_editorial", "linear", "overshoot", "hard_cut", "unknown"
+    ]
+    landed_drift_px: float = Field(ge=0.0)
+
+
+class SpatialMotionWindow(StrictModel):
+    window_index: int = Field(ge=0)
+    shot_index: int | None = Field(default=None, ge=0)
+    start_s: float = Field(ge=0.0)
+    end_s: float = Field(ge=0.0)
+    camera_regime: Literal["static", "slow_drift", "pan", "zoom", "complex"]
+    camera_pan_px_s: float = Field(ge=0.0)
+    camera_zoom_pct_s: float
+    entrances: list[SpatialEntranceTrack] = Field(default_factory=list)
+
+
+class SpatialForensicsResult(StrictModel):
+    """Contract-validated spatial, structural, typography, hierarchy, and motion forensics."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    source_path: str = Field(min_length=1)
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    fps: float = Field(ge=0.0)
+    duration_s: float = Field(ge=0.0)
+    aspect_ratio: Literal["16:9", "9:16", "1:1", "4:5", "other"] = "other"
+    platform_target_id: str | None = None
+    output_dir: str | None = None
+    structure_md_path: str | None = None
+    summary: SpatialSummary
+    frames: list[SpatialFrameAnalysis] = Field(default_factory=list)
+    motion_windows: list[SpatialMotionWindow] = Field(default_factory=list)

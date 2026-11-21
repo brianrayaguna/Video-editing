@@ -21,6 +21,8 @@ snapshots/
 !.agents/skills/brand-profiling/
 tools/rea-video/upstream/
 tools/rea-video/.venv/
+tools/spatial-forensics/.venv/
+tools/spatial-forensics/models/
 assets/geo/raw/
 assets/geo/tiles/
 assets/geo/dem/

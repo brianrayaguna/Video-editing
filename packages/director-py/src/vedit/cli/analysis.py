@@ -16,6 +16,10 @@ from vedit.analyzers.brand_analyzer import (
     synthesize_brand_artifacts,
 )
 from vedit.analyzers.media_probe import ProbeOptions, hash_media, probe_media
+from vedit.analyzers.spatial_forensics import (
+    SpatialForensicsOptions,
+    analyze_video_structure,
+)
 from vedit.cli._app import JsonOption
 from vedit.contracts import (
     find_repo_root,
@@ -178,6 +182,74 @@ def breakdown_analyze_cmd(
         "verdict": result.verdict,
     }
     typer.echo(json.dumps(summary_payload, indent=2))
+
+
+@breakdown_app.command("structure")
+def breakdown_structure_cmd(
+    media_file: Annotated[Path, typer.Argument(help="Reference video file to analyze.")],
+    out_dir: Annotated[
+        Path, typer.Option("--out-dir", "-o", help="Spatial forensics output directory.")
+    ],
+    shots_from: Annotated[
+        Path | None,
+        typer.Option(
+            "--shots-from",
+            help="Optional probe.json or video_breakdown.json to align sampling to shot midpoints.",
+        ),
+    ] = None,
+    platform: Annotated[
+        str | None,
+        typer.Option(
+            "--platform",
+            help="Optional platform_target_id (e.g. shorts_9x16_1080p) for safe-zone checks.",
+        ),
+    ] = None,
+    max_frames: Annotated[
+        int, typer.Option("--max-frames", min=1, max=48, help="Maximum frames to analyze.")
+    ] = 12,
+    max_motion_windows: Annotated[
+        int,
+        typer.Option(
+            "--max-motion-windows", min=0, max=12, help="Shot-onset motion burst windows."
+        ),
+    ] = 4,
+    subject_mask: Annotated[
+        bool,
+        typer.Option(
+            "--subject-mask/--no-subject-mask",
+            help="Enable u2netp ONNX foreground subject mask for whitespace/calm ratio.",
+        ),
+    ] = True,
+    face_detection: Annotated[
+        bool,
+        typer.Option(
+            "--face-detection/--no-face-detection",
+            help="Enable MediaPipe face & eye-line detection.",
+        ),
+    ] = True,
+) -> None:
+    """Extract latent grid, visual hierarchy, typography/WCAG, motion easing, and SoM blueprints."""
+    result = analyze_video_structure(
+        media_file,
+        out_dir,
+        SpatialForensicsOptions(
+            shots_json=shots_from,
+            platform_target_id=platform,
+            max_frames=max_frames,
+            max_motion_windows=max_motion_windows,
+            use_subject_mask=subject_mask,
+            use_face_detection=face_detection,
+        ),
+    )
+    out_resolved = out_dir.expanduser().resolve()
+    payload = {
+        "spatial_forensics_path": str(out_resolved / "spatial_forensics.json"),
+        "structure_md_path": result.structure_md_path,
+        "frames_analyzed": len(result.frames),
+        "motion_windows": len(result.motion_windows),
+        "summary": result.summary.model_dump(exclude_none=True),
+    }
+    typer.echo(json.dumps(payload, indent=2))
 
 
 @breakdown_app.command("review")

@@ -37,24 +37,33 @@ packages/director-py/.venv/bin/vedit breakdown survey <ref.mp4> -o "$CAL_DIR/bd_
 # 3. Forensic breakdown (offline shots/transitions, audio BPM/key/SFX, 2-10fps OCR packaging,
 #    color grade, VIDEO.md, storyboard.jpg, shots/shot_XXX.jpg, and review_tasks.json)
 packages/director-py/.venv/bin/vedit breakdown analyze <ref.mp4> -o "$CAL_DIR/bd_<stem>"
+
+# 4. Spatial, grid, visual hierarchy, micro-typography/WCAG, and motion easing forensics
+#    (emits spatial_forensics.json, STRUCTURE.md, and Set-of-Mark spatial/frame_XXX_blueprint.jpg)
+packages/director-py/.venv/bin/vedit breakdown structure <ref.mp4> \
+  -o "$CAL_DIR/bd_<stem>" \
+  --shots-from "$CAL_DIR/bd_<stem>/video_breakdown.json" \
+  --platform shorts_9x16_1080p
 ```
 
 If `tools/rea-video/.venv/bin/rea-video` is not yet installed, instruct the operator or run `bash tools/rea-video/setup.sh`.
+If `tools/spatial-forensics/.venv/bin/python` is not yet installed, run `bash tools/spatial-forensics/setup.sh`.
 
-### Stage 2: Layered `VIDEO.md` Inspection
+### Stage 2: Layered `VIDEO.md` & `STRUCTURE.md` Inspection
 
-Inspect the generated `VIDEO.md` package layer by layer:
+Inspect the generated `VIDEO.md` and `STRUCTURE.md` packages layer by layer:
 1. `$CAL_DIR/bd_<stem>/VIDEO.md` — production mix, confidence, overall verdict, file map.
-2. `video/packaging.md` — measured subtitle lane, casing, box/stroke colors, words per line, entrance animations, persistent watermarks.
-3. `video/sound.md` — measured BPM, beat-sync ratio, key/mode, vocal style, visual-aligned SFX.
-4. `video/rhythm.md` & `video/timeline.md` — cut cadence, transition types, per-shot durations, internal motion beats.
-5. `video/look.md` — color grade metrics, lighting, framing, camera setups (when live-action shots exist).
+2. `$CAL_DIR/bd_<stem>/STRUCTURE.md` — inferred grid columns, margins (`L/R/T/B`), alignment snap score, competing Tier-1 signals, whitespace/calm ratio, display-to-caption type scale ratio, WCAG contrast, safe-zone violation rate, and motion easing class.
+3. `video/packaging.md` — measured subtitle lane, casing, box/stroke colors, words per line, entrance animations, persistent watermarks.
+4. `video/sound.md` — measured BPM, beat-sync ratio, key/mode, vocal style, visual-aligned SFX.
+5. `video/rhythm.md` & `video/timeline.md` — cut cadence, transition types, per-shot durations, internal motion beats.
+6. `video/look.md` — color grade metrics, lighting, framing, camera setups (when live-action shots exist).
 
 ### Stage 3: Automatic Multimodal Visual Review (Agent-as-VLM)
 
 A multimodal AI directing client **must** perform visual review automatically (no separate external VLM API key is required):
 
-1. Open `review_tasks.json`, `storyboard.jpg`, and every `priority: "high"` contact sheet (`shots/shot_XXX.jpg`), plus any flagged `packaging/sticker_*.jpg`.
+1. Open `review_tasks.json`, `storyboard.jpg`, Set-of-Mark blueprint frames (`spatial/frame_XXX_blueprint.jpg`) for exact grid/hierarchy/safe-zone grounding, and every `priority: "high"` contact sheet (`shots/shot_XXX.jpg`), plus any flagged `packaging/sticker_*.jpg`.
 2. Inspect the frames directly to determine facts pixels/OCR cannot measure:
    - Exact **production label** on platform-recompressed shots (`live_action`, `code_render`, `screen_capture`, `cg_3d`, `still_motion`, `static_hold`, `anim_2d`, `film_footage`, etc.).
    - Semantic **narrative role** per shot (`hook`, `context`, `info`, `proof`, `turn`, `payoff`, `cta`, `mood`) and concise one-sentence `point`.
