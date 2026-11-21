@@ -5,23 +5,57 @@
   "description": "Executable brand directing defaults. Each idiom is a parameterised storyboard check with a severity and score weight; storyboard overrides may retune or disable idioms. Also carries the defaults the automatic director uses when no director input exists, and the rubric for rendered-output critique.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "brand_id", "idioms", "auto_director", "critique_rubric"],
+  "required": [
+    "schema_version",
+    "brand_id",
+    "idioms",
+    "auto_director",
+    "critique_rubric"
+  ],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "brand_id": { "type": "string", "minLength": 1 },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "brand_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "idioms": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["idiom_id", "severity", "weight", "params", "rationale"],
+        "required": [
+          "idiom_id",
+          "severity",
+          "weight",
+          "params",
+          "rationale"
+        ],
         "properties": {
-          "idiom_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-          "severity": { "enum": ["error", "warning"] },
-          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
-          "params": { "type": "object" },
-          "rationale": { "type": "string", "minLength": 10 }
+          "idiom_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "params": {
+            "type": "object"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 10
+          }
         }
       }
     },
@@ -31,10 +65,25 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["devices", "lead_s"],
+        "required": [
+          "devices",
+          "lead_s"
+        ],
         "properties": {
-          "devices": { "type": "array", "items": { "type": "string" } },
-          "lead_s": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } }
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lead_s": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          }
         }
       }
     },
@@ -43,26 +92,86 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["zoom", "route_width_px"],
+        "required": [
+          "zoom",
+          "route_width_px"
+        ],
         "properties": {
-          "zoom": { "type": "number" },
-          "route_width_px": { "type": "number", "exclusiveMinimum": 0 }
+          "zoom": {
+            "type": "number"
+          },
+          "route_width_px": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
         }
       }
     },
-    "auto_director": { "type": "object" },
+    "auto_director": {
+      "type": "object"
+    },
     "critique_rubric": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["criterion_id", "question", "weight"],
+        "required": [
+          "criterion_id",
+          "question",
+          "weight"
+        ],
         "properties": {
-          "criterion_id": { "type": "string" },
-          "question": { "type": "string" },
-          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
-          "fail_signs": { "type": "array", "items": { "type": "string" } }
+          "criterion_id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "fail_signs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "device_realization": {
+      "type": "object",
+      "description": "How each storyboard device is realised. `scene` devices are drawn by the map or footage scene (journey keys, fills, camera); `overlay` devices become template-bound EditPlan overlays. Variable bindings are literals or `$field` references resolved per beat: $clause, $sync_word, $sync_word_upper, $number, $year, $callout_text, $x_pct, $y_pct, $size_px, $story_need.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "surface"
+        ],
+        "properties": {
+          "surface": {
+            "enum": [
+              "scene",
+              "overlay"
+            ]
+          },
+          "template_id": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "object"
+          },
+          "min_duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "max_duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
         }
       }
     }

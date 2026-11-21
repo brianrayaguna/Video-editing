@@ -217,6 +217,17 @@ def validate_brand_tree(
                             f"Template {tid!r} variable {var.get('id')!r} references "
                             f"unresolved policy token_ref: {token_ref!r}"
                         )
+        idioms_file = brand_dir / "directing_idioms.json"
+        if idioms_file.is_file():
+            from vedit.director.storyboard_plan import check_realization_catalog
+            from vedit.models import BrandTemplateCatalog
+
+            realization_errors = check_realization_catalog(
+                json.loads(idioms_file.read_text(encoding="utf-8")),
+                BrandTemplateCatalog.model_validate(catalog),
+            )
+            if realization_errors:
+                raise ValueError(f"directing_idioms.json device_realization: {realization_errors}")
         validated["templates"] = (
             str(catalog_path.relative_to(root))
             if catalog_path.is_relative_to(root)

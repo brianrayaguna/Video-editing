@@ -78,8 +78,22 @@ def director_plan_cmd(
         bool, typer.Option("--use-decision", help="Enable DecisionPort spatial box grounding.")
     ] = False,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
+    storyboard_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--storyboard-file",
+            help="Checked storyboard JSON; its overlay devices become template-bound overlays.",
+        ),
+    ] = None,
+    idioms_file: Annotated[
+        Path | None,
+        typer.Option("--idioms-file", help="Directing idioms (default: the brand's own)."),
+    ] = None,
+    min_storyboard_score: Annotated[
+        float, typer.Option(help="Refuse storyboards scoring below this.")
+    ] = 70.0,
 ) -> None:
-    """Assemble and deterministically verify an EditPlan."""
+    """Assemble and deterministically verify an EditPlan (optionally from a storyboard)."""
     platforms = load_platform_targets()
     if platform_id not in platforms:
         raise typer.BadParameter(f"Unknown platform target: {platform_id}")
@@ -98,6 +112,37 @@ def director_plan_cmd(
             effective_brand_dir = policy_file.parent
     catalog = _load_optional_template_catalog(template_catalog, effective_brand_dir)
     decision_port = build_default_registry().resolve("decision") if use_decision else None
+    extra_overlays = None
+    storyboard_report: dict | None = None
+    if storyboard_file is not None:
+        from vedit.director.storyboard import (
+            check_storyboard,
+            idioms_path,
+            load_directing_idioms,
+        )
+        from vedit.director.storyboard_plan import storyboard_overlays
+
+        storyboard = json.loads(storyboard_file.read_text(encoding="utf-8"))
+        idioms = load_directing_idioms(idioms_file or idioms_path(storyboard["brand_id"]))
+        check = check_storyboard(storyboard, idioms).to_dict()
+        if not check["passed"] or check["score"] < min_storyboard_score:
+            typer.echo(json.dumps({"storyboard_check": check}, indent=2), err=True)
+            raise typer.BadParameter(
+                f"Storyboard failed its directing idioms (score {check['score']}); "
+                "fix it with `vedit storyboard check` before planning."
+            )
+        if catalog is None:
+            raise typer.BadParameter("A brand template catalog is required with --storyboard-file.")
+        extra_overlays, storyboard_report = storyboard_overlays(
+            storyboard,
+            idioms,
+            catalog,
+            policy,
+            frame=(platform_target.width, platform_target.height),
+            duration_s=probe.container.duration_s,
+            safe_zone=platform_target.safe_zone,
+        )
+        storyboard_report["score"] = check["score"]
     plan, report = build_edit_plan(
         job_id=job_id,
         project_id=project_id,
@@ -108,16 +153,19 @@ def director_plan_cmd(
         decision_port=decision_port,
         render_strategy=render_strategy,
         template_catalog=catalog,
+        extra_overlays=extra_overlays,
     )
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(plan.model_dump_json(indent=2, exclude_none=True), encoding="utf-8")
-    typer.echo(
-        json.dumps(
-            {"plan": plan.model_dump(exclude_none=True), "report": report.to_dict()},
-            indent=2,
-        )
-    )
+    payload = {"plan": plan.model_dump(exclude_none=True), "report": report.to_dict()}
+    if storyboard_report is not None and extra_overlays is not None:
+        kept = {ov.overlay_id for ov in plan.overlay_compositions}
+        storyboard_report["unplaced_overlays"] = [
+            ov.overlay_id for ov in extra_overlays if ov.overlay_id not in kept
+        ]
+        payload["storyboard"] = storyboard_report
+    typer.echo(json.dumps(payload, indent=2))
 
 
 @director_app.command("verify")

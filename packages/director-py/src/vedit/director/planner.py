@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
+from vedit.director.storyboard_plan import fit_overlays
 from vedit.director.templates import (
     catalog_by_id,
     motion_props_from_policy,
@@ -328,6 +329,7 @@ def _build_overlays(
     policy: BrandStylePolicy,
     platform_target: PlatformTarget,
     template_catalog: BrandTemplateCatalog | None = None,
+    auto_data_cards: bool = True,
 ) -> list[OverlayCompositionOp]:
     overlays: list[OverlayCompositionOp] = []
     typo = policy.soft_priors.visual_tokens.typography
@@ -402,7 +404,7 @@ def _build_overlays(
                 )
             )
 
-            if _NUMBER_TOKEN_RE.search(phrase):
+            if auto_data_cards and _NUMBER_TOKEN_RE.search(phrase):
                 alt_band: Literal[
                     "lower_third", "upper_safe", "center_safe", "left_rail", "right_rail"
                 ] = "upper_safe" if band == "lower_third" else "lower_third"
@@ -482,8 +484,16 @@ def build_edit_plan(
     cleaned_speech_stem: bool = True,
     template_catalog: BrandTemplateCatalog | None = None,
     repo_root: Path | None = None,
+    extra_overlays: list[OverlayCompositionOp] | None = None,
 ) -> tuple[EditPlan, VerificationReport]:
-    """Assemble and deterministically verify an `EditPlan` using `BrandStylePolicy`."""
+    """Assemble and deterministically verify an `EditPlan` using `BrandStylePolicy`.
+
+    `extra_overlays` carries overlays realised from a checked storyboard
+    (`storyboard_plan.storyboard_overlays`). When present, the storyboard owns number cards, so
+    the caption-driven automatic data cards are skipped; the extra overlays are placed clear of
+    the captions (`storyboard_plan.fit_overlays`), then clamped and verified with the rest.
+    Overlays that fit nowhere are left out of the plan.
+    """
     effective_policy = resolve_effective_policy(policy, platform_target)
     total_dur = round(max(probe.container.duration_s, 0.5), 3)
     primary_asset_id = "src_primary"
@@ -508,8 +518,16 @@ def build_edit_plan(
     _ground_subject_boxes(clips, probe, decision_port)
 
     overlays = _build_overlays(
-        clips, transcript, effective_policy, platform_target, template_catalog=template_catalog
+        clips,
+        transcript,
+        effective_policy,
+        platform_target,
+        template_catalog=template_catalog,
+        auto_data_cards=not extra_overlays,
     )
+    if extra_overlays:
+        fitted, _dropped = fit_overlays(extra_overlays, overlays, platform_target.safe_zone)
+        overlays = [*overlays, *fitted]
     # Clamp overlays cleanly within total timeline duration.
     clamped_overlays: list[OverlayCompositionOp] = []
     for ov in overlays:
