@@ -166,7 +166,10 @@
         "icon_pop",
         "pin_and_label",
         "hazard_icons",
-        "avatar_pop"
+        "avatar_pop",
+        "prohibition_badge",
+        "weather_overlay",
+        "swarm_flow"
       ],
       "lead_s": [
         0.0,
@@ -177,6 +180,7 @@
       "devices": [
         "numeral",
         "title_card",
+        "portal_title",
         "measurement_line",
         "era_marker",
         "duration_numeral"
@@ -235,7 +239,7 @@
   },
   "camera_regimes": {
     "globe": {
-      "zoom": 1.6,
+      "zoom": 2.05,
       "route_width_px": 7
     },
     "wide": {
@@ -328,7 +332,7 @@
       "surface": "overlay",
       "template_id": "map_pin_badge",
       "variables": {
-        "badge_style": "circle",
+        "badge_style": "teardrop",
         "label": "$sync_word",
         "anchor_x_pct": "$x_pct",
         "anchor_y_pct": "$y_pct",
@@ -337,22 +341,56 @@
       "min_duration_s": 0.8,
       "max_duration_s": 2.5
     },
+    "prohibition_badge": {
+      "surface": "overlay",
+      "template_id": "myth_debunk_badge",
+      "variables": {
+        "mode": "red_x",
+        "claim_text": "$sync_word_upper"
+      },
+      "min_duration_s": 1.0,
+      "max_duration_s": 2.8
+    },
+    "weather_overlay": {
+      "surface": "overlay",
+      "template_id": "weather_cloud_rain",
+      "variables": {
+        "center_x_pct": "$x_pct",
+        "center_y_pct": "$y_pct"
+      },
+      "min_duration_s": 1.2,
+      "max_duration_s": 3.0
+    },
+    "swarm_flow": {
+      "surface": "overlay",
+      "template_id": "migrant_dot_flow",
+      "variables": {
+        "dot_count": 18,
+        "loss_ratio": 0.22,
+        "start_x_pct": 58,
+        "start_y_pct": 62,
+        "end_x_pct": 42,
+        "end_y_pct": 28
+      },
+      "min_duration_s": 1.5,
+      "max_duration_s": 4.0
+    },
     "numeral": {
       "surface": "overlay",
-      "template_id": "amber_fact_card",
+      "template_id": "tabular_metric",
       "variables": {
-        "number": "$number",
-        "text": "$clause"
+        "label": "$number",
+        "subtitle": "$sync_word"
       },
       "min_duration_s": 1.0,
       "max_duration_s": 2.5
     },
     "duration_numeral": {
       "surface": "overlay",
-      "template_id": "amber_fact_card",
+      "template_id": "tabular_metric",
       "variables": {
-        "number": "$number",
-        "text": "$clause"
+        "label": "$number",
+        "subtitle": "$sync_word"
       },
       "min_duration_s": 1.0,
       "max_duration_s": 2.5
@@ -376,6 +414,15 @@
       },
       "min_duration_s": 1.0,
       "max_duration_s": 2.2
+    },
+    "portal_title": {
+      "surface": "overlay",
+      "template_id": "kinetic_portal_title",
+      "variables": {
+        "title": "$sync_word"
+      },
+      "min_duration_s": 1.2,
+      "max_duration_s": 2.8
     },
     "stamp": {
       "surface": "overlay",
@@ -588,6 +635,49 @@
         "device": "mood_dip",
         "function": "hinge",
         "need": "open the curiosity loop before the answer"
+      },
+      {
+        "match": "weather",
+        "words": [
+          "rain",
+          "humid",
+          "storm",
+          "monsoon",
+          "climate",
+          "flood",
+          "hujan",
+          "badai",
+          "iklim"
+        ],
+        "device": "weather_overlay",
+        "function": "obstacle",
+        "need": "show the climate barrier directly over the affected region"
+      },
+      {
+        "match": "swarm",
+        "words": [
+          "migrant",
+          "refugee",
+          "migrasi",
+          "pengungsi"
+        ],
+        "device": "swarm_flow",
+        "function": "proof",
+        "need": "visualise human movement and attrition across the corridor"
+      },
+      {
+        "match": "prohibition",
+        "words": [
+          "government control",
+          "lawless",
+          "impossible",
+          "prohibited",
+          "tanpa pemerintah",
+          "mustahil"
+        ],
+        "device": "prohibition_badge",
+        "function": "obstacle",
+        "need": "signal an absolute barrier or absence of authority at the border"
       },
       {
         "match": "hazard",

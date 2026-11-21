@@ -190,6 +190,16 @@ At most **three transient callouts** (avatar, icon cluster, bubble, numeral) are
 
 ---
 
+## World-space & object-tracked overlays
+
+- **Camera-locked tracking (`track_keyframes`)**: Geographic callouts, hazard pins, prohibition emblems, radar pulses, and place titles that belong to a moving map coordinate must move, scale, and rotate in lockstep with the camera rather than floating statically in screen space. Project `[lng, lat]` anchors through the scene's `[t, lng, lat, zoom, bearing]` track (`project_world_anchor_to_track`) into `OverlayCompositionOp.track_keyframes`, animated strictly via GPU `transform` (`x`, `y`, `scale`, `rotation`) and `opacity`.
+- **Targeted 3D pitch grammar**: Keep continental route reveals, country highlights, and dense pin/radar clusters upright (`pitch: 0–8°`, `bearing: 0°`) so geography and markers remain immediately legible; reserve deep 3D oblique camera tilt (`pitch: 42–52°`, sweeping `bearing`) for corridor flow flyovers, dramatic mood-dip vignettes, and authority-barrier slams.
+- **Sequential polygon reveal & terrain preservation**: Reveal focal territory fills with a fast radial fill (`~450 ms`) followed by a glowing white perimeter rim trace (`~450 ms`), keeping interior fill alpha (`0.48–0.58`) translucent with exterior-only bloom so satellite mountain relief remains visible underneath. Transition fill hue on narrative turns (for example emerald green `#15803D` shifting to crimson `#991B1B` when danger is introduced).
+- **Spatial hierarchy & calm ground**: Target `<= 1.5` competing Tier-1 visual signals per frame and `>= 85%` calm map/ocean ground. Maintain a `2.2–2.5x` display-to-caption height ratio (`display ~6.5–7.0%` of frame height vs. boxless `1-row` captions at `~3.0–3.5%` / `~68 px` on `1080×1920`, `y = 69–72%`, local WCAG contrast `>= 4.5:1`, no trailing mid-sentence punctuation).
+- **Atmospheric cutaway triplets**: When plunging from a map into real-world terrain proof, use a radial zoom-blur plunge followed by three rapid atmospheric B-roll cuts (`0.8–1.2 s` each) before pulling back to the satellite spine.
+
+---
+
 ## Audio, VO & kinetic SFX craft
 
 - **Voiceover pacing**: Crisp, continuous narration (`50–80%` speech density, minimal dead air `<= 4%` silence). Cuts and graphic beats align to narration clauses rather than musical beats.
