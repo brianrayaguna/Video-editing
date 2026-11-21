@@ -2,13 +2,23 @@
 
 How a Geoverum director turns one narration into one film. This file governs **story and storyboard decisions**; [`CRAFT.md`](CRAFT.md) governs how the chosen visuals look and move, and [`editorial_playbook.json`](editorial_playbook.json) holds measured exemplars.
 
+The measurable parts of this method are executable: [`directing_idioms.json`](directing_idioms.json) encodes them as parameterised checks (hook timing, event cadence, sync leads, head arrival, regime-change leads, callout concurrency and size, caption band, obstacle variety, signature persistence, ending, variation) plus the defaults the automatic director uses and the rubric for rendered-output review. Direction therefore works in three layers:
+
+| Layer | Source | Without a director | With a director |
+| :--- | :--- | :--- | :--- |
+| Brand defaults | `directing_idioms.json` | Decide every beat | Retuned per film through `overrides.idiom_params` |
+| Automatic storyboard | `vedit storyboard auto` from the word-level transcript | Complete, contract-valid plan | Baseline that director beats replace |
+| Director input | Partial storyboard (`--director-file`): story fields, locked beats, emphasis words, banned devices | Empty | Highest priority |
+
+The prose below is how a director (human or AI) improves on the automatic plan; the idioms are the floor every plan must clear.
+
 The profile is a **vocabulary, not a template**. Every narration is a new story with its own question, its own withheld answer, and its own ending note. The structure, the hook, the number of surfaces, the colours, the transitions, and the ending are all *derived from that story*. Two narrations directed with this method must not produce the same film shape; if they do, the direction failed (see [Variation contract](#9-variation-contract)).
 
 ---
 
 ## 1. The directing loop
 
-Run these steps in order for every episode. Write their output to the project's `storyboard.md` (outside the engine repository) before any `EditPlan` is drafted.
+Run these steps in order for every episode. Their output is the project's `plan/storyboard.json` ([`contracts/storyboard.schema.json`](../../../contracts/storyboard.schema.json), outside the engine repository), started from `vedit storyboard auto` and refined until `vedit storyboard check` passes, before any `EditPlan` or map scene is built.
 
 1. **Read the story, not the topic.** From the narration alone, write the *story brief* (§2).
 2. **Name the story shape** that the narration already implies (§3). Do not impose a shape; detect it from the hinge words and the order in which facts arrive.
@@ -18,7 +28,8 @@ Run these steps in order for every episode. Write their output to the project's 
 6. **Storyboard clause by clause** (§5): for each spoken clause, write *story need → visual answer*. One visual idea per clause, one graphic event per stressed noun.
 7. **Assign surfaces and transitions** from narrative mode changes, never from a quota (§6).
 8. **Sync pass**: place each event against the word timestamps using the offsets in §8.
-9. **Variation audit** (§9) against the brand's recent episodes and within the episode itself.
+9. **Variation audit** (§9) against the brand's recent episodes and within the episode itself (list them in `recent_episodes`).
+10. **Critique loop** (§5.5) on a low-resolution preview before the final render.
 
 ---
 
@@ -86,7 +97,7 @@ Do not reuse the previous episode's hook mechanism unless the story offers no ot
 
 ### 4.2 Curiosity loops and hinges
 
-Keep a loop ledger in `storyboard.md`: every question the film opens, where it is paid off, and what holds the viewer in between.
+Keep a loop ledger in the storyboard (`overrides.notes` or beat clauses with function `hinge`): every question the film opens, where it is paid off, and what holds the viewer in between.
 
 - **Open at least one loop that outlives the hook.** A deferred payoff of 30–60 seconds works when an explicit *promise hinge* grants permission to wait ("there's actually a pretty interesting story", "the reason is surprising").
 - **Close one loop and open the next in the same clause** for catalogue stories ("another", "even more", "and the third").
@@ -125,9 +136,9 @@ The ending is chosen from the story's ending note, never a default pull-back. No
 
 ### 5.1 Clause-level derivation
 
-Write the storyboard as a table with one row per clause:
+Each clause is one storyboard beat with these fields (see the contract for the full list):
 
-`t_start–t_end | narration clause | narrative function | story need | visual answer | signature-image state | surface | camera | transition in | sync word`
+`start_s–end_s | clause | function | story_need | device (+ treatment) | uses_signature_image | surface | camera.regime | transition_in | sync_word + sync_word_s`
 
 The *story need* column is mandatory. A visual answer without a stated need is decoration and is removed. Examples of the pattern:
 
@@ -181,7 +192,18 @@ A route-driven film is storyboarded as a **head schedule**, not as a list of sho
 5. **Camera rides the head.** Wide regime for long transits, regional for legs, close for obstacles; each regime change is one eased move that starts `~0.5 s` before the place is named. Recap and totals return to a whole-route view (globe or continental) before the open ending.
 6. **Callouts trail the head.** Every callout is placed relative to the head (see `CRAFT.md` *Layout relative to the route head*) and retired when its leg is finished.
 
+In the storyboard file this is `route.path` + `route.markers`, and per beat `head.marker`, `head.motion`, `head.arrive_s`, `camera.regime`, and `callouts`. `vedit storyboard journey` compiles it into the route-head schedule, camera keys (regime moves that start before the name, denoised), route-width keys, and callout positions that trail the head; the compiled storyboard is checked again with the resolved positions.
+
 Validate the storyboard by reading only the `head marker` column aloud with the timings: it must tell the journey in order with no backtracking except where the narration describes a forced return.
+
+### 5.5 Critique loop
+
+Every film is reviewed on rendered frames, not only on the plan:
+
+1. Render a low-resolution preview.
+2. `vedit critique packet --storyboard … --camera-track … --video …` runs the idiom check and the camera shake budget, and renders grid-anchored contact sheets at each beat's sync word (columns A–F, rows 1–10).
+3. The reviewer scores every rubric criterion in `directing_idioms.json` from 0 to 1, citing frame labels and grid cells, and lists fixes per beat.
+4. `vedit critique gate` passes only when the deterministic checks pass, the weighted rubric score reaches `0.8`, and no criterion is below `0.5`. Otherwise apply the fixes and repeat (two or three rounds at most).
 
 
 ---
@@ -235,7 +257,7 @@ Colours are cast per story, not fixed per role across all films.
 3. **Reserve one single-use colour for the key metric** so it appears exactly once.
 4. **Desaturate everything except the anomaly** when the anomaly must be the only coloured thing.
 5. **Use grade as an emotional channel**: brown during catastrophe, release to full colour on the human-stakes beat, progressive dimming for darkness or dread.
-6. Brand accents in [`CRAFT.md`](CRAFT.md) are the default cast. Depart from them when the story's entities need it, and record the casting in `storyboard.md`.
+6. Brand accents in [`CRAFT.md`](CRAFT.md) are the default cast. Depart from them when the story's entities need it, and record the casting in `story.colour_cast`.
 
 ---
 
@@ -258,7 +280,7 @@ Pacing follows story pressure: fastest at the hook and the escalation, a near-st
 
 ## 9. Variation contract
 
-The profile must not collapse into one repeated film. Enforce these checks in `storyboard.md` before drafting the `EditPlan`:
+The profile must not collapse into one repeated film. Enforce these checks on the storyboard before drafting the `EditPlan` (the `variation_against_recent` idiom automates the cross-episode part):
 
 1. **Derivation test.** Every storyboard row cites its clause and story need. If a row could be pasted into a different narration unchanged, rewrite it from this story's need.
 2. **Episode fingerprint.** Record `story_shape`, `hook_mechanism`, `signature_image`, `dominant_surface`, `surface_count`, `colour_cast`, `transition_set`, and `ending_type`. Compare with the brand's recent episodes (recorded in their project workspaces): no two consecutive episodes may share the same hook mechanism *and* ending type, and none may reuse a signature image.

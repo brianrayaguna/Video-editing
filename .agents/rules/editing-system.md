@@ -41,6 +41,7 @@ These rules govern all media pipelines, composition compilers, and provider inte
 
 ## 7. Brand Style Policy Semantics
 - Runtime `BrandStylePolicy` (`profiles/brands/<brand_id>/brand_style_policy.json`) carries section-conditioned pacing priors, visual/audio soft tokens, hard guardrails, and calibration/provenance. Planner and verifier consume those fields only—never treat the policy as a rigid shot-length template.
+- Executable directing defaults live in `directing_idioms.json` (`contracts/directing_idioms.schema.json`) and are enforced on `plan/storyboard.json` by `vedit storyboard check` and `vedit critique gate`. Every storyboard starts from `vedit storyboard auto`; director input is layered on top, never a precondition.
 - Advisory `grammar_triggers` / `exemplar_bank` live only in `editorial_playbook.json` (`contracts/editorial_playbook.schema.json`). Do not put them on runtime policy. Do not imply the engine executes trigger DSLs.
 - Optional `templates/catalog.json` binds approved compositions via typed variables (`template_id` on EditPlan overlays). Unknown variables fail verification.
 - Brand craft documents (`CRAFT.md`) stay under `profiles/brands/<brand_id>/`. Engine-wide composition rules stay in `DESIGN.md`.

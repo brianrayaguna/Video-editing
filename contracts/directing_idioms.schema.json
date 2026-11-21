@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/directing_idioms.schema.json",
+  "title": "DirectingIdioms",
+  "description": "Executable brand directing defaults. Each idiom is a parameterised storyboard check with a severity and score weight; storyboard overrides may retune or disable idioms. Also carries the defaults the automatic director uses when no director input exists, and the rubric for rendered-output critique.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "brand_id", "idioms", "auto_director", "critique_rubric"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "idioms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["idiom_id", "severity", "weight", "params", "rationale"],
+        "properties": {
+          "idiom_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "severity": { "enum": ["error", "warning"] },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "params": { "type": "object" },
+          "rationale": { "type": "string", "minLength": 10 }
+        }
+      }
+    },
+    "device_classes": {
+      "type": "object",
+      "description": "Maps a sync class to the devices in it and the allowed lead (seconds the visual onset precedes the sync word).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["devices", "lead_s"],
+        "properties": {
+          "devices": { "type": "array", "items": { "type": "string" } },
+          "lead_s": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } }
+        }
+      }
+    },
+    "camera_regimes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zoom", "route_width_px"],
+        "properties": {
+          "zoom": { "type": "number" },
+          "route_width_px": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "auto_director": { "type": "object" },
+    "critique_rubric": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "question", "weight"],
+        "properties": {
+          "criterion_id": { "type": "string" },
+          "question": { "type": "string" },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "fail_signs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

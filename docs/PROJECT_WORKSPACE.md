@@ -20,7 +20,6 @@ Project creation inside the engine repository is rejected by default.
     <project_id>/
       project.json              # Validated ProjectManifest (contracts/project_manifest.schema.json)
       brief.md                  # Editorial brief, narration script, and beat outline
-      storyboard.md             # Story brief, story shape, clause-level storyboard, variation fingerprint
       inputs/                   # Raw project-scoped inputs (voiceover, camera footage, references)
       analysis/
         probes/                 # MediaProbeResult JSON and extracted shot keyframes
@@ -32,6 +31,9 @@ Project creation inside the engine repository is rejected by default.
         broll/                  # Normalized target-aspect B-roll clips
         audio/                  # Cleaned voiceover stems, music cuts, and SFX
       plan/
+        storyboard.json         # Storyboard (contracts/storyboard.schema.json): auto-directed, then refined
+        director.json           # Optional partial director storyboard layered over the automatic one
+        journey.json            # Route head, camera, route-width keys from `vedit storyboard journey`
         edit_plan.json          # Verified EditPlan (strictly relative asset paths)
         verification.json       # Deterministic guardrail verification report
       build/
@@ -41,6 +43,7 @@ Project creation inside the engine repository is rejected by default.
       output/
         master.mp4              # Final mastered deliverable
         audit.json              # Technical and visual QC audit report
+        critique/               # Critique packet, filled rubric review, grid contact sheets
         timeline.otio           # Optional OpenTimelineIO NLE handoff
         benchmark.json          # Per-stage latency and cloud cost telemetry (relative paths)
 ```

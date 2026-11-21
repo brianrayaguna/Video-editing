@@ -6,6 +6,7 @@
 | :--- | :--- |
 | [`brand_style_policy.json`](brand_style_policy.json) | Runtime policy (soft priors, format overrides for `9:16` & `16:9`, hard guardrails, calibration, provenance). |
 | [`editorial_playbook.json`](editorial_playbook.json) | Advisory grammar triggers and empirically measured exemplars (not executed by `vedit`). |
+| [`directing_idioms.json`](directing_idioms.json) | Executable directing defaults: idiom checks with parameters, automatic-director rules, camera regimes, and the critique rubric (`vedit storyboard`, `vedit critique`). |
 | [`DIRECTING.md`](DIRECTING.md) | Story-first directing method: story brief, story shapes, hook mechanisms, clause-level storyboard, colour casting, sync, and the variation contract. Read first. |
 | [`CRAFT.md`](CRAFT.md) | Brand visual, typographic, audio/SFX, and cartographic documentary craft rules. |
 | [`templates/`](templates/) | Parameterized, aspect-responsive brand templates (`catalog.json` + `components/*.html`). |

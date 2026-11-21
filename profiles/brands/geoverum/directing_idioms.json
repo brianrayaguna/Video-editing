@@ -1,0 +1,566 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "geoverum",
+  "idioms": [
+    {
+      "idiom_id": "hook_event_early",
+      "severity": "error",
+      "weight": 0.9,
+      "params": {
+        "max_first_event_s": 0.8
+      },
+      "rationale": "The first visual event must land before the viewer decides to scroll; an empty or static opening loses the hook."
+    },
+    {
+      "idiom_id": "story_need_stated",
+      "severity": "error",
+      "weight": 0.8,
+      "params": {
+        "placeholder_markers": [
+          "todo",
+          "tbd",
+          "?"
+        ]
+      },
+      "rationale": "A visual answer without a stated story need is decoration; every beat names what the viewer must understand."
+    },
+    {
+      "idiom_id": "event_cadence",
+      "severity": "warning",
+      "weight": 0.7,
+      "params": {
+        "min_gap_s": 0.25,
+        "max_gap_s": {
+          "calm": 3.0,
+          "default": 2.0,
+          "dense": 1.5
+        }
+      },
+      "rationale": "Dense narration carries one visual event every 0.25-1.5 s; longer gaps read as dead air unless the voice pauses."
+    },
+    {
+      "idiom_id": "sync_lead",
+      "severity": "warning",
+      "weight": 0.75,
+      "params": {
+        "tolerance_s": 0.1
+      },
+      "rationale": "Each device class leads its spoken word by a known window (show before you name); late visuals feel like captions, early ones like spoilers."
+    },
+    {
+      "idiom_id": "head_on_place_name",
+      "severity": "warning",
+      "weight": 0.7,
+      "params": {
+        "max_early_s": 0.3,
+        "max_late_s": 0.05
+      },
+      "rationale": "On a journey the drawn route tip arriving with each spoken place name lets the map tell the story without extra labels."
+    },
+    {
+      "idiom_id": "regime_change_lead",
+      "severity": "warning",
+      "weight": 0.6,
+      "params": {
+        "lead_s": [
+          0.3,
+          0.9
+        ]
+      },
+      "rationale": "A camera regime change starts before the place is named so the move arrives with the word instead of chasing it."
+    },
+    {
+      "idiom_id": "max_concurrent_callouts",
+      "severity": "warning",
+      "weight": 0.6,
+      "params": {
+        "max_concurrent": 3
+      },
+      "rationale": "More than three transient callouts compete with the route; one in, one out keeps a single reading order."
+    },
+    {
+      "idiom_id": "caption_band_clear",
+      "severity": "error",
+      "weight": 0.7,
+      "params": {
+        "band_y_pct": [
+          0.66,
+          0.76
+        ],
+        "frame_px": [
+          1080,
+          1920
+        ]
+      },
+      "rationale": "The caption rail owns its band; a callout inside it makes both unreadable."
+    },
+    {
+      "idiom_id": "callout_min_size",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {
+        "min_size_px": {
+          "avatar": 180,
+          "icon_cluster": 80,
+          "speech_bubble": 300,
+          "numeral": 60,
+          "stamp": 200
+        }
+      },
+      "rationale": "On a phone, markers under about 100 px read as noise; minimum sizes are measured on 1080x1920 frames."
+    },
+    {
+      "idiom_id": "default_device_share",
+      "severity": "warning",
+      "weight": 0.6,
+      "params": {
+        "default_device": "camera_drift",
+        "max_share": 0.35
+      },
+      "rationale": "A film where most clauses only get a camera drift has no visual argument; each stressed phrase deserves a concrete answer (fill, icon, numeral, route segment)."
+    },
+    {
+      "idiom_id": "obstacles_differ",
+      "severity": "warning",
+      "weight": 0.6,
+      "params": {},
+      "rationale": "Consecutive obstacles with the same device and treatment read as repetition; alternating kinds reads as escalation."
+    },
+    {
+      "idiom_id": "signature_image_persists",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {
+        "min_beats": 2
+      },
+      "rationale": "A signature image that appears once is a shot; one that persists and mutates becomes the film's memory."
+    },
+    {
+      "idiom_id": "ending_present",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {
+        "functions": [
+          "outro",
+          "recap"
+        ]
+      },
+      "rationale": "The film closes on an outro or recap beat rather than stopping mid-chain."
+    },
+    {
+      "idiom_id": "variation_against_recent",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {
+        "lookback": 3
+      },
+      "rationale": "Consecutive episodes never share both hook mechanism and ending type, and never reuse a signature image."
+    }
+  ],
+  "device_classes": {
+    "marker": {
+      "devices": [
+        "fill",
+        "pin",
+        "label",
+        "icon_pop",
+        "pin_and_label",
+        "hazard_icons",
+        "avatar_pop"
+      ],
+      "lead_s": [
+        0.0,
+        0.5
+      ]
+    },
+    "reading": {
+      "devices": [
+        "numeral",
+        "title_card",
+        "measurement_line",
+        "era_marker",
+        "duration_numeral"
+      ],
+      "lead_s": [
+        0.3,
+        1.0
+      ]
+    },
+    "camera": {
+      "devices": [
+        "dive_zoom",
+        "pull_out",
+        "whip_pan",
+        "globe_recap",
+        "route_draw"
+      ],
+      "lead_s": [
+        0.3,
+        0.9
+      ]
+    },
+    "verb": {
+      "devices": [
+        "tint_flash",
+        "stamp",
+        "tool_action",
+        "cage_drop"
+      ],
+      "lead_s": [
+        -0.1,
+        0.15
+      ]
+    },
+    "counter": {
+      "devices": [
+        "count_up"
+      ],
+      "lead_s": [
+        0.6,
+        2.5
+      ]
+    },
+    "ambient": {
+      "devices": [
+        "camera_drift",
+        "mood_dip",
+        "pulse_rings",
+        "broll_cutaway"
+      ],
+      "lead_s": [
+        -0.2,
+        0.6
+      ]
+    }
+  },
+  "camera_regimes": {
+    "globe": {
+      "zoom": 1.6,
+      "route_width_px": 7
+    },
+    "wide": {
+      "zoom": 3.3,
+      "route_width_px": 6
+    },
+    "regional": {
+      "zoom": 5.0,
+      "route_width_px": 14
+    },
+    "close": {
+      "zoom": 7.0,
+      "route_width_px": 26
+    }
+  },
+  "auto_director": {
+    "clause_split": {
+      "max_words": 7,
+      "pause_s": 0.28,
+      "punctuation": [
+        ".",
+        ",",
+        "?",
+        "!",
+        ";",
+        ":"
+      ]
+    },
+    "default_lead_s": 0.2,
+    "hook_window_s": 3.0,
+    "outro_fraction": 0.1,
+    "stopwords": [
+      "the",
+      "a",
+      "an",
+      "and",
+      "of",
+      "to",
+      "in",
+      "on",
+      "for",
+      "with",
+      "at",
+      "by",
+      "from",
+      "is",
+      "was",
+      "are",
+      "were",
+      "it",
+      "that",
+      "this",
+      "he",
+      "she",
+      "they",
+      "his",
+      "her",
+      "their",
+      "but",
+      "or",
+      "as",
+      "so",
+      "yang",
+      "dan",
+      "di",
+      "ke",
+      "dari",
+      "itu",
+      "ini",
+      "dengan",
+      "untuk",
+      "pada",
+      "ia",
+      "dia",
+      "mereka",
+      "adalah",
+      "akan",
+      "sudah",
+      "tapi"
+    ],
+    "question_words": [
+      "why",
+      "how",
+      "what",
+      "kenapa",
+      "mengapa",
+      "bagaimana",
+      "apa"
+    ],
+    "shape_signals": {
+      "journey_chain": [
+        "then",
+        "after",
+        "finally",
+        "walked",
+        "journey",
+        "route",
+        "kemudian",
+        "setelah",
+        "akhirnya",
+        "perjalanan",
+        "berjalan"
+      ],
+      "enumerated_reasons": [
+        "firstly",
+        "secondly",
+        "finally",
+        "reasons",
+        "pertama",
+        "kedua",
+        "alasan"
+      ],
+      "paradox_mechanism_consequence": [
+        "why",
+        "despite",
+        "although",
+        "kenapa",
+        "padahal",
+        "meskipun"
+      ],
+      "impossibility_culprit_escalation": [
+        "impossible",
+        "the only",
+        "cannot",
+        "can't",
+        "mustahil",
+        "satu-satunya",
+        "tidak bisa"
+      ],
+      "mystery_answered_late": [
+        "what is going on",
+        "story behind",
+        "mystery",
+        "misteri",
+        "ternyata"
+      ],
+      "claim_debunk_catalogue": [
+        "you think",
+        "actually",
+        "another",
+        "kamu pikir",
+        "sebenarnya",
+        "lainnya"
+      ]
+    },
+    "device_rules": [
+      {
+        "match": "year",
+        "device": "era_marker",
+        "function": "setup",
+        "need": "anchor the moment in time"
+      },
+      {
+        "match": "number",
+        "device": "numeral",
+        "function": "data_callout",
+        "need": "make the number felt at a glance"
+      },
+      {
+        "match": "question",
+        "device": "mood_dip",
+        "function": "hinge",
+        "need": "open the curiosity loop before the answer"
+      },
+      {
+        "match": "hazard",
+        "words": [
+          "arrest",
+          "rebel",
+          "smuggl",
+          "danger",
+          "kill",
+          "attack",
+          "war",
+          "virus",
+          "pandemic",
+          "lockdown",
+          "ditangkap",
+          "bahaya",
+          "pemberontak",
+          "penyelundup",
+          "perang",
+          "virus",
+          "pandemi"
+        ],
+        "device": "hazard_icons",
+        "function": "obstacle",
+        "need": "make the threat visible on the place it belongs to"
+      },
+      {
+        "match": "uniqueness",
+        "words": [
+          "only",
+          "first",
+          "never",
+          "record",
+          "nobody",
+          "pertama",
+          "rekor",
+          "satu-satunya"
+        ],
+        "device": "title_card",
+        "function": "hook",
+        "need": "make the claim unmistakable"
+      },
+      {
+        "match": "proper_noun",
+        "device": "pin_and_label",
+        "function": "proof",
+        "need": "locate the place the narration names"
+      },
+      {
+        "match": "movement",
+        "words": [
+          "walk",
+          "swim",
+          "cross",
+          "sail",
+          "fly",
+          "drove",
+          "travel",
+          "berjalan",
+          "berenang",
+          "menyeberang",
+          "berlayar",
+          "terbang"
+        ],
+        "device": "route_draw",
+        "function": "proof",
+        "need": "show the movement along its real path"
+      },
+      {
+        "match": "refusal",
+        "words": [
+          "no",
+          "not",
+          "denied",
+          "banned",
+          "refused",
+          "without",
+          "tanpa",
+          "tidak",
+          "dilarang",
+          "ditolak"
+        ],
+        "device": "stamp",
+        "function": "hinge",
+        "need": "make the rule or refusal land as an action"
+      },
+      {
+        "match": "default",
+        "device": "camera_drift",
+        "function": "proof",
+        "need": "keep the subject alive while the clause lands"
+      }
+    ]
+  },
+  "critique_rubric": [
+    {
+      "criterion_id": "single_reading_order",
+      "question": "In each frame, is there exactly one dominant element (route head or the beat's focal device), with labels and captions clearly secondary?",
+      "weight": 0.9,
+      "fail_signs": [
+        "two equally loud callouts",
+        "labels brighter than the route",
+        "caption colour competing with the focal colour"
+      ]
+    },
+    {
+      "criterion_id": "narration_visual_match",
+      "question": "Does what is on screen at each timestamp show what the caption at that timestamp is saying (place, number, obstacle)?",
+      "weight": 0.9,
+      "fail_signs": [
+        "place named but not visible",
+        "number spoken but not shown",
+        "visual from the previous clause still dominant"
+      ]
+    },
+    {
+      "criterion_id": "layout_tidiness",
+      "question": "Are callouts clear of the caption band, clear of the route head and the next second of route, inside side margins, and not overlapping each other?",
+      "weight": 0.8,
+      "fail_signs": [
+        "overlap in grid cells shared with captions",
+        "callout covering the head",
+        "text cut at the frame edge"
+      ]
+    },
+    {
+      "criterion_id": "scale_legibility",
+      "question": "Are route stroke, avatars, icons and numerals large enough to read on a phone (route never a hairline, markers not tiny)?",
+      "weight": 0.7,
+      "fail_signs": [
+        "route thinner than 4 px",
+        "icons under 100 px",
+        "numerals smaller than captions"
+      ]
+    },
+    {
+      "criterion_id": "camera_smoothness",
+      "question": "Across consecutive sheet frames, does the camera move in one purposeful direction per beat without wobble, and does the subject stay in the middle 60 % of the frame?",
+      "weight": 0.8,
+      "fail_signs": [
+        "subject drifting to the edge",
+        "back-and-forth framing between adjacent frames"
+      ]
+    },
+    {
+      "criterion_id": "variety_and_escalation",
+      "question": "Do consecutive obstacles or reasons use visibly different treatments, with the strongest moment getting the richest surface?",
+      "weight": 0.6,
+      "fail_signs": [
+        "same fill colour twice in a row",
+        "climax visually flatter than setup"
+      ]
+    },
+    {
+      "criterion_id": "brand_finish",
+      "question": "Are colours, typography and chrome consistent with the brand craft (plain captions, no pills or HUD boxes, saturated focal colour on a calm basemap)?",
+      "weight": 0.6,
+      "fail_signs": [
+        "boxed captions",
+        "glow on everything",
+        "generic interface chrome"
+      ]
+    }
+  ]
+}

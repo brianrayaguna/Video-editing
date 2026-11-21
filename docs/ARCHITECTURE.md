@@ -70,6 +70,14 @@ Storage / Raw Media
 - **`calibration` & `provenance`**: Override counts, rejected patterns, reference hashes, confidence.
 - **`templates/catalog.json`** (optional): typed brand templates bound via `OverlayCompositionOp.template_id` + `variables`; verifier rejects unknown slots; compile may copy `composition_path`.
 
+**Executable directing (`directing_idioms.json`, `contracts/directing_idioms.schema.json`):**
+
+- **`idioms`**: parameterised storyboard checks with severity and weight, run by `vedit storyboard check` / `vedit critique packet` against `plan/storyboard.json` (`contracts/storyboard.schema.json`). Storyboard `overrides` retune or disable idioms per film.
+- **`auto_director`**, **`device_classes`**, **`camera_regimes`**: defaults for `vedit storyboard auto` (transcript → contract-valid storyboard) and `vedit storyboard journey` (route head, camera, route width, callout placement).
+- **`critique_rubric`**: criteria a vision reviewer scores on grid-anchored contact sheets; `vedit critique gate` combines them with the deterministic checks.
+
+Directing layers resolve in order: brand idiom defaults → automatic storyboard → director storyboard and overrides. A film with no director input is held to the same idioms as a directed one.
+
 **Advisory only (`editorial_playbook.json`, not on runtime policy):**
 
 - **`grammar_triggers`**: Human/AI directing heuristics. Not executed by planner, verifier, compile, master, or audit.

@@ -143,16 +143,34 @@ def validate_brand_tree(
 
     brand_id = str(policy["brand_id"])
     policy_rel = (
-        str(policy_path.relative_to(root))
-        if policy_path.is_relative_to(root)
-        else str(policy_path)
+        str(policy_path.relative_to(root)) if policy_path.is_relative_to(root) else str(policy_path)
     )
     validated: dict[str, Any] = {
         "brand_id": brand_id,
         "policy": policy_rel,
         "playbook": None,
+        "directing_idioms": None,
         "templates": None,
     }
+
+    idioms_path = brand_dir / "directing_idioms.json"
+    if idioms_path.is_file():
+        idioms = json.loads(idioms_path.read_text(encoding="utf-8"))
+        idiom_errors = validate_against_contract(
+            idioms, "directing_idioms.schema.json", repo_root=root
+        )
+        if idiom_errors:
+            raise ValueError(f"{idioms_path.name} failed contract check: {idiom_errors}")
+        if idioms.get("brand_id") != brand_id:
+            raise ValueError(
+                f"Directing idioms brand_id {idioms.get('brand_id')!r} "
+                f"!= policy brand_id {brand_id!r}"
+            )
+        validated["directing_idioms"] = (
+            str(idioms_path.relative_to(root))
+            if idioms_path.is_relative_to(root)
+            else str(idioms_path)
+        )
 
     playbook_path = brand_dir / "editorial_playbook.json"
     if playbook_path.is_file():
