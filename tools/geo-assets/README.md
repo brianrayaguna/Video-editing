@@ -11,6 +11,7 @@ This directory owns reusable geospatial asset fetchers, tile grading scripts, th
 | MapLibre A-roll bake | Project-scoped baker | `bake_vertical_basemap.mjs` + `fast_capture.mjs` (writes into external project `media/maps/`) |
 | HyperFrames overlays + hybrid master | Local or **Modal Cloud** | `vedit compile` -> `vedit cloud render` |
 | Loudness / visual QC | Modal worker + local re-audit | `vedit audit` |
+| Brand component studies | Host | `study_runner.mjs` (shared helpers to serve, lint, render, and encode standalone template studies with contact sheets) |
 
 Active project shot scripts and baked MP4 outputs belong under `VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/`, never inside this engine directory.
 
@@ -29,5 +30,5 @@ All continuous or multi-shot MapLibre bakers must adhere to these verified captu
 
 - Cloud Modal spine: [`docs/CLOUD_WORKFLOW.md`](../../docs/CLOUD_WORKFLOW.md)
 - External project layout: [`docs/PROJECT_WORKSPACE.md`](../../docs/PROJECT_WORKSPACE.md)
-- Architecture invariants: [`.agents/rules/editing-system.md`](../../.agents/rules/editing-system.md) §4b
+- Architecture invariants: [`.agents/rules/editing-system.md`](../../.agents/rules/editing-system.md) §5
 - Brand directing playbook: [`.agents/skills/brand-director/SKILL.md`](../../.agents/skills/brand-director/SKILL.md)

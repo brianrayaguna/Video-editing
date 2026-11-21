@@ -4,7 +4,7 @@
 
 1. **Capability-First Ports & Adapters**: Core modules (`analyzers`, `director`, `mastering`, `cli`) depend solely on abstract protocols in `vedit.ports`. External services are isolated in `vedit.providers` and selected via configuration (`config/providers.yaml`).
 2. **Deterministic Media Assembly Only**: The system processes real camera/screen footage, licensed audio assets, and HTML/GSAP compositions. Generative video synthesis and synthetic avatars are excluded by contract (`MediaOpsPort`).
-3. **Hybrid Rendering Strategy**: Full-frame HTML-to-video rendering via headless Chromium (`BeginFrame`) is reserved for motion graphics, kinetic typography, data cards, and transparent overlays. Base A-roll/B-roll cuts, color tagging, audio mixing, and loudness normalization run natively in FFmpeg/NVENC (`hybrid` mode), while fully motion-driven pieces can route to distributed HyperFrames chunk rendering (`full_hf` mode).
+3. **Hybrid Rendering Strategy**: Full-frame HTML-to-video rendering via headless Chromium (`BeginFrame`) is reserved for motion graphics, kinetic typography, data cards, and transparent overlays. Base A-roll/B-roll cuts, color tagging, audio mixing, and loudness normalization run natively in FFmpeg with `libx264` or hardware `h264_videotoolbox` encoding (`hybrid` mode), while fully motion-driven pieces can route to distributed HyperFrames chunk rendering (`full_hf` mode).
 4. **Filesystem-First Durable State**: Policies, transcripts, probe metrics, edit plans, and step checkpoints (`JobCheckpoint`) are stored as human- and agent-inspectable JSON files keyed by content SHA-256 and deterministic `idempotency_key` hashes.
 
 ---
@@ -39,7 +39,7 @@ Storage / Raw Media
 ### A. Audio Processing DAG
 1. Isolate speech stems from raw footage.
 2. Apply optional speech noise reduction (`MediaOpsPort.clean_audio`) **before** transcription, and never after music or SFX mixing.
-3. Run speech-to-text (`TranscriptionPort`) to produce `NormalizedTranscript` (`word`, `start_s`, `end_s`, `speaker`, `is_filler`).
+3. Optionally tighten long pauses (`vedit remove-silence`) and run speech-to-text (`TranscriptionPort`) to produce `NormalizedTranscript` (`word`, `start_s`, `end_s`, `speaker`, `is_filler`).
 4. Direct visual cuts, B-roll, and overlay timing against word boundaries.
 5. Source music (`vocal_type="NONE"` under speech) and SFX via `AudioCatalogPort`.
 6. Apply spectral voiceover carving to music beds, mix stems, and master using two-pass FFmpeg `loudnorm` toward `-14.0 LUFS` integrated and `<= -1.0 dBTP` true peak (`48 kHz` stereo AAC-LC).

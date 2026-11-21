@@ -12,7 +12,7 @@ These rules govern all media pipelines, composition compilers, and provider inte
 - Forensic breakdown providers (`VideoBreakdownPort`) must strictly whitelist non-generative analysis subcommands only; never expose or invoke generative remake commands from external breakdown tools.
 
 ## 3. Mandatory Pipeline Ordering Invariants
-1. **Audio Processing DAG**: Run optional speech denoising (`MediaOpsPort.clean_audio`) exclusively on isolated speech stems **before** speech-to-text transcription (`TranscriptionPort`), and never after mixing music or sound effects. Apply spectral voiceover carving to background music against the voiceover group, mix, and master via two-pass EBU R128 toward `-14.0 LUFS` integrated and `<= -1.0 dBTP` true peak (`48 kHz` stereo AAC-LC).
+1. **Audio Processing DAG**: Run optional pause removal (`vedit remove-silence`) and speech denoising (`MediaOpsPort.clean_audio`) exclusively on isolated speech stems **before** speech-to-text transcription (`TranscriptionPort`), and never after mixing music or sound effects. Apply spectral voiceover carving to background music against the voiceover group, mix, and master via two-pass EBU R128 toward `-14.0 LUFS` integrated and `<= -1.0 dBTP` true peak (`48 kHz` stereo AAC-LC).
 2. **Target-Canvas Spatial Grounding**: Run `DecisionPort` bounding-box detection (`box`/`boxes`) on target-aspect-ratio frames **after** reframing or cropping (for example, on `9:16` output frames), never on uncropped source geometry.
 3. **Decision Batching**: Extract shot boundaries first via `vedit-probe` / FFmpeg. Request `box`/`boxes` once per shot that carries overlays, and batch classification/scoring queries up to provider request limits (`<= 8` images, `<= 128` questions).
 
@@ -24,7 +24,7 @@ These rules govern all media pipelines, composition compilers, and provider inte
 - Keep heavy ML and video rendering off the local host: route STT through cloud `TranscriptionPort` (`xai` / `veed`), neural speech denoising and heavy aspect reframing through `MediaOpsPort` (`--provider modal_cloud` on deployed Modal app `vedit-distributed-renderer`), background matting through cloud `veed`, and distributed HyperFrames rendering + EBU R128 mastering through `vedit cloud render`.
 - Redeploy Modal workers with `packages/director-py/.venv/bin/modal deploy packages/cloud-modal/src/vedit_cloud/app.py` whenever container dependencies or worker functions change.
 
-## 4b. MapLibre A-Roll Bake (Cartography Tooling)
+## 5. MapLibre A-Roll Bake (Cartography Tooling)
 - Basemap / shot A-roll baking uses MapLibre + Puppeteer + offline tiles via [`tools/geo-assets/README.md`](../../tools/geo-assets/README.md) (`bake_vertical_basemap.mjs` + `fast_capture.mjs` + `serve_tiles.mjs`). Modal distributed renderers composite HyperFrames overlays onto finished A-roll and master audio.
 - **Required knobs for continuous or multi-shot MapLibre bakes:**
   - Intermediate frames: **JPEG** (quality ≈ 92) piped via `image2pipe` MJPEG, not full-resolution PNG sequences
@@ -34,12 +34,12 @@ These rules govern all media pipelines, composition compilers, and provider inte
   - Pre-warm tiles at each camera keyframe before the full frame loop when using multi-beat `KEYFRAMES_JSON`
 - All shippable masters must follow the deterministic production spine: verified `EditPlan` -> `vedit compile --lint` -> `vedit cloud render` (or `vedit master`) -> `vedit audit`.
 
-## 4c. Engine vs. External Project Boundary
+## 6. Engine vs. External Project Boundary
 - Never create active editing projects, episode voiceovers, or render outputs inside the engine repository.
 - Initialize and execute all active editing projects outside the repository under `VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/` using `vedit project init`, storing strictly project-relative paths in `project.json` and `plan/edit_plan.json`.
-- AI directing clients must invoke `vedit project init` and all downstream pipeline stages (`clean-audio`, `transcribe`, `probe`, `director verify`, `compile --lint`, `project validate`, `cloud render`, `audit`) autonomously on the user's behalf from natural-language requests rather than instructing the user to execute manual CLI commands.
+- AI directing clients run project initialization and every downstream pipeline stage on the user's behalf; see the Autonomous Production Protocol in [`AGENTS.md`](../../AGENTS.md).
 
-## 5. Brand Style Policy Semantics
+## 7. Brand Style Policy Semantics
 - Runtime `BrandStylePolicy` (`profiles/brands/<brand_id>/brand_style_policy.json`) carries section-conditioned pacing priors, visual/audio soft tokens, hard guardrails, and calibration/provenance. Planner and verifier consume those fields only—never treat the policy as a rigid shot-length template.
 - Advisory `grammar_triggers` / `exemplar_bank` live only in `editorial_playbook.json` (`contracts/editorial_playbook.schema.json`). Do not put them on runtime policy. Do not imply the engine executes trigger DSLs.
 - Optional `templates/catalog.json` binds approved compositions via typed variables (`template_id` on EditPlan overlays). Unknown variables fail verification.

@@ -13,7 +13,7 @@ All automated pipelines and AI directing clients operating in this repository mu
 
 ## Permanent Writing & Neutrality Rules (Always On)
 
-Apply these rules unconditionally to every code file, brand profile (`profiles/brands/<brand_id>/*`), schema, test, and Markdown document committed in this repository:
+Apply these rules unconditionally to every code file, brand profile (`profiles/brands/<brand_id>/*`), schema, test, and Markdown document committed in this repository. The full text lives in [`.agents/rules/engineering-standards.md`](.agents/rules/engineering-standards.md); this summary is binding on its own.
 1. **Objective Technical English & Zero Chat Leakage**: Write every repository artifact for an external engineer reading cold. Never include session history, rollout/batch/corpus counters (`Batch 1`, `Batches 1-2`, `Phase 1`, `v2`, `N/20`, `50-video corpus`, `preserved baseline`, `fixed from earlier`), or reactive/defensive wording.
 2. **Domain-Based Naming Only**: Name modules, tests, and exemplar IDs strictly after their technical domain or topic (`ref_<topic>`, e.g., `ref_gibraltar_strait`), never sequential download numbers or platform prefixes (`yt_01`). Keep `CRAFT.md`, `README.md`, and `grammar_triggers` standalone without parenthetical video-ID lists.
 3. **Zero Third-Party Brand Leakage**: Never embed third-party product/app names, commercial software names, reference channel names, consumer brands, or social platform brand names into permanent brand profiles, rules, or schemas—use neutral technical terminology instead (keep open-data license credits only in designated provenance sections). Never embed user-specific local paths (`/Users/...`).

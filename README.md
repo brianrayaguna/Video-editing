@@ -30,7 +30,7 @@ The local host operates cleanly as a thin control plane while heavy compute runs
 
 ## End-to-End Pipeline & CLI Reference
 
-All CLI commands are exposed through `vedit` (installed in `packages/director-py/.venv/bin/vedit`) and optionally over MCP via `vedit-mcp`:
+All CLI commands are exposed through `vedit` (installed in `packages/director-py/.venv/bin/vedit`; command modules live in `packages/director-py/src/vedit/cli/`) and optionally over MCP via `vedit-mcp`:
 
 - **External Project Workspace**
   - `vedit project init` / `vedit project status` / `vedit project validate` — Scaffold, inspect, and validate self-contained projects outside the engine repository under `VEDIT_PROJECTS_ROOT`.
@@ -44,6 +44,7 @@ All CLI commands are exposed through `vedit` (installed in `packages/director-py
   - `vedit director plan` / `vedit director verify` — Generate and validate structured `EditPlan` manifests.
   - `vedit search-audio` / `vedit clean-audio` — Query licensed audio catalogs and denoise speech stems (cloud `modal_cloud` DeepFilterNet or local `ffmpeg`).
   - `vedit reframe` / `vedit remove-background` — Apply aspect-ratio reframing (`modal_cloud` or `ffmpeg`) and cloud background matting (`veed`).
+  - `vedit trim` / `vedit remove-silence` / `vedit restore-footage` — Local FFmpeg preprocessing: lossless or frame-accurate clip trims, voiceover pause removal (run before `transcribe`), and stabilization/denoise/deinterlace for raw footage.
 - **Compilation, Rendering, Interop & Mastering**
   - `vedit compile` — Compile an `EditPlan` (resolving project-relative assets) into a HyperFrames project bundle.
   - `vedit export-otio` — Export an `EditPlan` into an OpenTimelineIO `.otio` timeline for external NLE review.
@@ -106,7 +107,7 @@ Run the full verification suite across all runtimes from the repository root:
 (cd packages/hf-compiler-ts && npm run typecheck && npm run build && npm test)
 
 # Python linting, unit/integration tests, and contract validation
-packages/director-py/.venv/bin/ruff check packages/director-py
+packages/director-py/.venv/bin/ruff check packages/director-py packages/cloud-modal
 packages/director-py/.venv/bin/pytest -v packages/director-py/tests
 packages/director-py/.venv/bin/vedit contracts validate --json
 packages/director-py/.venv/bin/vedit platforms list

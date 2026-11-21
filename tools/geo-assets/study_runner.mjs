@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Shared offline rendering, linting, and FFmpeg mastering utilities for
- * Geoverum HyperFrames component studies.
+ * standalone brand HyperFrames component studies.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";

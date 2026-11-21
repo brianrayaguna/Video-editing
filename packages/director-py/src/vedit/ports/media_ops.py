@@ -14,7 +14,14 @@ class GenerativeVideoProhibitedError(RuntimeError):
 @dataclass(slots=True)
 class MediaOpResult:
     provider: str
-    operation: Literal["clean_audio", "reframe", "remove_background"]
+    operation: Literal[
+        "clean_audio",
+        "reframe",
+        "remove_background",
+        "trim",
+        "remove_silence",
+        "restore_footage",
+    ]
     output_path: Path
     metadata: dict[str, Any] = field(default_factory=dict)
 
