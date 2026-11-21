@@ -886,6 +886,72 @@ function buildLocalFontFaceCss(fonts: readonly StagedFontFace[]): string {
     .join("\n");
 }
 
+function injectOverlayTrackKeyframes(
+  html: string,
+  ov: OverlayCompositionOp,
+  width: number,
+  height: number
+): string {
+  const kfs = ov.track_keyframes;
+  if (!kfs || kfs.length === 0) {
+    return html;
+  }
+  const sorted = [...kfs].sort((a, b) => a.t_s - b.t_s);
+  const first = sorted[0]!;
+  const baseX = first.x_pct;
+  const baseY = first.y_pct;
+  const payload = sorted.map((kf) => ({
+    t: Number(kf.t_s.toFixed(4)),
+    dx: Number((((kf.x_pct - baseX) / 100) * width).toFixed(2)),
+    dy: Number((((kf.y_pct - baseY) / 100) * height).toFixed(2)),
+    scale: kf.scale ?? 1,
+    rotation: kf.rotation_deg ?? 0,
+    opacity: kf.opacity ?? 1,
+  }));
+  const originX = Number(((baseX / 100) * width).toFixed(1));
+  const originY = Number(((baseY / 100) * height).toFixed(1));
+  const trackScript = `
+  <script data-vedit-object-track="true">
+    (function() {
+      var target = document.getElementById("root") || document.body.firstElementChild;
+      if (!target || typeof gsap === "undefined") return;
+      var kfs = ${JSON.stringify(payload)};
+      gsap.set(target, {
+        transformOrigin: "${originX}px ${originY}px",
+        x: kfs[0].dx,
+        y: kfs[0].dy,
+        scale: kfs[0].scale,
+        rotation: kfs[0].rotation,
+        opacity: kfs[0].opacity
+      });
+      var trackTl = gsap.timeline({ paused: true });
+      for (var i = 1; i < kfs.length; i++) {
+        var prev = kfs[i - 1];
+        var curr = kfs[i];
+        var segDur = Math.max(0.001, curr.t - prev.t);
+        trackTl.to(target, {
+          x: curr.dx,
+          y: curr.dy,
+          scale: curr.scale,
+          rotation: curr.rotation,
+          opacity: curr.opacity,
+          duration: segDur,
+          ease: "none"
+        }, prev.t);
+      }
+      if (window.__hf && typeof window.__hf.register === "function") {
+        window.__hf.register(trackTl);
+      } else {
+        trackTl.play();
+      }
+    })();
+  </script>`;
+  if (html.includes("</body>")) {
+    return html.replace("</body>", `${trackScript}\n</body>`);
+  }
+  return `${html}\n${trackScript}`;
+}
+
 export function compileEditPlanToHyperframes(
   plan: EditPlan,
   outDir: string,
@@ -1001,7 +1067,11 @@ export function compileEditPlanToHyperframes(
         safeZone,
         extraFontFamilies
       );
-      fs.writeFileSync(scenePath, rendered, "utf8");
+      fs.writeFileSync(
+        scenePath,
+        injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height),
+        "utf8"
+      );
     } else {
       const sceneHtml = buildOverlayCompositionHtml(
         effectiveOv,
@@ -1011,7 +1081,11 @@ export function compileEditPlanToHyperframes(
         safeZone,
         extraFontFamilies
       );
-      fs.writeFileSync(scenePath, sceneHtml, "utf8");
+      fs.writeFileSync(
+        scenePath,
+        injectOverlayTrackKeyframes(sceneHtml, effectiveOv, plan.width, plan.height),
+        "utf8"
+      );
     }
     compositionFiles.push(scenePath);
 

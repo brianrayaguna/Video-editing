@@ -102,6 +102,23 @@
           "safe_band": { "type": "string", "enum": ["lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"] },
           "template_id": { "type": "string", "minLength": 1 },
           "variables": { "type": "object" },
+          "track_keyframes": {
+            "type": "array",
+            "description": "Optional object-tracking or world-space camera-locked motion keyframes relative to overlay start (t_s=0).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["t_s", "x_pct", "y_pct"],
+              "properties": {
+                "t_s": { "type": "number", "minimum": 0 },
+                "x_pct": { "type": "number" },
+                "y_pct": { "type": "number" },
+                "scale": { "type": "number", "exclusiveMinimum": 0 },
+                "rotation_deg": { "type": "number" },
+                "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          },
           "props": { "type": "object" }
         }
       }

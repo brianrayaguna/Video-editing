@@ -1344,3 +1344,38 @@ test("template_id auto-resolves catalog, multi-ring text glow compiles, single c
   assert.equal(multiCapWarnings.length, 0);
   assert.equal(lintResult.ok, true);
 });
+
+test("overlay track_keyframes injects GPU-only GSAP object-tracking script and passes lint", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-object-track-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      overlay_compositions: [
+        {
+          overlay_id: "tracked_pin",
+          kind: "kinetic_callout",
+          template_id: "map_pin_badge",
+          timeline_start_s: 1.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          variables: { badge_style: "teardrop", label: "Darién", anchor_x_pct: 50, anchor_y_pct: 50 },
+          track_keyframes: [
+            { t_s: 0.0, x_pct: 50, y_pct: 50, scale: 1.0, rotation_deg: 0 },
+            { t_s: 1.0, x_pct: 42, y_pct: 46, scale: 1.4, rotation_deg: -4 },
+            { t_s: 2.0, x_pct: 36, y_pct: 44, scale: 1.8, rotation_deg: -6 },
+          ],
+          props: {},
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+  const html = fs.readFileSync(compiled.compositionFiles[0]!, "utf8");
+  assert.match(html, /data-vedit-object-track="true"/);
+  assert.match(html, /gsap\.timeline\(\{ paused: true \}\)/);
+  assert.doesNotMatch(html, /filter:\s*blur|backdrop-filter/);
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.totalErrors, 0);
+  assert.equal(lintResult.ok, true);
+});

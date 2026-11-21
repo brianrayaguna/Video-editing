@@ -706,3 +706,241 @@ def camera_jitter_report(
         "max_zoom_accel": round(max_zoom, 5),
         "max_bearing_accel_deg": round(max_bear, 3),
     }
+
+
+def _mercator_norm(lng: float, lat: float) -> tuple[float, float]:
+    """Convert WGS84 (lng, lat) to normalized Web Mercator [0..1, 0..1]."""
+    clamped_lat = max(-85.051129, min(85.051129, lat))
+    x = (lng + 180.0) / 360.0
+    sin_lat = math.sin(math.radians(clamped_lat))
+    y = 0.5 - math.log((1.0 + sin_lat) / (1.0 - sin_lat)) / (4.0 * math.pi)
+    return (x, y)
+
+
+def _inv_mercator_norm(x: float, y: float) -> tuple[float, float]:
+    """Convert normalized Web Mercator [0..1, 0..1] back to WGS84 (lng, lat)."""
+    lng = x * 360.0 - 180.0
+    n = math.pi - 2.0 * math.pi * max(1e-6, min(1.0 - 1e-6, y))
+    lat = math.degrees(math.atan(0.5 * (math.exp(n) - math.exp(-n))))
+    return (lng, lat)
+
+
+def _quintic_smootherstep(u: float) -> float:
+    u = max(0.0, min(1.0, u))
+    return u * u * u * (u * (u * 6.0 - 15.0) + 10.0)
+
+
+def _catmull_rom_centripetal(
+    p0: float, p1: float, p2: float, p3: float, t: float, alpha: float = 0.5
+) -> float:
+    """1D centripetal Catmull-Rom evaluation between p1 (t=0) and p2 (t=1)."""
+    d01 = max(1e-4, abs(p1 - p0) ** alpha)
+    d12 = max(1e-4, abs(p2 - p1) ** alpha)
+    d23 = max(1e-4, abs(p3 - p2) ** alpha)
+    t0 = 0.0
+    t1 = t0 + d01
+    t2 = t1 + d12
+    t3 = t2 + d23
+    u = t1 + t * (t2 - t1)
+    a1 = ((t1 - u) * p0 + (u - t0) * p1) / (t1 - t0)
+    a2 = ((t2 - u) * p1 + (u - t1) * p2) / (t2 - t1)
+    a3 = ((t3 - u) * p2 + (u - t2) * p3) / (t3 - t2)
+    b1 = ((t2 - u) * a1 + (u - t0) * a2) / (t2 - t0)
+    b2 = ((t3 - u) * a2 + (u - t1) * a3) / (t3 - t1)
+    return ((t2 - u) * b1 + (u - t1) * b2) / (t2 - t1)
+
+
+def _zero_phase_smooth(values: list[float], sigma_frames: float) -> list[float]:
+    """Zero-phase Gaussian smoothing preserving exact endpoints (C2 Steadicam feel)."""
+    n = len(values)
+    if n < 5 or sigma_frames <= 0.25:
+        return list(values)
+    radius = max(1, int(math.ceil(sigma_frames * 2.5)))
+    weights = [math.exp(-0.5 * (k / sigma_frames) ** 2) for k in range(-radius, radius + 1)]
+    w_sum = sum(weights)
+    weights = [w / w_sum for w in weights]
+    out = [0.0] * n
+    for i in range(n):
+        acc = 0.0
+        for k, w in zip(range(-radius, radius + 1), weights, strict=True):
+            idx = max(0, min(n - 1, i + k))
+            acc += values[idx] * w
+        out[i] = acc
+    out[0] = values[0]
+    out[-1] = values[-1]
+    return out
+
+
+def build_cinema_camera_track(
+    keyframes: list[list[float]],
+    duration_s: float,
+    fps: float = 30.0,
+    *,
+    smooth_s: float = 0.22,
+    shutter_windows: list[list[float]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build a C2-continuous, scale-coupled Mercator cinema camera track from waypoints.
+
+    Each keyframe is `[t_s, lng, lat, zoom, bearing, pitch]` (bearing/pitch default to 0).
+    Uses scale-coupled `2^-z` Mercator interpolation (no J-hooks during deep zooms),
+    centripetal Catmull-Rom continuity through intermediate waypoints, and zero-phase
+    Steadicam Gaussian smoothing for silky ease-in/out and 3D space rotation.
+    """
+    if not keyframes:
+        return []
+    kfs = sorted(keyframes, key=lambda row: float(row[0]))
+    norm_kfs: list[tuple[float, float, float, float, float, float]] = []
+    for row in kfs:
+        t_k = float(row[0])
+        mx, my = _mercator_norm(float(row[1]), float(row[2]))
+        z_k = float(row[3])
+        b_k = float(row[4]) if len(row) > 4 else 0.0
+        p_k = float(row[5]) if len(row) > 5 else 0.0
+        norm_kfs.append((t_k, mx, my, z_k, b_k, p_k))
+
+    total = max(1, round(duration_s * fps))
+    raw_mx: list[float] = []
+    raw_my: list[float] = []
+    raw_z: list[float] = []
+    raw_b: list[float] = []
+    raw_p: list[float] = []
+
+    m = len(norm_kfs)
+    for f in range(total):
+        t = f / fps
+        if t <= norm_kfs[0][0] or m == 1:
+            _, mx, my, z, b, p = norm_kfs[0]
+        elif t >= norm_kfs[-1][0]:
+            _, mx, my, z, b, p = norm_kfs[-1]
+        else:
+            seg_i = 0
+            for i in range(m - 1):
+                if norm_kfs[i][0] <= t <= norm_kfs[i + 1][0]:
+                    seg_i = i
+                    break
+            k0 = norm_kfs[max(0, seg_i - 1)]
+            k1 = norm_kfs[seg_i]
+            k2 = norm_kfs[seg_i + 1]
+            k3 = norm_kfs[min(m - 1, seg_i + 2)]
+            u_lin = (t - k1[0]) / max(1e-6, k2[0] - k1[0])
+            # Blend linear spline progression with quintic ease at act boundaries.
+            u_ease = _quintic_smootherstep(u_lin)
+            is_boundary = seg_i == 0 or seg_i == m - 2
+            u = 0.65 * u_ease + 0.35 * u_lin if is_boundary else 0.35 * u_ease + 0.65 * u_lin
+
+            z = _catmull_rom_centripetal(k0[3], k1[3], k2[3], k3[3], u)
+            b = _catmull_rom_centripetal(k0[4], k1[4], k2[4], k3[4], u)
+            p = _catmull_rom_centripetal(k0[5], k1[5], k2[5], k3[5], u)
+
+            # Scale-coupled Mercator pan (Van Wijk & Nuij 2^-z weighting eliminates J-hooks).
+            dz = k2[3] - k1[3]
+            if abs(dz) > 0.25:
+                s0 = 2.0 ** (-k1[3])
+                s1 = 2.0 ** (-k2[3])
+                sc = 2.0 ** (-z)
+                u_pan = max(0.0, min(1.0, (sc - s0) / (s1 - s0))) if abs(s1 - s0) > 1e-9 else u
+            else:
+                u_pan = u
+            mx = k1[1] + (k2[1] - k1[1]) * u_pan
+            my = k1[2] + (k2[2] - k1[2]) * u_pan
+
+        raw_mx.append(mx)
+        raw_my.append(my)
+        raw_z.append(z)
+        raw_b.append(b)
+        raw_p.append(p)
+
+    sigma = smooth_s * fps
+    sm_mx = _zero_phase_smooth(raw_mx, sigma)
+    sm_my = _zero_phase_smooth(raw_my, sigma)
+    sm_z = _zero_phase_smooth(raw_z, sigma)
+    sm_b = _zero_phase_smooth(raw_b, sigma * 1.15)
+    sm_p = _zero_phase_smooth(raw_p, sigma * 1.15)
+
+    samples: list[dict[str, Any]] = []
+    for f in range(total):
+        t = f / fps
+        lng, lat = _inv_mercator_norm(sm_mx[f], sm_my[f])
+        shutter = 1
+        for sw in shutter_windows or []:
+            if sw[0] <= t <= sw[1]:
+                shutter = int(sw[2])
+                break
+        samples.append(
+            {
+                "center": [round(lng, 5), round(lat, 5)],
+                "zoom": round(sm_z[f], 4),
+                "bearing": round(sm_b[f], 3),
+                "pitch": round(max(0.0, min(72.0, sm_p[f])), 2),
+                "shutter_samples": shutter,
+            }
+        )
+    return samples
+
+
+def _unpack_camera_row(
+    row: list[float] | dict[str, Any],
+) -> tuple[float, float, float, float, float]:
+    if isinstance(row, dict):
+        t_abs = float(row.get("t", row.get("t_s", 0.0)))
+        center = row.get("center") or [row.get("lng", 0.0), row.get("lat", 0.0)]
+        return (
+            t_abs,
+            float(center[0]),
+            float(center[1]),
+            float(row.get("zoom", 2.0)),
+            float(row.get("bearing", 0.0)),
+        )
+    bearing = float(row[4]) if len(row) > 4 else 0.0
+    return (float(row[0]), float(row[1]), float(row[2]), float(row[3]), bearing)
+
+
+def project_world_anchor_to_track(
+    camera_keys: list[list[float]] | list[dict[str, Any]],
+    lng: float,
+    lat: float,
+    width: int,
+    height: int,
+    *,
+    start_s: float,
+    duration_s: float,
+    reference_zoom: float | None = None,
+    scale_with_zoom: bool = True,
+    tile_size: float = 512.0,
+) -> list[dict[str, float]]:
+    """Project a geographic [lng, lat] anchor through camera track rows.
+
+    Accepts either `[t, lng, lat, zoom, bearing]` lists or `{t, center:[lng,lat], zoom, bearing}`
+    dicts exported by `render_map_scene.mjs`. Returns `track_keyframes` dicts relative to `start_s`.
+    """
+    end_s = start_s + duration_s
+    ax, ay = _mercator_norm(lng, lat)
+    unpacked = [_unpack_camera_row(row) for row in camera_keys]
+    window = [r for r in unpacked if start_s - 0.05 <= r[0] <= end_s + 0.05]
+    if not window:
+        return []
+    ref_z = reference_zoom if reference_zoom is not None else window[0][3]
+    out: list[dict[str, float]] = []
+    for t_abs, c_lng, c_lat, zoom, bearing in window:
+        cx, cy = _mercator_norm(c_lng, c_lat)
+        world_px = tile_size * (2.0**zoom)
+        dx_px = (ax - cx) * world_px
+        dy_px = (ay - cy) * world_px
+        rad = math.radians(-bearing)
+        cos_b, sin_b = math.cos(rad), math.sin(rad)
+        rx = dx_px * cos_b - dy_px * sin_b
+        ry = dx_px * sin_b + dy_px * cos_b
+        x_pct = round(50.0 + (rx / max(width, 1)) * 100.0, 2)
+        y_pct = round(50.0 + (ry / max(height, 1)) * 100.0, 2)
+        scale = round(2.0 ** (zoom - ref_z), 4) if scale_with_zoom else 1.0
+        scale = max(0.05, min(8.0, scale))
+        out.append(
+            {
+                "t_s": round(max(0.0, t_abs - start_s), 3),
+                "x_pct": x_pct,
+                "y_pct": y_pct,
+                "scale": scale,
+                "rotation_deg": round(-bearing, 2),
+            }
+        )
+    return out

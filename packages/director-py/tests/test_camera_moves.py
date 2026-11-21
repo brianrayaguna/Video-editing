@@ -222,3 +222,48 @@ def test_camera_track_cli_writes_denoised_track(tmp_path) -> None:
     report = json.loads(result.output)
     assert report["after"]["zoom_reversals"] <= report["before"]["zoom_reversals"]
     assert len(json.loads(dst.read_text(encoding="utf-8"))) == 41
+
+
+def test_project_world_anchor_to_track_follows_pan_and_zoom() -> None:
+    from vedit.director.camera_moves import project_world_anchor_to_track
+
+    # Camera starts centered on Darien (-77.55, 8.18) at z=6, then pans east & zooms in to z=7.
+    cam = [
+        [0.0, -77.55, 8.18, 6.0, 0.0],
+        [0.5, -77.05, 8.18, 6.5, 0.0],
+        [1.0, -76.55, 8.18, 7.0, 0.0],
+    ]
+    kfs = project_world_anchor_to_track(
+        cam,
+        lng=-77.55,
+        lat=8.18,
+        width=1080,
+        height=1920,
+        start_s=0.0,
+        duration_s=1.0,
+        scale_with_zoom=True,
+    )
+    assert len(kfs) == 3
+    assert kfs[0]["x_pct"] == 50.0 and kfs[0]["y_pct"] == 50.0 and kfs[0]["scale"] == 1.0
+    # As camera pans east, the anchor moves left (< 50%) and doubles in scale at +1 zoom.
+    assert kfs[-1]["x_pct"] < 50.0
+    assert kfs[-1]["scale"] == 2.0
+
+
+def test_build_cinema_camera_track_is_c2_smooth_and_orbits_3d() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    kfs = [
+        [0.0, -100.0, 25.0, 2.2, -20.0, 5.0],
+        [2.0, -77.55, 8.18, 7.2, 18.0, 48.0],
+        [4.0, -77.55, 8.18, 7.6, 35.0, 52.0],
+    ]
+    samples = build_cinema_camera_track(kfs, duration_s=4.0, fps=30.0, smooth_s=0.22)
+    assert len(samples) == 120
+    # Smooth 3D bearing & pitch progression without spikes.
+    bearings = [s["bearing"] for s in samples]
+    pitches = [s["pitch"] for s in samples]
+    assert bearings[0] == -20.0 and abs(bearings[-1] - 35.0) < 0.5
+    assert pitches[-1] >= 48.0
+    max_bearing_step = max(abs(bearings[i] - bearings[i - 1]) for i in range(1, len(bearings)))
+    assert max_bearing_step < 2.0

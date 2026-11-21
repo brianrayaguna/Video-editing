@@ -303,10 +303,20 @@ def geo_bake_scene_cmd(
     spec = json.loads(scene_path.read_text(encoding="utf-8"))
     fps = float(spec.get("fps", 30.0))
 
-    # Expand any declarative `camera_plan` via `camera_moves.expand_move_plan` for smooth physics.
+    # Expand declarative `camera_plan` or `camera_keyframes` for smooth C2 cinema physics.
+    from vedit.director.camera_moves import build_cinema_camera_track
+
     for act in spec.get("acts") or []:
         if "camera_plan" in act and "camera_samples" not in act:
             act["camera_samples"] = expand_move_plan(act["camera_plan"], fps=fps)
+        elif "camera_keyframes" in act and "camera_samples" not in act:
+            act["camera_samples"] = build_cinema_camera_track(
+                act["camera_keyframes"],
+                duration_s=float(act.get("duration_s", 1.0)),
+                fps=fps,
+                smooth_s=float(act.get("camera_smooth_s", 0.24)),
+                shutter_windows=act.get("shutter_windows"),
+            )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(

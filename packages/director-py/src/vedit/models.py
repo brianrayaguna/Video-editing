@@ -293,6 +293,15 @@ class VideoClipOp(StrictModel):
     subject_safe_boxes: list[BoundingBox] = Field(default_factory=list)
 
 
+class OverlayTrackKeyframe(StrictModel):
+    t_s: float = Field(ge=0.0)
+    x_pct: float
+    y_pct: float
+    scale: float | None = Field(default=None, gt=0.0)
+    rotation_deg: float | None = None
+    opacity: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class OverlayCompositionOp(StrictModel):
     overlay_id: str
     kind: Literal[
@@ -306,6 +315,7 @@ class OverlayCompositionOp(StrictModel):
     ] = "lower_third"
     template_id: str | None = None
     variables: dict[str, Any] = Field(default_factory=dict)
+    track_keyframes: list[OverlayTrackKeyframe] = Field(default_factory=list)
     props: dict[str, Any] = Field(default_factory=dict)
 
 

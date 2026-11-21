@@ -129,9 +129,10 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
 
     const map = new maplibregl.Map({
       container: "map",
+      maxPitch: 75,
       style: {
         version: 8,
-        projection: { type: "mercator" },
+        projection: { type: ${JSON.stringify(mapOpts.projection || "mercator")} },
         sources: {
           sat: {
             type: "raster",
@@ -220,6 +221,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     const easeInOutCubic = (x) => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
     const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
     const easeOutExpo = (x) => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+    const easeInExpo = (x) => x <= 0 ? 0 : Math.pow(2, 10 * x - 10);
     const easeInCubic = (x) => x * x * x;
     const easeOutBack = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
 
@@ -282,8 +284,8 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       return "rgba(" + r + "," + g + "," + b + "," + clamp(alpha, 0, 1).toFixed(3) + ")";
     }
 
-    // Seamless exterior polygon dissolve + feathered outer Gaussian bloom + crisp exterior rim
-    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.72, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true } = {}) {
+    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter reveal
+    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0 } = {}) {
       if (alpha <= 0.005 || !geom) return;
 
       // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
@@ -297,21 +299,33 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       maskCtx.fill();
       maskCtx.stroke();
 
-      // 2. Colorize unified silhouette interior into rimCanvas first
+      // 2. Build exterior-only rim ring into rimCanvas (8-12 direction dilation minus inner mask)
       rimCtx.clearRect(0, 0, W, H);
       rimCtx.globalCompositeOperation = "source-over";
+      const dirs = 12;
+      const rw = Math.max(2.0, rimWidth);
+      for (let k = 0; k < dirs; k++) {
+        const ang = (k / dirs) * Math.PI * 2;
+        rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw);
+      }
+      rimCtx.globalCompositeOperation = "destination-out";
       rimCtx.drawImage(maskCanvas, 0, 0);
-      rimCtx.globalCompositeOperation = "source-in";
-      rimCtx.fillStyle = fillHex;
-      rimCtx.fillRect(0, 0, W, H);
 
-      // 3. Feathered multi-pass exterior Gaussian bloom strictly around unified silhouette
+      // 3. Exterior-only Gaussian bloom (never stacks opaque color over interior mountain texture)
       ctx.save();
+      if (borderReveal < 0.999) {
+        ctx.beginPath();
+        ctx.rect(0, 0, W, H * clamp(borderReveal, 0, 1));
+        ctx.clip();
+      }
       if (bloomHex && bloomScale > 0) {
+        rimCtx.globalCompositeOperation = "source-in";
+        rimCtx.fillStyle = bloomHex;
+        rimCtx.fillRect(0, 0, W, H);
         const passes = [
-          [44 * bloomScale, 0.28],
-          [22 * bloomScale, 0.44],
-          [10 * bloomScale, 0.55],
+          [42 * bloomScale, 0.45],
+          [20 * bloomScale, 0.65],
+          [8 * bloomScale, 0.80],
         ];
         for (const [blurPx, a] of passes) {
           ctx.save();
@@ -323,32 +337,32 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         }
       }
 
-      ctx.globalAlpha = alpha * fillAlpha;
-      if (preserveTerrain) {
-        ctx.globalCompositeOperation = "source-over";
-      }
-      ctx.drawImage(rimCanvas, 0, 0);
-
-      // 4. Crisp exterior-only rim (8-direction radial dilation minus inner mask -> ZERO internal seams!)
+      // 4. Crisp exterior rim (animated by borderReveal)
       if (rimHex && rimWidth > 0) {
-        rimCtx.clearRect(0, 0, W, H);
-        rimCtx.globalCompositeOperation = "source-over";
-        const dirs = 12;
-        for (let k = 0; k < dirs; k++) {
-          const ang = (k / dirs) * Math.PI * 2;
-          rimCtx.drawImage(maskCanvas, Math.cos(ang) * rimWidth, Math.sin(ang) * rimWidth);
-        }
-        rimCtx.globalCompositeOperation = "destination-out";
-        rimCtx.drawImage(maskCanvas, 0, 0);
         rimCtx.globalCompositeOperation = "source-in";
         rimCtx.fillStyle = rimHex;
         rimCtx.fillRect(0, 0, W, H);
-
         ctx.globalCompositeOperation = "source-over";
-        ctx.globalAlpha = alpha * 0.96;
+        ctx.globalAlpha = alpha * 0.92;
         ctx.drawImage(rimCanvas, 0, 0);
       }
       ctx.restore();
+
+      // 5. Terrain-preserving interior fill (single clean translucent pass so mountain ridges shine through)
+      if (fillReveal > 0.005) {
+        rimCtx.clearRect(0, 0, W, H);
+        rimCtx.globalCompositeOperation = "source-over";
+        rimCtx.drawImage(maskCanvas, 0, 0);
+        rimCtx.globalCompositeOperation = "source-in";
+        rimCtx.fillStyle = fillHex;
+        rimCtx.fillRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.globalCompositeOperation = preserveTerrain ? "source-over" : "source-over";
+        ctx.globalAlpha = alpha * fillAlpha * clamp(fillReveal, 0, 1);
+        ctx.drawImage(rimCanvas, 0, 0);
+        ctx.restore();
+      }
     }
 
     function drawStandardPolygon(geom, { fillHex, fillAlpha = 0.45, rimHex = "#F4F1EA", rimWidth = 2.2, bloomHex = null, bloomScale = 0.4, alpha = 1.0 } = {}) {
@@ -475,25 +489,28 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.restore();
     }
 
-    function drawSkull(x, y, r, alpha) {
-      if (alpha <= 0.005 || r <= 1) return;
+    function drawSkull(x, y, r, alpha, { rotRad = 0, pitchScale = 1.0 } = {}) {
+      if (alpha <= 0.005 || r <= 2) return;
       ctx.save();
       ctx.translate(x, y);
+      if (pitchScale < 0.999) ctx.scale(1, Math.max(0.45, pitchScale));
+      if (rotRad) ctx.rotate(rotRad);
       ctx.globalAlpha = alpha;
-      ctx.shadowColor = "rgba(0,0,0,0.65)";
-      ctx.shadowBlur = r * 0.24;
-      ctx.strokeStyle = "#FFFFFF";
+      // Warm neon crimson outer bloom fused with crimson territory polygon
+      ctx.shadowColor = "#FF2E4C";
+      ctx.shadowBlur = Math.max(8, r * 0.42);
+      ctx.strokeStyle = "#FFD6DC";
       ctx.lineWidth = r * 0.22;
       ctx.lineCap = "round";
       const bx = r * 0.95, by = r * 0.72, yOff = r * 0.26;
       for (const [x1, y1, x2, y2] of [[-bx, yOff - by * 0.4, bx, yOff + by * 0.65], [bx, yOff - by * 0.4, -bx, yOff + by * 0.65]]) {
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        ctx.fillStyle = "#FFFFFF";
+        ctx.fillStyle = "#FFD6DC";
         for (const [kx, ky] of [[x1, y1], [x2, y2]]) {
           ctx.beginPath(); ctx.arc(kx, ky - r * 0.08, r * 0.12, 0, Math.PI * 2); ctx.arc(kx, ky + r * 0.08, r * 0.12, 0, Math.PI * 2); ctx.fill();
         }
       }
-      ctx.fillStyle = "#FFFFFF";
+      ctx.fillStyle = "#FFE4E6";
       ctx.beginPath();
       ctx.arc(0, -r * 0.22, r * 0.66, Math.PI * 0.85, Math.PI * 2.15);
       ctx.lineTo(r * 0.45, r * 0.22);
@@ -509,7 +526,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.ellipse(r * 0.24, -r * 0.12, r * 0.18, r * 0.16, 0.15, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath(); ctx.moveTo(0, r * 0.02); ctx.lineTo(-r * 0.09, r * 0.20); ctx.lineTo(r * 0.09, r * 0.20); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#7F1D1D"; ctx.lineWidth = Math.max(2, r * 0.055);
+      ctx.strokeStyle = "#7F1D1D"; ctx.lineWidth = Math.max(1.5, r * 0.055);
       for (const tx of [-0.14, 0, 0.14]) { ctx.beginPath(); ctx.moveTo(r * tx, r * 0.34); ctx.lineTo(r * tx, r * 0.52); ctx.stroke(); }
       ctx.restore();
     }
@@ -808,8 +825,14 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             if (layer.morph.bloom_scale != null) bloomScale = lerp(bloomScale, layer.morph.bloom_scale, m);
             if (layer.morph.fill_alpha != null) fillAlpha = lerp(fillAlpha, layer.morph.fill_alpha, m);
           }
+          const borderReveal = layer.border_draw_s
+            ? easeOutCubic(seg(t, tStart + (layer.border_delay_s ?? 0), tStart + (layer.border_delay_s ?? 0) + layer.border_draw_s))
+            : 1.0;
+          const fillReveal = layer.fill_draw_s
+            ? easeOutCubic(seg(t, tStart, tStart + layer.fill_draw_s))
+            : 1.0;
           if (layer.dissolve) {
-            drawDissolvedPolygon(geom, { fillHex, fillAlpha, rimHex, rimWidth, bloomHex, bloomScale, alpha: baseAlpha });
+            drawDissolvedPolygon(geom, { fillHex, fillAlpha, rimHex, rimWidth, bloomHex, bloomScale, alpha: baseAlpha, borderReveal, fillReveal });
           } else {
             drawStandardPolygon(geom, { fillHex, fillAlpha, rimHex, rimWidth, bloomHex, bloomScale, alpha: baseAlpha });
           }
@@ -841,15 +864,23 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           }
         } else if (layer.type === "glow_label") {
           const pt = map.project(layer.coord);
-          const sc = layer.pop_scale ? lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.35))) : 1.0;
-          const ang = layer.angle_end != null
+          let sc = layer.pop_scale ? lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.35))) : 1.0;
+          let yFly = 0;
+          if (layer.fly_through) {
+            const enterP = easeOutExpo(seg(t, tStart, tStart + 0.52));
+            const exitP = easeInExpo(seg(t, tEnd - 0.42, tEnd));
+            sc = lerp(5.2, 1.0, enterP) * lerp(1.0, 4.8, exitP);
+            yFly = lerp(320, 0, enterP) - lerp(0, 220, exitP);
+          }
+          const angDeg = layer.angle_end != null
             ? lerp(layer.angle_start || 0, layer.angle_end, seg(t, tStart, tEnd))
             : (layer.angle || 0);
-          drawGlowingText(layer.text, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0), (layer.font_px || 64) * sc, {
+          const angRad = angDeg * Math.PI / 180;
+          drawGlowingText(layer.text, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, (layer.font_px || 64) * sc, {
             fill: layer.fill || "#FFFFFF",
             glowHex: layer.glow_hex || "#22C55E",
             glowStrength: layer.glow_strength || "luminous",
-            angle: ang,
+            angle: angRad,
             alpha: baseAlpha,
           });
         } else if (layer.type === "crimson_x") {
@@ -859,9 +890,13 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           drawCrimsonX(pt.x, pt.y, sz, baseAlpha);
         } else if (layer.type === "skull") {
           const pt = map.project(layer.coord);
-          const pop = easeOutBack(seg(t, tStart, tStart + 0.34));
-          const sz = lerp(layer.size_start || 195, layer.size_end ?? (layer.size_start || 195), seg(t, tStart + 0.8, tEnd)) * clamp(pop, 0, 1.18);
-          drawSkull(pt.x, pt.y + (layer.dy || 0), sz, baseAlpha);
+          const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
+          const refZoom = layer.ref_zoom ?? 7.3;
+          const zoomScale = Math.pow(2, map.getZoom() - refZoom);
+          const sz = (layer.size_start || 155) * zoomScale * clamp(pop, 0, 1.15);
+          const rotRad = -map.getBearing() * Math.PI / 180;
+          const pitchScale = Math.cos((map.getPitch() || 0) * Math.PI / 180);
+          drawSkull(pt.x, pt.y + (layer.dy || 0), sz, baseAlpha, { rotRad, pitchScale });
         } else if (layer.type === "endpoint_dots") {
           const pulse = 1 + 0.16 * Math.sin(t * 14);
           const dr = lerp(layer.r_start || 12, layer.r_end || 28, seg(t, tStart, tEnd)) * pulse;
@@ -1263,7 +1298,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           ctx.fillStyle = "#FFF3D1";
           ctx.font = "900 54px 'Archivo Black', sans-serif";
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(layer.coord_text || "0° 00' 00\"", 0, -14);
+          ctx.fillText(layer.coord_text || "0° 00' 00\\"", 0, -14);
           ctx.fillStyle = "#E5C17B";
           ctx.font = "600 24px 'Space Grotesk', sans-serif";
           ctx.fillText(layer.caption || "SURVEY COORDINATE PLAQUE", 0, 44);
@@ -1272,13 +1307,41 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       }
     }
 
+    const ALLOW_WORLD_VOID = ${Boolean(mapOpts.allow_world_void || mapOpts.projection === "globe")};
+    function clampMercatorCamera(cam) {
+      if (ALLOW_WORLD_VOID) return cam;
+      const bearing = cam.bearing || 0;
+      const pitch = Math.max(0, Math.min(72, cam.pitch || 0));
+      const minZoom = Math.log2(H / 512) + 0.08;
+      const z = Math.max(cam.zoom, minZoom);
+      const worldPx = 512 * Math.pow(2, z);
+      const halfY = (H * 0.5) / worldPx + 0.012;
+      const lat = Math.max(-85.0, Math.min(85.0, cam.center[1]));
+      const sinLat = Math.sin(lat * Math.PI / 180);
+      let yNorm = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
+      if (halfY < 0.49) {
+        yNorm = Math.max(halfY, Math.min(1 - halfY, yNorm));
+      } else {
+        yNorm = 0.5;
+      }
+      const n = Math.PI - 2 * Math.PI * yNorm;
+      const clampedLat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+      return {
+        center: [cam.center[0], clampedLat],
+        zoom: z,
+        bearing,
+        pitch,
+      };
+    }
+
     // Smooth camera sampling (pre-expanded camera_samples or scale-coupled inline keyframes)
     window.__setSceneCamera = function(cam) {
+      const safe = clampMercatorCamera(cam);
       map.jumpTo({
-        center: cam.center,
-        zoom: cam.zoom,
-        bearing: cam.bearing || 0,
-        pitch: cam.pitch || 0,
+        center: safe.center,
+        zoom: safe.zoom,
+        bearing: safe.bearing,
+        pitch: safe.pitch,
       });
     };
 
@@ -1534,6 +1597,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   console.log(`\n=== Baking ${act.act_id} (${actKind}): ${act.duration_s.toFixed(3)}s (${totalFrames} frames) -> ${outMp4} ===`);
 
   const page = await browser.newPage();
+  page.on("pageerror", (err) => console.error(`  [${act.act_id} pageerror]`, err));
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   const shotter = await createCdpScreenshotter(page, width, height, { quality: 92 });
   const encoder = spawnMjpegPipeEncoder(outMp4, { fps, crf: 15, gop: 1, preset: "fast", useVideoToolbox: false });
@@ -1555,9 +1619,11 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
           tile_source: act.tile_source || "graded",
+          projection: act.projection || "mercator",
           terrain_3d: Boolean(act.terrain_3d),
           terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
           dem_maxzoom: act.dem_maxzoom ?? 10,
+          allow_world_void: Boolean(act.allow_world_void),
         }),
         { waitUntil: "load" }
       );

@@ -70,6 +70,15 @@ export interface VideoClipOp {
   subject_safe_boxes?: BoundingBox[];
 }
 
+export interface OverlayTrackKeyframe {
+  t_s: number;
+  x_pct: number;
+  y_pct: number;
+  scale?: number;
+  rotation_deg?: number;
+  opacity?: number;
+}
+
 export interface OverlayCompositionOp {
   overlay_id: string;
   kind: OverlayKind;
@@ -79,6 +88,7 @@ export interface OverlayCompositionOp {
   safe_band?: SafeBand;
   template_id?: string;
   variables?: Record<string, unknown>;
+  track_keyframes?: OverlayTrackKeyframe[];
   props: Record<string, unknown>;
 }
 
