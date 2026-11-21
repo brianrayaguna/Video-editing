@@ -95,18 +95,59 @@ def _format_ass_time(seconds: float) -> str:
 
 
 def _escape_ass_text(text: str) -> str:
-    return (
-        text.replace("\\", r"\\")
-        .replace("{", r"\{")
-        .replace("}", r"\}")
-        .replace("\n", r"\N")
-    )
+    return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
 
 
 def _primary_font_name(raw_family: Any, default: str = "Space Grotesk") -> str:
     if not isinstance(raw_family, str) or not raw_family.strip():
         return default
     return raw_family.split(",")[0].strip().strip("'\"") or default
+
+
+def _caption_style(
+    merged: dict[str, Any], *, width: int, height: int, is_portrait: bool
+) -> dict[str, Any]:
+    """Resolve caption typography from overlay props, defaulting to the engine house style.
+
+    Supported props (all optional): `caption_font_px`, `caption_bottom_pct`,
+    `caption_bold`, `caption_opacity`, `caption_outline_px`, `caption_shadow_px`,
+    `caption_shadow_opacity`, `caption_shadow_blur_px`, `caption_letter_spacing`.
+    """
+
+    def _num(key: str) -> float | None:
+        raw = merged.get(key)
+        if raw is None or isinstance(raw, bool):
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    default_px = round(width * 0.056) if is_portrait else round(height * 0.054)
+    font_px = _num("caption_font_px")
+    bottom_pct = _num("caption_bottom_pct")
+    opacity = _num("caption_opacity")
+    shadow_opacity = _num("caption_shadow_opacity")
+    blur = _num("caption_shadow_blur_px")
+    spacing = _num("caption_letter_spacing")
+    bold_raw = merged.get("caption_bold", True)
+    return {
+        "font_px": round(font_px) if font_px and font_px > 0 else default_px,
+        "bottom_pct": min(max(bottom_pct, 0.0), 0.9) if bottom_pct is not None else None,
+        "bold": bool(bold_raw),
+        "opacity": min(max(opacity, 0.0), 1.0) if opacity is not None else 1.0,
+        "outline_px": max(_num("caption_outline_px") or 0.0, 0.0)
+        if _num("caption_outline_px") is not None
+        else None,
+        "shadow_px": max(_num("caption_shadow_px") or 0.0, 0.0)
+        if _num("caption_shadow_px") is not None
+        else None,
+        "shadow_opacity": min(max(shadow_opacity, 0.0), 1.0)
+        if shadow_opacity is not None
+        else 0.88,
+        "shadow_blur_px": max(blur, 0.0) if blur is not None else 0.0,
+        "letter_spacing": spacing if spacing is not None else -0.3,
+    }
 
 
 def write_ass_overlays_file(
@@ -122,12 +163,9 @@ def write_ass_overlays_file(
     sz = platform_target.safe_zone
 
     sym_x_px = round(width * max(sz.left_pct, sz.right_pct, 0.06))
-    cap_bottom_pct = max(sz.bottom_pct, 0.285) if is_portrait else max(sz.bottom_pct, 0.095)
-    cap_margin_v = round(height * cap_bottom_pct)
     upper_margin_v = round(height * sz.top_pct)
     # ASS Fontsize scales by ascender+descender (~0.72x CSS visual cap-height); scale
     # proportionally so visual size matches CSS 44px @ 1080x1920 and 42px @ 1920x1080.
-    cap_font_px = round(width * 0.056) if is_portrait else round(height * 0.054)
     wm_font_px = max(18, round(24 * scale))
     wm_margin_v = round(height * (0.16 if is_portrait else 0.075))
     wm_margin_r = round(width * (0.055 if is_portrait else 0.05))
@@ -136,9 +174,19 @@ def write_ass_overlays_file(
 
     first_cap = next((o for o in overlays if o.kind == "caption_rail"), None)
     cap_merged = {**(first_cap.variables or {}), **(first_cap.props or {})} if first_cap else {}
-    cap_font = _primary_font_name(cap_merged.get("font_family"), "Space Grotesk")
-    cap_color = _hex_to_ass_color(str(cap_merged.get("fg_color") or "#F4F1EA"), 1.0)
-    shadow_color = _hex_to_ass_color("#000000", 0.88)
+    cap_font = _primary_font_name(
+        cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Space Grotesk"
+    )
+    cap_style = _caption_style(cap_merged, width=width, height=height, is_portrait=is_portrait)
+    cap_bottom_pct = cap_style["bottom_pct"]
+    if cap_bottom_pct is None:
+        cap_bottom_pct = max(sz.bottom_pct, 0.285) if is_portrait else max(sz.bottom_pct, 0.095)
+    cap_margin_v = round(height * cap_bottom_pct)
+    cap_font_px = cap_style["font_px"]
+    cap_color = _hex_to_ass_color(
+        str(cap_merged.get("fg_color") or "#F4F1EA"), cap_style["opacity"]
+    )
+    shadow_color = _hex_to_ass_color("#000000", cap_style["shadow_opacity"])
     outline_color = _hex_to_ass_color("#03161F", 0.88)
 
     wm_ov = next((o for o in overlays if o.template_id == "broadcast_bug"), None)
@@ -153,8 +201,19 @@ def write_ass_overlays_file(
     cr_opacity = float(cr_merged.get("opacity", 0.62))
     cr_color = _hex_to_ass_color(str(cr_merged.get("fg_color") or "#F4F1EA"), cr_opacity)
 
-    outline_w = round(2.6 * scale, 2)
-    shadow_d = round(2.4 * scale, 2)
+    outline_w = (
+        cap_style["outline_px"] if cap_style["outline_px"] is not None else round(2.6 * scale, 2)
+    )
+    shadow_d = (
+        cap_style["shadow_px"] if cap_style["shadow_px"] is not None else round(2.4 * scale, 2)
+    )
+    cap_bold = -1 if cap_style["bold"] else 0
+    soft_shadow = cap_style["shadow_blur_px"] > 0
+    soft_shadow_px = shadow_d
+    soft_shadow_alpha = f"&H{round((1.0 - cap_style['shadow_opacity']) * 255):02X}&"
+    if soft_shadow:
+        shadow_d = 0
+    cap_spacing = cap_style["letter_spacing"]
 
     lines = [
         "[Script Info]",
@@ -173,17 +232,20 @@ def write_ass_overlays_file(
         ),
         (
             f"Style: CaptionLower,{cap_font},{cap_font_px},{cap_color},{cap_color},"
-            f"{outline_color},{shadow_color},1,0,0,0,100,100,-0.3,0,1,{outline_w},{shadow_d},"
+            f"{outline_color},{shadow_color},{cap_bold},0,0,0,100,100,{cap_spacing},0,1,"
+            f"{outline_w},{shadow_d},"
             f"2,{sym_x_px},{sym_x_px},{cap_margin_v},1"
         ),
         (
             f"Style: CaptionCenter,{cap_font},{cap_font_px},{cap_color},{cap_color},"
-            f"{outline_color},{shadow_color},1,0,0,0,100,100,-0.3,0,1,{outline_w},{shadow_d},"
+            f"{outline_color},{shadow_color},{cap_bold},0,0,0,100,100,{cap_spacing},0,1,"
+            f"{outline_w},{shadow_d},"
             f"5,{sym_x_px},{sym_x_px},0,1"
         ),
         (
             f"Style: CaptionUpper,{cap_font},{cap_font_px},{cap_color},{cap_color},"
-            f"{outline_color},{shadow_color},1,0,0,0,100,100,-0.3,0,1,{outline_w},{shadow_d},"
+            f"{outline_color},{shadow_color},{cap_bold},0,0,0,100,100,{cap_spacing},0,1,"
+            f"{outline_w},{shadow_d},"
             f"8,{sym_x_px},{sym_x_px},{upper_margin_v},1"
         ),
         (
@@ -230,8 +292,24 @@ def write_ass_overlays_file(
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
         trans_ms = int(merged.get("caption_transition_ms", 33))
-        fade_tag = f"{{\\fad({trans_ms},{min(trans_ms, 33)})}}" if trans_ms > 0 else ""
+        fade = f"\\fad({trans_ms},{min(trans_ms, 33)})" if trans_ms > 0 else ""
+        fade_tag = f"{{{fade}}}" if fade else ""
         escaped_text = _escape_ass_text(raw_text)
+        if soft_shadow:
+            # Soft drop shadow: a blurred dark copy on a lower layer, offset by the shadow distance.
+            dx = round(soft_shadow_px)
+            margin_v = {"CaptionLower": cap_margin_v, "CaptionUpper": upper_margin_v}.get(
+                style_name, 0
+            )
+            shadow_margin_v = margin_v - dx if style_name == "CaptionLower" else margin_v + dx
+            shadow_tags = (
+                f"{{{fade}\\1c&H000000&\\1a{soft_shadow_alpha}\\bord0\\shad0"
+                f"\\blur{cap_style['shadow_blur_px']:g}}}"
+            )
+            lines.append(
+                f"Dialogue: 0,{start_ts},{end_ts},{style_name},,{sym_x_px + 2 * dx},{sym_x_px},"
+                f"{max(shadow_margin_v, 0)},,{shadow_tags}{escaped_text}"
+            )
         lines.append(
             f"Dialogue: 1,{start_ts},{end_ts},{style_name},,0,0,0,,{fade_tag}{escaped_text}"
         )

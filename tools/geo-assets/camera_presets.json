@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "description": "Reusable map camera moves for MapLibre basemap bakes. Each preset changes the camera relative to its starting state: zoom and bearing deltas follow normalized progress curves ([u, progress] pairs, u in 0..1, interpolated with a monotone cubic), and the pan mode decides how the center moves. Per move, `zoom_to` / `bearing_to` set absolute end values instead of the preset deltas, and `duration_s`, `target`, `path`, `pan_curve`, or `drift_px_per_s` override preset defaults. Expand chained moves into baker keyframes with `vedit camera expand`.",
+  "pan_modes": {
+    "hold": "Center stays fixed.",
+    "drift": "Center drifts at a constant screen velocity (`drift_px_per_s`, x right / y down, measured before bearing rotation).",
+    "to_target": "Center travels to `target` [lng, lat] along `pan_curve` in Web Mercator space.",
+    "path": "Center travels along `path` ([[lng, lat], ...], unwrapped longitudes) by cumulative Mercator length along `pan_curve`."
+  },
+  "presets": [
+    {
+      "preset_id": "snap_zoom_out_reveal",
+      "purpose": "Hook opener: starts tight on the subject and snaps out to regional context while the map rolls slightly.",
+      "default_duration_s": 1.5,
+      "zoom_delta": -3.0,
+      "zoom_curve": [[0.0, 0.0], [0.333, 0.174], [0.5, 0.501], [0.667, 0.745], [0.867, 0.932], [1.0, 1.0]],
+      "bearing_delta": -4.0,
+      "bearing_curve": [[0.0, 0.0], [0.333, 0.111], [0.5, 0.275], [0.667, 0.403], [0.867, 0.765], [1.0, 1.0]],
+      "pan": "hold"
+    },
+    {
+      "preset_id": "slow_roll_hold",
+      "purpose": "Holds a regional frame under narration while a slow push and counter-roll keep the map alive.",
+      "default_duration_s": 3.25,
+      "zoom_delta": 0.27,
+      "zoom_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "bearing_delta": -11.2,
+      "bearing_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "pan": "drift",
+      "drift_px_per_s": [7.0, 19.0]
+    },
+    {
+      "preset_id": "route_chase_pullback",
+      "purpose": "Follows a drawn route across continents, accelerating into the long ocean leg while pulling back and swinging the bearing toward the direction of travel.",
+      "default_duration_s": 3.25,
+      "zoom_delta": -1.82,
+      "zoom_curve": [[0.0, 0.0], [0.15, 0.15], [0.31, 0.33], [0.38, 0.38], [0.46, 0.6], [0.6, 0.8], [0.77, 0.86], [1.0, 1.0]],
+      "bearing_delta": 21.8,
+      "bearing_curve": [[0.0, 0.0], [0.23, 0.08], [0.31, 0.15], [0.38, 0.41], [0.46, 1.1], [0.62, 1.28], [0.85, 1.19], [1.0, 1.0]],
+      "pan": "path",
+      "pan_curve": [[0.0, 0.0], [0.154, 0.053], [0.231, 0.12], [0.308, 0.253], [0.385, 0.444], [0.462, 0.594], [0.538, 0.793], [0.615, 0.871], [0.769, 0.935], [1.0, 1.0]]
+    },
+    {
+      "preset_id": "world_card_pullback",
+      "purpose": "Pulls from a continental frame to the whole world so the map can fold into a tilted card; pair with an unconstrained renderer transform for zooms below the viewport-fill limit.",
+      "default_duration_s": 0.75,
+      "zoom_delta": -2.02,
+      "zoom_curve": [[0.0, 0.0], [0.4, 0.245], [0.667, 0.765], [1.0, 1.0]],
+      "bearing_delta": 0.0,
+      "pan": "to_target",
+      "pan_curve": [[0.0, 0.0], [0.4, 0.3], [0.667, 0.8], [1.0, 1.0]]
+    },
+    {
+      "preset_id": "card_hold_drift",
+      "purpose": "Keeps a world card readable under icon or label beats with a barely perceptible westward drift.",
+      "default_duration_s": 2.0,
+      "zoom_delta": 0.0,
+      "bearing_delta": 0.0,
+      "pan": "drift",
+      "drift_px_per_s": [-5.0, 0.0]
+    },
+    {
+      "preset_id": "iris_pullback",
+      "purpose": "Pulls back from a close local frame while a footage iris closes onto the subject marker.",
+      "default_duration_s": 0.95,
+      "zoom_delta": -1.76,
+      "zoom_curve": [[0.0, 0.0], [0.158, 0.057], [0.421, 0.34], [0.579, 0.48], [1.0, 1.0]],
+      "bearing_delta": -8.0,
+      "bearing_curve": [[0.0, 0.0], [0.421, 0.2], [1.0, 1.0]],
+      "pan": "to_target",
+      "pan_curve": [[0.0, 0.0], [0.5, 0.45], [1.0, 1.0]]
+    },
+    {
+      "preset_id": "settle_pullback_roll",
+      "purpose": "Settles on the origin point with a decelerating pullback and a steady counter-roll while titles land.",
+      "default_duration_s": 1.4,
+      "zoom_delta": -0.63,
+      "zoom_curve": [[0.0, 0.0], [0.214, 0.6], [0.429, 0.85], [1.0, 1.0]],
+      "bearing_delta": -6.35,
+      "bearing_curve": [[0.0, 0.0], [0.214, 0.39], [0.429, 0.75], [1.0, 1.0]],
+      "pan": "hold"
+    },
+    {
+      "preset_id": "nudge_toward",
+      "purpose": "Short eased pan that hints at the next destination before the cut.",
+      "default_duration_s": 0.6,
+      "zoom_delta": 0.04,
+      "zoom_curve": [[0.0, 0.0], [1.0, 1.0]],
+      "bearing_delta": 0.0,
+      "pan": "to_target",
+      "pan_curve": [[0.0, 0.0], [0.5, 0.62], [1.0, 1.0]]
+    }
+  ]
+}

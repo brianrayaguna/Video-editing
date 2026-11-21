@@ -12,7 +12,7 @@ Sources and Licenses:
 - Natural Earth 1:10m cultural & physical vectors: Public Domain (CC0)
 - PB2002 Tectonic Plate Boundaries (Peter Bird 2003 / fraxen): ODC-By 1.0
 - GEM Global Active Faults Database: CC BY-SA 4.0
-- Google Fonts (Space Grotesk, Archivo Black, Unbounded): SIL Open Font License 1.1
+- Google Fonts (Space Grotesk, Archivo Black, Unbounded, Inter): SIL Open Font License 1.1
 - Flag Icons (`lipis/flag-icons`): MIT License
 - Material Design Symbols (`google/material-design-icons`): Apache License 2.0
 - MapLibre GL JS `5.24.0`: BSD-3-Clause License
@@ -147,6 +147,22 @@ STATIC_ASSETS: list[dict[str, str]] = [
         "dest": "fonts/Unbounded-OFL.txt",
         "license": "SIL Open Font License 1.1",
         "attribution": "Unbounded by NaN, Studio Feixen, and Polkadot.",
+    },
+    {
+        "id": "font_inter",
+        "category": "font",
+        "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+        "dest": "fonts/Inter-Variable.ttf",
+        "license": "SIL Open Font License 1.1",
+        "attribution": "Inter by The Inter Project Authors.",
+    },
+    {
+        "id": "font_inter_license",
+        "category": "font",
+        "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/OFL.txt",
+        "dest": "fonts/Inter-OFL.txt",
+        "license": "SIL Open Font License 1.1",
+        "attribution": "Inter by The Inter Project Authors.",
     },
     {
         "id": "flag_icons_tarball",
@@ -355,6 +371,43 @@ def extract_flag_icons(tarball_path: Path) -> int:
     return extracted
 
 
+def derive_static_bold_instances() -> list[Path]:
+    """Pin static Bold instances of variable fonts so libass captions render a true bold.
+
+    libass renders only the default (Regular) instance of a variable font, so caption
+    styles that need a heavy weight read the derived `<Family>-Bold.ttf`. Requires the
+    optional `fonttools` package; skipped with a notice when it is unavailable.
+    """
+    try:
+        from fontTools.ttLib import TTFont
+        from fontTools.varLib.instancer import instantiateVariableFont
+    except ImportError:
+        print("  [skip] fonttools not installed; static bold caption fonts not derived")
+        return []
+    derived: list[Path] = []
+    for family, src_name, axes in (
+        ("Inter", "Inter-Variable.ttf", {"wght": 700, "opsz": 32}),
+    ):
+        src = FONTS_DIR / src_name
+        if not src.is_file():
+            continue
+        font = instantiateVariableFont(TTFont(src), axes, updateFontNames=False)
+        names = font["name"]
+        for name_id in (2, 4, 6, 16, 17, 21, 22, 25):
+            names.removeNames(nameID=name_id)
+        names.setName(family, 1, 3, 1, 0x409)
+        names.setName("Bold", 2, 3, 1, 0x409)
+        names.setName(f"{family} Bold", 4, 3, 1, 0x409)
+        names.setName(f"{family}-Bold", 6, 3, 1, 0x409)
+        font["OS/2"].usWeightClass = 700
+        font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~0b1000001) | 0b100000
+        font["head"].macStyle |= 1
+        dest = FONTS_DIR / f"{family}-Bold.ttf"
+        font.save(dest)
+        derived.append(dest)
+    return derived
+
+
 def write_manifest(tile_tasks: list[tuple[str, int, int, int, str, Path]]) -> dict:
     """Compute SHA-256 digests and write `assets/geo/MANIFEST.json`."""
     static_entries = []
@@ -474,7 +527,10 @@ def verify_manifest() -> bool:
             total_bytes += sz
             rel = dest.relative_to(GEO_ROOT).as_posix()
             hasher.update(f"{rel}:{sz}:{sha256_file(dest)}\n".encode())
-        if hasher.hexdigest() != col["tree_sha256"] or total_bytes != col["total_bytes"]:
+        if (
+            hasher.hexdigest() != col["tree_sha256"]
+            or total_bytes != col["total_bytes"]
+        ):
             print(f"TILE TREE MISMATCH for {pid}", file=sys.stderr)
             ok = False
 
@@ -505,7 +561,7 @@ def main() -> int:
         default=None,
         help=(
             "Optional JSON file defining project AOI bounding boxes as "
-            "[{\"zoom\": 8, \"bbox\": [west, south, east, north]}]."
+            '[{"zoom": 8, "bbox": [west, south, east, north]}].'
         ),
     )
     args = parser.parse_args()
@@ -513,11 +569,16 @@ def main() -> int:
     if args.verify:
         return 0 if verify_manifest() else 1
 
-    print(f"Fetching {len(STATIC_ASSETS)} static geospatial, font, flag, icon, and runtime assets...")
+    print(
+        f"Fetching {len(STATIC_ASSETS)} static geospatial, font, flag, icon, and runtime assets..."
+    )
     for item in STATIC_ASSETS:
         dest = GEO_ROOT / item["dest"]
         _, sz = download_one(item["url"], dest)
         print(f"  [ok] {item['id']} ({sz / 1024:.1f} KB)")
+
+    for derived in derive_static_bold_instances():
+        print(f"  [ok] derived {derived.relative_to(REPO_ROOT)}")
 
     tarball = GEO_ROOT / "raw/flag-icons-7.2.3.tgz"
     n_flags = extract_flag_icons(tarball)
@@ -532,7 +593,9 @@ def main() -> int:
             aoi_bboxes.append((z, (w, s, e, n)))
 
     tile_tasks = build_tile_plan(aoi_bboxes=aoi_bboxes)
-    print(f"Fetching {len(tile_tasks)} satellite raster tiles (NASA BMNG + EOX Sentinel-2 2016)...")
+    print(
+        f"Fetching {len(tile_tasks)} satellite raster tiles (NASA BMNG + EOX Sentinel-2 2016)..."
+    )
     t0 = time.time()
     completed = 0
     total_bytes = 0

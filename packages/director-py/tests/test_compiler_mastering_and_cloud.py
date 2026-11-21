@@ -644,3 +644,67 @@ def test_sparse_hf_window_grouping_and_overlay_segments_master(tmp_path: Path) -
     assert res.output_path.is_file()
     qc = audit_mastered_deliverable(out_mp4, shorts_target, require_audio=False)
     assert qc.passed is True, f"Sparse segment QC failed: {qc.errors}"
+
+
+def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
+    from vedit.mastering.ass_captions import write_ass_overlays_file
+
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    base = {"text": "has been walking", "caption_style": "plain"}
+
+    default_ass = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="cap_default",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props=base,
+            )
+        ],
+        target,
+        tmp_path / "default.ass",
+    ).read_text(encoding="utf-8")
+    assert "Style: CaptionLower,Space Grotesk,60," in default_ass
+    assert "\\blur" not in default_ass
+
+    styled_ass = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="cap_styled",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    **base,
+                    "caption_font_family": "Inter",
+                    "caption_font_px": 72,
+                    "caption_bottom_pct": 0.271,
+                    "caption_opacity": 0.9,
+                    "caption_outline_px": 0,
+                    "caption_shadow_px": 4,
+                    "caption_shadow_opacity": 0.55,
+                    "caption_shadow_blur_px": 6,
+                },
+            )
+        ],
+        target,
+        tmp_path / "styled.ass",
+    ).read_text(encoding="utf-8")
+    # 90% opacity -> alpha 0x19; bottom margin round(1920 * 0.271) = 520.
+    assert "Style: CaptionLower,Inter,72,&H19EAF1F4," in styled_ass
+    assert ",-1,0,0,0,100,100,-0.3,0,1,0.0,0,2," in styled_ass
+    assert ",520,1" in styled_ass
+    shadow_line = next(line for line in styled_ass.splitlines() if line.startswith("Dialogue: 0,"))
+    assert "\\blur6" in shadow_line and "\\1a&H73&" in shadow_line
+    assert ",516,," in shadow_line
+    assert any(
+        line.startswith("Dialogue: 1,") and line.endswith("has been walking")
+        for line in styled_ass.splitlines()
+    )

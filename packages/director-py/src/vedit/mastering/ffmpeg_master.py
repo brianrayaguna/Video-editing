@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from vedit.contracts import find_repo_root
 from vedit.mastering.ass_captions import (
     escape_ffmpeg_filter_path,
     partition_overlays_for_hybrid,
@@ -167,9 +168,7 @@ def _build_audio_mix_graph(
             mix_inputs.append("[sfx_bus]")
 
     if len(mix_inputs) == 1:
-        chains.append(
-            f"{mix_inputs[0]}apad,atrim=0:{plan.duration_s:.4f}[mixed_a]"
-        )
+        chains.append(f"{mix_inputs[0]}apad,atrim=0:{plan.duration_s:.4f}[mixed_a]")
     else:
         chains.append(
             f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest:normalize=0,"
@@ -389,16 +388,25 @@ def _video_codec_args(
 
 
 def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
-    """Copy local font assets referenced by `plan` into a single directory for libass."""
+    """Copy plan font assets plus the engine font library into one directory for libass.
+
+    Plan fonts win on filename collisions; the engine library (`assets/geo/fonts`) makes
+    brand typefaces resolvable even when a plan declares no font assets.
+    """
     copied = 0
-    for asset in plan.assets:
-        if asset.kind != "font":
+    sources: list[Path] = [Path(a.path) for a in plan.assets if a.kind == "font"]
+    try:
+        library = find_repo_root() / "assets" / "geo" / "fonts"
+    except FileNotFoundError:
+        library = None
+    if library is not None and library.is_dir():
+        sources.extend(sorted(p for p in library.iterdir() if p.suffix.lower() in {".ttf", ".otf"}))
+    for src in sources:
+        if not src.is_file() or (dest_dir / src.name).exists():
             continue
-        src = Path(asset.path)
-        if src.is_file():
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest_dir / src.name)
-            copied += 1
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest_dir / src.name)
+        copied += 1
     return dest_dir if copied > 0 else None
 
 
@@ -506,11 +514,7 @@ def assemble_hybrid_deliverable(
         final_v_label = f"[{comp_lbl}]"
         used_overlay = True
 
-    ass_overlays, _ = (
-        partition_overlays_for_hybrid(plan)
-        if use_ass_fastpath
-        else ([], [])
-    )
+    ass_overlays, _ = partition_overlays_for_hybrid(plan) if use_ass_fastpath else ([], [])
 
     audio_result: MasteredAudioResult | None = None
     with tempfile.TemporaryDirectory(prefix="vedit_master_") as tmp_dir:

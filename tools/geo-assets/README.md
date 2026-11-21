@@ -26,6 +26,19 @@ All continuous or multi-shot MapLibre bakers must adhere to these verified captu
 5. **Parallel workers & resume** — default `WORKERS=2` independent Chromium processes for long (`>= 120` frames) bakes; skip frames that already exist and are >1 KB when writing frame sequences unless `REBAKE=1`.
 6. **Encode** — all-intra H.264 (`-g 1 -preset fast`), `yuv420p`, explicit `bt709`, CRF ≈ 16 (`HW_ENCODE=1` opts into `h264_videotoolbox` on macOS).
 
+## Camera Move Presets
+
+`camera_presets.json` holds reusable map camera moves (zoom and bearing deltas on normalized progress curves, plus a pan mode: `hold`, `drift`, `to_target`, `path`). A shot is described as a start state plus chained moves; each move starts where the previous ended, and `cut` entries jump state (optionally advancing the timeline with `at_s`).
+
+- `vedit camera list` — show presets, default durations, and purposes.
+- `vedit camera expand --plan-file moves.json -o keys.json` — per-frame `KEYFRAMES_JSON` for `bake_vertical_basemap.mjs` (`--format scene` emits `[t, lng, lat, zoom, bearing]` rows for custom scene players).
+- Per-move overrides: `duration_s`, `zoom_to`, `bearing_to`, `target`, `path`, `pan_curve`, `drift_px_per_s`.
+- Zooms below the viewport-fill limit (world-card shots) need the renderer's camera constraint disabled (MapLibre `transformConstrain` returning the requested center and zoom).
+
+## Caption Typography
+
+Plain captions burned through libass accept optional props on the first `caption_rail` overlay: `caption_font_family`, `caption_font_px`, `caption_bottom_pct`, `caption_bold`, `caption_opacity`, `caption_outline_px`, `caption_shadow_px`, `caption_shadow_opacity`, `caption_shadow_blur_px` (soft blurred shadow layer), `caption_letter_spacing`. The engine font library (`assets/geo/fonts`) is staged for libass automatically; `fetch_assets.py` derives static `Inter-Bold.ttf` (requires `fonttools`) because libass renders only the default instance of variable fonts.
+
 ## Related Docs
 
 - Cloud Modal spine: [`docs/CLOUD_WORKFLOW.md`](../../docs/CLOUD_WORKFLOW.md)
