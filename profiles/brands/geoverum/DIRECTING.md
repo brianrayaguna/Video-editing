@@ -10,7 +10,7 @@ The measurable parts of this method are executable: [`directing_idioms.json`](di
 | Automatic storyboard | `vedit storyboard auto` from the word-level transcript | Complete, contract-valid plan | Baseline that director beats replace |
 | Director input | Partial storyboard (`--director-file`): story fields, locked beats, emphasis words, banned devices | Empty | Highest priority |
 
-The prose below is how a director (human or AI) improves on the automatic plan; the idioms are the floor every plan must clear.
+The prose below is how a director (human or AI) improves on the automatic plan; the idioms are the floor every plan must clear. Idiom parameters are measured, not guessed: reference videos are annotated as storyboards and fed to `vedit brand calibrate-idioms` (see the brand-profiling skill).
 
 The profile is a **vocabulary, not a template**. Every narration is a new story with its own question, its own withheld answer, and its own ending note. The structure, the hook, the number of surfaces, the colours, the transitions, and the ending are all *derived from that story*. Two narrations directed with this method must not produce the same film shape; if they do, the direction failed (see [Variation contract](#9-variation-contract)).
 

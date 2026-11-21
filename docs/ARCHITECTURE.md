@@ -76,6 +76,8 @@ Storage / Raw Media
 - **`auto_director`**, **`device_classes`**, **`camera_regimes`**: defaults for `vedit storyboard auto` (transcript → contract-valid storyboard) and `vedit storyboard journey` (route head, camera, route width, callout placement).
 - **`critique_rubric`**: criteria a vision reviewer scores on grid-anchored contact sheets; `vedit critique gate` combines them with the deterministic checks.
 
+Idiom parameters are calibrated from reference videos annotated in the storyboard format (`directing_source: reference`) with `vedit brand calibrate-idioms`, which reports measured distributions and blends existing values toward them.
+
 Directing layers resolve in order: brand idiom defaults → automatic storyboard → director storyboard and overrides. A film with no director input is held to the same idioms as a directed one.
 
 **Advisory only (`editorial_playbook.json`, not on runtime policy):**

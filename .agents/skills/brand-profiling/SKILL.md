@@ -1,6 +1,6 @@
 ---
 name: brand-profiling
-description: Forensic reference-video profiling playbook for synthesizing high-accuracy BrandStylePolicy, EditorialPlaybook, and CRAFT.md files via `vedit probe`, `vedit breakdown` (`VideoBreakdownPort`), layered `VIDEO.md` reading, and automatic multimodal visual review.
+description: Forensic reference-video profiling playbook for synthesizing and calibrating BrandStylePolicy, EditorialPlaybook, executable directing idioms, DIRECTING.md, and CRAFT.md via `vedit probe`, `vedit breakdown` (`VideoBreakdownPort`), layered `VIDEO.md` reading, reference storyboard annotation, and automatic multimodal visual review.
 ---
 
 # Brand Profiling Playbook
@@ -70,7 +70,67 @@ packages/director-py/.venv/bin/vedit breakdown apply-review \
   --lang en
 ```
 
-### Stage 4: Synthesize Policy, Playbook & `CRAFT.md`
+### Stage 4: Reference Storyboard Annotation (directing evidence)
+
+Telemetry measures cuts, colour and loudness; it cannot measure *directing*. Capture that by annotating each reference in the engine's own storyboard format so its measurements can calibrate the executable idioms.
+
+1. Transcribe the reference narration through the configured cloud `TranscriptionPort` (`vedit transcribe`) into `$CAL_DIR/transcript_<stem>.json`. When no speech track can be separated, build word timings from the on-screen captions read in Stage 2 and note this in the annotation's `overrides.notes`.
+2. Start the annotation from the automatic director:
+
+```bash
+packages/director-py/.venv/bin/vedit storyboard auto "$CAL_DIR/transcript_<stem>.json" \
+  -o "$CAL_DIR/ref_storyboard_<stem>.json" --project-id <ref_topic> --brand <brand_id> \
+  --pacing dense --reference
+packages/director-py/.venv/bin/vedit critique packet -o "$CAL_DIR/ref_sheets_<stem>/packet.json" \
+  --storyboard "$CAL_DIR/ref_storyboard_<stem>.json" --video <ref.mp4> --brand <brand_id>
+```
+
+3. Inspect the grid-anchored sheets (columns A–F, rows 1–10 on a `1080x1920` frame: one column = `180 px`, one row = `192 px`; scale proportionally for other canvases) and rewrite every beat to what the reference actually shows:
+   - `start_s`: the frame where the visual event begins (step through frames around the sync word; do not keep the automatic onset).
+   - `device` and `treatment`: the on-screen answer, using existing device names where they fit; a new device name is reported by calibration as unclassified.
+   - `function`, `story_need`: why the reference shows it.
+   - `callouts`: `kind`, `size_px` (measured width or diameter), `xy` (centre), `start_s` / `end_s`.
+   - `camera.regime`, plus `camera.zoom` when a calibrated camera track exists and `camera.route_width_px` when a route is drawn.
+   - `head` markers and `route` for journey films; `hold_reason` where the voice pauses.
+   - `story`: shape, hook mechanism, ending type, signature image, colour cast.
+4. For map-driven references, solve a camera track (`[t, lng, lat, zoom, bearing]`) against rendered basemaps and check it with `vedit geo camera-track` so regime zooms come from measurement.
+
+### Stage 5: Calibrate Executable Directing Idioms
+
+```bash
+packages/director-py/.venv/bin/vedit brand calibrate-idioms \
+  --reference-storyboard "$CAL_DIR/ref_storyboard_<stem1>.json" \
+  --reference-storyboard "$CAL_DIR/ref_storyboard_<stem2>.json" \
+  [--camera-track "$CAL_DIR/camera_<stem1>.json" --camera-track "$CAL_DIR/camera_<stem2>.json"] \
+  --idioms-file profiles/brands/<brand_id>/directing_idioms.json \
+  --report "$CAL_DIR/idiom_calibration.json" --blend 0.5
+```
+
+1. Read the report: `changes` (old → new with evidence), `skipped` (too few samples, or onsets that were never re-timed), and `follow_up` (unclassified devices to add to a device class with a lead window).
+2. Re-run with `--apply` when every change is supported by the evidence. Use `--blend 1.0` only when the references are the brand's defining examples; the default `0.5` moves existing values halfway so one reference refines rather than overwrites the profile.
+3. Add new devices to `device_classes` and new keyword rules to `auto_director.device_rules` by hand when the references show a recurring pattern the automatic director misses.
+4. Re-check the annotated references against the updated idioms (`vedit storyboard check "$CAL_DIR/ref_storyboard_<stem>.json"`). A reference that fails its own brand's idioms means a parameter is still wrong or the reference departs from the brand; record which in the calibration workspace.
+
+### Stage 6: Route Every Finding to Its Home
+
+Each finding from the analysis goes to exactly one place. Prefer the most executable home that can express it.
+
+| Finding | Home | Form |
+| :--- | :--- | :--- |
+| A measurable threshold (timing, size, count, zoom, width, lead) | `directing_idioms.json` | Idiom parameter via calibration, or a new idiom with rationale |
+| A pattern the automatic director should pick by itself (keyword → device) | `directing_idioms.json` → `auto_director.device_rules` | Keyword stems, device, function, story need |
+| How to choose or order story beats (shape, hook, ending, storyboard method) | `DIRECTING.md` | Timeless method prose; add the shape signal words to `auto_director.shape_signals` |
+| How a device looks or moves (colour, stroke, typography, layout, camera feel) | `CRAFT.md` | Measured ranges in neutral technical terms |
+| A rule worth checking on rendered frames that cannot be measured from the plan | `directing_idioms.json` → `critique_rubric` | Criterion question, weight, fail signs |
+| A timecoded moment worth imitating | `editorial_playbook.json` → `exemplar_bank` | `ref_<topic>` exemplar with role and pattern |
+| A narration-triggered heuristic for human or AI directors | `editorial_playbook.json` → `grammar_triggers` | Advisory trigger with rationale |
+| Pacing priors, palette, typography tokens, hard guardrails | `brand_style_policy.json` | Via `vedit brand analyze`, then refined |
+| A reusable visual component | `templates/` | Parameterised component plus catalog entry |
+| An engine capability gap (a device the renderer cannot produce) | Engine code and tests | New layer type, CLI option, or module |
+
+Never store per-reference notes, timings, download numbers, or the calibration report itself inside the repository; they stay in `$CAL_DIR`.
+
+### Stage 7: Synthesize Policy, Playbook & `CRAFT.md`
 
 Combine all reference probes and reviewed breakdowns (including both `9:16` and `16:9` references when the brand spans multiple formats):
 
@@ -94,5 +154,6 @@ Then refine the brand directory:
 ```bash
 rg -in "batch|phase |preserved baseline|cumulatively|yt_|/Users/" profiles/brands/<brand_id>/ || true
 packages/director-py/.venv/bin/vedit brand validate --brand-dir profiles/brands/<brand_id> --json
+packages/director-py/.venv/bin/pytest -q packages/director-py/tests/test_storyboard.py packages/director-py/tests/test_idiom_calibration.py
 packages/director-py/.venv/bin/vedit contracts validate --json
 ```

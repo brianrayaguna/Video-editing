@@ -2,28 +2,80 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vedit.local/contracts/storyboard.schema.json",
   "title": "Storyboard",
-  "description": "Clause-level directing plan bound to narration timestamps. Produced automatically from a transcript (`directing_source: auto`) or authored and locked by a director (`user` / `mixed`); checked against the brand's executable directing idioms before an EditPlan or map scene is built from it.",
+  "description": "Clause-level directing plan bound to narration timestamps. Produced automatically from a transcript (`directing_source: auto`) or authored and locked by a director (`user` / `mixed`), or annotated from a reference video (`reference`) to calibrate brand idioms; checked against the brand's executable directing idioms before an EditPlan or map scene is built from it.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "project_id", "brand_id", "duration_s", "directing_source", "story", "beats"],
+  "required": [
+    "schema_version",
+    "project_id",
+    "brand_id",
+    "duration_s",
+    "directing_source",
+    "story",
+    "beats"
+  ],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "project_id": { "type": "string", "minLength": 1 },
-    "brand_id": { "type": "string", "minLength": 1 },
-    "duration_s": { "type": "number", "exclusiveMinimum": 0 },
-    "directing_source": { "enum": ["auto", "user", "mixed"] },
-    "pacing": { "enum": ["calm", "default", "dense"], "default": "default" },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "brand_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "directing_source": {
+      "enum": [
+        "auto",
+        "user",
+        "mixed",
+        "reference"
+      ]
+    },
+    "pacing": {
+      "enum": [
+        "calm",
+        "default",
+        "dense"
+      ],
+      "default": "default"
+    },
     "story": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["shape"],
+      "required": [
+        "shape"
+      ],
       "properties": {
-        "shape": { "type": "string", "minLength": 1, "description": "Detected or chosen story shape id from the brand directing method, or a free-form arrow chain." },
-        "logline": { "type": "string" },
-        "hook_mechanism": { "type": "string" },
-        "ending_type": { "type": "string" },
-        "signature_image": { "type": "string" },
-        "colour_cast": { "type": "object", "additionalProperties": { "type": "string" } }
+        "shape": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detected or chosen story shape id from the brand directing method, or a free-form arrow chain."
+        },
+        "logline": {
+          "type": "string"
+        },
+        "hook_mechanism": {
+          "type": "string"
+        },
+        "ending_type": {
+          "type": "string"
+        },
+        "signature_image": {
+          "type": "string"
+        },
+        "colour_cast": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     },
     "overrides": {
@@ -31,12 +83,39 @@
       "additionalProperties": false,
       "description": "Director input layered over brand idiom defaults. Empty for fully automatic films.",
       "properties": {
-        "idiom_params": { "type": "object", "additionalProperties": { "type": "object" } },
-        "disabled_idioms": { "type": "array", "items": { "type": "string" } },
-        "locked_beat_ids": { "type": "array", "items": { "type": "string" } },
-        "emphasis_words": { "type": "array", "items": { "type": "string" } },
-        "banned_devices": { "type": "array", "items": { "type": "string" } },
-        "notes": { "type": "string" }
+        "idiom_params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "disabled_idioms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "locked_beat_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "emphasis_words": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "banned_devices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "recent_episodes": {
@@ -45,10 +124,18 @@
       "items": {
         "type": "object",
         "properties": {
-          "project_id": { "type": "string" },
-          "hook_mechanism": { "type": "string" },
-          "ending_type": { "type": "string" },
-          "signature_image": { "type": "string" }
+          "project_id": {
+            "type": "string"
+          },
+          "hook_mechanism": {
+            "type": "string"
+          },
+          "ending_type": {
+            "type": "string"
+          },
+          "signature_image": {
+            "type": "string"
+          }
         }
       }
     },
@@ -56,57 +143,177 @@
       "type": "object",
       "additionalProperties": false,
       "description": "Journey path for route-driven films; `markers` name path indices referenced by beat heads.",
-      "required": ["path"],
+      "required": [
+        "path"
+      ],
       "properties": {
-        "path": { "type": "array", "minItems": 2, "items": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } } },
-        "markers": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+        "path": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "markers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
       }
     },
     "beats": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/beat" }
+      "items": {
+        "$ref": "#/$defs/beat"
+      }
     }
   },
   "$defs": {
     "beat": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["beat_id", "start_s", "end_s", "clause", "function", "story_need", "device"],
+      "required": [
+        "beat_id",
+        "start_s",
+        "end_s",
+        "clause",
+        "function",
+        "story_need",
+        "device"
+      ],
       "properties": {
-        "beat_id": { "type": "string", "minLength": 1 },
-        "start_s": { "type": "number", "minimum": 0, "description": "Visual event onset." },
-        "end_s": { "type": "number", "minimum": 0 },
-        "clause": { "type": "string" },
-        "function": { "enum": ["hook", "setup", "proof", "obstacle", "hinge", "climax", "data_callout", "broll_bridge", "recap", "outro"] },
-        "story_need": { "type": "string", "minLength": 3 },
-        "device": { "type": "string", "minLength": 1 },
-        "treatment": { "type": "string", "description": "Fill, texture, or icon family; consecutive obstacles must differ." },
-        "sync_word": { "type": "string" },
-        "sync_word_s": { "type": "number", "minimum": 0, "description": "Spoken onset of the sync word." },
-        "surface": { "type": "string" },
-        "uses_signature_image": { "type": "boolean", "default": false },
-        "hold_reason": { "type": "string", "description": "Justifies a gap longer than the pacing cadence (a pause in the voice)." },
-        "transition_in": { "type": "string" },
+        "beat_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Visual event onset."
+        },
+        "end_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "clause": {
+          "type": "string"
+        },
+        "function": {
+          "enum": [
+            "hook",
+            "setup",
+            "proof",
+            "obstacle",
+            "hinge",
+            "climax",
+            "data_callout",
+            "broll_bridge",
+            "recap",
+            "outro"
+          ]
+        },
+        "story_need": {
+          "type": "string",
+          "minLength": 3
+        },
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "treatment": {
+          "type": "string",
+          "description": "Fill, texture, or icon family; consecutive obstacles must differ."
+        },
+        "sync_word": {
+          "type": "string"
+        },
+        "sync_word_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Spoken onset of the sync word."
+        },
+        "surface": {
+          "type": "string"
+        },
+        "uses_signature_image": {
+          "type": "boolean",
+          "default": false
+        },
+        "hold_reason": {
+          "type": "string",
+          "description": "Justifies a gap longer than the pacing cadence (a pause in the voice)."
+        },
+        "transition_in": {
+          "type": "string"
+        },
         "camera": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "regime": { "enum": ["globe", "wide", "regional", "close", "hold"] },
-            "target": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
-            "zoom": { "type": "number" },
-            "bearing": { "type": "number" },
-            "move_start_s": { "type": "number", "minimum": 0 }
+            "regime": {
+              "enum": [
+                "globe",
+                "wide",
+                "regional",
+                "close",
+                "hold"
+              ]
+            },
+            "target": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "zoom": {
+              "type": "number"
+            },
+            "bearing": {
+              "type": "number"
+            },
+            "move_start_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "route_width_px": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Measured on-screen route stroke width (reference annotation)."
+            }
           }
         },
         "head": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["marker"],
+          "required": [
+            "marker"
+          ],
           "properties": {
-            "marker": { "type": "string" },
-            "motion": { "enum": ["draw", "hold", "pause"], "default": "draw" },
-            "arrive_s": { "type": "number", "minimum": 0 }
+            "marker": {
+              "type": "string"
+            },
+            "motion": {
+              "enum": [
+                "draw",
+                "hold",
+                "pause"
+              ],
+              "default": "draw"
+            },
+            "arrive_s": {
+              "type": "number",
+              "minimum": 0
+            }
           }
         },
         "callouts": {
@@ -114,15 +321,54 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind"],
+            "required": [
+              "kind"
+            ],
             "properties": {
-              "kind": { "enum": ["avatar", "icon_cluster", "speech_bubble", "numeral", "label", "pin", "stamp"] },
-              "text": { "type": "string" },
-              "anchor": { "enum": ["route_head", "place", "leg", "screen"], "default": "route_head" },
-              "start_s": { "type": "number", "minimum": 0 },
-              "end_s": { "type": "number", "minimum": 0 },
-              "size_px": { "type": "number", "exclusiveMinimum": 0 },
-              "xy": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" }, "description": "Resolved centre on the output canvas (px)." }
+              "kind": {
+                "enum": [
+                  "avatar",
+                  "icon_cluster",
+                  "speech_bubble",
+                  "numeral",
+                  "label",
+                  "pin",
+                  "stamp"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "anchor": {
+                "enum": [
+                  "route_head",
+                  "place",
+                  "leg",
+                  "screen"
+                ],
+                "default": "route_head"
+              },
+              "start_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "size_px": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "xy": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                },
+                "description": "Resolved centre on the output canvas (px)."
+              }
             }
           }
         }

@@ -66,6 +66,10 @@ def storyboard_auto_cmd(
     brand: BrandOpt = None,
     idioms_file: IdiomsOpt = None,
     pacing: Annotated[str, typer.Option(help="calm, default, or dense.")] = "default",
+    reference: Annotated[
+        bool,
+        typer.Option("--reference", help="Start a reference annotation instead of a film plan."),
+    ] = False,
     director_file: Annotated[
         Path | None,
         typer.Option(
@@ -73,11 +77,17 @@ def storyboard_auto_cmd(
         ),
     ] = None,
 ) -> None:
-    """Direct automatically from narration, then layer optional director input on top."""
+    """Direct automatically from narration, then layer optional director input on top.
+
+    With `--reference`, the result is the starting point for annotating a reference video:
+    replace each beat's device, onset, callouts and camera with what the reference shows.
+    """
     idioms = _idioms(brand, idioms_file)
     sb = scaffold_storyboard(_read(transcript_file), idioms, project_id=project_id, pacing=pacing)
     if director_file is not None:
         sb = apply_director_storyboard(sb, _read(director_file))
+    if reference:
+        sb["directing_source"] = "reference"
     _write(out, sb)
     report = check_storyboard(sb, idioms).to_dict()
     typer.echo(

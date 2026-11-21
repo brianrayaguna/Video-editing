@@ -405,3 +405,64 @@ def brand_exemplars_cmd(
         max_duration_s=max_duration_s,
     )
     typer.echo(json.dumps([item.model_dump(exclude_none=True) for item in items], indent=2))
+
+
+@brand_app.command("calibrate-idioms")
+def brand_calibrate_idioms_cmd(
+    reference_storyboards: Annotated[
+        list[Path],
+        typer.Option(
+            "--reference-storyboard",
+            help="Annotated reference storyboard JSON (directing_source: reference). Repeatable.",
+        ),
+    ],
+    idioms_file: Annotated[
+        Path, typer.Option("--idioms-file", help="Brand directing_idioms.json to calibrate.")
+    ],
+    report: Annotated[
+        Path, typer.Option("--report", help="Calibration report JSON (keep outside the repo).")
+    ],
+    camera_tracks: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--camera-track",
+            help="Measured [t,lng,lat,zoom,bearing] track per reference, in the same order.",
+        ),
+    ] = None,
+    blend: Annotated[
+        float, typer.Option(help="Move existing values toward measurements by this fraction.")
+    ] = 0.5,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write the proposed parameters into --idioms-file.")
+    ] = False,
+) -> None:
+    """Measure annotated references and propose (or apply) directing idiom parameters."""
+    from vedit.analyzers.idiom_calibration import calibrate_idioms
+    from vedit.director.storyboard import load_directing_idioms
+
+    idioms = load_directing_idioms(idioms_file)
+    refs = [json.loads(p.read_text(encoding="utf-8")) for p in reference_storyboards]
+    tracks = [json.loads(p.read_text(encoding="utf-8")) for p in camera_tracks or []]
+    if tracks and len(tracks) != len(refs):
+        raise typer.BadParameter("Pass one --camera-track per --reference-storyboard, or none.")
+    result = calibrate_idioms(idioms, refs, camera_tracks=tracks or None, blend=blend)
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if apply:
+        idioms_file.write_text(
+            json.dumps(result["proposed_idioms"], indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    typer.echo(
+        json.dumps(
+            {
+                "report": str(report),
+                "applied": apply,
+                "changes": result["changes"],
+                "skipped": len(result["skipped"]),
+                "follow_up": result["follow_up"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
