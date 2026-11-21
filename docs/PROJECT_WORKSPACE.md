@@ -20,6 +20,7 @@ Project creation inside the engine repository is rejected by default.
     <project_id>/
       project.json              # Validated ProjectManifest (contracts/project_manifest.schema.json)
       brief.md                  # Editorial brief, narration script, and beat outline
+      storyboard.md             # Story brief, story shape, clause-level storyboard, variation fingerprint
       inputs/                   # Raw project-scoped inputs (voiceover, camera footage, references)
       analysis/
         probes/                 # MediaProbeResult JSON and extracted shot keyframes
@@ -46,7 +47,7 @@ Project creation inside the engine repository is rejected by default.
 
 ## Relative Path Hygiene
 
-- Store strictly **project-relative paths** inside `project.json`, `plan/edit_plan.json`, and `output/benchmark.json` (for example, `media/maps/shot_01.mp4` or `media/audio/vo_clean.wav`).
+- Store strictly **project-relative paths** inside `project.json`, `plan/edit_plan.json`, and `output/benchmark.json` (for example, `media/maps/strait_approach.mp4` or `media/audio/vo_clean.wav`).
 - Never embed user-specific absolute paths in project manifests or edit plans.
 - At runtime, `vedit` automatically resolves relative `AssetRef.path` values against the enclosing project directory, then the plan directory, and finally the engine repository root (for shared assets such as fonts).
 - `vedit compile` automatically propagates `VEDIT_REPO_ROOT` to `@vedit/hf-compiler` so brand template paths (`profiles/brands/<brand_id>/templates/components/*.html`) resolve reliably from any external project directory.
@@ -58,32 +59,32 @@ export VEDIT_PROJECTS_ROOT="../Editing-Projects"
 VEDIT="/path/to/engine/packages/director-py/.venv/bin/vedit"
 
 # 1. Initialize a new external project
-$VEDIT project init episode_01 --brand geoverum --platform shorts_9x16_1080p
+$VEDIT project init gibraltar_strait --brand geoverum --platform shorts_9x16_1080p
 
 # 2. Inspect stage readiness
-$VEDIT project status "$VEDIT_PROJECTS_ROOT/geoverum/episode_01"
+$VEDIT project status "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait"
 
 # 3. Validate manifest schema, brand/platform references, and relative path hygiene
-$VEDIT project validate "$VEDIT_PROJECTS_ROOT/geoverum/episode_01" --json
+$VEDIT project validate "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait" --json
 
 # 4. Run end-to-end directing, cloud rendering, mastering, and audit against the external project
 $VEDIT director verify \
-  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/plan/edit_plan.json" \
+  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/plan/edit_plan.json" \
   --policy-file profiles/brands/geoverum/brand_style_policy.json \
   --brand-dir profiles/brands/geoverum \
   --platform shorts_9x16_1080p
 
 $VEDIT cloud render \
-  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/plan/edit_plan.json" \
+  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/plan/edit_plan.json" \
   --platform shorts_9x16_1080p \
-  -o "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/output/master.mp4"
+  -o "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/output/master.mp4"
 
 $VEDIT audit \
-  "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/output/master.mp4" \
+  "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/output/master.mp4" \
   --platform shorts_9x16_1080p
 
 # Optional: export timeline for NLE review
 $VEDIT export-otio \
-  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/plan/edit_plan.json" \
-  -o "$VEDIT_PROJECTS_ROOT/geoverum/episode_01/output/timeline.otio"
+  --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/plan/edit_plan.json" \
+  -o "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/output/timeline.otio"
 ```

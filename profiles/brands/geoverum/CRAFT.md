@@ -1,6 +1,6 @@
 # Geoverum Craft
 
-Brand-specific visual, typographic, storytelling, audio, and cartographic documentary rules across two documentary formats (`9:16` portrait and `16:9` landscape). Engine-wide motion and layer boundaries live in [`../../../DESIGN.md`](../../../DESIGN.md). Runtime pacing, tokens, and guardrails live in [`brand_style_policy.json`](brand_style_policy.json). Advisory directing heuristics and concrete exemplars live in [`editorial_playbook.json`](editorial_playbook.json).
+Brand-specific visual, typographic, storytelling, audio, and cartographic documentary rules across two documentary formats (`9:16` portrait and `16:9` landscape). Engine-wide motion and layer boundaries live in [`../../../DESIGN.md`](../../../DESIGN.md). Runtime pacing, tokens, and guardrails live in [`brand_style_policy.json`](brand_style_policy.json). Story structure, storyboard derivation, and variation rules live in [`DIRECTING.md`](DIRECTING.md); read it first. Advisory directing heuristics and concrete exemplars live in [`editorial_playbook.json`](editorial_playbook.json).
 
 ---
 
@@ -8,30 +8,32 @@ Brand-specific visual, typographic, storytelling, audio, and cartographic docume
 
 Both formats share the same Geoverum cartographic documentary visual DNA and differ in canvas geometry, pacing envelope, transition grammar, and chapter layout:
 
-- **`9:16` (`1080x1920` @ `30 fps`, short documentary)**: Vertical cartographic explainer built on five distinct visual surfaces—2.5D/3D graded satellite relief (~65–75%), blueprint drafting grids and dark obsidian vector maps (~10–12%), full-bleed 2D animated geological/depth cutaways (~8–10%), sepia historical parchment maps (~5%), and rapid aerial/field proof B-roll or radar visualizations (~5%), with `0%` generative video. Supports both **continuous map glides** (`2–4 cuts/min`, sustained `15–60s` camera motion where map blocks, highlights, and labels mutate every `1.5–4.0s`) and **brisk multi-surface documentaries** (`6–17 cuts/min`, `0.85–2.2s` field proof bursts, `1.2–4.0s` kinetic hooks) under `min_shot >= 0.75s`, `max_hold <= 45.0s`, active camera motion across `>= 94%` of `0.5s` windows, and graphic state changes every `2–6s`.
+- **`9:16` (`1080x1920` @ `30 fps`, short documentary)**: Vertical cartographic explainer of roughly 60–100 seconds driven by dense narration (`180–200` words per minute, `<= 4%` silence). Most films run on one dominant surface—graded satellite relief—for `70–90%` of runtime, often as a single continuous virtual-camera take with `0–4` hard cuts per minute, and switch surface only when the narrative mode changes (see [`DIRECTING.md`](DIRECTING.md) §6). Graphic state changes land every `0.25–1.5s` (about one event per stressed noun), the camera is active across `>= 94%` of `0.5s` windows, `min_shot >= 0.75s`, `max_hold <= 45.0s`, and generative video is `0%`.
 - **`16:9` (`1920x1080` / `3840x2160` @ `30 fps`, long documentary)**: Landscape documentary alternating cartographic context with archival and live field evidence (`min_shot >= 1.5s`, `max_hold <= 20.0s`).
 
 ---
 
-## Storytelling architecture (`9:16` five-beat spine)
+## Storytelling architecture
 
-Structure short-form cartographic explainers around a tight, map-first five-beat narrative arc with zero intro bumpers or generic subscription outros:
+Structure is derived from each narration, never from a fixed beat timetable. [`DIRECTING.md`](DIRECTING.md) defines the story brief, the repertoire of story shapes and hook mechanisms, the clause-level storyboard method, and the variation contract. Brand-wide invariants that hold for every shape:
 
-1. **Immediate Geographic Paradox or Anomaly Hook (`0.0–5.0s`)**: Open directly on the map at frame `0` with one of four high-retention curiosity patterns:
-   - *Border or ecological anomaly*: Reveal a glowing border line, invisible boundary, or counterintuitive spatial rule immediately on the map.
-   - *Nested-entity disambiguation*: Split the canvas into a `2×2` quad or diagonal multi-panel map grid contrasting commonly confused territories.
-   - *Extreme scale or duration shock*: Juxtapose an astonishing number or glowing footprint comparison directly against a familiar reference.
-   - *Boundary-shape mystery*: Spotlight an unusual coastline, panhandle, or enclave with a pointer arrow and ask why the border stops where it does.
-2. **Visual Scope & Scale Proof (`5.0–20.0s`)**: Pull out or shift basemap surface (`satellite -> blueprint drafting grid` or `satellite -> dark obsidian vector`) to prove true geographic extent, network numbering rules, or comparative area.
-3. **Mechanism or Historical Origin Pivot (`20.0–45.0s`)**: Pivot on a crisp verbal hinge (*why*, *how*, *in the past*) paired with an immediate surface change—cutting into a full-bleed 2D geological/underwater cutaway for physical causes, a sepia parchment map with compass rose and era timeline bar for historical origins, or a dark obsidian vector network for structural systems.
-4. **Escalation & Concrete Consequence (`45.0–54.0s`)**: Accelerate visual beats every `2–4s` using axis-aligned dual-unit crater/corridor measurements, stacked population counters, high-resolution urban ortho landmark masks, or circular portrait/flag leader clusters.
-5. **Direct Cartographic Resolution (`54.0s+`)**: Resolve on a wide cartographic pull-back or final visual irony—avoid generic call-to-subscribe bumper plates unless explicitly requested by the brief.
+1. **Story world at frame `0`**: the first frame is the map, shape, or route the story is about; no intro bumper, title card, or logo sting.
+2. **A central question within `3s`**, spoken or performed by the image, and at least one curiosity loop that outlives the hook.
+3. **One signature image** that appears in the hook, mutates through the body, and is still on screen, transformed, at the end.
+4. **Hinge words change something visible** (mood, register, clean frame, or an executed decision).
+5. **No call-to-action, outro plate, or recap**: the film ends on its ending note (irony, consequence, callback, open projection, reversal, measurement, or hard stop on the worst fact) unless the brief requests otherwise.
 
 ---
 
-## Five basemap surfaces & semantic color system
+## Basemap surface vocabulary & semantic color system
 
-Switch intentionally between five distinct cartographic surfaces to signal narrative mode shifts and keep the canvas legible through luminance separation rather than clutter:
+The surfaces below are a vocabulary. A film uses as many as its narrative modes require—frequently one or two—and switches only when the mode changes (where → satellite, history → parchment, mechanism → cross-section, vertical fact → horizon terrain view). Additional surfaces in the vocabulary:
+
+- **Pale high-key headline map**: flat light-cyan land and sea for a stated headline fact before the camera returns to satellite evidence.
+- **Horizon-level 3D terrain view**: oblique or horizon camera over relief with screen-fixed dual-unit altitude chips anchored to horizontal reference lines from the left edge, for altitude, depth, and barrier stories.
+- **High-resolution aerial ortho**: for features under a few kilometres (islets, enclaves, villages), reached by dive-zoom.
+- **Globe**: for planetary totals and summaries.
+- **Flat ground-level illustration**: for atmospheric events seen from the ground (storms, crowds) with a height line.
 
 ### Tier 1 — Ground & Basemap Surfaces (70–80% calm energy)
 
@@ -62,6 +64,8 @@ Low-contrast regional labels with crisp dark halos, subtle coastline strokes, fa
 - **Cobalt `#2E74E6`**: Secondary comparative territory fill, elevation zones, glowing blueprint footprints, and vertical longitude columns.
 - **Hydro cyan `#7CE0F9` / `#38BDF8`**: Meridian/parallel lasers, altitude ladders, river and waterbody highlights, north–south schematic corridors, below-sea-level masks, and curved open-water labels.
 - **Ecological emerald `#2E9E44`** *(domain accent)*: Rainforest, park/landmark masks, shelterbelt, and low-elevation ecological fills.
+- **Per-story casting**: The accents above are the default cast. Each film assigns one hue per entity at first mention and keeps it across every surface; flags may serve as fills when nationality is the point; problem and cure, or blocked and permitted, may take opposite hues; one single-use colour may be reserved for the key metric. Record the cast in the project storyboard.
+- **Grade as emotion**: Warm brown grading may carry a catastrophe sequence and release to full colour on the human-stakes beat; progressive vignette and desaturation may prove darkness or dread at the ending.
 - Avoid violet or magenta default accents (`OKLCH` / `HSL` hue `265°–335°`) except when differentiating 5+ simultaneous administrative districts on a dark vector basemap.
 
 ---
@@ -93,8 +97,8 @@ Maintain a strict visual separation between screen-fixed documentary captions an
 
 - **Style**: Plain documentary subtitle style (`caption_style: "plain"`) — crisp `#F4F1EA` / `#FFFFFF` geometric sans text with subtle dark `text-shadow` for legibility over desert, snow, or dark ocean; no pill box, no bar background, no automatic word-color karaoke highlight, and no slide/bounce entrance.
 - **Phrasing**: Natural clause-split **sentence case**, **2–4 words per group** (`max_words_per_caption_group: 4`). Mid-sentence continuations naturally begin lowercase; never force Title Case or ALL-CAPS on captions.
-- **Alignment & Anchor**: True horizontal center (`x = 50%`) using symmetric horizontal margins (`max(left_pct, right_pct)`). Anchored at **`y = 70.0%`** (`bottom ≈ 28.5%`) on `9:16` and standard lower-third (`bottom ≈ 9.5%`) on `16:9`.
-- **Proportional Sizing & Cuts**: `42–46px` (`~3.0%` frame height) on `1080x1920`, `42px` on `1920x1080`, `84px` on `3840x2160`, `Space Grotesk` / `Inter` / `Montserrat` `500–600`, `line-height: 1.24`, using instant **1-frame hard cuts (`<= 33ms` @ `30 fps`)**, opacity-only.
+- **Alignment & Anchor**: True horizontal center (`x = 50%`) using symmetric horizontal margins (`max(left_pct, right_pct)`). Anchored at **`y = 70–72%`** on `9:16` and standard lower-third (`bottom ≈ 9.5%`) on `16:9`. When the focal subject must occupy the caption band, move the caption group to a clear band (`y ≈ 20%` or `y ≈ 45%`) for that group only, then return.
+- **Proportional Sizing & Transitions**: `36–46px` on `1080x1920` (smaller sizes for dense 5–7 word clauses are acceptable down to `30px` when legibility holds), `42px` on `1920x1080`, `84px` on `3840x2160`, `Space Grotesk` / `Inter` / `Montserrat` `500–600`, `line-height: 1.24`, swapped by a short opacity cross-fade (`120–200ms`, default `150ms`) or a hard swap; never slide or scale.
 
 ### Layer B — In-World Cartographic & Diagram Typography
 
@@ -117,6 +121,7 @@ Maintain a strict visual separation between screen-fixed documentary captions an
    - **Vertical white-bar split wipe (`0.3–0.6s`)** between satellite relief and dark obsidian vector or blueprint measurement surfaces.
    - **Feathered dark curtain sweep & optical spyglass iris (`0.4–0.7s`)** using pure alpha gradients (zero CSS blur) or circular SVG masks so `y = 70%` plain captions remain legible in front.
    - **Oversized kinetic letter portal (`0.5–0.8s`)** scaling bold display lettering cleanly into the next cartographic view, or **3D horizontal card-flip** shifting between flat-map projections and a 3D spherical globe.
+   - **Zoom-through icon** from map to diagram, **dip to black** for chapter resets, **page curl** for archive pivots, **wash dissolve** for weather, **colour-flash cut** for hook flips, **lens/iris dissolve** between map level and character level, and **whip into a real aerial** to resolve an abstraction. Keep one device per jump type within a film.
    - **Clean crossfade (`0.4–0.5s`)** and **hard cuts** for rapid proof bursts. Reserve `amber_light_leak` strictly for `16:9` long-form transitions.
 3. **Dual-Unit Dimension Brackets, T-Brackets & Radius Rings**: Stack imperial and metric units (`2.4 mi (3.8 km)`, `50.5 km (31.38 mi)`, `700 m / 2300 ft`) along white double-headed arrows, technical T-bracket callipers, dashed amber corridors, or expanding concentric acoustic/distance radius rings drawn via `SVG stroke-dashoffset`.
 4. **Full-Bleed 2D Animated Cross-Sections, Scale Ladders & Longitude Bands**: Cut via radial whip-zoom from overhead maps into full-bleed (`inset: 0`) flat-vector 2D cross-sections (`6–19s`: exploded geological strata separating layer-by-layer with curved white arrows, volcanic hotspot plumes, soil/roots, underground mines, underwater trenches, amber vertical split depth comparisons, or monochrome 2D historical ink cutaways), paired with left-anchored altitude/depth ladders and translucent vertical longitude/UTC columns. Never enclose a cross-section inside a floating dark dashboard panel.
@@ -125,7 +130,23 @@ Maintain a strict visual separation between screen-fixed documentary captions an
    - Place crisp `2px` white vertical or angled elbow leader pins (`SVG stroke-dashoffset` draw-on from a minimal anchor dot) leading directly to shadowed bold text with zero HUD box; add a compact dark-and-amber population badge only when citing discrete headcounts.
    - Link place-name origins with a curved hand-drawn white SVG etymology arrow; isolate islands or subregions with hand-drawn overlapping SVG focus lassos (`amber`, `white`, or `crimson`); quantify extremes with live boxless physical gauges (mercury thermometer, acoustic decibel meter) and crimson circular `X` myth-debunk stamps.
 7. **Rapid Field B-Roll, Choropleths & Radar Evidence**: Follow a whip-zoom dive with `3–4` concise real aerial/field proof clips (`0.85–2.2s` each), clean light-neutral data choropleths/heatmaps, or dark-mode traffic/radar visualizations; add quiet `source_credit` attribution when external imagery or archival footage requires it.
-8. **Non-Generative Asset Policy**: Produce all cartography, 2D cross-sections, weather/ice animations, gauges, and charts deterministically via MapLibre and procedural HyperFrames HTML/SVG/GSAP alongside real archival or stock B-roll—never generative video synthesis.
+8. **Story devices** (selected by story need per [`DIRECTING.md`](DIRECTING.md) §5.3):
+   - *Signature-image persistence*: the focal line or shape survives zooms and surface cuts and is re-purposed later (a divider becomes the mechanism's barrier edge).
+   - *Count-up measurement*: a dimension arrow whose number counts up and lands on the spoken value, re-proven at each new zoom level.
+   - *Live misconception counter*: a large counter that shows a believed number and keeps ticking as ghost shapes appear.
+   - *Familiar-silhouette tiling and shape transplant*: tile a familiar country silhouette across a zone, or lift the focal shape and drop it onto a familiar region at true scale.
+   - *Full-frame tint flash* (`0.4–0.5s`) on an owning or time-changing verb, with the camera locked.
+   - *Mood dip on "why"*: vignette or darkening for the question phrase, answer opened by a whip-zoom.
+   - *Edge-grown state mask*: ice, drought, or flood masks growing from the edges over the basemap while borders stay on top.
+   - *Particles for invisible qualities*: clouds, snow, wind streaks, turbulence spirals, dust billows tied to the place.
+   - *Abstract people markers*: dots or pictograms that converge, change colour on loss, scatter, and return.
+   - *Tool action*: a stamp, pencil, or cursor performing the spoken verb on the map.
+   - *Repetition marker*: pulse rings repeating at one spot for loops, then a duration numeral.
+   - *Travelling avatar*: a portrait marker that rides the route tip; its count matches the companions remaining.
+   - *Paired values across a line*: clocks, dates, or owners shown on each side of a thin glowing boundary.
+   - *Absence icon*: one facility icon with a prohibition mark, then the few real items placed one at a time on a wide shot.
+   - *Real-data credibility*: the same focal outline redrawn over real imagery or a procedurally rebuilt data visualization.
+9. **Non-Generative Asset Policy**: Produce all cartography, 2D cross-sections, weather/ice animations, gauges, and charts deterministically via MapLibre and procedural HyperFrames HTML/SVG/GSAP alongside real archival or stock B-roll—never generative video synthesis.
 
 ---
 
@@ -144,12 +165,12 @@ Maintain a strict visual separation between screen-fixed documentary captions an
 - Presentation-style uppercase eyebrow/kicker labels (`PART 02`, `CHAPTER 1`, `TERRITORY SCALE`, `POLITICAL GEOGRAPHY`, `GEOLOGICAL MECHANISM`) stacked above short-form (`9:16`) display titles, charts, or cross-sections (reserve numbered chapter plates strictly for long-form `16:9` `amber_fact_card`)
 - Floating short horizontal decorative accent rules positioned above numbers, metrics, or titles (`.metric-rule`, `.outro-rule`) or decorative divider bars between blueprint numbers and titles
 - Uniform `power2.out` fade-and-slide-up entrances across every component; animate with purposeful `SVG stroke-dashoffset` draw-on, `clip-path` wipes, 3D perspective flips, or baseline mask reveals
-- Third-party basemap attribution watermarks or vendor UI chrome inside master frames
+- Third-party basemap attribution watermarks or vendor UI chrome inside master frames (rebuild data visualizations such as air-traffic or weather layers procedurally)
 - Unbordered flat neon mud fills lacking crisp exterior coastline rims or terrain texture
-- Cartoon character skits, countryball googly-eye memes, and casual angry/smiling emoji stickers over maps (use authoritative circular flag/portrait markers, clean vector icons, or leader pins instead)
+- Comic elements (characters, flag avatars with faces, reaction faces, speech bubbles, stickers) placed without a narrated action or covering the focal geography; comic register itself is part of the brand vocabulary (see [`DIRECTING.md`](DIRECTING.md) §10)
 - Unmotivated static map holds without camera motion or graphic progression
 - Heavy CSS `backdrop-filter` / `filter: blur()` glass cards and SaaS pill watermarks
 - Shouty full-width yellow `#FFD60A` fact bars and document/paper walls covering the focal subject
-- Isometric factory / money-bag / emoji raster props
+- Isometric factory / money-bag raster props (flat vector pictograms and reaction faces tied to a spoken noun or beat are permitted)
 - Dual yellow light-beam spears
 - Film-strip / viewfinder chrome, film-reel archival frames, false-color thermal grades, and double-exposure faces on contemporary B-roll

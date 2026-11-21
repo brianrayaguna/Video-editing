@@ -7,8 +7,8 @@
       "trigger_id": "blueprint_tabletop_hook",
       "condition": "timeline.section == 'hook' and timeline.t_s <= 10.0",
       "action": "camera.open_blueprint_tabletop_and_dive_into_region()",
-      "weight": 0.94,
-      "rationale": "Open on a straight 0-degree full-frame deep blueprint drafting grid (#14427A) with boxless editorial typography, continent silhouette cutout + T-bracket span, or clean media plate, then dive into the focal region."
+      "weight": 0.55,
+      "rationale": "One hook option among several (see DIRECTING.md hook mechanisms): open on a straight 0-degree full-frame deep blueprint drafting grid (#14427A) with boxless editorial typography, continent silhouette cutout + T-bracket span, or clean media plate, then dive into the focal region. Prefer it only when the story's tension is a comparison of sizes or shapes."
     },
     {
       "trigger_id": "kinetic_sfx_on_label_reveal",
@@ -247,6 +247,153 @@
       "action": "overlay.spawn(kind='dual_unit_distance_bracket', angle='aligned_to_feature_axis', keep_captions_horizontal=True)",
       "weight": 0.9,
       "rationale": "Rotate dual-unit double-headed measurement arrows and short map annotations directly parallel to the geographic feature axis while keeping y=70% screen captions strictly horizontal."
+    },
+    {
+      "trigger_id": "story_brief_before_storyboard",
+      "condition": "plan.stage == 'storyboard' and not storyboard.has_story_brief",
+      "action": "director.write_story_brief(premise, central_question, tension_type, withheld_element, signature_image, register, ending_note)",
+      "weight": 0.98,
+      "rationale": "Structure, hook, surfaces, colours and ending are derived from the narration's own story; a storyboard drafted without a brief drifts toward a reusable template."
+    },
+    {
+      "trigger_id": "clause_need_visual_answer",
+      "condition": "storyboard.row.visual_answer and not storyboard.row.story_need",
+      "action": "director.reject_row_and_rederive_from_clause()",
+      "weight": 0.95,
+      "rationale": "Every visual must answer a stated story need for its clause; rows that could be pasted into another narration unchanged are decoration."
+    },
+    {
+      "trigger_id": "signature_image_persistence",
+      "condition": "storyboard.signature_image is defined",
+      "action": "overlay.keep_signature_image_across_surfaces_and_mutate_it_per_beat()",
+      "weight": 0.9,
+      "rationale": "A line drawn on 'this line' or a focal shape that survives cuts becomes the story's anchor and can be re-purposed as the mechanism's edge or the ending callback."
+    },
+    {
+      "trigger_id": "wrong_answer_first_hook",
+      "condition": "story.tension_type == 'overturned_mental_map' and timeline.section == 'hook'",
+      "action": "overlay.animate_intuitive_answer_then_whip_camera_to_true_geometry()",
+      "weight": 0.82,
+      "rationale": "Showing the viewer's own wrong intuition and physically overturning it makes the true distance or adjacency astonishing."
+    },
+    {
+      "trigger_id": "draw_and_break_impossible_attempt",
+      "condition": "story.claim matches 'impossible|the only|cannot' and timeline.section == 'hook'",
+      "action": "overlay.draw_attempted_route_from_frame_0_then_break_it_red()",
+      "weight": 0.84,
+      "rationale": "The contradiction is felt before it is explained when the attempted link is drawn and visibly ruptured."
+    },
+    {
+      "trigger_id": "live_misconception_counter",
+      "condition": "story.tension_type == 'misconception_count'",
+      "action": "overlay.counter_shows_believed_value_then_keeps_ticking_with_ghost_shapes()",
+      "weight": 0.8,
+      "rationale": "A belief about a count is debunked most clearly by a counter that refuses to stop."
+    },
+    {
+      "trigger_id": "negation_ladder_deferred_reveal",
+      "condition": "narration.hook matches 'not .* not .* but'",
+      "action": "overlay.cross_out_expected_materials_on_words_then_flip_to_real_one(); story.defer_payoff()",
+      "weight": 0.78,
+      "rationale": "Defining the hook object by negation creates a question the film can hold for most of its runtime when a promise hinge grants permission to wait."
+    },
+    {
+      "trigger_id": "scale_ladder_discovery",
+      "condition": "story.mystery_size_px < 8 at establishing zoom",
+      "action": "camera.region_to_loupe_to_object_on('closer', 'even closer')",
+      "weight": 0.8,
+      "rationale": "When the anomaly is too small to see, the viewer should perform the discovery through a timed scale ladder."
+    },
+    {
+      "trigger_id": "why_hinge_mood_dip",
+      "condition": "narration.word in ['why', 'reason'] and narration.is_question",
+      "action": "grade.vignette_dim_for_phrase(); transition.whip_zoom_to_answer()",
+      "weight": 0.86,
+      "rationale": "A mood change for the question phrase marks the turn from setup to explanation in a chapterless short."
+    },
+    {
+      "trigger_id": "ordinal_visual_reset",
+      "condition": "narration.word in ['firstly', 'secondly', 'thirdly', 'finally']",
+      "action": "overlay.clear_prior_layers(); director.switch_visual_mode_for_reason()",
+      "weight": 0.84,
+      "rationale": "Ordinal words in enumerated stories are chapter marks; each reason gets its own visual mode, the strongest reason the richest surface."
+    },
+    {
+      "trigger_id": "show_before_name",
+      "condition": "narration.term is introduced",
+      "action": "overlay.reveal_phenomenon(lead_s=0.3..1.0)",
+      "weight": 0.88,
+      "rationale": "Seeing the effect first makes the spoken term feel like a label for something already understood."
+    },
+    {
+      "trigger_id": "count_up_lands_on_word",
+      "condition": "overlay.kind == 'counter' or overlay.kind == 'measurement'",
+      "action": "counter.span_spoken_phrase_and_land_on_number_word()",
+      "weight": 0.9,
+      "rationale": "The magnitude is read as it grows and lands exactly when the narrator says it."
+    },
+    {
+      "trigger_id": "contrasting_treatment_for_contrasting_entities",
+      "condition": "story.entities.count >= 2 and story.entities.contrast",
+      "action": "director.assign_distinct_treatment_per_entity()",
+      "weight": 0.72,
+      "rationale": "Contrasting entities read faster when they receive contrasting visual treatments, not just contrasting colours."
+    },
+    {
+      "trigger_id": "invisible_quality_as_particles",
+      "condition": "narration.noun in ['rain', 'wind', 'humidity', 'dust', 'snow', 'turbulence']",
+      "action": "overlay.spawn_place_bound_particles()",
+      "weight": 0.76,
+      "rationale": "Weather and other invisible qualities become map facts when represented by simple objects bound to the place."
+    },
+    {
+      "trigger_id": "tint_flash_for_ownership_or_time",
+      "condition": "narration.verb in ['belongs', 'shifts', 'switches', 'changes hands']",
+      "action": "camera.lock(); overlay.full_frame_tint_flash(duration_s=0.45, hue=owner_hue)",
+      "weight": 0.74,
+      "rationale": "Alternation over time is legible as colour when the camera holds still."
+    },
+    {
+      "trigger_id": "tool_performs_spoken_action",
+      "condition": "narration.verb in ['redrew', 'stamped', 'placed', 'signed', 'moved']",
+      "action": "overlay.tool_sprite_performs_action_on_map()",
+      "weight": 0.7,
+      "rationale": "A pencil, stamp or cursor performing the verb converts a decision into a visible event."
+    },
+    {
+      "trigger_id": "horizon_terrain_for_vertical_facts",
+      "condition": "story.fact_axis == 'vertical'",
+      "action": "surface.horizon_terrain_flight_with_screen_fixed_altitude_chips()",
+      "weight": 0.8,
+      "rationale": "Altitude and depth facts cannot be read top-down; a horizon view with persistent dual-unit chips makes them comparable."
+    },
+    {
+      "trigger_id": "ending_from_story_note",
+      "condition": "timeline.section == 'outro'",
+      "action": "director.end_on(story.ending_note)",
+      "weight": 0.92,
+      "rationale": "The ending is chosen from the story's ending note (irony, consequence, callback, open projection, reversal, measurement, hard stop); never a default pull-back, recap, or call-to-action."
+    },
+    {
+      "trigger_id": "variation_fingerprint_audit",
+      "condition": "plan.stage == 'storyboard_review'",
+      "action": "director.compare_fingerprint(story_shape, hook_mechanism, signature_image, surface_count, colour_cast, transition_set, ending_type)",
+      "weight": 0.94,
+      "rationale": "Consecutive episodes must not share both hook mechanism and ending type, and no signature image may repeat; within a film one device never answers two different needs."
+    },
+    {
+      "trigger_id": "one_transition_device_per_jump_type",
+      "condition": "transition.jump_type is set",
+      "action": "transition.reuse_device_bound_to_jump_type()",
+      "weight": 0.82,
+      "rationale": "Binding each jump type (scale leap, map-to-diagram, chapter reset, archive pivot, weather, hook flip) to one device turns transitions into readable grammar."
+    },
+    {
+      "trigger_id": "comic_beat_from_narrated_irony",
+      "condition": "narration.tone in ['joke', 'euphemism', 'deadpan_irony'] or narration.has_pause_after_punchline",
+      "action": "overlay.flat_vector_character_or_reaction_performs_narrated_action(); director.return_to_map_after_beat()",
+      "weight": 0.74,
+      "rationale": "Characters, flag avatars with faces, reaction faces, and speech bubbles turn irony into a visible beat when they perform what the narration states, stand on their own territory, and hand back to the map after one beat."
     }
   ],
   "exemplar_bank": [
@@ -277,7 +424,12 @@
       "measured_metrics": {
         "shot_index": 3,
         "duration_s": 5.5,
-        "subshot_durations_s": [2.5, 1.2, 0.9, 0.9],
+        "subshot_durations_s": [
+          2.5,
+          1.2,
+          0.9,
+          0.9
+        ],
         "cuts_per_min_ref": 10.0,
         "easing_feel": "smooth_editorial"
       },
@@ -885,6 +1037,204 @@
         "easing_feel": "smooth_editorial"
       },
       "notes": "High-resolution aerial crater view annotated with rotated white double-headed arrows and stacked metric/imperial measurements (700 m / 2300 ft, 380 m / 1250 ft, 160 m / 527 ft) aligned directly along the crater axes."
+    },
+    {
+      "exemplar_id": "ref_darien_gap_draw_and_break_hook",
+      "source_video_id": "ref_darien_gap",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 7.5,
+      "hyperframes_pattern": "draw_attempted_route_then_break",
+      "notes": "Continent-spanning road draws from frame 0, runs to the isthmus and turns red with an X before the place is named; both continents fill cyan on their own words and the middle stays unfilled."
+    },
+    {
+      "exemplar_id": "ref_darien_gap_why_mood_dip",
+      "source_video_id": "ref_darien_gap",
+      "role": "setup",
+      "start_s": 16.65,
+      "end_s": 19.5,
+      "hyperframes_pattern": "vignette_dim_then_whip_answer",
+      "notes": "On the spoken question the whole frame darkens with vignette and fog for the phrase, then a whip-zoom into the green polygon opens the answer."
+    },
+    {
+      "exemplar_id": "ref_us_meridian_proportion_fill_hook",
+      "source_video_id": "ref_us_meridian",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 3.5,
+      "hyperframes_pattern": "pictogram_row_counter_fill",
+      "notes": "A nine-person pictogram row and a counter racing to 80% fill while the country outline draws; the divider line draws on 'this line' and persists for the whole film."
+    },
+    {
+      "exemplar_id": "ref_us_meridian_divider_reused_as_barrier",
+      "source_video_id": "ref_us_meridian",
+      "role": "proof",
+      "start_s": 38.0,
+      "end_s": 52.0,
+      "hyperframes_pattern": "persistent_line_repurposed_as_mechanism_edge",
+      "notes": "The opening divider becomes the moisture limit: cloud sprites stall against it from both oceans, and the leeward side darkens before 'rain shadow' is spoken."
+    },
+    {
+      "exemplar_id": "ref_chile_length_disambiguation_gag",
+      "source_video_id": "ref_chile_length",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 3.0,
+      "hyperframes_pattern": "confusable_prop_removed_then_fill",
+      "notes": "A literal pepper is dropped on the map and removed by a hand before the real country fills crimson; the elongated spoken vowel is drawn letter by letter along the coastline."
+    },
+    {
+      "exemplar_id": "ref_time_zones_ideal_then_anomaly",
+      "source_video_id": "ref_time_zones",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 7.0,
+      "hyperframes_pattern": "ideal_strips_then_desaturated_anomaly_lasso",
+      "notes": "Twenty-four straight strips wipe across a tilting world, then a hard cut to a pale grey relief where one jagged border cluster is lassoed as the only colour."
+    },
+    {
+      "exemplar_id": "ref_time_zones_decision_executed",
+      "source_video_id": "ref_time_zones",
+      "role": "climax",
+      "start_s": 38.0,
+      "end_s": 40.75,
+      "hyperframes_pattern": "scale_jump_with_new_boundaries",
+      "notes": "On 'it was decided to change the boundaries' the camera pulls from street scale to world scale while jagged real borders draw over the straight strips."
+    },
+    {
+      "exemplar_id": "ref_time_zones_grade_as_proof_ending",
+      "source_video_id": "ref_time_zones",
+      "role": "outro",
+      "start_s": 55.0,
+      "end_s": 59.75,
+      "hyperframes_pattern": "progressive_vignette_dim_consequence",
+      "notes": "A far-west city pin with a '10:00 am' tag while the frame progressively dims; the darkness claim is proven by grade and the film stops on the last word."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_scale_ladder",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "hook",
+      "start_s": 7.25,
+      "end_s": 12.5,
+      "hyperframes_pattern": "region_loupe_object_discovery",
+      "notes": "A hand-held loupe descends from the whole sea border to a one-pixel notch timed to 'closer, and even closer', then a circle highlight and question marks pop on the anomaly."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_time_passing",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "setup",
+      "start_s": 72.5,
+      "end_s": 77.5,
+      "hyperframes_pattern": "single_repeating_mechanism_year_ticker",
+      "notes": "A sweeping lighthouse beam and a motion-blurred year ticker sliding across a century are the only moving elements, conveying duration without events."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_pencil_redraw",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "climax",
+      "start_s": 85.0,
+      "end_s": 91.25,
+      "hyperframes_pattern": "tool_performs_spoken_action",
+      "notes": "A pencil enters and traces the zigzag around the lighthouse as the verb is spoken; the islet then fills in the opening's two colours to prove equal halves."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_real_aerial_ending",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "outro",
+      "start_s": 95.0,
+      "end_s": 98.3,
+      "hyperframes_pattern": "whip_into_real_aerial_same_overlay",
+      "notes": "A whip-zoom turns the satellite diagram into a real aerial of the lighthouse with the same boundary overlay, ending on an irony line with no outro."
+    },
+    {
+      "exemplar_id": "ref_global_walk_whole_route_preview",
+      "source_video_id": "ref_global_walk",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 8.25,
+      "hyperframes_pattern": "face_first_then_full_route_preview",
+      "notes": "Portrait marker pops before the name, then the entire promised loop draws once while the camera pans its length before restarting at the origin year."
+    },
+    {
+      "exemplar_id": "ref_global_walk_open_projection_ending",
+      "source_video_id": "ref_global_walk",
+      "role": "outro",
+      "start_s": 99.0,
+      "end_s": 102.9,
+      "hyperframes_pattern": "dashed_projection_to_vow_pin",
+      "notes": "The film returns to the flat map and draws a dashed projection to the destination pin set by the opening vow; the journey is left open."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_misconception_counter",
+      "source_video_id": "ref_spain_borders",
+      "role": "hook",
+      "start_s": 3.4,
+      "end_s": 9.0,
+      "hyperframes_pattern": "live_counter_with_ghost_polygons",
+      "notes": "On a dark vector surface a large counter shows the believed two neighbours, then keeps ticking as grey ghost polygons appear."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_tint_flash_ownership",
+      "source_video_id": "ref_spain_borders",
+      "role": "proof",
+      "start_s": 36.75,
+      "end_s": 39.5,
+      "hyperframes_pattern": "locked_camera_full_frame_tint_flash",
+      "notes": "With the camera locked on the river islet, full-frame orange and blue tint flashes land on the owning verbs to show the six-month alternation."
+    },
+    {
+      "exemplar_id": "ref_diomede_wrong_answer_first",
+      "source_video_id": "ref_diomede_islands",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "hyperframes_pattern": "intuitive_path_then_pole_whip",
+      "notes": "A glowing beam flies the long Atlantic route between two powers, then the camera whips over the pole to their true adjacency and writes the distance on the strait."
+    },
+    {
+      "exemplar_id": "ref_diomede_edge_grown_ice",
+      "source_video_id": "ref_diomede_islands",
+      "role": "climax",
+      "start_s": 41.7,
+      "end_s": 48.8,
+      "hyperframes_pattern": "edge_grown_state_mask",
+      "notes": "A blocky ice mask grows from the frame edges with snow particles while the border stays on top; a single walking silhouette crosses the line."
+    },
+    {
+      "exemplar_id": "ref_shelterbelt_negation_ladder",
+      "source_video_id": "ref_shelterbelt",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 7.5,
+      "hyperframes_pattern": "cross_out_expected_materials_then_flip",
+      "notes": "A north-south band is called a wall; concrete and steel roundels are crossed out on their words and a colour-flash cut turns the band green on 'trees'. The object is withheld as the solution for about sixty seconds."
+    },
+    {
+      "exemplar_id": "ref_shelterbelt_reverse_motion_ending",
+      "source_video_id": "ref_shelterbelt",
+      "role": "outro",
+      "start_s": 86.0,
+      "end_s": 94.4,
+      "hyperframes_pattern": "reverse_motion_callback",
+      "notes": "The displaced-people pictograms that scattered earlier stream back toward the restored green belt, closing the story without words."
+    },
+    {
+      "exemplar_id": "ref_tibetan_airspace_absence_by_behaviour",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 8.4,
+      "hyperframes_pattern": "lasso_fill_then_avoidance_and_silhouette_tiling",
+      "notes": "An unnamed zone is lassoed and filled red while aircraft icons steer around it; familiar-country silhouettes then tile the zone to count its size."
+    },
+    {
+      "exemplar_id": "ref_tibetan_airspace_horizon_terrain",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "proof",
+      "start_s": 17.5,
+      "end_s": 40.3,
+      "hyperframes_pattern": "horizon_terrain_flight_altitude_chips",
+      "notes": "The longest reason gets the richest surface: a horizon-level terrain flight with screen-fixed dual-unit altitude chips, and an aircraft drawn under the terrain line before 'impossible' is spoken."
     }
   ]
 }

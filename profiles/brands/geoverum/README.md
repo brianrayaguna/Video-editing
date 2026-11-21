@@ -6,6 +6,7 @@
 | :--- | :--- |
 | [`brand_style_policy.json`](brand_style_policy.json) | Runtime policy (soft priors, format overrides for `9:16` & `16:9`, hard guardrails, calibration, provenance). |
 | [`editorial_playbook.json`](editorial_playbook.json) | Advisory grammar triggers and empirically measured exemplars (not executed by `vedit`). |
+| [`DIRECTING.md`](DIRECTING.md) | Story-first directing method: story brief, story shapes, hook mechanisms, clause-level storyboard, colour casting, sync, and the variation contract. Read first. |
 | [`CRAFT.md`](CRAFT.md) | Brand visual, typographic, audio/SFX, and cartographic documentary craft rules. |
 | [`templates/`](templates/) | Parameterized, aspect-responsive brand templates (`catalog.json` + `components/*.html`). |
 | Engine [`DESIGN.md`](../../../DESIGN.md) | Cross-brand motion and layer boundaries. |
@@ -16,10 +17,10 @@
 
 Full craft rules: [`CRAFT.md`](CRAFT.md).
 
-1. **Five basemap surfaces (`9:16`)**: Continuous 2.5D/3D graded marine-teal satellite relief (~65–75%), `#14427A` blueprint drafting grids (lifted relief cutouts, white-bordered framed map cards, glowing footprint comparisons, calibrated scale rulers) and `#0B0E11` dark obsidian vector road networks (~10–12%), full-bleed 2D animated geological/volcanic/depth cutaways (~8–10%), `#B9A386` sepia historical parchment maps with compass rose and era timeline bars (~5%), and rapid aerial/field proof B-roll or radar visualizations (~5%), with zero generative video.
-2. **Paradox-first five-beat storytelling**: Opens directly on the map at `0.0s` (zero intro bumper) via a border anomaly, `2×2` quad disambiguation split, scale shock, or boundary mystery; pivots surfaces for mechanism/history proof; resolves directly on the final cartographic anchor.
+1. **Story-first directing**: Each narration's own question, withheld answer, and ending note determine its structure, hook mechanism, signature image, surface count, colour casting, and ending ([`DIRECTING.md`](DIRECTING.md)); two narrations must not produce the same film shape.
+2. **Satellite spine with story-motivated registers (`9:16`)**: Graded marine-teal satellite relief usually carries `70–90%` of runtime as a continuous virtual-camera take; dark vector, blueprint, parchment, cross-section, horizon terrain, aerial ortho, globe, or real-footage registers appear only when the narrative mode changes, with zero generative video.
 3. **Map blocks & luminous seams**: `45°` diagonal-hatched terrain blocks and multi-bloc regional fills sealed by crisp `2–3px` white exterior rims, three-layer luminous glowing border/route strokes (outer bloom + mid glow + bright core), `2×2` quad and diagonal white-seamed splits, and high-res urban ortho landmark masks.
-4. **Dual-layer typography & plain captions (`y = 70%`)**: True-centered (`x = 50%`) 2–4 word sentence-case `Space Grotesk` / `Inter` plain white captions with subtle dark drop shadow, 1-frame hard cuts (`<= 33ms`), and zero default watermark (`watermark_default: false`), paired with axis-aligned in-world map labels and tight color-matched district tags.
+4. **Dual-layer typography & plain captions (`y = 70–72%`)**: True-centered (`x = 50%`) 2–4 word sentence-case `Space Grotesk` / `Inter` plain white captions with subtle dark drop shadow, short opacity cross-fades (`~150ms`), and zero default watermark (`watermark_default: false`), paired with axis-aligned in-world map labels and tight color-matched district tags.
 5. **Dual-unit, cross-section & split grammar**: White double-headed arrows, T-brackets, and dashed amber corridors (`mi` + `km`, `ft` + `m`), 2D underwater/volcanic/altitude cross-sections (with subtle `NOT TO SCALE` disclaimer when schematic), compact population pin pills, true-scale silhouette overlays, and whip-zoom / split-wipe / soft-iris / 3D card-flip transitions.
 6. **Kinetic SFX & heavy-ducked BGM**: Continuous narration-led editing (`50–80%` voice density), quiet ambient/dramatic BGM (`ducking_strength: 0.90`, `76–136 BPM`), and `15–28` visual-locked `pop`/`ding`/`click`/`whoosh` accents per minute (`sfx_policy: "kinetic_accents"`).
 

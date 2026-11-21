@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "brand_id": "geoverum",
   "display_name": "Geoverum",
-  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): paradox-first five-beat storytelling anchored on five distinct basemap surfaces (marine deep-teal 2.5D/3D satellite relief #083847 over #03161F ground, #14427A blueprint drafting grid, #0B0E11 dark obsidian vector road networks, #B9A386 sepia parchment relief with compass rose and era timeline bars, and full-bleed 2D geological/depth cutaways), paired with 45-degree diagonal-hatched or multi-bloc rimmed territory fills, three-layer luminous glowing borders and routes, 2x2 quad and diagonal multi-panel splits, axis-aligned in-world map typography, plain true-centered 2-4 word captions with 1-frame hard cuts, zero default watermark, narration-led pacing, and visual-locked kinetic SFX.",
+  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): story-first directing in which each narration's own question, withheld answer, and ending note determine the structure, hook mechanism, signature image, surface count, colour casting, and ending (see DIRECTING.md), rendered with a graded marine deep-teal satellite relief spine (#083847 over #03161F ground) that usually carries 70-90% of runtime as a continuous virtual-camera take, plus story-motivated switches to dark vector, parchment, cross-section, horizon terrain, aerial ortho, globe, or real-footage registers; documentary, wry, or comic registers chosen from the narration's tone (flat vector characters, flag avatars, reaction faces, and speech-bubble gags when the story carries irony); per-entity colour casting with rimmed territory fills and three-layer luminous borders and routes; one graphic event per stressed noun with visuals leading the spoken word by 0-0.9 s; axis-aligned in-world map typography; plain true-centered 2-4 word captions at y 70-72% with short opacity cross-fades; zero default watermark; no call-to-action outro; narration-led pacing with visual-locked kinetic SFX.",
   "soft_priors": {
     "temporal_curve": [
       {
@@ -123,7 +123,7 @@
         "title_family": "Unbounded, Space Grotesk, sans-serif",
         "caption_case": "sentence",
         "caption_style": "plain",
-        "caption_transition_ms": 33,
+        "caption_transition_ms": 150,
         "max_words_per_caption_group": 4,
         "default_caption_band": "lower_third"
       },
@@ -172,7 +172,6 @@
       "dual_redundant_labels",
       "scale_zero_pop_in",
       "film_strip_viewfinder_chrome",
-      "thematic_emoji_raster_props",
       "unbordered_neon_mud_fills",
       "isometric_economy_props",
       "vendor_basemap_chrome",
@@ -182,7 +181,6 @@
       "document_wall_on_subject",
       "false_color_thermal_grade",
       "film_reel_archival_frame",
-      "cartoon_countryball_eyes",
       "unmotivated_static_hold",
       "dark_translucent_hud_card",
       "cyan_bordered_dashboard_box",
@@ -192,8 +190,7 @@
       "corner_crosshair_kpi_box",
       "viewfinder_corner_brackets",
       "floating_mini_quote_card",
-      "eyebrow_kicker_above_title",
-      "cartoon_character_skit"
+      "eyebrow_kicker_above_title"
     ],
     "avoid_heavy_css_blur": true
   },
@@ -417,7 +414,6 @@
       "saas_pill_watermark",
       "violet_generic_accent",
       "film_strip_viewfinder_chrome",
-      "thematic_emoji_raster_props",
       "unbordered_neon_mud_fills",
       "isometric_economy_props",
       "vendor_basemap_chrome",
@@ -427,7 +423,6 @@
       "document_wall_on_subject",
       "false_color_thermal_grade",
       "film_reel_archival_frame",
-      "cartoon_countryball_eyes",
       "unmotivated_static_hold",
       "dark_translucent_hud_card",
       "cyan_bordered_dashboard_box",
@@ -437,8 +432,7 @@
       "corner_crosshair_kpi_box",
       "viewfinder_corner_brackets",
       "floating_mini_quote_card",
-      "eyebrow_kicker_above_title",
-      "cartoon_character_skit"
+      "eyebrow_kicker_above_title"
     ],
     "last_calibrated_at": "2026-11-20T10:35:00+00:00"
   },
