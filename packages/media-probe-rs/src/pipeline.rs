@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use image::{RgbImage, codecs::jpeg::JpegEncoder};
 
 use crate::ffmpeg_parse::{build_shots_and_stats, parse_ffmpeg_stderr, round3};
@@ -70,7 +70,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
     let total_t0 = Instant::now();
 
     // Run file SHA-256 hashing and ffprobe metadata extraction concurrently.
-    let (hash_res, probe_res, hash_ms, ffprobe_ms) = thread::scope(|s| {
+    let (hash_res, probe_res, hash_ms, ffprobe_ms) = thread::scope(|s| -> Result<_> {
         let h_handle = s.spawn(|| {
             let t = Instant::now();
             let res = hash_file(path);
@@ -81,10 +81,14 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
             let res = run_ffprobe(path);
             (res, t.elapsed().as_millis() as u64)
         });
-        let (h_res, h_ms) = h_handle.join().expect("hash thread panicked");
-        let (p_res, p_ms) = p_handle.join().expect("ffprobe thread panicked");
-        (h_res, p_res, h_ms, p_ms)
-    });
+        let (h_res, h_ms) = h_handle
+            .join()
+            .map_err(|_| anyhow!("hash worker thread panicked"))?;
+        let (p_res, p_ms) = p_handle
+            .join()
+            .map_err(|_| anyhow!("ffprobe worker thread panicked"))?;
+        Ok((h_res, p_res, h_ms, p_ms))
+    })?;
 
     let hash_report = hash_res?;
     let meta = probe_res?;
@@ -102,9 +106,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
     if let Some(ref tmp_dir) = tmp_kf_dir {
         fs::create_dir_all(tmp_dir)?;
     }
-    let stderr_text: String;
-
-    if video.present {
+    let stderr_text: String = if video.present {
         let target_w = if opts.extract_keyframes_dir.is_some() && opts.analysis_width < 480 {
             480
         } else {
@@ -201,7 +203,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         if !status.success() {
             bail!("ffmpeg exited with status {status}: {stderr_out}");
         }
-        stderr_text = stderr_out;
+        stderr_out
     } else if audio.present {
         let ebur_filter = if opts.true_peak {
             "ebur128=peak=true"
@@ -221,10 +223,10 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         if !out.status.success() {
             bail!("ffmpeg audio probe failed: {}", String::from_utf8_lossy(&out.stderr));
         }
-        stderr_text = String::from_utf8_lossy(&out.stderr).into_owned();
+        String::from_utf8_lossy(&out.stderr).into_owned()
     } else {
-        stderr_text = String::new();
-    }
+        String::new()
+    };
 
     let parsed = parse_ffmpeg_stderr(&stderr_text, duration_s);
 

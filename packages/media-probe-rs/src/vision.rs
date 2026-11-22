@@ -122,7 +122,8 @@ pub fn analyze_rgb24_frame(rgb: &[u8], width: usize, height: usize) -> FrameVisi
     let lower_start = (height * 72) / 100;
 
     // Parallel luminance & CIELAB histogram accumulation per row.
-    let row_results: Vec<(f64, usize, f64, usize, f64, usize, HashMap<(i32, i32, i32), LabBinAcc>)> =
+    type RowLumaLab = (f64, usize, f64, usize, f64, usize, HashMap<(i32, i32, i32), LabBinAcc>);
+    let row_results: Vec<RowLumaLab> =
         (0..height)
             .into_par_iter()
             .map(|y| {
@@ -281,7 +282,7 @@ pub fn aggregate_palette_and_visual(
     }
 
     let mut buckets: Vec<LabBinAcc> = global_bins.into_values().collect();
-    buckets.sort_by(|a, b| b.count.cmp(&a.count));
+    buckets.sort_by_key(|b| std::cmp::Reverse(b.count));
 
     let palette = buckets
         .into_iter()

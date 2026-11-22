@@ -576,7 +576,12 @@ def cloud_render_cmd(
         try:
             deployed_fn = modal.Function.from_name(APP_NAME, "orchestrate_distributed_render")
             deployed_fn.hydrate()
-        except Exception:
+        except Exception as exc:
+            typer.echo(
+                f"Warning: deployed Modal function '{APP_NAME}' unavailable ({exc}); "
+                "falling back to ephemeral Modal session.",
+                err=True,
+            )
             deployed_fn = None
 
     if deployed_fn is not None:

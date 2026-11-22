@@ -2046,57 +2046,6 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             weight: 900,
           });
           ctx.restore();
-        } else if (layer.type === "callout_badge") {
-          const anchor = layer.coord ? map.project(layer.coord) : { x: W * (layer.x_pct ?? 0.5), y: H * (layer.y_pct ?? 0.22) };
-          const bx = anchor.x + (layer.dx || 0);
-          const by = anchor.y + (layer.dy || 0);
-          const pop = easeOutBack(seg(t, tStart, tStart + 0.28));
-          const sc = clamp(pop, 0.01, 1.12);
-          const fPx = layer.font_px || 40;
-          if (layer.pointer_coord) {
-            const tp = map.project(layer.pointer_coord);
-            ctx.save();
-            ctx.globalAlpha = baseAlpha * clamp(pop, 0, 1);
-            ctx.strokeStyle = layer.pointer_color || "#FFFFFF";
-            ctx.lineWidth = 6;
-            ctx.lineCap = "round";
-            ctx.shadowColor = "rgba(0,0,0,0.65)"; ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.moveTo(bx, by);
-            ctx.lineTo(tp.x, tp.y);
-            ctx.stroke();
-            const ang = Math.atan2(tp.y - by, tp.x - bx);
-            ctx.translate(tp.x, tp.y);
-            ctx.rotate(ang);
-            ctx.fillStyle = layer.pointer_color || "#FFFFFF";
-            ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-18, -11); ctx.lineTo(-18, 11); ctx.closePath(); ctx.fill();
-            ctx.restore();
-          }
-          ctx.save();
-          ctx.translate(bx, by);
-          ctx.rotate(((layer.angle_deg ?? 0) * Math.PI) / 180);
-          ctx.scale(sc, sc);
-          ctx.globalAlpha = baseAlpha;
-          ctx.font = "800 " + fPx + "px 'Rubik', sans-serif";
-          const tw = ctx.measureText(String(layer.text || "")).width;
-          const padX = Math.round(fPx * 0.62), padY = Math.round(fPx * 0.34);
-          const rw = tw + padX * 2, rh = fPx + padY * 2;
-          ctx.shadowColor = "rgba(0,0,0,0.58)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
-          ctx.fillStyle = layer.bg_hex || "#991B1B";
-          ctx.beginPath();
-          ctx.roundRect(-rw / 2, -rh / 2, rw, rh, layer.radius ?? Math.round(rh * 0.38));
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          if (layer.border_hex) {
-            ctx.strokeStyle = layer.border_hex;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-          }
-          ctx.fillStyle = layer.text_hex || "#FFFFFF";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(String(layer.text || ""), 0, 2);
-          ctx.restore();
         } else if (layer.type === "question_arc") {
           const pt = map.project(layer.coord);
           const count = layer.count || 5;

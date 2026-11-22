@@ -510,7 +510,7 @@ def validate_map_scene(
             )
         if closeup_centers and hq_dir is not None:
             for lng, lat, z in closeup_centers:
-                check_z = min(16, max(13, int(round(z))))
+                check_z = min(16, max(13, round(z)))
                 has_hq = False
                 for probe_z in range(check_z, 12, -1):
                     tx, ty = _deg2num(lat, lng, probe_z)
@@ -747,7 +747,7 @@ def synthesize_documentary_bgm(
     duration_s: float, out_wav: Path, *, sample_rate: int = 48000, bpm: float = 92.0
 ) -> Path:
     """Synthesize a clean ambient cartographic-documentary BGM bed (48 kHz stereo PCM)."""
-    n_samples = max(1, int(math.ceil(duration_s * sample_rate)))
+    n_samples = max(1, math.ceil(duration_s * sample_rate))
     # D minor documentary progression: Dm -> Bb -> F -> C (each 4 beats)
     chords = [
         (73.42, 146.83, 174.61, 220.00),  # Dm
@@ -881,7 +881,7 @@ def geo_mix_audio_cmd(
         sfx_tags: list[str] = []
         for idx, ev in enumerate(events):
             inp = idx + 2
-            ms = int(round(ev["t_s"] * 1000))
+            ms = round(ev["t_s"] * 1000)
             tag = f"[s{idx}]"
             chains.append(
                 f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo,"
@@ -918,7 +918,14 @@ def geo_mix_audio_cmd(
         ]
     )
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        proc = subprocess.run(
+            cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+        )
+        if proc.returncode != 0:
+            err_tail = (proc.stderr or "").strip().splitlines()[-12:]
+            raise RuntimeError(
+                f"ffmpeg mix-audio failed (exit {proc.returncode}): " + " | ".join(err_tail)
+            )
     finally:
         if tmp_bgm is not None:
             tmp_bgm.unlink(missing_ok=True)

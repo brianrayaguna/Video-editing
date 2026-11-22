@@ -6,9 +6,9 @@ This directory owns reusable geospatial asset fetchers, tile grading scripts, th
 
 | Stage | Where It Runs | Canonical Entry |
 | --- | --- | --- |
-| Tile fetch / grade | Host / Cache | `vedit geo prepare` (`fetch_assets.py --aoi-config <json>`, `build_tiles.mjs`, `fetch_dem_tiles.mjs`) |
-| Tile serve | Offline HTTP | `serve_tiles.mjs` (`/tiles/*.jpg` + `/dem/*.png` + `/vector/*` + `/fonts/*`) |
-| MapLibre A-roll & world-space scenes | Project-scoped baker | `vedit geo bake-scene` (`render_map_scene.mjs`), `bake_vertical_basemap.mjs` + `fast_capture.mjs` (writes into external project `media/maps/`) |
+| Tile fetch / grade | Host / Cache | `vedit geo prepare` (`--hq` auto-enabled for `z >= 13`, `build_tiles.mjs`, `fetch_dem_tiles.mjs`) |
+| Tile serve | Offline HTTP | `serve_tiles.mjs` (`/tiles_hybrid/*.jpg`, `/tiles_hq/*.jpg`, `/tiles/*.jpg`, `/dem/*.png`, `/vector/*`, `/fonts/*`) |
+| MapLibre A-roll & world-space scenes | Project-scoped baker | `vedit geo validate-scene`, `vedit geo bake-scene` (`render_map_scene.mjs`), `vedit geo build-captions`, `vedit geo mix-audio` |
 | HyperFrames overlays + hybrid master | Local or **Modal Cloud** | `vedit compile` -> `vedit cloud render` |
 | Loudness / visual QC | Modal worker + local re-audit | `vedit audit` |
 | Brand component studies | Host | `study_runner.mjs` (shared helpers to serve, lint, render, and encode standalone template studies with contact sheets) |
