@@ -620,24 +620,37 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.restore();
     }
 
-    // Local 2x2 MapLibre projection Jacobian (dScreen/dEast, dScreen/dSouth) for 3D surface-locked overlays
+    // Local 2x2 MapLibre projection Jacobian (dScreen/dEast, dScreen/dSouth) for 3D surface-locked overlays.
+    // Samples a micro-step at the active camera zoom so the probe point never crosses behind the WebGL near plane
+    // during high-pitch dive-zooms (preventing inverted/mirrored text), then scales back to refZoom units.
     function getMapPlaneMatrix(coord, refZoom = 5.0) {
       const [lng, lat] = coord;
       const p0 = map.project([lng, lat]);
+      const curZoom = map.getZoom();
       const cosLat = Math.max(0.15, Math.cos((lat * Math.PI) / 180));
-      const degPerPxAtRef = 360 / (512 * Math.pow(2, refZoom));
-      const dLng = degPerPxAtRef * 100;
+      const stepZoom = Math.max(refZoom, curZoom);
+      const stepPx = 4;
+      const dLng = (360 / (512 * Math.pow(2, stepZoom))) * stepPx;
       const dLat = dLng * cosLat;
+      const relScale = Math.pow(2, stepZoom - refZoom);
       const pEast = map.project([lng + dLng, lat]);
       const pSouth = map.project([lng, lat - dLat]);
-      return {
-        a: (pEast.x - p0.x) / 100,
-        b: (pEast.y - p0.y) / 100,
-        c: (pSouth.x - p0.x) / 100,
-        d: (pSouth.y - p0.y) / 100,
-        e: p0.x,
-        f: p0.y,
-      };
+      let a = ((pEast.x - p0.x) / stepPx) * relScale;
+      let b = ((pEast.y - p0.y) / stepPx) * relScale;
+      let c = ((pSouth.x - p0.x) / stepPx) * relScale;
+      let d = ((pSouth.y - p0.y) / stepPx) * relScale;
+      const det = a * d - b * c;
+      if (!Number.isFinite(det) || det <= 1e-6) {
+        const mag = Math.hypot(a, b);
+        const s = Number.isFinite(mag) && mag > 1e-4 ? mag : Math.pow(2, curZoom - refZoom);
+        const rot = (-map.getBearing() * Math.PI) / 180;
+        const pitchCos = Math.max(0.25, Math.cos(((map.getPitch() || 0) * Math.PI) / 180));
+        a = Math.cos(rot) * s;
+        b = Math.sin(rot) * s;
+        c = -Math.sin(rot) * s * pitchCos;
+        d = Math.cos(rot) * s * pitchCos;
+      }
+      return { a, b, c, d, e: p0.x, f: p0.y };
     }
 
     // Multi-ring luminous text glow with continuous sub-pixel transform scaling (zero 1px font-step jitter),

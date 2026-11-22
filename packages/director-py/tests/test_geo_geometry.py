@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import wave
 from pathlib import Path
 
 from vedit.cli.geo import (
     build_geoverum_ass_captions,
+    derive_sfx_events_from_scene,
     filter_polygons_by_bbox,
     split_polygon_by_longitude,
+    synthesize_documentary_bgm,
     validate_map_scene,
 )
 from vedit.contracts import find_repo_root
@@ -177,3 +180,45 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s
     assert "0:00:02.00,0:00:04.00" in ass
     assert "Hasilnya selisih 117 meter?" in ass
+
+
+def test_map_plane_jacobian_has_near_plane_determinant_guard() -> None:
+    repo = find_repo_root()
+    src = Path(repo / "tools" / "geo-assets" / "render_map_scene.mjs").read_text(encoding="utf-8")
+    assert "const stepZoom = Math.max(refZoom, curZoom);" in src
+    assert "const det = a * d - b * c;" in src
+
+
+def test_derive_sfx_events_and_synthesize_bgm(tmp_path: Path) -> None:
+    scene = {
+        "acts": [
+            {
+                "act_id": "a1",
+                "duration_s": 20.0,
+                "camera_keyframes": [
+                    {"t": 0.0, "center": [109.32, 0.0], "zoom": 5.0, "curve": "glide"},
+                    {"t": 3.0, "center": [109.32, 0.0], "zoom": 15.0, "curve": "snap_dive"},
+                ],
+                "layers": [
+                    {"type": "pin_label", "start_s": 4.0, "end_s": 8.0},
+                    {"type": "crimson_x", "start_s": 9.0, "end_s": 11.0},
+                    {"type": "void_wipe", "start_s": 12.0, "end_s": 16.0},
+                    {"type": "glow_label", "count_to": 117, "start_s": 15.0, "end_s": 18.0},
+                ],
+            }
+        ]
+    }
+    events = derive_sfx_events_from_scene(scene)
+    sfx_names = [e["sfx"] for e in events]
+    assert "swoosh_zoom.wav" in sfx_names
+    assert "pin_drop.wav" in sfx_names
+    assert "stamp_impact.wav" in sfx_names
+    assert "flash_swish.wav" in sfx_names
+    assert "ding_glass.wav" in sfx_names
+
+    bgm_path = synthesize_documentary_bgm(1.0, tmp_path / "bgm.wav")
+    assert bgm_path.is_file()
+    with wave.open(str(bgm_path), "rb") as wf:
+        assert wf.getnchannels() == 2
+        assert wf.getframerate() == 48000
+        assert wf.getnframes() == 48000

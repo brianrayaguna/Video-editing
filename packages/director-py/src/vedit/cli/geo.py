@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import array
 import json
 import math
 import shutil
 import subprocess
 import tempfile
 import time
+import wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, Any
@@ -670,6 +672,269 @@ def geo_build_captions_cmd(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(ass_text, encoding="utf-8")
     typer.echo(json.dumps({"ok": True, "ass_path": str(out), "speed": speed}, indent=2))
+
+
+_SFX_LAYER_MAP: dict[str, tuple[str, float]] = {
+    "void_wipe": ("flash_swish.wav", -9.0),
+    "crimson_x": ("stamp_impact.wav", -6.5),
+    "pin_label": ("pin_drop.wav", -10.5),
+    "curved_pointer_label": ("pop_soft.wav", -11.0),
+    "dashed_distance": ("whoosh_fast.wav", -11.5),
+    "curved_arc_arrow": ("whoosh_fast.wav", -11.5),
+    "route": ("whoosh_deep.wav", -12.0),
+    "radar_rings": ("radar_ping.wav", -13.0),
+    "counter_odometer": ("counter_tick.wav", -11.0),
+    "human_silhouette_row": ("pop_bright.wav", -11.0),
+    "landmark_silhouette": ("sub_thud.wav", -9.5),
+    "wind_streamlines": ("whoosh_fast.wav", -13.0),
+    "flag_pin": ("pop_soft.wav", -11.5),
+    "ghost_overlay": ("flash_swish.wav", -11.0),
+}
+
+
+def derive_sfx_events_from_scene(
+    spec: dict[str, Any], *, min_gap_s: float = 0.35, max_events: int = 44
+) -> list[dict[str, Any]]:
+    """Derive 0ms-aligned kinetic SFX hits from declarative map_scene.json beats."""
+    raw: list[tuple[float, int, str, float]] = []
+    time_offset = 0.0
+    for act in spec.get("acts") or []:
+        dur = float(act.get("duration_s", 0.0))
+        # Camera dive / fly moves -> subtle swoosh accent
+        for kf in act.get("camera_keyframes") or []:
+            if isinstance(kf, dict):
+                curve = str(kf.get("curve") or "")
+                tk = float(kf.get("t", kf.get("t_s", 0.0)))
+                if curve == "snap_dive" and tk > 0.2:
+                    raw.append((time_offset + max(0.0, tk - 0.55), 1, "swoosh_zoom.wav", -12.5))
+                elif curve == "hyperbolic_fly" and tk > 0.2:
+                    raw.append((time_offset + max(0.0, tk - 0.65), 1, "whoosh_deep.wav", -12.0))
+
+        for layer in act.get("layers") or []:
+            ltype = str(layer.get("type") or "")
+            t0 = time_offset + float(layer.get("start_s", 0.0))
+            if ltype in _SFX_LAYER_MAP:
+                sfx_name, gain_db = _SFX_LAYER_MAP[ltype]
+                prio = 3 if ltype in {"crimson_x", "void_wipe", "landmark_silhouette"} else 2
+                raw.append((t0, prio, sfx_name, gain_db))
+            elif ltype == "glow_label":
+                if layer.get("count_to") is not None:
+                    raw.append((t0, 3, "ding_glass.wav", -10.0))
+                elif float(layer.get("font_px", 48)) >= 64:
+                    raw.append((t0, 2, "pop_bright.wav", -11.5))
+            elif ltype == "prohibition_pins":
+                for pin in (layer.get("pins") or [])[:8]:
+                    pt = time_offset + float(pin.get("pop_s", layer.get("start_s", 0.0)))
+                    raw.append((pt, 2, "pop_bright.wav", -12.0))
+                    sd = float(pin.get("slash_delay_s", 0.36))
+                    raw.append((pt + sd, 2, "warning_pulse.wav", -13.0))
+        time_offset += dur
+
+    raw.sort(key=lambda item: (item[0], -item[1]))
+    selected: list[dict[str, Any]] = []
+    last_t = -10.0
+    for t_ev, _prio, fname, gain_db in raw:
+        if t_ev < 0.0 or t_ev - last_t < min_gap_s:
+            continue
+        selected.append({"t_s": round(t_ev, 3), "sfx": fname, "gain_db": gain_db})
+        last_t = t_ev
+        if len(selected) >= max_events:
+            break
+    return selected
+
+
+def synthesize_documentary_bgm(
+    duration_s: float, out_wav: Path, *, sample_rate: int = 48000, bpm: float = 92.0
+) -> Path:
+    """Synthesize a clean ambient cartographic-documentary BGM bed (48 kHz stereo PCM)."""
+    n_samples = max(1, int(math.ceil(duration_s * sample_rate)))
+    # D minor documentary progression: Dm -> Bb -> F -> C (each 4 beats)
+    chords = [
+        (73.42, 146.83, 174.61, 220.00),  # Dm
+        (58.27, 116.54, 174.61, 233.08),  # Bb
+        (87.31, 130.81, 174.61, 220.00),  # F
+        (65.41, 130.81, 164.81, 196.00),  # C
+    ]
+    beat_s = 60.0 / bpm
+    bar_s = beat_s * 4.0
+    buf = array.array("h", [0] * (n_samples * 2))
+    two_pi = 2.0 * math.pi
+    fade_in_n = int(min(1.5, duration_s * 0.1) * sample_rate)
+    fade_out_n = int(min(2.0, duration_s * 0.15) * sample_rate)
+
+    for i in range(n_samples):
+        t = i / sample_rate
+        bar_idx = int(t / bar_s) % len(chords)
+        bar_pos = (t % bar_s) / bar_s
+        beat_pos = (t % beat_s) / beat_s
+        bass_f, f1, f2, f3 = chords[bar_idx]
+
+        # Smooth chord crossfade envelope within bar
+        chord_env = min(1.0, bar_pos * 8.0) * min(1.0, (1.0 - bar_pos) * 10.0 + 0.15)
+        # Gentle documentary pulse on each beat
+        pulse = 0.65 + 0.35 * math.exp(-beat_pos * 4.5)
+        # Warm sub-bass + soft filtered triad pads
+        sub = 0.28 * math.sin(two_pi * bass_f * t) * pulse
+        pad_l = (
+            0.14 * math.sin(two_pi * f1 * t)
+            + 0.11 * math.sin(two_pi * f2 * t + 0.3)
+            + 0.08 * math.sin(two_pi * f3 * t + 0.8)
+            + 0.03 * math.sin(two_pi * f3 * 2.0 * t) * math.exp(-beat_pos * 7.0)
+        ) * chord_env
+        pad_r = (
+            0.14 * math.sin(two_pi * f1 * t + 0.15)
+            + 0.11 * math.sin(two_pi * f2 * t + 0.6)
+            + 0.08 * math.sin(two_pi * f3 * t + 1.1)
+            + 0.03 * math.sin(two_pi * f2 * 2.0 * t) * math.exp(-beat_pos * 7.0)
+        ) * chord_env
+
+        env = 1.0
+        if i < fade_in_n:
+            env *= i / max(1, fade_in_n)
+        if i > n_samples - fade_out_n:
+            env *= max(0.0, (n_samples - i) / max(1, fade_out_n))
+
+        val_l = max(-0.92, min(0.92, (sub + pad_l) * env))
+        val_r = max(-0.92, min(0.92, (sub + pad_r) * env))
+        buf[i * 2] = int(val_l * 32767)
+        buf[i * 2 + 1] = int(val_r * 32767)
+
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(out_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(buf.tobytes())
+    return out_wav
+
+
+@geo_app.command("mix-audio")
+def geo_mix_audio_cmd(
+    scene_file: Annotated[
+        Path, typer.Option("--scene-file", help="Declarative map_scene.json specification.")
+    ],
+    voice_file: Annotated[
+        Path, typer.Option("--voice", help="Voiceover WAV/MP3 audio file (post-speedup).")
+    ],
+    out_file: Annotated[
+        Path, typer.Option("--out-file", "-o", help="Destination mixed 48 kHz WAV file.")
+    ],
+    bgm_file: Annotated[
+        Path | None,
+        typer.Option("--bgm", help="Optional custom BGM track; synthesizes bed if omitted."),
+    ] = None,
+    bgm_gain_db: Annotated[
+        float, typer.Option("--bgm-gain-db", help="Base BGM attenuation before sidechain ducking.")
+    ] = -16.0,
+) -> None:
+    """Mix voiceover + ducked documentary BGM + scene-synced kinetic SFX to -14 LUFS."""
+    root = find_repo_root()
+    sfx_dir = root / "assets" / "audio" / "sfx"
+    spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
+    vo_path = voice_file.expanduser().resolve()
+    out_path = out_file.expanduser().resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Probe exact voiceover duration
+    dur_proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(vo_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    duration_s = float(dur_proc.stdout.strip())
+
+    tmp_bgm: Path | None = None
+    if bgm_file is not None:
+        bgm_path = bgm_file.expanduser().resolve()
+    else:
+        tmp_bgm = out_path.with_suffix(".bgm_bed.wav")
+        bgm_path = synthesize_documentary_bgm(duration_s + 0.5, tmp_bgm)
+
+    events = [
+        ev
+        for ev in derive_sfx_events_from_scene(spec)
+        if ev["t_s"] < duration_s - 0.15 and (sfx_dir / ev["sfx"]).is_file()
+    ]
+
+    cmd: list[str] = ["ffmpeg", "-y", "-i", str(vo_path), "-stream_loop", "-1", "-i", str(bgm_path)]
+    for ev in events:
+        cmd.extend(["-i", str(sfx_dir / ev["sfx"])])
+
+    chains = [
+        "[0:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[vo_dry][vo_sc]",
+        f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{duration_s:.3f},"
+        f"volume={bgm_gain_db:.1f}dB,equalizer=f=2200:t=o:w=1.2:g=-4.5[bgm_eq]",
+        "[bgm_eq][vo_sc]sidechaincompress=threshold=0.025:ratio=6:attack=20:release=260:makeup=1[bgm_bus]",
+    ]
+    mix_inputs = ["[vo_dry]", "[bgm_bus]"]
+    if events:
+        sfx_tags: list[str] = []
+        for idx, ev in enumerate(events):
+            inp = idx + 2
+            ms = int(round(ev["t_s"] * 1000))
+            tag = f"[s{idx}]"
+            chains.append(
+                f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo,"
+                f"volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
+            )
+            sfx_tags.append(tag)
+        if len(sfx_tags) == 1:
+            mix_inputs.append(sfx_tags[0])
+        else:
+            chains.append(
+                f"{''.join(sfx_tags)}amix=inputs={len(sfx_tags)}:duration=longest:normalize=0[sfx_bus]"
+            )
+            mix_inputs.append("[sfx_bus]")
+
+    chains.append(
+        f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:normalize=0,"
+        "loudnorm=I=-14.0:TP=-1.5:LRA=7[out_a]"
+    )
+    cmd.extend(
+        [
+            "-filter_complex",
+            ";".join(chains),
+            "-map",
+            "[out_a]",
+            "-t",
+            f"{duration_s:.3f}",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-c:a",
+            "pcm_s16le",
+            str(out_path),
+        ]
+    )
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    finally:
+        if tmp_bgm is not None:
+            tmp_bgm.unlink(missing_ok=True)
+
+    typer.echo(
+        json.dumps(
+            {
+                "ok": True,
+                "out_file": str(out_path),
+                "duration_s": round(duration_s, 3),
+                "sfx_count": len(events),
+                "bgm_source": str(bgm_file) if bgm_file else "synthesized_ambient_bed",
+            },
+            indent=2,
+        )
+    )
 
 
 @geo_app.command("bake-scene")
