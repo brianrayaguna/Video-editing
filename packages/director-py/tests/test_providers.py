@@ -148,6 +148,54 @@ def test_xai_transcription_multipart_order_itn_and_contract(tmp_path: Path) -> N
     ) == []
 
 
+def test_veed_edge_requests_send_origin_header(tmp_path: Path, monkeypatch) -> None:
+    """The VEED REST edge rejects authenticated calls without an `Origin` header."""
+    monkeypatch.setenv("VEED_ACCESS_TOKEN", "veed-oauth-jwt")
+    monkeypatch.delenv("VEED_ORIGIN", raising=False)
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"mp4-bytes")
+    seen: list[tuple[str, str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        seen.append((request.method, url, request.headers.get("origin")))
+        if url.endswith("/api/v1/workspace"):
+            return httpx.Response(200, json={"data": [{"id": "ws-1"}]})
+        if url.endswith("/api/v1/asset") and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"data": {"asset": {"id": "ast-1"}, "url": "https://gcs.example/upload/ast-1"}},
+            )
+        if url == "https://gcs.example/upload/ast-1":
+            return httpx.Response(200)
+        if url.endswith("/api/v1/asset/ast-1"):
+            return httpx.Response(
+                200,
+                json={"data": {"id": "ast-1", "uploadState": "UPLOADED", "cdnUrl": "https://cdn.veed.test/a.mp4"}},
+            )
+        if url.endswith("/transcribe"):
+            return httpx.Response(200, json={"data": {"id": "sub-1", "status": "pending"}})
+        if url.endswith("/api/v1/subtitles/sub-1"):
+            return httpx.Response(
+                200,
+                json={"data": {"id": "sub-1", "status": "active", "subtitles": {
+                    "a": {"from": 0.0, "to": 0.5, "words": [{"value": "Halo"}]}}}},
+            )
+        return httpx.Response(404)
+
+    stt = VeedTranscriptionProvider(
+        {"poll_interval_s": 0.0},
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    stt.transcribe(video, TranscriptionOptions(language="id"))
+
+    edge_calls = [s for s in seen if s[1].startswith("https://www.veed.io/api/v1/")]
+    assert edge_calls
+    assert all(origin == "https://www.veed.io" for _, _, origin in edge_calls)
+    signed_upload = [s for s in seen if s[1].startswith("https://gcs.example/")]
+    assert signed_upload and all(origin is None for _, _, origin in signed_upload)
+
+
 def test_veed_oauth_transcription_uploads_and_maps_chronologically(
     tmp_path: Path, monkeypatch
 ) -> None:

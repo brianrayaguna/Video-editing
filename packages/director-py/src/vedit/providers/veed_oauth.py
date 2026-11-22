@@ -199,6 +199,7 @@ class VeedEdgeClient:
         self.api_base = (api_base or os.environ.get("VEED_API_BASE") or f"{origin}/api/v1").rstrip(
             "/"
         )
+        self.origin = origin
         self._token_store = token_store or VeedOAuthTokenStore(
             expected_origin=origin, client=client
         )
@@ -209,13 +210,17 @@ class VeedEdgeClient:
             return self._external_client, False
         return httpx.Client(timeout=120.0), True
 
+    def _edge_headers(self, token: str) -> dict[str, str]:
+        # The REST edge rejects authenticated calls without an Origin header (HTTP 400).
+        return {"Authorization": f"Bearer {token}", "Origin": self.origin}
+
     def get_json(self, path: str, *, allow_404: bool = False) -> Any | None:
         token = self._token_store.resolve_token()
         client, own = self._client_ctx()
         try:
             url = f"{self.api_base}{path}"
             if allow_404:
-                resp = client.get(url, headers={"Authorization": f"Bearer {token}"})
+                resp = client.get(url, headers=self._edge_headers(token))
                 if resp.status_code == 404:
                     return None
                 if resp.status_code >= 400:
@@ -230,7 +235,7 @@ class VeedEdgeClient:
                 url,
                 provider="veed",
                 secret_to_redact=token,
-                headers={"Authorization": f"Bearer {token}"},
+                headers=self._edge_headers(token),
             )
             return unwrap_veed_data(resp.json())
         finally:
@@ -248,7 +253,7 @@ class VeedEdgeClient:
                 provider="veed",
                 secret_to_redact=token,
                 headers={
-                    "Authorization": f"Bearer {token}",
+                    **self._edge_headers(token),
                     "Content-Type": "application/json",
                 },
                 json=body,
