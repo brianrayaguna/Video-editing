@@ -289,10 +289,19 @@ def geo_prepare_cmd(
     grade_tiles: Annotated[
         bool, typer.Option("--grade/--no-grade", help="Run build_tiles.mjs after fetching AOI.")
     ] = True,
+    hq_aerial: Annotated[
+        bool | None,
+        typer.Option(
+            "--hq/--no-hq",
+            help="Fetch high-resolution aerial ortho tiles into assets/geo/tiles_hq/ "
+            "(default: auto-enabled for z >= 13).",
+        ),
+    ] = None,
 ) -> None:
     """Fetch project AOI satellite tiles (without dirtying MANIFEST.json) and extract GeoJSON."""
     root = find_repo_root()
     fetched_count = 0
+    hq_fetched_count = 0
     if bbox:
         coords: set[tuple[int, int, int]] = set()
         for spec in bbox:
@@ -304,16 +313,20 @@ def geo_prepare_cmd(
                 coords.update(_enum_bbox_tiles(w, s, e, n, int(z_token)))
 
         raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
-        ordered = sorted(coords)
+        hq_dir = root / "assets" / "geo" / "tiles_hq"
+        s2_coords = sorted(c for c in coords if c[0] <= 12)
+        if hq_aerial is True:
+            hq_coords = sorted(coords)
+        elif hq_aerial is False:
+            hq_coords = []
+            s2_coords = sorted(coords)
+        else:
+            hq_coords = sorted(c for c in coords if c[0] >= 13)
 
-        def _download(item: tuple[int, tuple[int, int, int]]) -> bool:
-            idx, (z, x, y) = item
-            dest = raw_dir / str(z) / str(x) / f"{y}.jpg"
+        def _fetch_url(dest: Path, url: str) -> bool:
             if dest.is_file() and dest.stat().st_size >= 64:
                 return True
             dest.parent.mkdir(parents=True, exist_ok=True)
-            sub = ("a", "b", "c", "d")[idx % 4]
-            url = f"https://{sub}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"
             tmp = dest.with_suffix(".jpg.part")
             for attempt in range(4):
                 proc = subprocess.run(
@@ -339,10 +352,33 @@ def geo_prepare_cmd(
                 time.sleep(0.3 * (attempt + 1))
             return False
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            fetched_count = sum(1 for ok in pool.map(_download, enumerate(ordered)) if ok)
+        def _download_s2(item: tuple[int, tuple[int, int, int]]) -> bool:
+            idx, (z, x, y) = item
+            dest = raw_dir / str(z) / str(x) / f"{y}.jpg"
+            sub = ("a", "b", "c", "d")[idx % 4]
+            url = f"https://{sub}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"
+            return _fetch_url(dest, url)
 
-        if grade_tiles:
+        def _download_hq(item: tuple[int, tuple[int, int, int]]) -> bool:
+            _idx, (z, x, y) = item
+            dest = hq_dir / str(z) / str(x) / f"{y}.jpg"
+            url = (
+                "https://server.arcgisonline.com/ArcGIS/rest/services/"
+                f"World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            )
+            return _fetch_url(dest, url)
+
+        if s2_coords:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                fetched_count = sum(1 for ok in pool.map(_download_s2, enumerate(s2_coords)) if ok)
+
+        if hq_coords:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                hq_fetched_count = sum(
+                    1 for ok in pool.map(_download_hq, enumerate(hq_coords)) if ok
+                )
+
+        if grade_tiles and s2_coords:
             node_bin = shutil.which("node")
             if not node_bin:
                 raise RuntimeError(
@@ -368,6 +404,7 @@ def geo_prepare_cmd(
             {
                 "ok": True,
                 "tiles_verified": fetched_count,
+                "hq_tiles_verified": hq_fetched_count,
                 "vectors_path": str(out_file),
                 "countries": sorted(vectors["countries"].keys()),
                 "continents": sorted(vectors["continents"].keys()),
@@ -378,6 +415,263 @@ def geo_prepare_cmd(
     )
 
 
+REJECTED_SCENE_LAYER_TYPES = frozenset(
+    {
+        "coord_plaque",
+        "scale_comparison",
+        "survey_pin",
+        "orbital_sightlines",
+        "culmination_sun",
+        "callout_badge",
+    }
+)
+
+_TEXT_LAYER_TYPES = frozenset({"glow_label", "pin_label", "curved_pointer_label", "year_badge"})
+
+
+def validate_map_scene(
+    spec: dict[str, Any], *, repo_root: Path | None = None
+) -> dict[str, Any]:
+    """Validate declarative map_scene.json against Geoverum craft and sharpness guardrails."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    width = int(spec.get("width", 1080))
+    height = int(spec.get("height", 1920))
+    min_font_px = 36 if height >= 1600 else 28
+    hq_dir = (repo_root / "assets" / "geo" / "tiles_hq") if repo_root else None
+
+    for act in spec.get("acts") or []:
+        act_id = str(act.get("act_id") or "unknown")
+        if act.get("type", "map") != "map":
+            continue
+        dur = float(act.get("duration_s", 0.0))
+        tile_source = str(act.get("tile_source") or "hybrid")
+        layers = list(act.get("layers") or [])
+
+        # 1. Reject legacy/chrome slop layers and micro-typography
+        text_intervals: list[tuple[float, float, str]] = []
+        for idx, layer in enumerate(layers):
+            ltype = str(layer.get("type") or "")
+            if ltype in REJECTED_SCENE_LAYER_TYPES:
+                errors.append(
+                    f"[{act_id}] layer #{idx} uses rejected chrome type '{ltype}'. "
+                    "Use calibrated boxless primitives (glow_label, pin_label, "
+                    "curved_pointer_label, dashed_distance, void_wipe, counter_odometer, "
+                    "prohibition_pins)."
+                )
+            if ltype in _TEXT_LAYER_TYPES:
+                fpx = float(layer.get("font_px", 56))
+                if fpx < min_font_px:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} ({ltype}) font_px={fpx} is below minimum "
+                        f"{min_font_px}px for {width}x{height} legibility."
+                    )
+                t0 = float(layer.get("start_s", 0.0))
+                t1 = float(layer.get("end_s", dur))
+                text_intervals.append((t0, t1, str(layer.get("text") or ltype)))
+
+        # 2. Enforce calm hierarchy: at most 4 concurrent text overlays at any sampled timestamp
+        if text_intervals and dur > 0:
+            step = 0.25
+            t_cur = 0.0
+            while t_cur <= dur:
+                active = [lbl for (a, b, lbl) in text_intervals if a <= t_cur <= b]
+                if len(active) > 4:
+                    errors.append(
+                        f"[{act_id}] {len(active)} concurrent text overlays at t={t_cur:.2f}s "
+                        f"({', '.join(active[:5])}); max allowed is 4 to prevent visual clutter."
+                    )
+                    break
+                t_cur += step
+
+        # 3. Close-up sharpness check: zoom >= 13.5 requires HQ aerial tiles (never Sentinel-2)
+        kfs = list(act.get("camera_keyframes") or [])
+        max_zoom = 0.0
+        closeup_centers: list[tuple[float, float, float]] = []
+        for kf in kfs:
+            if isinstance(kf, dict):
+                z = float(kf.get("zoom", 0.0))
+                ctr = kf.get("center") or [kf.get("lng", 0.0), kf.get("lat", 0.0)]
+            else:
+                z = float(kf[3]) if len(kf) > 3 else 0.0
+                ctr = [float(kf[1]), float(kf[2])] if len(kf) > 2 else [0.0, 0.0]
+            if z > max_zoom:
+                max_zoom = z
+            if z >= 13.5:
+                closeup_centers.append((float(ctr[0]), float(ctr[1]), z))
+
+        if max_zoom >= 13.5 and tile_source == "graded":
+            errors.append(
+                f"[{act_id}] max zoom {max_zoom:.1f} uses Sentinel-2 'graded' tiles "
+                "which blur below ~2 km. Use tile_source 'hybrid' or 'realistic' and fetch "
+                "high-resolution tiles with `vedit geo prepare --hq`."
+            )
+        if closeup_centers and hq_dir is not None:
+            for lng, lat, z in closeup_centers:
+                check_z = min(16, max(13, int(round(z))))
+                has_hq = False
+                for probe_z in range(check_z, 12, -1):
+                    tx, ty = _deg2num(lat, lng, probe_z)
+                    if (hq_dir / str(probe_z) / str(tx) / f"{ty}.jpg").is_file():
+                        has_hq = True
+                        break
+                if not has_hq:
+                    errors.append(
+                        f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
+                        "high-resolution aerial tiles in assets/geo/tiles_hq/. Run "
+                        f"`vedit geo prepare --bbox \"{lng-0.06:.3f},{lat-0.06:.3f},"
+                        f"{lng+0.06:.3f},{lat+0.06:.3f}:13,14,15,16\" --hq` first."
+                    )
+                    break
+
+        # 4. Camera dynamism check (reject flat/static maps)
+        if dur >= 8.0 and kfs:
+            if len(kfs) < 3:
+                errors.append(
+                    f"[{act_id}] duration {dur:.1f}s has only {len(kfs)} camera_keyframes; "
+                    "use >= 3 3D cinema keyframes with zoom/bearing/pitch progression."
+                )
+            pitches = [
+                float(kf.get("pitch", 0.0))
+                if isinstance(kf, dict)
+                else (float(kf[5]) if len(kf) > 5 else 0.0)
+                for kf in kfs
+            ]
+            if max(pitches, default=0.0) < 4.0:
+                warnings.append(
+                    f"[{act_id}] peak camera pitch is {max(pitches, default=0.0):.1f} deg; "
+                    "consider 10-35 deg 3D pitch on approach and corridor beats."
+                )
+
+    return {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
+
+
+def _fmt_ass_time(sec: float) -> str:
+    s = max(0.0, sec)
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    rem = s % 60
+    return f"{h}:{m:02d}:{rem:05.2f}"
+
+
+def build_geoverum_ass_captions(
+    transcript_data: dict[str, Any] | list[dict[str, Any]],
+    *,
+    speed: float = 1.0,
+    max_words: int = 4,
+    font_size: int = 56,
+    margin_v: int = 348,
+) -> str:
+    """Build locked Geoverum boxless bottom-band Rubik ASS subtitles from transcript segments."""
+    if speed <= 0:
+        raise ValueError("speed must be > 0")
+    segments = (
+        transcript_data
+        if isinstance(transcript_data, list)
+        else list(transcript_data.get("segments") or [])
+    )
+    lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1080",
+        "PlayResY: 1920",
+        "WrapStyle: 2",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Default,Rubik,{font_size},&H00FFFFFF,&H0000FFFF,&H90000000,&HA0000000,"
+        f"-1,0,0,0,100,100,0,0,1,1.6,3.2,2,60,60,{margin_v},1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+
+    for seg in segments:
+        t0 = float(seg.get("start", 0.0)) / speed
+        t1 = float(seg.get("end", t0 + 0.5)) / speed
+        raw_text = " ".join(str(seg.get("text") or "").split())
+        if not raw_text or t1 <= t0:
+            continue
+        words = raw_text.split()
+        if len(words) <= max_words:
+            chunks = [words]
+        else:
+            n_chunks = math.ceil(len(words) / max_words)
+            base = len(words) // n_chunks
+            rem = len(words) % n_chunks
+            chunks = []
+            pos = 0
+            for ci in range(n_chunks):
+                take = base + (1 if ci < rem else 0)
+                chunks.append(words[pos : pos + take])
+                pos += take
+        total_chars = max(1, sum(len(" ".join(c)) for c in chunks))
+        cur_t = t0
+        for ci, chunk in enumerate(chunks):
+            txt = " ".join(chunk)
+            # Strip trailing comma/period mid-narration while preserving question marks
+            if txt.endswith((",", ".")):
+                txt = txt[:-1]
+            dur_c = (t1 - t0) * (len(txt) / total_chars)
+            end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
+            lines.append(
+                f"Dialogue: 0,{_fmt_ass_time(cur_t)},{_fmt_ass_time(end_t)},"
+                f"Default,,0,0,0,,{{\\fad(80,80)}}{txt}"
+            )
+            cur_t = end_t
+    return "\n".join(lines) + "\n"
+
+
+@geo_app.command("validate-scene")
+def geo_validate_scene_cmd(
+    scene_file: Annotated[
+        Path, typer.Option("--scene-file", help="Declarative map_scene.json specification.")
+    ],
+) -> None:
+    """Validate map_scene.json against Geoverum craft, sharpness, and clutter guardrails."""
+    root = find_repo_root()
+    spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
+    report = validate_map_scene(spec, repo_root=root)
+    typer.echo(json.dumps(report, indent=2))
+    if not report["ok"]:
+        raise typer.Exit(code=1)
+
+
+@geo_app.command("build-captions")
+def geo_build_captions_cmd(
+    transcript_file: Annotated[
+        Path, typer.Argument(help="Transcript JSON with `segments: [{start, end, text}]`.")
+    ],
+    out_file: Annotated[
+        Path, typer.Option("--out-file", "-o", help="Destination ASS subtitle path.")
+    ],
+    speed: Annotated[
+        float, typer.Option("--speed", help="Audio playback speed multiplier (e.g. 1.3).")
+    ] = 1.0,
+    max_words: Annotated[
+        int, typer.Option("--max-words", help="Maximum words per caption group.")
+    ] = 4,
+    font_size: Annotated[
+        int, typer.Option("--font-size", help="ASS font size on 1080x1920 canvas.")
+    ] = 56,
+    margin_v: Annotated[
+        int, typer.Option("--margin-v", help="Bottom safe margin in px (default 348 -> y~80%).")
+    ] = 348,
+) -> None:
+    """Generate locked Geoverum boxless bottom-band Rubik ASS subtitles."""
+    data = json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
+    ass_text = build_geoverum_ass_captions(
+        data, speed=speed, max_words=max_words, font_size=font_size, margin_v=margin_v
+    )
+    out = out_file.expanduser().resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(ass_text, encoding="utf-8")
+    typer.echo(json.dumps({"ok": True, "ass_path": str(out), "speed": speed}, indent=2))
+
+
 @geo_app.command("bake-scene")
 def geo_bake_scene_cmd(
     scene_file: Annotated[
@@ -386,6 +680,10 @@ def geo_bake_scene_cmd(
     out_dir: Annotated[
         Path, typer.Option("--out-dir", "-o", help="Output directory for baked MP4 acts.")
     ],
+    skip_validate: Annotated[
+        bool,
+        typer.Option("--skip-validate", help="Bypass preflight craft/sharpness validation."),
+    ] = False,
 ) -> None:
     """Expand smooth camera plans and bake declarative world-space map scenes via MapLibre."""
     root = find_repo_root()
@@ -395,6 +693,11 @@ def geo_bake_scene_cmd(
 
     scene_path = scene_file.expanduser().resolve()
     spec = json.loads(scene_path.read_text(encoding="utf-8"))
+    if not skip_validate:
+        report = validate_map_scene(spec, repo_root=root)
+        if not report["ok"]:
+            typer.echo(json.dumps(report, indent=2), err=True)
+            raise typer.Exit(code=1)
     fps = float(spec.get("fps", 30.0))
 
     # Expand declarative `camera_plan` or `camera_keyframes` for smooth C2 cinema physics.

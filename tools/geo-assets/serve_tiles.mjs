@@ -137,6 +137,47 @@ export function startTileServer(port = PORT, host = HOST) {
         return;
       }
 
+      const hybridMatch = pathname.match(/^\/tiles_hybrid\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
+      if (hybridMatch) {
+        const z = Number(hybridMatch[1]);
+        const x = Number(hybridMatch[2]);
+        const y = Number(hybridMatch[3]);
+        let buf = null;
+        if (z >= 12) {
+          const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
+          if (existsSync(exactHq)) {
+            buf = readFileSync(exactHq);
+          } else {
+            for (let pz = z - 1; pz >= 12; pz--) {
+              const scale = 1 << (z - pz);
+              const px = Math.floor(x / scale);
+              const py = Math.floor(y / scale);
+              const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
+              if (existsSync(parentHq)) {
+                const subSize = Math.max(1, Math.floor(256 / scale));
+                const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+                const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+                buf = await sharp(parentHq)
+                  .extract({ left, top, width: subSize, height: subSize })
+                  .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+                  .jpeg({ quality: 88 })
+                  .toBuffer();
+                break;
+              }
+            }
+          }
+        }
+        if (!buf) buf = await resolveTileBuffer(z, x, y);
+        if (!buf) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.end(buf);
+        return;
+      }
+
       const hqMatch = pathname.match(/^\/tiles_hq\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
       if (hqMatch) {
         const z = Number(hqMatch[1]);

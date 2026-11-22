@@ -6,7 +6,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from vedit.cli.geo import filter_polygons_by_bbox, split_polygon_by_longitude
+from vedit.cli.geo import (
+    build_geoverum_ass_captions,
+    filter_polygons_by_bbox,
+    split_polygon_by_longitude,
+    validate_map_scene,
+)
 from vedit.contracts import find_repo_root
 
 
@@ -81,3 +86,94 @@ def test_render_map_scene_contains_atmospheric_and_demographic_primitives() -> N
             [node_bin, "-e", check_js], capture_output=True, text=True, check=False
         )
         assert proc.returncode == 0, proc.stderr
+
+
+def test_validate_map_scene_rejects_slop_microtext_and_blurry_closeups(tmp_path: Path) -> None:
+    bad_scene = {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "acts": [
+            {
+                "act_id": "bad_act",
+                "type": "map",
+                "duration_s": 20.0,
+                "tile_source": "graded",
+                "camera_keyframes": [
+                    {"t": 0.0, "center": [109.322, 0.0], "zoom": 16.0, "pitch": 0.0},
+                    {"t": 20.0, "center": [109.322, 0.0], "zoom": 16.0, "pitch": 0.0},
+                ],
+                "layers": [
+                    {"type": "coord_plaque", "start_s": 0.0, "end_s": 5.0},
+                    {"type": "scale_comparison", "start_s": 5.0, "end_s": 10.0},
+                    {
+                        "type": "glow_label",
+                        "text": "Tiny",
+                        "font_px": 22,
+                        "start_s": 0.0,
+                        "end_s": 5.0,
+                    },
+                ],
+            }
+        ],
+    }
+    report = validate_map_scene(bad_scene, repo_root=tmp_path)
+    assert report["ok"] is False
+    joined = "\n".join(report["errors"])
+    assert "coord_plaque" in joined
+    assert "scale_comparison" in joined
+    assert "font_px=22" in joined
+    assert "Sentinel-2 'graded'" in joined
+    assert "camera_keyframes" in joined
+
+
+def test_validate_map_scene_accepts_clean_3d_scene() -> None:
+    good_scene = {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "acts": [
+            {
+                "act_id": "clean_act",
+                "type": "map",
+                "duration_s": 15.0,
+                "tile_source": "hybrid",
+                "camera_keyframes": [
+                    {"t": 0.0, "center": [109.32, 0.0], "zoom": 5.0, "pitch": 12.0},
+                    {"t": 7.5, "center": [109.32, 0.0], "zoom": 9.0, "pitch": 24.0},
+                    {"t": 15.0, "center": [109.32, 0.0], "zoom": 7.0, "pitch": 16.0},
+                ],
+                "layers": [
+                    {
+                        "type": "glow_label",
+                        "text": "Pontianak",
+                        "font_px": 56,
+                        "start_s": 1.0,
+                        "end_s": 6.0,
+                    }
+                ],
+            }
+        ],
+    }
+    report = validate_map_scene(good_scene)
+    assert report["ok"] is True
+    assert report["errors"] == []
+
+
+def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
+    transcript = {
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 2.6,
+                "text": "Tahun 1928 para pengukur menandai garis khatulistiwa.",
+            },
+            {"start": 2.6, "end": 5.2, "text": "Hasilnya selisih 117 meter?"},
+        ]
+    }
+    ass = build_geoverum_ass_captions(transcript, speed=1.3, max_words=4)
+    assert "Style: Default,Rubik,56," in ass
+    assert ",1,1.6,3.2,2,60,60,348,1" in ass
+    # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s
+    assert "0:00:02.00,0:00:04.00" in ass
+    assert "Hasilnya selisih 117 meter?" in ass

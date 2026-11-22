@@ -83,8 +83,14 @@ function parseArgs(argv) {
 }
 
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
-  const tileRoute = mapOpts.tile_source === "realistic" ? "/tiles_hq/{z}/{x}/{y}.jpg" : "/tiles/{z}/{x}/{y}.jpg";
-  const satMaxZoom = mapOpts.tile_source === "realistic" ? 17 : 17;
+  const sourceMode = mapOpts.tile_source || "hybrid";
+  const tileRoute =
+    sourceMode === "realistic"
+      ? "/tiles_hq/{z}/{x}/{y}.jpg"
+      : sourceMode === "graded"
+        ? "/tiles/{z}/{x}/{y}.jpg"
+        : "/tiles_hybrid/{z}/{x}/{y}.jpg";
+  const satMaxZoom = 18;
   const terrain3d = Boolean(mapOpts.terrain_3d);
   const terrainExag = Number(mapOpts.terrain_exaggeration ?? 2.4);
   const demMaxZoom = Number(mapOpts.dem_maxzoom ?? 10);
@@ -1745,82 +1751,6 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
               alpha: baseAlpha * easeOutCubic(seg(prog, 0.35, 0.7)),
             });
           }
-        } else if (layer.type === "survey_pin") {
-          const pt = map.project(layer.coord);
-          const drop = easeOutBack(seg(t, tStart, tStart + 0.38));
-          const col = layer.color || "#F5C542";
-          const stemH = (layer.stem_px ?? 78) * clamp(drop, 0, 1.15);
-          const headR = (layer.radius ?? 26) * clamp(drop, 0, 1.15);
-          ctx.save();
-          ctx.globalAlpha = baseAlpha;
-          // Ground pulse ring
-          const pulse = (tLoc * 0.9) % 1;
-          ctx.strokeStyle = rgbaStr(col, (1 - pulse) * 0.85);
-          ctx.lineWidth = lerp(5, 1.5, pulse);
-          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, lerp(12, 68, pulse), lerp(6, 30, pulse), 0, 0, Math.PI * 2); ctx.stroke();
-          // Ground anchor dot
-          ctx.fillStyle = "#FFFFFF";
-          ctx.beginPath(); ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.stroke();
-          // Vertical 3D beacon stem
-          const sg = ctx.createLinearGradient(pt.x, pt.y, pt.x, pt.y - stemH);
-          sg.addColorStop(0, col); sg.addColorStop(1, "#FFFFFF");
-          ctx.strokeStyle = sg; ctx.lineWidth = 5;
-          ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x, pt.y - stemH); ctx.stroke();
-          // Beacon head with icon
-          const hy = pt.y - stemH - headR * 0.6;
-          ctx.shadowColor = col; ctx.shadowBlur = 24;
-          ctx.fillStyle = "#081C26";
-          ctx.beginPath(); ctx.arc(pt.x, hy, headR, 0, Math.PI * 2); ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = col; ctx.lineWidth = 4.5; ctx.stroke();
-          ctx.fillStyle = "#FFFFFF";
-          ctx.strokeStyle = "#FFFFFF";
-          const st = layer.style || "monument";
-          if (st === "monument") {
-            // Equator monument globe + ring icon
-            ctx.lineWidth = 2.6;
-            ctx.beginPath(); ctx.arc(pt.x, hy, headR * 0.42, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.ellipse(pt.x, hy, headR * 0.66, headR * 0.22, -0.25, 0, Math.PI * 2); ctx.stroke();
-          } else if (st === "gps") {
-            ctx.lineWidth = 2.8;
-            ctx.beginPath(); ctx.arc(pt.x, hy, headR * 0.22, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(pt.x, hy, headR * 0.52, -0.7, 0.7); ctx.stroke();
-            ctx.beginPath(); ctx.arc(pt.x, hy, headR * 0.52, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
-          } else if (st === "stake") {
-            ctx.lineWidth = 4;
-            ctx.beginPath(); ctx.moveTo(pt.x, hy - headR * 0.48); ctx.lineTo(pt.x, hy + headR * 0.48); ctx.stroke();
-            ctx.strokeStyle = "#EF4444"; ctx.lineWidth = 3.5;
-            ctx.beginPath(); ctx.moveTo(pt.x - headR * 0.35, hy - headR * 0.15); ctx.lineTo(pt.x + headR * 0.42, hy + headR * 0.05); ctx.stroke();
-          } else if (st === "house") {
-            ctx.lineWidth = 2.8;
-            ctx.beginPath();
-            ctx.moveTo(pt.x - headR * 0.44, hy + headR * 0.02);
-            ctx.lineTo(pt.x, hy - headR * 0.42);
-            ctx.lineTo(pt.x + headR * 0.44, hy + headR * 0.02);
-            ctx.lineTo(pt.x + headR * 0.34, hy + headR * 0.02);
-            ctx.lineTo(pt.x + headR * 0.34, hy + headR * 0.42);
-            ctx.lineTo(pt.x - headR * 0.34, hy + headR * 0.42);
-            ctx.lineTo(pt.x - headR * 0.34, hy + headR * 0.02);
-            ctx.closePath(); ctx.stroke();
-          }
-          ctx.restore();
-          if (layer.label) {
-            drawGlowingText(layer.label, pt.x + (layer.label_dx || 0), hy - headR - 26 + (layer.label_dy || 0), layer.font_px || 36, {
-              fill: "#FFFFFF",
-              glowHex: col,
-              glowStrength: "luminous",
-              alpha: baseAlpha,
-            });
-          }
-          if (layer.sublabel) {
-            drawGlowingText(layer.sublabel, pt.x + (layer.label_dx || 0), hy - headR + 8 + (layer.label_dy || 0), Math.round((layer.font_px || 36) * 0.62), {
-              fill: "#E2F4FA",
-              glowHex: "#03161F",
-              glowStrength: "subtle",
-              alpha: baseAlpha * 0.92,
-            });
-          }
         } else if (layer.type === "year_badge") {
           const x = W * (layer.x_pct ?? 0.5);
           const y = H * (layer.y_pct ?? 0.21);
@@ -1839,182 +1769,6 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
               alpha: baseAlpha * 0.95,
             });
           }
-        } else if (layer.type === "scale_comparison") {
-          const cy = H * (layer.y_pct ?? 0.44);
-          const grow1 = easeOutExpo(seg(t, tStart, tStart + 0.65));
-          const grow2 = easeOutExpo(seg(t, tStart + 0.9, tStart + 1.65));
-          const xL = W * 0.14;
-          const maxW = W * 0.72;
-          ctx.save();
-          ctx.globalAlpha = baseAlpha;
-          // Top bar: tectonic drift (cm-dm)
-          const w1 = Math.max(10, maxW * 0.028 * grow1);
-          ctx.fillStyle = "#38BDF8";
-          ctx.shadowColor = "#38BDF8"; ctx.shadowBlur = 16;
-          ctx.fillRect(xL, cy - 82, w1, 22);
-          ctx.shadowBlur = 0;
-          drawGlowingText(layer.top_label || "Reference Drift", xL + 220, cy - 114, 30, { fill: "#BAE6FD", glowHex: "#03161F", glowStrength: "subtle", alpha: baseAlpha });
-          drawGlowingText(layer.top_value || "~cm", xL + w1 + 110, cy - 70, 38, { fill: "#38BDF8", glowHex: "#38BDF8", glowStrength: "luminous", alpha: baseAlpha * grow1 });
-          // Bottom bar: comparative measured distance
-          const w2 = maxW * grow2;
-          const grad = ctx.createLinearGradient(xL, 0, xL + maxW, 0);
-          grad.addColorStop(0, "#F5C542"); grad.addColorStop(1, "#EF4444");
-          ctx.fillStyle = grad;
-          ctx.shadowColor = "#EF4444"; ctx.shadowBlur = 24;
-          ctx.fillRect(xL, cy + 44, w2, 28);
-          ctx.shadowBlur = 0;
-          drawGlowingText(layer.bottom_label || "Measured Offset", xL + 180, cy + 12, 30, { fill: "#FDE68A", glowHex: "#03161F", glowStrength: "subtle", alpha: baseAlpha * seg(t, tStart + 0.7, tStart + 1.0) });
-          if (grow2 > 0.25) {
-            drawGlowingText(layer.bottom_value || "100 m", xL + w2 * 0.52, cy + 114, 56, { fill: "#FFFFFF", glowHex: "#EF4444", glowStrength: "intense", alpha: baseAlpha * grow2 });
-          }
-          ctx.restore();
-        } else if (layer.type === "orbital_sightlines") {
-          const target = map.project(layer.coord);
-          const mode = layer.mode || "stars";
-          const prog = easeOutCubic(seg(t, tStart, tStart + 0.85));
-          ctx.save();
-          ctx.globalAlpha = baseAlpha;
-          if (mode === "stars") {
-            // Celestial sightlines from high stars to target coordinate
-            const stars = [
-              { x: W * 0.22, y: H * 0.16 },
-              { x: W * 0.50, y: H * 0.13 },
-              { x: W * 0.78, y: H * 0.18 },
-            ];
-            for (let i = 0; i < stars.length; i++) {
-              const s = stars[i];
-              const tw = 0.75 + 0.25 * Math.sin(tLoc * 7 + i * 2);
-              // Dashed celestial ray
-              ctx.save();
-              ctx.setLineDash([12, 10]);
-              ctx.strokeStyle = rgbaStr("#FDE68A", 0.72 * prog);
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.moveTo(s.x, s.y);
-              ctx.lineTo(lerp(s.x, target.x, prog), lerp(s.y, target.y, prog));
-              ctx.stroke();
-              ctx.restore();
-              // 4-point star glow
-              const r = 18 * tw;
-              ctx.fillStyle = "#FFFBEB";
-              ctx.shadowColor = "#F5C542"; ctx.shadowBlur = 22;
-              ctx.beginPath();
-              ctx.moveTo(s.x, s.y - r); ctx.lineTo(s.x + r * 0.28, s.y - r * 0.28);
-              ctx.lineTo(s.x + r, s.y); ctx.lineTo(s.x + r * 0.28, s.y + r * 0.28);
-              ctx.lineTo(s.x, s.y + r); ctx.lineTo(s.x - r * 0.28, s.y + r * 0.28);
-              ctx.lineTo(s.x - r, s.y); ctx.lineTo(s.x - r * 0.28, s.y - r * 0.28);
-              ctx.closePath(); ctx.fill();
-              ctx.shadowBlur = 0;
-            }
-          } else {
-            // 2005 GPS satellite constellation beaming hydro-cyan telemetry lock
-            const sats = [
-              { x: W * 0.20 + Math.sin(tLoc * 1.1) * 45, y: H * 0.18 },
-              { x: W * 0.52 + Math.cos(tLoc * 0.9) * 35, y: H * 0.14 },
-              { x: W * 0.82 - Math.sin(tLoc * 1.2) * 40, y: H * 0.20 },
-            ];
-            for (const s of sats) {
-              // Translucent lock cone
-              const cg = ctx.createLinearGradient(s.x, s.y, target.x, target.y);
-              cg.addColorStop(0, "rgba(56, 189, 248, 0.55)");
-              cg.addColorStop(1, "rgba(56, 189, 248, 0.10)");
-              ctx.strokeStyle = cg;
-              ctx.lineWidth = 4;
-              ctx.beginPath();
-              ctx.moveTo(s.x, s.y);
-              ctx.lineTo(lerp(s.x, target.x, prog), lerp(s.y, target.y, prog));
-              ctx.stroke();
-              // Satellite body + solar panels
-              ctx.save();
-              ctx.translate(s.x, s.y);
-              ctx.rotate(-0.22);
-              ctx.fillStyle = "#38BDF8";
-              ctx.shadowColor = "#38BDF8"; ctx.shadowBlur = 18;
-              ctx.fillRect(-34, -8, 22, 16);
-              ctx.fillRect(12, -8, 22, 16);
-              ctx.fillStyle = "#F4F1EA";
-              ctx.fillRect(-10, -11, 20, 22);
-              ctx.restore();
-            }
-            // Precision GPS target reticle
-            ctx.strokeStyle = "#38BDF8"; ctx.lineWidth = 3.5;
-            ctx.beginPath(); ctx.arc(target.x, target.y, 44 * prog, 0, Math.PI * 2); ctx.stroke();
-          }
-          ctx.restore();
-        } else if (layer.type === "culmination_sun") {
-          const target = map.project(layer.coord);
-          const zenith = easeInOutCubic(seg(t, tStart, tStart + 2.2));
-          const sunX = lerp(target.x - 160, target.x, zenith);
-          const sunY = H * 0.18;
-          ctx.save();
-          ctx.globalAlpha = baseAlpha;
-          // Golden zenith beam down to monument
-          const bg = ctx.createLinearGradient(sunX, sunY, target.x, target.y);
-          bg.addColorStop(0, "rgba(254, 240, 138, 0.72)");
-          bg.addColorStop(1, "rgba(254, 240, 138, 0.05)");
-          ctx.fillStyle = bg;
-          ctx.beginPath();
-          ctx.moveTo(sunX - 24, sunY);
-          ctx.lineTo(sunX + 24, sunY);
-          ctx.lineTo(target.x + 76, target.y);
-          ctx.lineTo(target.x - 76, target.y);
-          ctx.closePath();
-          ctx.fill();
-          // Shrinking shadow bar on ground (disappears at zenith!)
-          const shLen = lerp(130, 4, zenith);
-          ctx.strokeStyle = "rgba(3, 15, 22, 0.85)";
-          ctx.lineWidth = 14;
-          ctx.lineCap = "round";
-          ctx.beginPath(); ctx.moveTo(target.x, target.y); ctx.lineTo(target.x + shLen, target.y + shLen * 0.18); ctx.stroke();
-          // Radiant sun disc
-          const sg = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, 96);
-          sg.addColorStop(0, "#FFFFFF");
-          sg.addColorStop(0.32, "rgba(253, 224, 71, 0.95)");
-          sg.addColorStop(1, "rgba(245, 197, 66, 0)");
-          ctx.fillStyle = sg;
-          ctx.beginPath(); ctx.arc(sunX, sunY, 96, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
-          if (layer.label) {
-            drawGlowingText(layer.label, target.x, sunY + 110, 34, {
-              fill: "#FFFBEB",
-              glowHex: "#F5C542",
-              glowStrength: "luminous",
-              alpha: baseAlpha,
-            });
-          }
-        } else if (layer.type === "coord_plaque") {
-          const cx = W * (layer.x_pct ?? 0.5);
-          const cy = H * (layer.y_pct ?? 0.34);
-          const pop = easeOutBack(seg(t, tStart, tStart + 0.35));
-          ctx.save();
-          ctx.translate(cx, cy);
-          ctx.scale(clamp(pop, 0.85, 1.05), clamp(pop, 0.85, 1.05));
-          ctx.globalAlpha = baseAlpha;
-          // Engraved metallic archival plaque (authentic physical artifact, zero SaaS slop)
-          const pw = 660, ph = 180;
-          ctx.shadowColor = "rgba(0,0,0,0.68)"; ctx.shadowBlur = 32; ctx.shadowOffsetY = 14;
-          const pg = ctx.createLinearGradient(-pw / 2, -ph / 2, pw / 2, ph / 2);
-          pg.addColorStop(0, "#3A3124"); pg.addColorStop(0.5, "#5A4A33"); pg.addColorStop(1, "#2C241A");
-          ctx.fillStyle = pg;
-          ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = "#E5C17B"; ctx.lineWidth = 5;
-          ctx.strokeRect(-pw / 2 + 10, -ph / 2 + 10, pw - 20, ph - 20);
-          ctx.strokeStyle = "rgba(229,193,123,0.45)"; ctx.lineWidth = 2;
-          ctx.strokeRect(-pw / 2 + 20, -ph / 2 + 20, pw - 40, ph - 40);
-          // 4 brass rivets
-          ctx.fillStyle = "#F5D08A";
-          for (const [rx, ry] of [[-pw / 2 + 34, -ph / 2 + 34], [pw / 2 - 34, -ph / 2 + 34], [-pw / 2 + 34, ph / 2 - 34], [pw / 2 - 34, ph / 2 - 34]]) {
-            ctx.beginPath(); ctx.arc(rx, ry, 7, 0, Math.PI * 2); ctx.fill();
-          }
-          ctx.fillStyle = "#FFF3D1";
-          ctx.font = "900 54px 'Archivo Black', sans-serif";
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(layer.coord_text || "0° 00' 00\\"", 0, -14);
-          ctx.fillStyle = "#E5C17B";
-          ctx.font = "600 24px 'Space Grotesk', sans-serif";
-          ctx.fillText(layer.caption || "SURVEY COORDINATE PLAQUE", 0, 44);
-          ctx.restore();
         } else if (layer.type === "void_wipe") {
           const dir = layer.direction || "rtl";
           const wipeS = layer.wipe_s ?? tStart;
@@ -2999,9 +2753,25 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         }
       }
     } else {
+      const REJECTED_LAYERS = new Set([
+        "coord_plaque",
+        "scale_comparison",
+        "survey_pin",
+        "orbital_sightlines",
+        "culmination_sun",
+        "callout_badge",
+      ]);
+      for (const layer of act.layers || []) {
+        if (REJECTED_LAYERS.has(layer.type)) {
+          throw new Error(
+            `Rejected legacy chrome layer type "${layer.type}" in act "${act.act_id}". ` +
+            `Use calibrated boxless primitives instead (glow_label, pin_label, curved_pointer_label, dashed_distance, curved_arc_arrow, void_wipe, counter_odometer, ghost_overlay, prohibition_pins).`
+          );
+        }
+      }
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
-          tile_source: act.tile_source || "graded",
+          tile_source: act.tile_source || "hybrid",
           projection: act.projection || "mercator",
           terrain_3d: Boolean(act.terrain_3d),
           terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
