@@ -1876,7 +1876,9 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           ctx.setLineDash([]);
           ctx.restore();
           const labelAlpha = baseAlpha * easeOutCubic(seg(prog, 0.25, 0.7));
-          if (labelAlpha > 0.01 && layer.primary) {
+          const primaryTxt = layer.primary || layer.metric_label;
+          const secondaryTxt = layer.secondary || layer.imperial_label;
+          if (labelAlpha > 0.01 && primaryTxt) {
             const mx = (p1.x + p2.x) * 0.5 + (layer.dx || 0);
             const my = (p1.y + p2.y) * 0.5 + (layer.dy || 0);
             const fPx = layer.font_px || 54;
@@ -1890,7 +1892,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             ctx.save();
             ctx.translate(mx, my);
             if (angRad) ctx.rotate(angRad);
-            drawGlowingText(String(layer.primary), 0, -fPx * 0.25, fPx, {
+            drawGlowingText(String(primaryTxt), 0, -fPx * 0.25, fPx, {
               fill: lblCol,
               glowHex: "#03161F",
               glowStrength: "subtle",
@@ -1898,8 +1900,8 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
               family: "Rubik",
               weight: 900,
             });
-            if (layer.secondary) {
-              drawGlowingText(String(layer.secondary), 0, fPx * 0.55, Math.round(fPx * 0.58), {
+            if (secondaryTxt) {
+              drawGlowingText(String(secondaryTxt), 0, fPx * 0.55, Math.round(fPx * 0.58), {
                 fill: lblCol,
                 glowHex: "#03161F",
                 glowStrength: "subtle",
