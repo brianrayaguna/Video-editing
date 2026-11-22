@@ -906,10 +906,13 @@ function injectOverlayTrackKeyframes(
     dy: Number((((kf.y_pct - baseY) / 100) * height).toFixed(2)),
     scale: kf.scale ?? 1,
     rotation: kf.rotation_deg ?? 0,
+    rotationX: kf.rotateX_deg ?? 0,
+    perspective: kf.perspective_px ?? 0,
     opacity: kf.opacity ?? 1,
   }));
   const originX = Number(((baseX / 100) * width).toFixed(1));
   const originY = Number(((baseY / 100) * height).toFixed(1));
+  const has3d = payload.some((k) => Math.abs(k.rotationX) > 0.01 || k.perspective > 0);
   const trackScript = `
   <script data-vedit-object-track="true">
     (function() {
@@ -921,7 +924,13 @@ function injectOverlayTrackKeyframes(
         x: kfs[0].dx,
         y: kfs[0].dy,
         scale: kfs[0].scale,
-        rotation: kfs[0].rotation,
+        rotation: kfs[0].rotation,${
+          has3d
+            ? `
+        rotationX: kfs[0].rotationX,
+        transformPerspective: kfs[0].perspective || 1600,`
+            : ""
+        }
         opacity: kfs[0].opacity
       });
       var trackTl = gsap.timeline({ paused: true });
@@ -933,7 +942,13 @@ function injectOverlayTrackKeyframes(
           x: curr.dx,
           y: curr.dy,
           scale: curr.scale,
-          rotation: curr.rotation,
+          rotation: curr.rotation,${
+            has3d
+              ? `
+          rotationX: curr.rotationX,
+          transformPerspective: curr.perspective || 1600,`
+              : ""
+          }
           opacity: curr.opacity,
           duration: segDur,
           ease: "none"

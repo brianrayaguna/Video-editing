@@ -84,7 +84,7 @@ function parseArgs(argv) {
 
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
   const tileRoute = mapOpts.tile_source === "realistic" ? "/tiles_hq/{z}/{x}/{y}.jpg" : "/tiles/{z}/{x}/{y}.jpg";
-  const satMaxZoom = mapOpts.tile_source === "realistic" ? 15 : 9;
+  const satMaxZoom = mapOpts.tile_source === "realistic" ? 17 : 17;
   const terrain3d = Boolean(mapOpts.terrain_3d);
   const terrainExag = Number(mapOpts.terrain_exaggeration ?? 2.4);
   const demMaxZoom = Number(mapOpts.dem_maxzoom ?? 10);
@@ -101,6 +101,21 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       font-weight: 100 900;
     }
     @font-face {
+      font-family: "Rubik";
+      src: url("${baseUrl}/fonts/Rubik-Bold.ttf") format("truetype");
+      font-weight: 700;
+    }
+    @font-face {
+      font-family: "Rubik";
+      src: url("${baseUrl}/fonts/Rubik-ExtraBold.ttf") format("truetype");
+      font-weight: 800;
+    }
+    @font-face {
+      font-family: "Rubik";
+      src: url("${baseUrl}/fonts/Rubik-Black.ttf") format("truetype");
+      font-weight: 900;
+    }
+    @font-face {
       font-family: "Archivo Black";
       src: url("${baseUrl}/fonts/ArchivoBlack-Regular.ttf") format("truetype");
       font-weight: 400 900;
@@ -112,15 +127,18 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #083847; }
-    #map, #ov, #comp { position: absolute; inset: 0; width: ${width}px; height: ${height}px; }
+    #stage, #map, #ov, #comp { position: absolute; inset: 0; width: ${width}px; height: ${height}px; }
+    #stage { transform-origin: 50% 50%; will-change: transform; }
     #ov, #comp { pointer-events: none; }
     #comp { display: none; }
     .maplibregl-control-container { display: none !important; }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <canvas id="ov" width="${width}" height="${height}"></canvas>
+  <div id="stage">
+    <div id="map"></div>
+    <canvas id="ov" width="${width}" height="${height}"></canvas>
+  </div>
   <canvas id="comp" width="${width}" height="${height}"></canvas>
   <script>
     const BASE_URL = ${JSON.stringify(baseUrl)};
@@ -192,6 +210,27 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     const rimCtx = rimCanvas.getContext("2d");
 
     window.__ready = new Promise((res) => map.on("load", () => res()));
+    window.__imgCache = Object.create(null);
+    window.__preloadAssets = async function(urls) {
+      const unique = [...new Set((urls || []).filter(Boolean))];
+      await Promise.all(unique.map((u) => new Promise((resolve) => {
+        if (window.__imgCache[u]) { resolve(); return; }
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          // Rasterize SVG into a crisp fixed-size offscreen canvas so drawImage slicing works reliably
+          const c = document.createElement("canvas");
+          c.width = 360;
+          c.height = 240;
+          const cx = c.getContext("2d");
+          cx.drawImage(img, 0, 0, c.width, c.height);
+          window.__imgCache[u] = c;
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = u;
+      })));
+    };
     window.__waitIdle = function(ms) {
       return new Promise((res) => {
         if (map.loaded() && map.areTilesLoaded()) {
@@ -284,8 +323,8 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       return "rgba(" + r + "," + g + "," + b + "," + clamp(alpha, 0, 1).toFixed(3) + ")";
     }
 
-    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter reveal
-    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0 } = {}) {
+    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter reveal + optional diagonal hatch & flash surge
+    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0 } = {}) {
       if (alpha <= 0.005 || !geom) return;
 
       // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
@@ -318,19 +357,21 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         ctx.rect(0, 0, W, H * clamp(borderReveal, 0, 1));
         ctx.clip();
       }
-      if (bloomHex && bloomScale > 0) {
+      const effBloomHex = (flashHex && flashIntensity > 0.01) ? flashHex : bloomHex;
+      const effBloomScale = bloomScale + flashIntensity * 1.15;
+      if (effBloomHex && effBloomScale > 0) {
         rimCtx.globalCompositeOperation = "source-in";
-        rimCtx.fillStyle = bloomHex;
+        rimCtx.fillStyle = effBloomHex;
         rimCtx.fillRect(0, 0, W, H);
         const passes = [
-          [42 * bloomScale, 0.45],
-          [20 * bloomScale, 0.65],
-          [8 * bloomScale, 0.80],
+          [42 * effBloomScale, Math.min(0.95, 0.45 + flashIntensity * 0.45)],
+          [20 * effBloomScale, Math.min(0.98, 0.65 + flashIntensity * 0.30)],
+          [8 * effBloomScale, Math.min(1.0, 0.80 + flashIntensity * 0.20)],
         ];
         for (const [blurPx, a] of passes) {
           ctx.save();
           ctx.globalAlpha = alpha * a;
-          ctx.shadowColor = bloomHex;
+          ctx.shadowColor = effBloomHex;
           ctx.shadowBlur = blurPx;
           ctx.drawImage(rimCanvas, 0, 0);
           ctx.restore();
@@ -340,7 +381,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       // 4. Crisp exterior rim (animated by borderReveal)
       if (rimHex && rimWidth > 0) {
         rimCtx.globalCompositeOperation = "source-in";
-        rimCtx.fillStyle = rimHex;
+        rimCtx.fillStyle = (flashHex && flashIntensity > 0.25) ? "#FFFFFF" : rimHex;
         rimCtx.fillRect(0, 0, W, H);
         ctx.globalCompositeOperation = "source-over";
         ctx.globalAlpha = alpha * 0.92;
@@ -358,10 +399,46 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         rimCtx.fillRect(0, 0, W, H);
 
         ctx.save();
-        ctx.globalCompositeOperation = preserveTerrain ? "source-over" : "source-over";
+        ctx.globalCompositeOperation = "source-over";
         ctx.globalAlpha = alpha * fillAlpha * clamp(fillReveal, 0, 1);
         ctx.drawImage(rimCanvas, 0, 0);
         ctx.restore();
+
+        // Optional 45-degree forward-slash (/) diagonal stripe hatch clipped cleanly to polygon silhouette
+        if (hatch) {
+          rimCtx.clearRect(0, 0, W, H);
+          rimCtx.globalCompositeOperation = "source-over";
+          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.globalCompositeOperation = "source-in";
+          rimCtx.strokeStyle = hatchColor;
+          rimCtx.lineWidth = hatchWidth;
+          rimCtx.beginPath();
+          const diag = W + H;
+          for (let x = -H; x < diag; x += hatchSpacing) {
+            rimCtx.moveTo(x, H);
+            rimCtx.lineTo(x + H, 0);
+          }
+          rimCtx.stroke();
+          ctx.save();
+          ctx.globalAlpha = alpha * clamp(fillReveal, 0, 1);
+          ctx.drawImage(rimCanvas, 0, 0);
+          ctx.restore();
+        }
+
+        // Optional ownership tint-flash surge over interior silhouette
+        if (flashHex && flashIntensity > 0.01) {
+          rimCtx.clearRect(0, 0, W, H);
+          rimCtx.globalCompositeOperation = "source-over";
+          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.globalCompositeOperation = "source-in";
+          rimCtx.fillStyle = flashHex;
+          rimCtx.fillRect(0, 0, W, H);
+          ctx.save();
+          ctx.globalCompositeOperation = "screen";
+          ctx.globalAlpha = alpha * Math.min(0.85, flashIntensity * 0.72);
+          ctx.drawImage(rimCanvas, 0, 0);
+          ctx.restore();
+        }
       }
     }
 
@@ -433,12 +510,33 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.restore();
     }
 
-    // Multi-ring luminous text glow (3 outer halo rings + crisp readability drop shadow)
-    function drawGlowingText(text, x, y, fontPx, { fill = "#FFFFFF", glowHex = "#22C55E", glowStrength = "luminous", angle = 0, alpha = 1, family = "Space Grotesk", weight = 800 } = {}) {
-      if (alpha <= 0.005) return;
+    // Local 2x2 MapLibre projection Jacobian (dScreen/dEast, dScreen/dSouth) for 3D surface-locked overlays
+    function getMapPlaneMatrix(coord, refZoom = 5.0) {
+      const [lng, lat] = coord;
+      const p0 = map.project([lng, lat]);
+      const cosLat = Math.max(0.15, Math.cos((lat * Math.PI) / 180));
+      const degPerPxAtRef = 360 / (512 * Math.pow(2, refZoom));
+      const dLng = degPerPxAtRef * 100;
+      const dLat = dLng * cosLat;
+      const pEast = map.project([lng + dLng, lat]);
+      const pSouth = map.project([lng, lat - dLat]);
+      return {
+        a: (pEast.x - p0.x) / 100,
+        b: (pEast.y - p0.y) / 100,
+        c: (pSouth.x - p0.x) / 100,
+        d: (pSouth.y - p0.y) / 100,
+        e: p0.x,
+        f: p0.y,
+      };
+    }
+
+    // Multi-ring luminous text glow with continuous sub-pixel transform scaling (zero 1px font-step jitter)
+    function drawGlowingText(text, x, y, fontPx, { fill = "#FFFFFF", glowHex = "#22C55E", glowStrength = "luminous", angle = 0, scale = 1.0, alpha = 1, family = "Space Grotesk", weight = 800 } = {}) {
+      if (alpha <= 0.005 || scale <= 0.01) return;
       ctx.save();
       ctx.translate(x, y);
       if (angle) ctx.rotate(angle);
+      if (Math.abs(scale - 1.0) > 1e-4) ctx.scale(scale, scale);
       ctx.font = weight + " " + Math.round(fontPx) + "px '" + family + "', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -831,8 +929,37 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           const fillReveal = layer.fill_draw_s
             ? easeOutCubic(seg(t, tStart, tStart + layer.fill_draw_s))
             : 1.0;
+          let flashHex = null;
+          let flashIntensity = 0;
+          for (const fl of layer.flashes || []) {
+            const fd = fl.duration_s ?? 0.65;
+            if (t >= fl.at_s && t <= fl.at_s + fd) {
+              const u = clamp((t - fl.at_s) / fd, 0, 1);
+              const val = Math.sin(u * Math.PI) * (fl.intensity ?? 1.0);
+              if (val > flashIntensity) {
+                flashIntensity = val;
+                flashHex = fl.hex || fillHex;
+              }
+            }
+          }
           if (layer.dissolve) {
-            drawDissolvedPolygon(geom, { fillHex, fillAlpha, rimHex, rimWidth, bloomHex, bloomScale, alpha: baseAlpha, borderReveal, fillReveal });
+            drawDissolvedPolygon(geom, {
+              fillHex,
+              fillAlpha,
+              rimHex,
+              rimWidth,
+              bloomHex,
+              bloomScale,
+              alpha: baseAlpha,
+              borderReveal,
+              fillReveal,
+              hatch: Boolean(layer.hatch),
+              hatchColor: layer.hatch_color || "rgba(255,255,255,0.24)",
+              hatchSpacing: layer.hatch_spacing ?? 22,
+              hatchWidth: layer.hatch_width ?? 6,
+              flashHex,
+              flashIntensity,
+            });
           } else {
             drawStandardPolygon(geom, { fillHex, fillAlpha, rimHex, rimWidth, bloomHex, bloomScale, alpha: baseAlpha });
           }
@@ -863,7 +990,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             }
           }
         } else if (layer.type === "glow_label") {
-          const pt = map.project(layer.coord);
+          const space = layer.space || (layer.ref_zoom != null ? "map_plane" : "world_billboard");
           let sc = layer.pop_scale ? lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.35))) : 1.0;
           let yFly = 0;
           if (layer.fly_through) {
@@ -876,13 +1003,44 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             ? lerp(layer.angle_start || 0, layer.angle_end, seg(t, tStart, tEnd))
             : (layer.angle || 0);
           const angRad = angDeg * Math.PI / 180;
-          drawGlowingText(layer.text, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, (layer.font_px || 64) * sc, {
-            fill: layer.fill || "#FFFFFF",
-            glowHex: layer.glow_hex || "#22C55E",
-            glowStrength: layer.glow_strength || "luminous",
-            angle: angRad,
-            alpha: baseAlpha,
-          });
+          const baseFont = layer.font_px || 64;
+          if (space === "map_plane" && layer.coord && !layer.fly_through) {
+            const m = getMapPlaneMatrix(layer.coord, layer.ref_zoom ?? map.getZoom());
+            const mag = Math.hypot(m.a, m.b);
+            const minSc = layer.min_scale ?? 0.35;
+            const maxSc = layer.max_scale ?? 3.2;
+            const clampFactor = mag > 1e-4 ? clamp(mag, minSc, maxSc) / mag : 1.0;
+            ctx.save();
+            ctx.transform(m.a * clampFactor, m.b * clampFactor, m.c * clampFactor, m.d * clampFactor, m.e, m.f);
+            drawGlowingText(layer.text, layer.dx || 0, layer.dy || 0, baseFont, {
+              fill: layer.fill || "#FFFFFF",
+              glowHex: layer.glow_hex || "#22C55E",
+              glowStrength: layer.glow_strength || "luminous",
+              angle: angRad,
+              scale: sc,
+              alpha: baseAlpha,
+              family: layer.family || "Rubik",
+              weight: layer.weight || 800,
+            });
+            ctx.restore();
+          } else {
+            const pt = map.project(layer.coord);
+            if (layer.ref_zoom != null) {
+              const coupling = layer.scale_coupling ?? 0.45;
+              const zScale = Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling);
+              sc *= clamp(zScale, layer.min_scale ?? 0.45, layer.max_scale ?? 2.4);
+            }
+            drawGlowingText(layer.text, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, baseFont, {
+              fill: layer.fill || "#FFFFFF",
+              glowHex: layer.glow_hex || "#22C55E",
+              glowStrength: layer.glow_strength || "luminous",
+              angle: angRad,
+              scale: sc,
+              alpha: baseAlpha,
+              family: layer.family || "Rubik",
+              weight: layer.weight || 800,
+            });
+          }
         } else if (layer.type === "crimson_x") {
           const pt = map.project(layer.coord);
           const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
@@ -1303,15 +1461,515 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           ctx.font = "600 24px 'Space Grotesk', sans-serif";
           ctx.fillText(layer.caption || "SURVEY COORDINATE PLAQUE", 0, 44);
           ctx.restore();
+        } else if (layer.type === "void_wipe") {
+          const dir = layer.direction || "rtl";
+          const wipeS = layer.wipe_s ?? tStart;
+          const wipeDur = layer.wipe_duration_s ?? 0.28;
+          const unwipeS = layer.unwipe_s ?? (tEnd - 0.35);
+          const unwipeDur = layer.unwipe_duration_s ?? 0.32;
+          const pIn = easeInOutCubic(seg(t, wipeS, wipeS + wipeDur));
+          const pOut = layer.unwipe_s != null ? easeInOutCubic(seg(t, unwipeS, unwipeS + unwipeDur)) : 0;
+          const voidAlpha = (layer.void_alpha ?? 0.88) * baseAlpha * (1 - pOut);
+          if (voidAlpha > 0.005 && pIn > 0.001) {
+            ctx.save();
+            ctx.fillStyle = rgbaStr(layer.void_hex || "#0C0E11", voidAlpha);
+            let barX = -100;
+            if (dir === "rtl") {
+              const x0 = lerp(W, 0, pIn);
+              ctx.fillRect(x0, 0, W - x0, H);
+              barX = x0;
+            } else {
+              const w0 = lerp(0, W, pIn);
+              ctx.fillRect(0, 0, w0, H);
+              barX = w0;
+            }
+            if (pIn > 0.01 && pIn < 0.995) {
+              ctx.save();
+              ctx.shadowColor = layer.bar_glow || "#FFFFFF";
+              ctx.shadowBlur = 28;
+              ctx.fillStyle = "#FFFFFF";
+              ctx.globalAlpha = baseAlpha * Math.sin(pIn * Math.PI);
+              ctx.fillRect(barX - 4, 0, 8, H);
+              ctx.restore();
+            }
+            ctx.restore();
+          }
+        } else if (layer.type === "flag_pin") {
+          const code = String(layer.code || "es").toLowerCase();
+          const img = window.__imgCache[BASE_URL + "/flags/" + code + ".svg"];
+          if (img) {
+            const pop = easeOutBack(seg(t, tStart, tStart + 0.30));
+            const popSc = clamp(pop, 0, 1.15);
+            const space = layer.space || "world_billboard";
+            const fwBase = layer.width_px || 136;
+            const fhBase = fwBase * (layer.aspect ?? 0.667);
+            ctx.save();
+            ctx.globalAlpha = baseAlpha;
+            if (space === "map_plane" && layer.coord) {
+              const m = getMapPlaneMatrix(layer.coord, layer.ref_zoom ?? map.getZoom());
+              const mag = Math.hypot(m.a, m.b);
+              const cf = mag > 1e-4 ? clamp(mag, layer.min_scale ?? 0.35, layer.max_scale ?? 2.8) / mag : 1.0;
+              ctx.transform(m.a * cf, m.b * cf, m.c * cf, m.d * cf, m.e, m.f);
+              ctx.translate(layer.dx || 0, layer.dy || 0);
+              if (layer.angle) ctx.rotate((layer.angle * Math.PI) / 180);
+              ctx.scale(popSc, popSc);
+            } else {
+              const pt = map.project(layer.coord);
+              const coupling = layer.scale_coupling ?? 0.45;
+              const zoomScale = layer.ref_zoom != null
+                ? clamp(Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling), layer.min_scale ?? 0.45, layer.max_scale ?? 2.4)
+                : 1.0;
+              ctx.translate(pt.x + (layer.dx || 0), pt.y + (layer.dy || 0));
+              if (layer.angle) ctx.rotate((layer.angle * Math.PI) / 180);
+              ctx.scale(zoomScale * popSc, zoomScale * popSc);
+            }
+            const fx = -fwBase * 0.5;
+            const fy = -fhBase * 0.5;
+            ctx.shadowColor = "rgba(0,0,0,0.62)";
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetY = 6;
+            if (layer.wave === true) {
+              const slices = 18;
+              const sw = img.width / slices;
+              const dw = fwBase / slices;
+              for (let i = 0; i < slices; i++) {
+                const ph = (i / slices) * Math.PI * 2.2 - tLoc * 5.2;
+                const dyW = Math.sin(ph) * (fhBase * 0.055) * (0.2 + 0.8 * (i / slices));
+                ctx.drawImage(img, i * sw, 0, sw + 0.5, img.height, fx + i * dw, fy + dyW, dw + 0.8, fhBase);
+              }
+            } else {
+              const bw = layer.border_px ?? 4;
+              ctx.fillStyle = layer.border_color || "#FFFFFF";
+              ctx.fillRect(fx - bw, fy - bw, fwBase + bw * 2, fhBase + bw * 2);
+              ctx.shadowBlur = 0;
+              ctx.drawImage(img, fx, fy, fwBase, fhBase);
+            }
+            ctx.restore();
+          }
+        } else if (layer.type === "dashed_distance") {
+          const p1 = map.project(layer.from);
+          const p2 = map.project(layer.to);
+          const prog = layer.draw_s ? easeOutCubic(seg(t, tStart, tStart + layer.draw_s)) : 1.0;
+          const qx = lerp(p1.x, p2.x, prog);
+          const qy = lerp(p1.y, p2.y, prog);
+          const col = layer.color || "#FDE047";
+          ctx.save();
+          ctx.globalAlpha = baseAlpha;
+          ctx.lineCap = "butt";
+          ctx.setLineDash(layer.dash || [16, 12]);
+          ctx.strokeStyle = col;
+          ctx.shadowColor = "rgba(0,0,0,0.75)";
+          ctx.shadowBlur = 10;
+          ctx.lineWidth = layer.width || 7;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(qx, qy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+          const labelAlpha = baseAlpha * easeOutCubic(seg(prog, 0.25, 0.7));
+          if (labelAlpha > 0.01 && layer.primary) {
+            const mx = (p1.x + p2.x) * 0.5 + (layer.dx || 0);
+            const my = (p1.y + p2.y) * 0.5 + (layer.dy || 0);
+            const fPx = layer.font_px || 54;
+            let angRad = ((layer.angle_deg ?? 0) * Math.PI) / 180;
+            if (layer.align_to_line) {
+              angRad = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+              if (angRad > Math.PI / 2) angRad -= Math.PI;
+              if (angRad < -Math.PI / 2) angRad += Math.PI;
+            }
+            const lblCol = layer.label_color || col;
+            ctx.save();
+            ctx.translate(mx, my);
+            if (angRad) ctx.rotate(angRad);
+            drawGlowingText(String(layer.primary), 0, -fPx * 0.25, fPx, {
+              fill: lblCol,
+              glowHex: "#03161F",
+              glowStrength: "subtle",
+              alpha: labelAlpha,
+              family: "Rubik",
+              weight: 900,
+            });
+            if (layer.secondary) {
+              drawGlowingText(String(layer.secondary), 0, fPx * 0.55, Math.round(fPx * 0.58), {
+                fill: lblCol,
+                glowHex: "#03161F",
+                glowStrength: "subtle",
+                alpha: labelAlpha * 0.96,
+                family: "Rubik",
+                weight: 800,
+              });
+            }
+            ctx.restore();
+          }
+        } else if (layer.type === "curved_arc_arrow") {
+          const p1 = map.project(layer.from);
+          const p2 = map.project(layer.to);
+          const prog = layer.draw_s ? easeOutCubic(seg(t, tStart, tStart + layer.draw_s)) : 1.0;
+          if (prog > 0.01) {
+            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+            const len = Math.max(1, Math.hypot(dx, dy));
+            const nx = -dy / len, ny = dx / len;
+            const bend = layer.arc_offset_px != null ? layer.arc_offset_px : len * (layer.arc_ratio ?? 0.26);
+            const cx = (p1.x + p2.x) * 0.5 + nx * bend;
+            const cy = (p1.y + p2.y) * 0.5 + ny * bend;
+            const steps = 40;
+            const maxI = Math.max(2, Math.round(steps * prog));
+            const pts = [];
+            for (let i = 0; i <= maxI; i++) {
+              const u = (i / steps);
+              const inv = 1 - u;
+              pts.push({
+                x: inv * inv * p1.x + 2 * inv * u * cx + u * u * p2.x,
+                y: inv * inv * p1.y + 2 * inv * u * cy + u * u * p2.y,
+              });
+            }
+            const col = layer.color || "#EF4444";
+            const bloom = layer.bloom || col;
+            const w = layer.width || 9;
+            ctx.save();
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            const traceArc = () => {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            };
+            ctx.strokeStyle = bloom; ctx.globalAlpha = baseAlpha * 0.38; ctx.lineWidth = w * 2.4; traceArc(); ctx.stroke();
+            ctx.strokeStyle = col; ctx.globalAlpha = baseAlpha; ctx.lineWidth = w; traceArc(); ctx.stroke();
+            // Arrowhead at tip
+            const tip = pts[pts.length - 1];
+            const prev = pts[Math.max(0, pts.length - 2)];
+            const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+            const ah = Math.max(20, w * 2.6);
+            ctx.translate(tip.x, tip.y);
+            ctx.rotate(ang);
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.moveTo(ah * 0.35, 0);
+            ctx.lineTo(-ah, -ah * 0.58);
+            ctx.lineTo(-ah * 0.65, 0);
+            ctx.lineTo(-ah, ah * 0.58);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+        } else if (layer.type === "ghost_overlay") {
+          const geom = resolveGeom(layer.geom_ref);
+          if (geom) {
+            const slideP = layer.slide_s ? easeOutCubic(seg(t, tStart, tStart + layer.slide_s)) : 1.0;
+            const dxSlide = lerp(layer.slide_from_dx ?? -420, layer.dx ?? 0, slideP);
+            const dySlide = lerp(layer.slide_from_dy ?? 0, layer.dy ?? 0, slideP);
+            ctx.save();
+            ctx.translate(dxSlide, dySlide);
+            drawDissolvedPolygon(geom, {
+              fillHex: layer.fill_hex || "#38BDF8",
+              fillAlpha: layer.fill_alpha ?? 0.42,
+              rimHex: layer.rim_hex || "#BAE6FD",
+              rimWidth: layer.rim_width ?? 2.8,
+              bloomHex: layer.bloom_hex || "#38BDF8",
+              bloomScale: layer.bloom_scale ?? 0.85,
+              alpha: baseAlpha,
+            });
+            if (layer.label && layer.label_coord) {
+              const lp = map.project(layer.label_coord);
+              drawGlowingText(String(layer.label), lp.x + (layer.label_dx || 0), lp.y + (layer.label_dy || -90), layer.font_px || 54, {
+                fill: "#E0F2FE",
+                glowHex: layer.bloom_hex || "#38BDF8",
+                glowStrength: "luminous",
+                alpha: baseAlpha * slideP,
+                family: "Rubik",
+                weight: 800,
+              });
+            }
+            ctx.restore();
+          }
+        } else if (layer.type === "counter_odometer") {
+          const steps = layer.steps || [{ at_s: tStart, value: "0" }];
+          const flyP = easeOutBack(seg(t, tStart, tStart + (layer.fly_up_s ?? 0.28)));
+          const cx = W * (layer.x_pct ?? 0.5);
+          const cy = H * (layer.y_pct ?? 0.22) + lerp(280, 0, clamp(flyP, 0, 1.06));
+          const fPx = layer.font_px || 152;
+          let curIdx = 0;
+          for (let i = 0; i < steps.length; i++) {
+            if (t >= steps[i].at_s) curIdx = i;
+          }
+          const curStep = steps[curIdx];
+          const prevStep = curIdx > 0 ? steps[curIdx - 1] : null;
+          const rollDur = layer.roll_s ?? 0.14;
+          const rollP = prevStep ? easeOutCubic(seg(t, curStep.at_s, curStep.at_s + rollDur)) : 1.0;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(((layer.angle_deg ?? -7) * Math.PI) / 180);
+          ctx.beginPath();
+          ctx.rect(-fPx * 1.6, -fPx * 0.72, fPx * 3.2, fPx * 1.44);
+          ctx.clip();
+          if (prevStep && rollP < 0.995) {
+            drawGlowingText(String(prevStep.value), 0, lerp(0, -fPx * 1.15, rollP), fPx, {
+              fill: layer.fill || "#FDE047",
+              glowHex: layer.glow_hex || "#F59E0B",
+              glowStrength: "intense",
+              alpha: baseAlpha * (1 - rollP),
+              family: "Rubik",
+              weight: 900,
+            });
+          }
+          drawGlowingText(String(curStep.value), 0, lerp(fPx * 1.15, 0, rollP), fPx, {
+            fill: layer.fill || "#FDE047",
+            glowHex: layer.glow_hex || "#F59E0B",
+            glowStrength: "intense",
+            alpha: baseAlpha,
+            family: "Rubik",
+            weight: 900,
+          });
+          ctx.restore();
+        } else if (layer.type === "callout_badge") {
+          const anchor = layer.coord ? map.project(layer.coord) : { x: W * (layer.x_pct ?? 0.5), y: H * (layer.y_pct ?? 0.22) };
+          const bx = anchor.x + (layer.dx || 0);
+          const by = anchor.y + (layer.dy || 0);
+          const pop = easeOutBack(seg(t, tStart, tStart + 0.28));
+          const sc = clamp(pop, 0.01, 1.12);
+          const fPx = layer.font_px || 40;
+          if (layer.pointer_coord) {
+            const tp = map.project(layer.pointer_coord);
+            ctx.save();
+            ctx.globalAlpha = baseAlpha * clamp(pop, 0, 1);
+            ctx.strokeStyle = layer.pointer_color || "#FFFFFF";
+            ctx.lineWidth = 6;
+            ctx.lineCap = "round";
+            ctx.shadowColor = "rgba(0,0,0,0.65)"; ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(tp.x, tp.y);
+            ctx.stroke();
+            const ang = Math.atan2(tp.y - by, tp.x - bx);
+            ctx.translate(tp.x, tp.y);
+            ctx.rotate(ang);
+            ctx.fillStyle = layer.pointer_color || "#FFFFFF";
+            ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-18, -11); ctx.lineTo(-18, 11); ctx.closePath(); ctx.fill();
+            ctx.restore();
+          }
+          ctx.save();
+          ctx.translate(bx, by);
+          ctx.rotate(((layer.angle_deg ?? 0) * Math.PI) / 180);
+          ctx.scale(sc, sc);
+          ctx.globalAlpha = baseAlpha;
+          ctx.font = "800 " + fPx + "px 'Rubik', sans-serif";
+          const tw = ctx.measureText(String(layer.text || "")).width;
+          const padX = Math.round(fPx * 0.62), padY = Math.round(fPx * 0.34);
+          const rw = tw + padX * 2, rh = fPx + padY * 2;
+          ctx.shadowColor = "rgba(0,0,0,0.58)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+          ctx.fillStyle = layer.bg_hex || "#991B1B";
+          ctx.beginPath();
+          ctx.roundRect(-rw / 2, -rh / 2, rw, rh, layer.radius ?? Math.round(rh * 0.38));
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          if (layer.border_hex) {
+            ctx.strokeStyle = layer.border_hex;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+          ctx.fillStyle = layer.text_hex || "#FFFFFF";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(layer.text || ""), 0, 2);
+          ctx.restore();
+        } else if (layer.type === "question_arc") {
+          const pt = map.project(layer.coord);
+          const count = layer.count || 5;
+          const spread = layer.spread_px || 260;
+          const lift = layer.arc_lift_px || 52;
+          const stagger = layer.stagger_s || 0.08;
+          for (let i = 0; i < count; i++) {
+            const it = tStart + i * stagger;
+            if (t < it) continue;
+            const pop = easeOutBack(seg(t, it, it + 0.24));
+            const frac = count > 1 ? i / (count - 1) - 0.5 : 0;
+            const qx = pt.x + (layer.dx || 0) + frac * spread;
+            const qy = pt.y + (layer.dy || -80) - Math.cos(frac * Math.PI) * lift;
+            drawGlowingText("?", qx, qy, Math.round((layer.font_px || 66) * clamp(pop, 0, 1.15)), {
+              fill: layer.fill || "#FDE047",
+              glowHex: layer.glow_hex || "#F59E0B",
+              glowStrength: "intense",
+              angle: frac * 0.35,
+              alpha: baseAlpha,
+              family: "Rubik",
+              weight: 900,
+            });
+          }
+        } else if (layer.type === "shifting_route") {
+          const coordsA = resolveGeom(layer.coords_a_ref) || layer.coords_a || [];
+          const coordsB = resolveGeom(layer.coords_b_ref) || layer.coords_b || [];
+          if (coordsA.length >= 2 && coordsA.length === coordsB.length) {
+            const shiftU = layer.shift_start_s != null
+              ? easeInOutCubic(seg(t, layer.shift_start_s, layer.shift_end_s ?? (layer.shift_start_s + 0.55)))
+              : 0;
+            const blended = coordsA.map((c, idx) => [
+              lerp(c[0], coordsB[idx][0], shiftU),
+              lerp(c[1], coordsB[idx][1], shiftU),
+            ]);
+            const prog = layer.draw_duration_s ? easeOutCubic(seg(t, tStart, tStart + layer.draw_duration_s)) : 1.0;
+            drawPartialRoute(blended, prog, {
+              color: layer.color || "#FDE047",
+              bloom: layer.bloom || "#F5C542",
+              core: layer.core ?? "#FFFFFF",
+              width: layer.width || 9,
+              dash: layer.dash || null,
+              alpha: baseAlpha,
+            });
+          }
+        } else if (layer.type === "curved_pointer_label") {
+          const anchor = layer.coord ? map.project(layer.coord) : { x: W * (layer.x_pct ?? 0.5), y: H * (layer.y_pct ?? 0.25) };
+          const bx = anchor.x + (layer.dx || 0);
+          const by = anchor.y + (layer.dy || 0);
+          const pop = easeOutCubic(seg(t, tStart, tStart + 0.28));
+          const fPx = layer.font_px || 64;
+          const lines = layer.lines || [String(layer.text || "")];
+          const lineH = Math.round(fPx * 1.12);
+          ctx.save();
+          ctx.translate(bx, by);
+          ctx.rotate(((layer.angle_deg ?? 0) * Math.PI) / 180);
+          ctx.globalAlpha = baseAlpha * pop;
+          ctx.font = "900 " + fPx + "px 'Rubik', sans-serif";
+          ctx.textBaseline = "middle";
+          for (let li = 0; li < lines.length; li++) {
+            const ly = (li - (lines.length - 1) * 0.5) * lineH;
+            const ln = String(lines[li]);
+            if (li === 0 && layer.highlight_prefix && ln.startsWith(layer.highlight_prefix)) {
+              const pre = layer.highlight_prefix;
+              const rest = ln.slice(pre.length);
+              const wPre = ctx.measureText(pre).width;
+              const wTot = ctx.measureText(ln).width;
+              const x0 = -wTot * 0.5;
+              // Red/neon radial glow behind highlighted prefix word (e.g. "NOT")
+              const glowCol = layer.highlight_glow || "#EF4444";
+              for (const [blurR, a] of [[fPx * 0.9, 0.72], [fPx * 0.45, 0.92], [fPx * 0.18, 1.0]]) {
+                ctx.save();
+                ctx.globalAlpha = baseAlpha * pop * a;
+                ctx.shadowColor = glowCol;
+                ctx.shadowBlur = blurR;
+                ctx.fillStyle = "#FFFFFF";
+                ctx.textAlign = "left";
+                ctx.fillText(pre, x0, ly);
+                ctx.restore();
+              }
+              ctx.save();
+              ctx.globalAlpha = baseAlpha * pop;
+              ctx.shadowColor = "rgba(0,0,0,0.85)";
+              ctx.shadowBlur = 12;
+              ctx.shadowOffsetY = 3;
+              ctx.fillStyle = "#FFFFFF";
+              ctx.textAlign = "left";
+              ctx.fillText(pre, x0, ly);
+              ctx.fillText(rest, x0 + wPre, ly);
+              ctx.restore();
+            } else {
+              drawGlowingText(ln, 0, ly, fPx, {
+                fill: layer.fill || "#FFFFFF",
+                glowHex: "#03161F",
+                glowStrength: "subtle",
+                alpha: baseAlpha * pop,
+                family: "Rubik",
+                weight: 900,
+              });
+            }
+          }
+          ctx.restore();
+          // Graceful hand-drawn curved white Bezier arrow with open chevron tip
+          if (layer.pointer_coord) {
+            const tp = map.project(layer.pointer_coord);
+            const sx = bx + (layer.arrow_start_dx || 0);
+            const sy = by + (layer.arrow_start_dy ?? Math.round(lines.length * lineH * 0.5 + 14));
+            const arrowProg = easeOutCubic(seg(t, tStart + 0.08, tStart + 0.44));
+            if (arrowProg > 0.01) {
+              const dx = tp.x - sx, dy = tp.y - sy;
+              const len = Math.max(1, Math.hypot(dx, dy));
+              const nx = -dy / len, ny = dx / len;
+              const bend = layer.arrow_bend_px ?? (len * 0.24);
+              const cx = (sx + tp.x) * 0.5 + nx * bend;
+              const cy = (sy + tp.y) * 0.5 + ny * bend;
+              const steps = 32;
+              const maxI = Math.max(2, Math.round(steps * arrowProg));
+              const pts = [];
+              for (let i = 0; i <= maxI; i++) {
+                const u = i / steps, inv = 1 - u;
+                pts.push({
+                  x: inv * inv * sx + 2 * inv * u * cx + u * u * tp.x,
+                  y: inv * inv * sy + 2 * inv * u * cy + u * u * tp.y,
+                });
+              }
+              ctx.save();
+              ctx.globalAlpha = baseAlpha;
+              ctx.strokeStyle = "#FFFFFF";
+              ctx.lineWidth = layer.arrow_width || 5;
+              ctx.lineCap = "round";
+              ctx.lineJoin = "round";
+              ctx.shadowColor = "rgba(0,0,0,0.75)";
+              ctx.shadowBlur = 10;
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+              ctx.stroke();
+              // Open chevron V-head (hand-drawn style)
+              const tip = pts[pts.length - 1];
+              const prev = pts[Math.max(0, pts.length - 2)];
+              const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+              const ah = layer.arrow_head_px || 22;
+              ctx.translate(tip.x, tip.y);
+              ctx.rotate(ang);
+              ctx.beginPath();
+              ctx.moveTo(-ah, -ah * 0.52);
+              ctx.lineTo(0, 0);
+              ctx.lineTo(-ah, ah * 0.52);
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+        } else if (layer.type === "pin_label") {
+          const pt = map.project(layer.coord);
+          const pop = easeOutCubic(seg(t, tStart, tStart + 0.28));
+          const coupling = layer.scale_coupling ?? 0.42;
+          const zSc = layer.ref_zoom != null
+            ? clamp(Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling), layer.min_scale ?? 0.55, layer.max_scale ?? 2.2)
+            : 1.0;
+          const stemH = (layer.stem_px ?? 58) * pop * zSc;
+          ctx.save();
+          ctx.globalAlpha = baseAlpha;
+          ctx.shadowColor = "rgba(0,0,0,0.75)";
+          ctx.shadowBlur = 8;
+          ctx.strokeStyle = "#FFFFFF";
+          ctx.lineWidth = Math.max(2, 3 * zSc);
+          ctx.beginPath();
+          ctx.moveTo(pt.x, pt.y);
+          ctx.lineTo(pt.x, pt.y - stemH);
+          ctx.stroke();
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, Math.max(4, 6 * zSc), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          drawGlowingText(String(layer.text || ""), pt.x + (layer.dx || 0), pt.y - stemH - (layer.font_px || 40) * 0.65 * zSc + (layer.dy || 0), layer.font_px || 40, {
+            fill: "#FFFFFF",
+            glowHex: "#03161F",
+            glowStrength: "subtle",
+            scale: zSc,
+            alpha: baseAlpha * pop,
+            family: "Rubik",
+            weight: 800,
+          });
         }
       }
     }
 
     const ALLOW_WORLD_VOID = ${Boolean(mapOpts.allow_world_void || mapOpts.projection === "globe")};
+    const stageEl = document.getElementById("stage");
+    window.__currentRoll = 0;
+
     function clampMercatorCamera(cam) {
       if (ALLOW_WORLD_VOID) return cam;
       const bearing = cam.bearing || 0;
       const pitch = Math.max(0, Math.min(72, cam.pitch || 0));
+      const roll = Math.max(-12, Math.min(12, cam.roll || 0));
       const minZoom = Math.log2(H / 512) + 0.08;
       const z = Math.max(cam.zoom, minZoom);
       const worldPx = 512 * Math.pow(2, z);
@@ -1331,12 +1989,25 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         zoom: z,
         bearing,
         pitch,
+        roll,
       };
+    }
+
+    function computeRollOverscan(rollDeg) {
+      const r = Math.abs(rollDeg || 0) * Math.PI / 180;
+      return Math.cos(r) + Math.sin(r) * Math.max(W / H, H / W);
     }
 
     // Smooth camera sampling (pre-expanded camera_samples or scale-coupled inline keyframes)
     window.__setSceneCamera = function(cam) {
       const safe = clampMercatorCamera(cam);
+      window.__currentRoll = safe.roll || 0;
+      if (Math.abs(window.__currentRoll) > 0.01) {
+        const sc = computeRollOverscan(window.__currentRoll);
+        stageEl.style.transform = "rotate(" + window.__currentRoll.toFixed(3) + "deg) scale(" + sc.toFixed(5) + ")";
+      } else {
+        stageEl.style.transform = "";
+      }
       map.jumpTo({
         center: safe.center,
         zoom: safe.zoom,
@@ -1349,7 +2020,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       drawLayers(layers, t);
     };
 
-    // Optical sub-frame shutter accumulator (blends MapLibre WebGL canvas + overlay canvas)
+    // Optical sub-frame shutter accumulator (blends MapLibre WebGL canvas + overlay canvas with roll overscan)
     window.__beginShutterAccum = function() {
       compCanvas.style.display = "block";
       compCtx.clearRect(0, 0, W, H);
@@ -1357,6 +2028,13 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     window.__accumSubframe = function(subIdx) {
       compCtx.save();
       compCtx.globalAlpha = 1 / (subIdx + 1);
+      if (Math.abs(window.__currentRoll) > 0.01) {
+        const sc = computeRollOverscan(window.__currentRoll);
+        compCtx.translate(W * 0.5, H * 0.5);
+        compCtx.rotate((window.__currentRoll * Math.PI) / 180);
+        compCtx.scale(sc, sc);
+        compCtx.translate(-W * 0.5, -H * 0.5);
+      }
       compCtx.drawImage(map.getCanvas(), 0, 0, W, H);
       compCtx.drawImage(ovCanvas, 0, 0, W, H);
       compCtx.restore();
@@ -1586,6 +2264,7 @@ function sampleCameraAt(samples, frameIndex, subOffset = 0) {
     zoom: a.zoom + (b.zoom - a.zoom) * u,
     bearing: (a.bearing || 0) + ((b.bearing || 0) - (a.bearing || 0)) * u,
     pitch: (a.pitch || 0) + ((b.pitch || 0) - (a.pitch || 0)) * u,
+    roll: (a.roll || 0) + ((b.roll || 0) - (a.roll || 0)) * u,
     shutter_samples: a.shutter_samples || 1,
   };
 }
@@ -1630,6 +2309,15 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       await page.evaluate(() => window.__ready);
       const samples = act.camera_samples || [];
       const layers = act.layers || [];
+      const preloadUrls = [];
+      for (const layer of layers) {
+        if (layer.type === "flag_pin" && layer.code) {
+          preloadUrls.push(`${baseUrl}/flags/${String(layer.code).toLowerCase()}.svg`);
+        }
+      }
+      if (preloadUrls.length > 0) {
+        await page.evaluate((urls) => window.__preloadAssets(urls), preloadUrls);
+      }
       const enableShutter = act.optical_shutter_blur !== false;
 
       // Pre-warm tiles across act timeline

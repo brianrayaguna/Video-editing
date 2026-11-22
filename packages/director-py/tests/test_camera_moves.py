@@ -267,3 +267,94 @@ def test_build_cinema_camera_track_is_c2_smooth_and_orbits_3d() -> None:
     assert pitches[-1] >= 48.0
     max_bearing_step = max(abs(bearings[i] - bearings[i - 1]) for i in range(1, len(bearings)))
     assert max_bearing_step < 2.0
+    assert "roll" in samples[0]
+
+
+def test_cinema_camera_hyperbolic_fly_roll_micro_drift_and_auto_shutter() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    # Lateral hop between two high-zoom landmarks (Llivia -> Pheasant Island)
+    kfs = [
+        {
+            "t": 0.0,
+            "center": [1.98, 42.46],
+            "zoom": 12.0,
+            "bearing": 0.0,
+            "pitch": 0.0,
+            "roll": 0.0,
+        },
+        {
+            "t": 2.5,
+            "center": [-1.765, 43.343],
+            "zoom": 12.0,
+            "bearing": 14.0,
+            "pitch": 18.0,
+            "roll": 3.5,
+            "curve": "hyperbolic_fly",
+            "rho": 1.42,
+        },
+        {
+            "t": 4.0,
+            "center": [-1.765, 43.343],
+            "zoom": 12.0,
+            "bearing": 14.0,
+            "pitch": 18.0,
+            "roll": 0.0,
+            "curve": "orbit_cruise",
+        },
+    ]
+    samples = build_cinema_camera_track(
+        kfs,
+        duration_s=4.0,
+        fps=30.0,
+        auto_shutter=True,
+        micro_drift={"enabled": True, "amp_bearing": 0.5, "amp_roll": 0.4},
+    )
+    assert len(samples) == 120
+    # Hyperbolic fly lifts altitude (lowers zoom) mid-flight between two z=12 endpoints
+    min_mid_zoom = min(s["zoom"] for s in samples[15:65])
+    assert min_mid_zoom < 9.5
+    # Roll banks during turn and settles back near 0 at endpoints
+    assert max(abs(s["roll"]) for s in samples) > 1.5
+    assert samples[0]["roll"] == pytest.approx(0.0, abs=0.05)
+    assert samples[-1]["roll"] == pytest.approx(0.0, abs=0.05)
+    # Velocity-adaptive shutter engages (>1) during fast hop and drops to 1 during calm hold
+    assert max(s["shutter_samples"] for s in samples[10:65]) >= 3
+    assert samples[-1]["shutter_samples"] == 1
+
+
+def test_project_world_anchor_supports_3d_pitch_and_map_plane() -> None:
+    from vedit.director.camera_moves import project_world_anchor_to_track
+
+    cam = [
+        {
+            "t": 0.0,
+            "center": [-3.6, 40.2],
+            "zoom": 5.0,
+            "bearing": 10.0,
+            "pitch": 35.0,
+            "roll": 2.0,
+        },
+        {
+            "t": 1.0,
+            "center": [-3.6, 40.2],
+            "zoom": 5.5,
+            "bearing": 15.0,
+            "pitch": 40.0,
+            "roll": 2.5,
+        },
+    ]
+    kfs = project_world_anchor_to_track(
+        cam,
+        lng=-3.6,
+        lat=40.2,
+        width=1080,
+        height=1920,
+        start_s=0.0,
+        duration_s=1.0,
+        space="map_plane",
+    )
+    assert len(kfs) == 2
+    assert kfs[0]["rotateX_deg"] == pytest.approx(35.0, abs=0.1)
+    assert kfs[1]["rotateX_deg"] == pytest.approx(40.0, abs=0.1)
+    assert kfs[0]["perspective_px"] > 1000.0

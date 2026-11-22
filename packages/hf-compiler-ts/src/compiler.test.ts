@@ -1379,3 +1379,36 @@ test("overlay track_keyframes injects GPU-only GSAP object-tracking script and p
   assert.equal(lintResult.totalErrors, 0);
   assert.equal(lintResult.ok, true);
 });
+
+test("overlay track_keyframes compiles 3D rotateX_deg and perspective_px cleanly", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-object-track-3d-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      overlay_compositions: [
+        {
+          overlay_id: "tracked_plane_label",
+          kind: "kinetic_callout",
+          template_id: "map_pin_badge",
+          timeline_start_s: 0.5,
+          timeline_duration_s: 1.5,
+          transparent: true,
+          safe_band: "center_safe",
+          variables: { badge_style: "teardrop", label: "Spain", anchor_x_pct: 50, anchor_y_pct: 50 },
+          track_keyframes: [
+            { t_s: 0.0, x_pct: 50, y_pct: 50, scale: 1.0, rotation_deg: -8, rotateX_deg: 28, perspective_px: 2880 },
+            { t_s: 1.5, x_pct: 48, y_pct: 47, scale: 1.2, rotation_deg: -14, rotateX_deg: 36, perspective_px: 2880 },
+          ],
+          props: {},
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+  const html = fs.readFileSync(compiled.compositionFiles[0]!, "utf8");
+  assert.match(html, /rotationX: kfs\[0\]\.rotationX/);
+  assert.match(html, /transformPerspective: kfs\[0\]\.perspective/);
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.totalErrors, 0);
+  assert.equal(lintResult.ok, true);
+});

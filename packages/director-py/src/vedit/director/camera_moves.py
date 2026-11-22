@@ -771,32 +771,92 @@ def _zero_phase_smooth(values: list[float], sigma_frames: float) -> list[float]:
     return out
 
 
+def _eval_speed_graph(u_lin: float, curve: str, *, is_boundary: bool) -> float:
+    """Remap linear segment time `u_lin` [0..1] through a cinema speed graph."""
+    u = max(0.0, min(1.0, u_lin))
+    if curve == "snap_dive":
+        # Punchy exponential/quintic whip-in with long, silky deceleration settle
+        return 1.0 - (1.0 - u) ** 5.0
+    if curve == "whip_snap":
+        # High-influence (88%) symmetrical speed-graph whip for fast lateral/zoom hops
+        return 16.0 * (u**5) if u < 0.5 else 1.0 - 16.0 * ((1.0 - u) ** 5)
+    if curve == "orbit_cruise":
+        # Near-constant angular/lateral cruise with subtle edge softening
+        return 0.14 * _quintic_smootherstep(u) + 0.86 * u
+    if curve == "hyperbolic_fly":
+        # Snappy power-4 S-curve so hyperbolic hops accelerate crisply through mid-altitude
+        return 8.0 * (u**4) if u < 0.5 else 1.0 - 8.0 * ((1.0 - u) ** 4)
+    # Default "glide" / "auto"
+    u_ease = _quintic_smootherstep(u)
+    return 0.72 * u_ease + 0.28 * u if is_boundary else 0.50 * u_ease + 0.50 * u
+
+
 def build_cinema_camera_track(
-    keyframes: list[list[float]],
+    keyframes: list[list[float]] | list[dict[str, Any]],
     duration_s: float,
     fps: float = 30.0,
     *,
-    smooth_s: float = 0.22,
+    smooth_s: float = 0.09,
     shutter_windows: list[list[float]] | None = None,
+    auto_shutter: bool = True,
+    micro_drift: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build a C2-continuous, scale-coupled Mercator cinema camera track from waypoints.
+    """Build a C2-continuous 3D cinema camera track from declarative waypoints.
 
-    Each keyframe is `[t_s, lng, lat, zoom, bearing, pitch]` (bearing/pitch default to 0).
-    Uses scale-coupled `2^-z` Mercator interpolation (no J-hooks during deep zooms),
-    centripetal Catmull-Rom continuity through intermediate waypoints, and zero-phase
-    Steadicam Gaussian smoothing for silky ease-in/out and 3D space rotation.
+    Each keyframe may be `[t_s, lng, lat, zoom, bearing, pitch, roll]` or a dict with
+    `t`, `center`, `zoom`, `bearing`, `pitch`, `roll`, `curve` (`glide`, `snap_dive`,
+    `orbit_cruise`, `hyperbolic_fly`, `auto`), `rho`, and optional `orbit_target` /
+    `orbit_radius_deg`. Combines van Wijk & Nuij (2003) hyperbolic geodesics, 3-tier
+    rig channels (dolly, orbit/truck, pitch/roll), zero-phase Steadicam smoothing,
+    optional organic micro-drift, and velocity-adaptive optical shutter sampling.
     """
     if not keyframes:
         return []
-    kfs = sorted(keyframes, key=lambda row: float(row[0]))
-    norm_kfs: list[tuple[float, float, float, float, float, float]] = []
-    for row in kfs:
-        t_k = float(row[0])
-        mx, my = _mercator_norm(float(row[1]), float(row[2]))
-        z_k = float(row[3])
-        b_k = float(row[4]) if len(row) > 4 else 0.0
-        p_k = float(row[5]) if len(row) > 5 else 0.0
-        norm_kfs.append((t_k, mx, my, z_k, b_k, p_k))
+
+    parsed: list[dict[str, Any]] = []
+    for row in keyframes:
+        if isinstance(row, dict):
+            t_k = float(row.get("t", row.get("t_s", 0.0)))
+            ctr = row.get("center", [row.get("lng", 0.0), row.get("lat", 0.0)])
+            lng_k, lat_k = float(ctr[0]), float(ctr[1])
+            z_k = float(row.get("zoom", 2.0))
+            b_k = float(row.get("bearing", 0.0))
+            p_k = float(row.get("pitch", 0.0))
+            r_k = float(row.get("roll", 0.0))
+            curve_k = str(row.get("curve", "auto"))
+            rho_k = float(row.get("rho", 1.42))
+            orbit_t = row.get("orbit_target")
+            orbit_r = float(row.get("orbit_radius_deg", 0.0))
+        else:
+            t_k = float(row[0])
+            lng_k, lat_k = float(row[1]), float(row[2])
+            z_k = float(row[3])
+            b_k = float(row[4]) if len(row) > 4 else 0.0
+            p_k = float(row[5]) if len(row) > 5 else 0.0
+            r_k = float(row[6]) if len(row) > 6 else 0.0
+            curve_k = "auto"
+            rho_k = 1.42
+            orbit_t = None
+            orbit_r = 0.0
+        mx, my = _mercator_norm(lng_k, lat_k)
+        parsed.append(
+            {
+                "t": t_k,
+                "lng": lng_k,
+                "lat": lat_k,
+                "mx": mx,
+                "my": my,
+                "z": z_k,
+                "b": b_k,
+                "p": p_k,
+                "r": r_k,
+                "curve": curve_k,
+                "rho": rho_k,
+                "orbit_target": orbit_t,
+                "orbit_radius_deg": orbit_r,
+            }
+        )
+    parsed.sort(key=lambda item: item["t"])
 
     total = max(1, round(duration_s * fps))
     raw_mx: list[float] = []
@@ -804,51 +864,78 @@ def build_cinema_camera_track(
     raw_z: list[float] = []
     raw_b: list[float] = []
     raw_p: list[float] = []
+    raw_r: list[float] = []
 
-    m = len(norm_kfs)
+    m = len(parsed)
     for f in range(total):
         t = f / fps
-        if t <= norm_kfs[0][0] or m == 1:
-            _, mx, my, z, b, p = norm_kfs[0]
-        elif t >= norm_kfs[-1][0]:
-            _, mx, my, z, b, p = norm_kfs[-1]
+        if t <= parsed[0]["t"] or m == 1:
+            k = parsed[0]
+            mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
+        elif t >= parsed[-1]["t"]:
+            k = parsed[-1]
+            mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
         else:
             seg_i = 0
             for i in range(m - 1):
-                if norm_kfs[i][0] <= t <= norm_kfs[i + 1][0]:
+                if parsed[i]["t"] <= t <= parsed[i + 1]["t"]:
                     seg_i = i
                     break
-            k0 = norm_kfs[max(0, seg_i - 1)]
-            k1 = norm_kfs[seg_i]
-            k2 = norm_kfs[seg_i + 1]
-            k3 = norm_kfs[min(m - 1, seg_i + 2)]
-            u_lin = (t - k1[0]) / max(1e-6, k2[0] - k1[0])
-            # Blend linear spline progression with quintic ease at act boundaries.
-            u_ease = _quintic_smootherstep(u_lin)
+            k0 = parsed[max(0, seg_i - 1)]
+            k1 = parsed[seg_i]
+            k2 = parsed[seg_i + 1]
+            k3 = parsed[min(m - 1, seg_i + 2)]
+            u_lin = (t - k1["t"]) / max(1e-6, k2["t"] - k1["t"])
             is_boundary = seg_i == 0 or seg_i == m - 2
-            u = 0.65 * u_ease + 0.35 * u_lin if is_boundary else 0.35 * u_ease + 0.65 * u_lin
+            seg_curve = k2["curve"] if k2["curve"] != "auto" else k1["curve"]
+            u = _eval_speed_graph(u_lin, seg_curve, is_boundary=is_boundary)
 
-            z = _catmull_rom_centripetal(k0[3], k1[3], k2[3], k3[3], u)
-            b = _catmull_rom_centripetal(k0[4], k1[4], k2[4], k3[4], u)
-            p = _catmull_rom_centripetal(k0[5], k1[5], k2[5], k3[5], u)
+            b = _catmull_rom_centripetal(k0["b"], k1["b"], k2["b"], k3["b"], u)
+            p = _catmull_rom_centripetal(k0["p"], k1["p"], k2["p"], k3["p"], u)
+            r = _catmull_rom_centripetal(k0["r"], k1["r"], k2["r"], k3["r"], u)
 
-            # Scale-coupled Mercator pan (Van Wijk & Nuij 2^-z weighting eliminates J-hooks).
-            dz = k2[3] - k1[3]
-            if abs(dz) > 0.25:
-                s0 = 2.0 ** (-k1[3])
-                s1 = 2.0 ** (-k2[3])
-                sc = 2.0 ** (-z)
-                u_pan = max(0.0, min(1.0, (sc - s0) / (s1 - s0))) if abs(s1 - s0) > 1e-9 else u
+            dist_norm = math.hypot(k2["mx"] - k1["mx"], k2["my"] - k1["my"])
+            max_w = max(2.0 ** (-k1["z"]), 2.0 ** (-k2["z"]))
+            use_hyperbolic = seg_curve == "hyperbolic_fly" or (
+                seg_curve == "auto" and dist_norm > 0.35 * max_w and dist_norm > 1e-4
+            )
+
+            if use_hyperbolic:
+                # True van Wijk & Nuij (2003) hyperbolic geodesic in Web Mercator radians
+                x0_rad, y0_rad = _merc_x(k1["lng"]), _merc_y(k1["lat"])
+                x1_rad, y1_rad = _merc_x(k2["lng"]), _merc_y(k2["lat"])
+                xr, yr, z = _van_wijk_fly_to(
+                    x0_rad, y0_rad, k1["z"], x1_rad, y1_rad, k2["z"], u, rho=k2["rho"]
+                )
+                mx, my = _mercator_norm(math.degrees(xr), _inv_merc_y(yr))
             else:
-                u_pan = u
-            mx = k1[1] + (k2[1] - k1[1]) * u_pan
-            my = k1[2] + (k2[2] - k1[2]) * u_pan
+                z = _catmull_rom_centripetal(k0["z"], k1["z"], k2["z"], k3["z"], u)
+                dz = k2["z"] - k1["z"]
+                if abs(dz) > 0.25:
+                    s0 = 2.0 ** (-k1["z"])
+                    s1 = 2.0 ** (-k2["z"])
+                    sc = 2.0 ** (-z)
+                    u_pan = max(0.0, min(1.0, (sc - s0) / (s1 - s0))) if abs(s1 - s0) > 1e-9 else u
+                else:
+                    u_pan = u
+                mx = k1["mx"] + (k2["mx"] - k1["mx"]) * u_pan
+                my = k1["my"] + (k2["my"] - k1["my"]) * u_pan
+
+            # Optional circular orbit trucking offset around an explicit landmark
+            orbit_t = k2["orbit_target"] or k1["orbit_target"]
+            orbit_r = max(k1["orbit_radius_deg"], k2["orbit_radius_deg"])
+            if orbit_t and orbit_r > 0.0:
+                ang = math.radians(b)
+                olng = float(orbit_t[0]) + math.sin(ang) * orbit_r
+                olat = float(orbit_t[1]) + math.cos(ang) * orbit_r * 0.65
+                mx, my = _mercator_norm(olng, olat)
 
         raw_mx.append(mx)
         raw_my.append(my)
         raw_z.append(z)
         raw_b.append(b)
         raw_p.append(p)
+        raw_r.append(r)
 
     sigma = smooth_s * fps
     sm_mx = _zero_phase_smooth(raw_mx, sigma)
@@ -856,12 +943,44 @@ def build_cinema_camera_track(
     sm_z = _zero_phase_smooth(raw_z, sigma)
     sm_b = _zero_phase_smooth(raw_b, sigma * 1.15)
     sm_p = _zero_phase_smooth(raw_p, sigma * 1.15)
+    sm_r = _zero_phase_smooth(raw_r, sigma * 1.2)
+
+    # Optional organic Steadicam micro-drift (tapered to 0 at endpoints)
+    drift_cfg = (
+        micro_drift if isinstance(micro_drift, dict) and micro_drift.get("enabled") else None
+    )
+    if drift_cfg and total > 6:
+        freq = float(drift_cfg.get("freq_hz", 0.22))
+        amp_b = float(drift_cfg.get("amp_bearing", 0.55))
+        amp_p = float(drift_cfg.get("amp_pitch", 0.35))
+        amp_r = float(drift_cfg.get("amp_roll", 0.35))
+        amp_pan_px = float(drift_cfg.get("amp_pan_px", 4.5))
+        for f in range(total):
+            t = f / fps
+            env = math.sin(math.pi * (f / max(1, total - 1))) ** 0.5
+            sm_b[f] += env * amp_b * math.sin(2.0 * math.pi * freq * t + 0.4)
+            sm_p[f] += env * amp_p * math.sin(2.0 * math.pi * freq * 0.73 * t + 1.7)
+            sm_r[f] += env * amp_r * math.cos(2.0 * math.pi * freq * 0.58 * t + 0.9)
+            w_px = TILE_SIZE * (2.0 ** sm_z[f])
+            pan_step = env * (amp_pan_px / max(w_px, 1.0))
+            sm_mx[f] += pan_step * math.sin(2.0 * math.pi * freq * 0.65 * t)
+            sm_my[f] += pan_step * math.cos(2.0 * math.pi * freq * 0.51 * t)
 
     samples: list[dict[str, Any]] = []
     for f in range(total):
         t = f / fps
         lng, lat = _inv_mercator_norm(sm_mx[f], sm_my[f])
         shutter = 1
+        if auto_shutter and f > 0:
+            world_px = TILE_SIZE * (2.0 ** sm_z[f])
+            d_pan_px = math.hypot(sm_mx[f] - sm_mx[f - 1], sm_my[f] - sm_my[f - 1]) * world_px
+            d_zoom_px = abs(sm_z[f] - sm_z[f - 1]) * 380.0
+            d_rot_px = abs(sm_b[f] - sm_b[f - 1]) * 8.0
+            v_px = d_pan_px + d_zoom_px + d_rot_px
+            if v_px >= 55.0:
+                shutter = 5
+            elif v_px >= 18.0:
+                shutter = 3
         for sw in shutter_windows or []:
             if sw[0] <= t <= sw[1]:
                 shutter = int(sw[2])
@@ -872,6 +991,7 @@ def build_cinema_camera_track(
                 "zoom": round(sm_z[f], 4),
                 "bearing": round(sm_b[f], 3),
                 "pitch": round(max(0.0, min(72.0, sm_p[f])), 2),
+                "roll": round(max(-12.0, min(12.0, sm_r[f])), 3),
                 "shutter_samples": shutter,
             }
         )
@@ -880,7 +1000,7 @@ def build_cinema_camera_track(
 
 def _unpack_camera_row(
     row: list[float] | dict[str, Any],
-) -> tuple[float, float, float, float, float]:
+) -> tuple[float, float, float, float, float, float, float]:
     if isinstance(row, dict):
         t_abs = float(row.get("t", row.get("t_s", 0.0)))
         center = row.get("center") or [row.get("lng", 0.0), row.get("lat", 0.0)]
@@ -890,9 +1010,13 @@ def _unpack_camera_row(
             float(center[1]),
             float(row.get("zoom", 2.0)),
             float(row.get("bearing", 0.0)),
+            float(row.get("pitch", 0.0)),
+            float(row.get("roll", 0.0)),
         )
     bearing = float(row[4]) if len(row) > 4 else 0.0
-    return (float(row[0]), float(row[1]), float(row[2]), float(row[3]), bearing)
+    pitch = float(row[5]) if len(row) > 5 else 0.0
+    roll = float(row[6]) if len(row) > 6 else 0.0
+    return (float(row[0]), float(row[1]), float(row[2]), float(row[3]), bearing, pitch, roll)
 
 
 def project_world_anchor_to_track(
@@ -906,12 +1030,15 @@ def project_world_anchor_to_track(
     duration_s: float,
     reference_zoom: float | None = None,
     scale_with_zoom: bool = True,
+    scale_coupling: float = 1.0,
+    space: str = "world_billboard",
     tile_size: float = 512.0,
 ) -> list[dict[str, float]]:
-    """Project a geographic [lng, lat] anchor through camera track rows.
+    """Project a geographic [lng, lat] anchor through 3D camera track rows.
 
-    Accepts either `[t, lng, lat, zoom, bearing]` lists or `{t, center:[lng,lat], zoom, bearing}`
-    dicts exported by `render_map_scene.mjs`. Returns `track_keyframes` dicts relative to `start_s`.
+    Accepts `[t, lng, lat, zoom, bearing, pitch, roll]` lists or camera dicts exported
+    by `render_map_scene.mjs`. Applies 3D perspective foreshortening along camera pitch
+    and roll, returning `track_keyframes` dicts relative to `start_s`.
     """
     end_s = start_s + duration_s
     ax, ay = _mercator_norm(lng, lat)
@@ -920,8 +1047,9 @@ def project_world_anchor_to_track(
     if not window:
         return []
     ref_z = reference_zoom if reference_zoom is not None else window[0][3]
+    focal_px = 1.5 * max(height, 1)  # Matches MapLibre default 36.87 deg vertical FOV
     out: list[dict[str, float]] = []
-    for t_abs, c_lng, c_lat, zoom, bearing in window:
+    for t_abs, c_lng, c_lat, zoom, bearing, pitch, roll in window:
         cx, cy = _mercator_norm(c_lng, c_lat)
         world_px = tile_size * (2.0**zoom)
         dx_px = (ax - cx) * world_px
@@ -930,17 +1058,34 @@ def project_world_anchor_to_track(
         cos_b, sin_b = math.cos(rad), math.sin(rad)
         rx = dx_px * cos_b - dy_px * sin_b
         ry = dx_px * sin_b + dy_px * cos_b
-        x_pct = round(50.0 + (rx / max(width, 1)) * 100.0, 2)
-        y_pct = round(50.0 + (ry / max(height, 1)) * 100.0, 2)
-        scale = round(2.0 ** (zoom - ref_z), 4) if scale_with_zoom else 1.0
-        scale = max(0.05, min(8.0, scale))
-        out.append(
-            {
-                "t_s": round(max(0.0, t_abs - start_s), 3),
-                "x_pct": x_pct,
-                "y_pct": y_pct,
-                "scale": scale,
-                "rotation_deg": round(-bearing, 2),
-            }
-        )
+
+        # Apply 3D pinhole perspective foreshortening along camera pitch
+        pitch_rad = math.radians(max(0.0, min(72.0, pitch)))
+        cos_p, sin_p = math.cos(pitch_rad), math.sin(pitch_rad)
+        depth = max(0.2 * focal_px, focal_px - ry * sin_p)
+        persp = focal_px / depth
+        px = rx * persp
+        py = ry * cos_p * persp
+
+        # Apply optical Z-axis roll if present
+        if abs(roll) > 1e-4:
+            rr = math.radians(roll)
+            cr, sr = math.cos(rr), math.sin(rr)
+            px, py = px * cr - py * sr, px * sr + py * cr
+
+        x_pct = round(50.0 + (px / max(width, 1)) * 100.0, 2)
+        y_pct = round(50.0 + (py / max(height, 1)) * 100.0, 2)
+        raw_scale = (2.0 ** ((zoom - ref_z) * scale_coupling)) * persp if scale_with_zoom else 1.0
+        scale = max(0.05, min(8.0, round(raw_scale, 4)))
+        kf: dict[str, float] = {
+            "t_s": round(max(0.0, t_abs - start_s), 3),
+            "x_pct": x_pct,
+            "y_pct": y_pct,
+            "scale": scale,
+            "rotation_deg": round((-bearing if space == "map_plane" else 0.0) + roll, 2),
+        }
+        if space == "map_plane" and pitch > 0.1:
+            kf["rotateX_deg"] = round(pitch, 2)
+            kf["perspective_px"] = round(focal_px, 1)
+        out.append(kf)
     return out

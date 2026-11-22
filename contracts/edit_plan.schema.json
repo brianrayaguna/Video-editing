@@ -115,6 +115,8 @@
                 "y_pct": { "type": "number" },
                 "scale": { "type": "number", "exclusiveMinimum": 0 },
                 "rotation_deg": { "type": "number" },
+                "rotateX_deg": { "type": "number", "minimum": -75, "maximum": 75 },
+                "perspective_px": { "type": "number", "exclusiveMinimum": 0 },
                 "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
               }
             }

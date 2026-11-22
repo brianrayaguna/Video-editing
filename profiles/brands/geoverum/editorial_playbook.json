@@ -1297,6 +1297,42 @@
       "end_s": 92.4,
       "hyperframes_pattern": "blocked_neighbours_hatch_then_water_crossing",
       "notes": "The two forbidden detours are hatched red and green with a white U-turn arrow; the chosen solution follows: the portrait pops at the shore, a ripple marks the entry, and white support-boat silhouettes trail the route across the water before a parallel '32 days' numeral lands."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_void_wipe_odometer",
+      "source_video_id": "ref_spain_borders",
+      "role": "hook",
+      "start_s": 3.0,
+      "end_s": 10.5,
+      "hyperframes_pattern": "vertical_wiper_dark_void_and_odometer_counter",
+      "notes": "A glowing white vertical wiper sweeps right-to-left over 260 ms to dim satellite relief to matte charcoal (#0C0E11) while keeping diagonal-hatched orange Spain isolated; a tilted amber odometer counter flies up and rolls 0 -> 1 -> 2 -> 4 -> 5 as neighbors illuminate."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_ownership_flip",
+      "source_video_id": "ref_spain_borders",
+      "role": "proof",
+      "start_s": 35.0,
+      "end_s": 40.5,
+      "hyperframes_pattern": "shifting_border_spline_with_alternating_tint_flash",
+      "notes": "On a high-zoom river island aerial with waving national flags on opposite banks, a bright warm-orange glow surges across the southern bank and island, then the glowing yellow border spline shifts to the opposite bank as an electric-blue flash surges across the northern bank and island."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_ghost_scale_compare",
+      "source_video_id": "ref_spain_borders",
+      "role": "proof",
+      "start_s": 48.0,
+      "end_s": 52.5,
+      "hyperframes_pattern": "population_pill_then_ghost_silhouette_slide",
+      "notes": "An emerald-highlighted microstate displays a compact cyan population pill (80,000), which fades before a translucent cyan city silhouette slides horizontally from the left (~260 ms ease-out) directly over the country to demonstrate relative scale."
+    },
+    {
+      "exemplar_id": "ref_spain_borders_isthmus_climax",
+      "source_video_id": "ref_spain_borders",
+      "role": "climax",
+      "start_s": 91.5,
+      "end_s": 96.6,
+      "hyperframes_pattern": "micro_isthmus_glow_line_and_dual_unit_stack",
+      "notes": "A slow aerial pull-out reveals an orange-rimmed peninsula joined to turquoise mainland by a narrow sandy neck; a luminous golden border line glows across the neck before stacked white dual-unit text ('85 m' / '(279 ft)') pops cleanly over the line."
     }
   ]
 }

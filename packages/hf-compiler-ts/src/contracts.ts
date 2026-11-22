@@ -76,6 +76,8 @@ export interface OverlayTrackKeyframe {
   y_pct: number;
   scale?: number;
   rotation_deg?: number;
+  rotateX_deg?: number;
+  perspective_px?: number;
   opacity?: number;
 }
 

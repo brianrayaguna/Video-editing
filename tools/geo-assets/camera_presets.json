@@ -134,6 +134,32 @@
       "bearing_curve": [[0.0, 0.0], [1.0, 1.0]],
       "pan": "hold",
       "ambient_drift": { "zoom_per_s": 0.04, "bearing_per_s": 1.2 }
+    },
+    {
+      "preset_id": "lateral_truck_orbit",
+      "purpose": "Smooth sideways trucking sweep combined with gentle orbital bearing rotation and subtle 3D oblique pitch to keep narration holds alive in three-dimensional space.",
+      "default_duration_s": 3.5,
+      "zoom_delta": 0.18,
+      "zoom_curve": [[0.0, 0.0], [0.5, 0.54], [1.0, 1.0]],
+      "bearing_delta": 14.0,
+      "bearing_curve": [[0.0, 0.0], [0.5, 0.52], [1.0, 1.0]],
+      "pitch_delta": 10.0,
+      "pitch_curve": [[0.0, 0.0], [0.45, 0.65], [1.0, 1.0]],
+      "pan": "drift",
+      "drift_px_per_s": [16.0, -4.0]
+    },
+    {
+      "preset_id": "banking_dive_settle",
+      "purpose": "Fast exponential snap-dive from continental context onto a close landmark with smooth orbital counter-rotation into a calm settle.",
+      "default_duration_s": 2.0,
+      "zoom_delta": 5.5,
+      "zoom_curve": [[0.0, 0.0], [0.2, 0.48], [0.45, 0.80], [0.75, 0.95], [1.0, 1.0]],
+      "bearing_delta": -12.0,
+      "bearing_curve": [[0.0, 0.0], [0.35, 0.55], [0.75, 0.92], [1.0, 1.0]],
+      "pitch_delta": 16.0,
+      "pitch_curve": [[0.0, 0.0], [0.4, 0.62], [1.0, 1.0]],
+      "pan": "fly_to",
+      "rho": 1.38
     }
   ]
 }

@@ -314,8 +314,10 @@ def geo_bake_scene_cmd(
                 act["camera_keyframes"],
                 duration_s=float(act.get("duration_s", 1.0)),
                 fps=fps,
-                smooth_s=float(act.get("camera_smooth_s", 0.24)),
+                smooth_s=float(act.get("camera_smooth_s", 0.09)),
                 shutter_windows=act.get("shutter_windows"),
+                auto_shutter=bool(act.get("auto_shutter", True)),
+                micro_drift=act.get("micro_drift"),
             )
 
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -299,6 +299,8 @@ class OverlayTrackKeyframe(StrictModel):
     y_pct: float
     scale: float | None = Field(default=None, gt=0.0)
     rotation_deg: float | None = None
+    rotateX_deg: float | None = Field(default=None, ge=-75.0, le=75.0)
+    perspective_px: float | None = Field(default=None, gt=0.0)
     opacity: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
