@@ -13,7 +13,7 @@ This directory owns reusable geospatial asset fetchers, tile grading scripts, th
 | Loudness / visual QC | Modal worker + local re-audit | `vedit audit` |
 | Brand component studies | Host | `study_runner.mjs` (shared helpers to serve, lint, render, and encode standalone template studies with contact sheets) |
 
-`/tiles_hq` fills a missing tile from whichever set (`tiles_hq/` or graded `tiles/`) holds the nearest ancestor, so an exact graded tile is never replaced by an upscaled low-zoom aerial tile; aerial wins ties. Tile-source selection tests: `node --test tools/geo-assets/serve_tiles.test.mjs`.
+`/tiles_hq` and `/tiles_hybrid` fill a missing tile from whichever set (`tiles_hq/` or graded `tiles/`) holds the nearest ancestor, so an exact graded tile is never replaced by an upscaled aerial tile; aerial wins ties. `/tiles_hybrid` ignores aerial tiles below `z = 12`. Tile-source selection tests: `node --test tools/geo-assets/serve_tiles.test.mjs`.
 
 Active project shot scripts and baked MP4 outputs belong under `VEDIT_PROJECTS_ROOT/<brand_id>/<project_id>/`, never inside this engine directory.
 

@@ -133,16 +133,50 @@ function nearestTileLevel(z, x, y, exists) {
   return -1;
 }
 
+/** HQ aerial tiles below this zoom are never used by `/tiles_hybrid` (graded tiles serve there). */
+const HYBRID_HQ_MIN_ZOOM = 12;
+
 /**
- * Choose the source for a `/tiles_hq` request: whichever of the HQ aerial and regular tile sets
- * holds the nearest ancestor (least upscaling) of `{z}/{x}/{y}`; HQ wins ties. Returns
- * `{ source: "hq" | "regular", level }`, or `null` when neither set covers the tile.
+ * Choose the source for a tile request: whichever of the HQ aerial and regular tile sets holds
+ * the nearest ancestor (least upscaling) of `{z}/{x}/{y}`; HQ wins ties. HQ tiles below
+ * `hqMinZoom` are ignored. Returns `{ source: "hq" | "regular", level }`, or `null` when
+ * neither set covers the tile.
  */
-export function pickHqTileSource(z, x, y, hasHq, hasRegular) {
-  const hq = nearestTileLevel(z, x, y, hasHq);
+export function pickTileSource(z, x, y, hasHq, hasRegular, hqMinZoom = 0) {
+  const hq = nearestTileLevel(z, x, y, (pz, px, py) => pz >= hqMinZoom && hasHq(pz, px, py));
   const regular = nearestTileLevel(z, x, y, hasRegular);
   if (hq < 0 && regular < 0) return null;
   return hq >= regular ? { source: "hq", level: hq } : { source: "regular", level: regular };
+}
+
+const hqTilePath = (pz, px, py) => join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
+const regularTilePath = (pz, px, py) => join(TILES_DIR, String(pz), String(px), `${py}.jpg`);
+
+/**
+ * Serve `{z}/{x}/{y}` from the HQ set when it holds the nearest ancestor (cropping and upscaling
+ * that ancestor's quadrant), otherwise from the regular set via `resolveTileBuffer`.
+ */
+async function resolveHqOrRegularTile(z, x, y, hqMinZoom, jpegQuality) {
+  const pick = pickTileSource(
+    z,
+    x,
+    y,
+    (pz, px, py) => existsSync(hqTilePath(pz, px, py)),
+    (pz, px, py) => existsSync(regularTilePath(pz, px, py)),
+    hqMinZoom,
+  );
+  if (pick?.source !== "hq") return resolveTileBuffer(z, x, y);
+  const scale = 2 ** (z - pick.level);
+  const parentHq = hqTilePath(pick.level, Math.floor(x / scale), Math.floor(y / scale));
+  if (scale === 1) return readFileSync(parentHq);
+  const subSize = Math.max(1, Math.floor(256 / scale));
+  const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+  const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+  return sharp(parentHq)
+    .extract({ left, top, width: subSize, height: subSize })
+    .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+    .jpeg({ quality: jpegQuality })
+    .toBuffer();
 }
 
 export function startTileServer(port = PORT, host = HOST) {
@@ -177,32 +211,7 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        let buf = null;
-        if (z >= 12) {
-          const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
-          if (existsSync(exactHq)) {
-            buf = readFileSync(exactHq);
-          } else {
-            for (let pz = z - 1; pz >= 12; pz--) {
-              const scale = 2 ** (z - pz);
-              const px = Math.floor(x / scale);
-              const py = Math.floor(y / scale);
-              const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
-              if (existsSync(parentHq)) {
-                const subSize = Math.max(1, Math.floor(256 / scale));
-                const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
-                const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
-                buf = await sharp(parentHq)
-                  .extract({ left, top, width: subSize, height: subSize })
-                  .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
-                  .jpeg({ quality: 88 })
-                  .toBuffer();
-                break;
-              }
-            }
-          }
-        }
-        if (!buf) buf = await resolveTileBuffer(z, x, y);
+        const buf = await resolveHqOrRegularTile(z, x, y, HYBRID_HQ_MIN_ZOOM, 88);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
@@ -226,34 +235,7 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        const tilePath = (dir) => (pz, px, py) => join(dir, String(pz), String(px), `${py}.jpg`);
-        const hqPath = tilePath(TILES_HQ_DIR);
-        const regularPath = tilePath(TILES_DIR);
-        const pick = pickHqTileSource(
-          z,
-          x,
-          y,
-          (pz, px, py) => existsSync(hqPath(pz, px, py)),
-          (pz, px, py) => existsSync(regularPath(pz, px, py)),
-        );
-        let buf = null;
-        if (pick?.source === "hq") {
-          const scale = 2 ** (z - pick.level);
-          const parentHq = hqPath(pick.level, Math.floor(x / scale), Math.floor(y / scale));
-          if (scale === 1) {
-            buf = readFileSync(parentHq);
-          } else {
-            const subSize = Math.max(1, Math.floor(256 / scale));
-            const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
-            const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
-            buf = await sharp(parentHq)
-              .extract({ left, top, width: subSize, height: subSize })
-              .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
-              .jpeg({ quality: 90 })
-              .toBuffer();
-          }
-        }
-        if (!buf) buf = await resolveTileBuffer(z, x, y);
+        const buf = await resolveHqOrRegularTile(z, x, y, 0, 90);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
