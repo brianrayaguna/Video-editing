@@ -19,18 +19,21 @@ impl Drop for TempDirGuard {
 use anyhow::{Context, Result, anyhow, bail};
 use image::{RgbImage, codecs::jpeg::JpegEncoder};
 
-use crate::ffmpeg_parse::{build_shots_and_stats, parse_ffmpeg_stderr, round3};
+use crate::ffmpeg_parse::{
+    FRAME_STAT_KEYS, build_shots_and_stats, gate_cut_candidates, parse_ffmpeg_stderr, round3,
+};
 use crate::ffprobe::run_ffprobe;
 use crate::hash::hash_file;
-use crate::types::{
-    KeyframeInfo, MediaProbeReport, ShotStats, TimingBreakdown, VisualInfo,
-};
-use crate::vision::{
-    FrameVisionMetrics, aggregate_palette_and_visual, analyze_rgb24_frame,
-};
+use crate::types::{KeyframeInfo, MediaProbeReport, ShotStats, TimingBreakdown, VisualInfo};
+use crate::vision::{FrameVisionMetrics, aggregate_palette_and_visual, analyze_rgb24_frame};
 
 pub struct AnalyzeOptions {
+    /// `scdet` score at or above which a candidate is a cut without further evidence.
     pub scene_threshold: f64,
+    /// Lowest `scdet` score considered a cut candidate.
+    pub cut_candidate_floor: f64,
+    /// Minimum frame colour-statistics change that confirms a candidate below `scene_threshold`.
+    pub cut_stats_change_min: f64,
     pub min_scene_s: f64,
     pub silence_db: f64,
     pub silence_min_s: f64,
@@ -44,6 +47,8 @@ impl Default for AnalyzeOptions {
     fn default() -> Self {
         Self {
             scene_threshold: 12.0,
+            cut_candidate_floor: 5.0,
+            cut_stats_change_min: 15.0,
             min_scene_s: 0.4,
             silence_db: -35.0,
             silence_min_s: 0.30,
@@ -134,6 +139,11 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
             opts.analysis_fps.max(0.2)
         };
 
+        let stats_print: String = FRAME_STAT_KEYS
+            .iter()
+            .map(|k| format!("metadata=print:key=lavfi.signalstats.{k},"))
+            .collect();
+
         let ebur_filter = if opts.true_peak {
             "ebur128=peak=true"
         } else {
@@ -143,34 +153,48 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         let filter_complex = if audio.present {
             format!(
                 "[0:v]scale={target_w}:{target_h}:flags=fast_bilinear,\
+                 signalstats,{stats_print}\
                  scdet=threshold={thr}:sc_pass=0,\
                  blackdetect=d=0.2:pix_th=0.10,\
                  fps={effective_fps},format=rgb24[vout];\
                  [0:a]silencedetect=n={sil_db}dB:d={sil_d},{ebur_filter}[aout]",
-                thr = opts.scene_threshold,
+                thr = opts.cut_candidate_floor.min(opts.scene_threshold),
                 sil_db = opts.silence_db,
                 sil_d = opts.silence_min_s,
             )
         } else {
             format!(
                 "[0:v]scale={target_w}:{target_h}:flags=fast_bilinear,\
+                 signalstats,{stats_print}\
                  scdet=threshold={thr}:sc_pass=0,\
                  blackdetect=d=0.2:pix_th=0.10,\
                  fps={effective_fps},format=rgb24[vout]",
-                thr = opts.scene_threshold,
+                thr = opts.cut_candidate_floor.min(opts.scene_threshold),
             )
         };
 
         let mut cmd = Command::new("ffmpeg");
         cmd.args(["-hide_banner", "-nostdin", "-i"])
             .arg(path)
-            .args(["-filter_complex", &filter_complex, "-map", "[vout]", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+            .args([
+                "-filter_complex",
+                &filter_complex,
+                "-map",
+                "[vout]",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ]);
         if audio.present {
             cmd.args(["-map", "[aout]", "-f", "null", "-"]);
         }
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().context("Failed to spawn ffmpeg analysis process")?;
+        let mut child = cmd
+            .spawn()
+            .context("Failed to spawn ffmpeg analysis process")?;
         let mut stdout = child.stdout.take().context("Missing ffmpeg stdout pipe")?;
         let mut stderr = child.stderr.take().context("Missing ffmpeg stderr pipe")?;
 
@@ -239,7 +263,10 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
             .output()
             .context("Failed to execute ffmpeg audio probe")?;
         if !out.status.success() {
-            bail!("ffmpeg audio probe failed: {}", String::from_utf8_lossy(&out.stderr));
+            bail!(
+                "ffmpeg audio probe failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
         String::from_utf8_lossy(&out.stderr).into_owned()
     } else {
@@ -261,8 +288,14 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         };
     }
 
+    let cuts = gate_cut_candidates(
+        &parsed.cut_times_s,
+        &parsed.frame_stats,
+        opts.scene_threshold,
+        opts.cut_stats_change_min,
+    );
     let (shots, shot_stats) = if video.present {
-        build_shots_and_stats(&parsed.cut_times_s, duration_s, opts.min_scene_s)
+        build_shots_and_stats(&cuts, duration_s, opts.min_scene_s)
     } else {
         (
             Vec::new(),

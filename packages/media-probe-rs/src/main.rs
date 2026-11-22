@@ -28,9 +28,15 @@ enum Commands {
     Analyze {
         /// Path to the media file.
         file: PathBuf,
-        /// FFmpeg scdet threshold (0..100).
+        /// FFmpeg scdet score (0..100) at or above which a cut is accepted without further evidence.
         #[arg(long, default_value_t = 12.0)]
         scene_threshold: f64,
+        /// Lowest scdet score considered a cut candidate.
+        #[arg(long, default_value_t = 5.0)]
+        cut_candidate_floor: f64,
+        /// Minimum frame colour-statistics change confirming a candidate below --scene-threshold.
+        #[arg(long, default_value_t = 15.0)]
+        cut_stats_change_min: f64,
         /// Minimum duration (seconds) between distinct cuts.
         #[arg(long, default_value_t = 0.4)]
         min_scene_s: f64,
@@ -65,6 +71,8 @@ fn main() -> Result<()> {
         Commands::Analyze {
             file,
             scene_threshold,
+            cut_candidate_floor,
+            cut_stats_change_min,
             min_scene_s,
             silence_db,
             silence_min_s,
@@ -75,6 +83,8 @@ fn main() -> Result<()> {
         } => {
             let opts = AnalyzeOptions {
                 scene_threshold,
+                cut_candidate_floor,
+                cut_stats_change_min,
                 min_scene_s,
                 silence_db,
                 silence_min_s,

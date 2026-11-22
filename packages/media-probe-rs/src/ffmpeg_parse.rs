@@ -1,8 +1,16 @@
+use std::collections::BTreeMap;
+
 use crate::types::{ShotSegment, ShotStats, TimeInterval};
+
+/// Per-frame colour statistics keys printed by `signalstats` + `metadata=print`, in storage order.
+pub const FRAME_STAT_KEYS: [&str; 4] = ["YAVG", "UAVG", "VAVG", "SATAVG"];
 
 #[derive(Debug, Default)]
 pub struct ParsedFfmpegStderr {
-    pub cut_times_s: Vec<(f64, f64)>, // (timestamp_s, normalized_confidence)
+    /// `scdet` candidates above the candidate floor: (timestamp_s, normalized_confidence = score / 100).
+    pub cut_times_s: Vec<(f64, f64)>,
+    /// Per-frame (pts_time_s, [YAVG, UAVG, VAVG, SATAVG]) sorted by time.
+    pub frame_stats: Vec<(f64, [f64; 4])>,
     pub black_intervals: Vec<TimeInterval>,
     pub silence_intervals: Vec<TimeInterval>,
     pub integrated_lufs: Option<f64>,
@@ -25,9 +33,30 @@ pub fn parse_ffmpeg_stderr(stderr: &str, duration_s: f64) -> ParsedFfmpegStderr 
     let mut pending_silence_start: Option<f64> = None;
     let mut in_ebur_summary = false;
     let mut ebur_section = "";
+    let mut current_pts_us: Option<i64> = None;
+    let mut stats_by_pts: BTreeMap<i64, [f64; 4]> = BTreeMap::new();
 
     for line in stderr.lines() {
         let trimmed = line.trim();
+
+        if trimmed.contains("pts_time:") {
+            current_pts_us =
+                parse_key_value_f64(trimmed, "pts_time:").map(|t| (t * 1e6).round() as i64);
+            continue;
+        }
+
+        if let Some(idx) = trimmed.find("lavfi.signalstats.") {
+            let rest = &trimmed[idx + "lavfi.signalstats.".len()..];
+            if let (Some(pts_us), Some((key, value))) = (current_pts_us, rest.split_once('='))
+                && let (Some(slot), Ok(v)) = (
+                    FRAME_STAT_KEYS.iter().position(|k| *k == key),
+                    value.trim().parse::<f64>(),
+                )
+            {
+                stats_by_pts.entry(pts_us).or_insert([f64::NAN; 4])[slot] = v;
+            }
+            continue;
+        }
 
         if trimmed.contains("lavfi.scd.score:") && trimmed.contains("lavfi.scd.time:") {
             if let (Some(score), Some(t)) = (
@@ -112,7 +141,51 @@ pub fn parse_ffmpeg_stderr(stderr: &str, duration_s: f64) -> ParsedFfmpegStderr 
         });
     }
 
+    parsed.frame_stats = stats_by_pts
+        .into_iter()
+        .map(|(pts_us, vals)| (pts_us as f64 / 1e6, vals))
+        .collect();
     parsed
+}
+
+/// Sum of absolute per-key changes between the frame at `t` and the frame before it.
+/// `None` when either frame is missing or incomplete.
+fn stats_change_at(frame_stats: &[(f64, [f64; 4])], t: f64) -> Option<f64> {
+    let idx = frame_stats
+        .iter()
+        .position(|(ft, _)| (ft - t).abs() < 2e-3)?;
+    if idx == 0 {
+        return None;
+    }
+    let (cur, prev) = (frame_stats[idx].1, frame_stats[idx - 1].1);
+    let delta: f64 = cur
+        .iter()
+        .zip(prev.iter())
+        .map(|(a, b)| (a - b).abs())
+        .sum();
+    delta.is_finite().then_some(delta)
+}
+
+/// Keep `scdet` candidates that are hard cuts.
+///
+/// `scdet` also spikes on the first frame of an abrupt camera move, and same-palette cuts can score
+/// low, so the score alone cannot separate them. A candidate is a cut when its score reaches
+/// `scene_threshold`, or when the frame's mean colour statistics change by at least
+/// `stats_change_min` (sum of |dYAVG| + |dUAVG| + |dVAVG| + |dSATAVG|, 8-bit units).
+pub fn gate_cut_candidates(
+    candidates: &[(f64, f64)],
+    frame_stats: &[(f64, [f64; 4])],
+    scene_threshold: f64,
+    stats_change_min: f64,
+) -> Vec<(f64, f64)> {
+    candidates
+        .iter()
+        .copied()
+        .filter(|(t, conf)| {
+            conf * 100.0 >= scene_threshold
+                || stats_change_at(frame_stats, *t).is_some_and(|d| d >= stats_change_min)
+        })
+        .collect()
 }
 
 pub fn build_shots_and_stats(
@@ -241,6 +314,87 @@ mod tests {
         assert_eq!(parsed.integrated_lufs, Some(-14.2));
         assert_eq!(parsed.lra, Some(6.4));
         assert_eq!(parsed.true_peak_dbtp, Some(-1.3));
+    }
+
+    fn stats_stderr(frames: &[(f64, [f64; 4])], candidates: &[(f64, f64)]) -> String {
+        let keys = ["YAVG", "UAVG", "VAVG", "SATAVG"];
+        let mut out = String::new();
+        for (idx, (t, vals)) in frames.iter().enumerate() {
+            for (key, v) in keys.iter().zip(vals.iter()) {
+                out.push_str(&format!(
+                    "[Parsed_metadata_2 @ 0x1] frame:{idx}    pts:{idx}       pts_time:{t}\n"
+                ));
+                out.push_str(&format!(
+                    "[Parsed_metadata_2 @ 0x1] lavfi.signalstats.{key}={v}\n"
+                ));
+            }
+        }
+        for (score, t) in candidates {
+            out.push_str(&format!(
+                "[Parsed_scdet_6 @ 0x2] lavfi.scd.score: {score}, lavfi.scd.time: {t}\n"
+            ));
+        }
+        out
+    }
+
+    #[test]
+    fn parses_signalstats_per_frame() {
+        let stderr = stats_stderr(
+            &[
+                (0.0, [120.0, 101.5, 126.7, 30.0]),
+                (0.033333, [121.0, 101.0, 127.0, 31.0]),
+            ],
+            &[],
+        );
+        let parsed = parse_ffmpeg_stderr(&stderr, 1.0);
+        assert_eq!(parsed.frame_stats.len(), 2);
+        assert!((parsed.frame_stats[1].0 - 0.033333).abs() < 1e-9);
+        assert_eq!(parsed.frame_stats[0].1, [120.0, 101.5, 126.7, 30.0]);
+    }
+
+    #[test]
+    fn rejects_scd_spike_without_stats_change() {
+        // Camera-move onset: high-ish scdet score, colour statistics nearly unchanged (sum 7.5).
+        let stderr = stats_stderr(
+            &[
+                (17.733333, [130.0, 110.0, 140.0, 40.0]),
+                (17.766667, [132.0, 111.5, 138.0, 42.0]),
+            ],
+            &[(9.17, 17.766667)],
+        );
+        let parsed = parse_ffmpeg_stderr(&stderr, 24.0);
+        let cuts = gate_cut_candidates(&parsed.cut_times_s, &parsed.frame_stats, 12.0, 15.0);
+        assert!(cuts.is_empty());
+    }
+
+    #[test]
+    fn accepts_low_score_cut_with_stats_change() {
+        // Same-palette hard cut: modest scdet score, colour statistics shift by 24.5.
+        let stderr = stats_stderr(
+            &[
+                (4.966667, [100.0, 120.0, 130.0, 50.0]),
+                (5.0, [110.0, 114.0, 135.0, 46.5]),
+            ],
+            &[(7.67, 5.0)],
+        );
+        let parsed = parse_ffmpeg_stderr(&stderr, 24.0);
+        let cuts = gate_cut_candidates(&parsed.cut_times_s, &parsed.frame_stats, 12.0, 15.0);
+        assert_eq!(cuts.len(), 1);
+        assert!((cuts[0].0 - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn accepts_high_score_cut_unconditionally() {
+        let stderr = stats_stderr(
+            &[
+                (2.966667, [100.0, 120.0, 130.0, 50.0]),
+                (3.0, [100.5, 120.5, 130.5, 50.5]),
+            ],
+            &[(14.2, 3.0)],
+        );
+        let parsed = parse_ffmpeg_stderr(&stderr, 24.0);
+        let cuts = gate_cut_candidates(&parsed.cut_times_s, &parsed.frame_stats, 12.0, 15.0);
+        assert_eq!(cuts.len(), 1);
     }
 
     #[test]
