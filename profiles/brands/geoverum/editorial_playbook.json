@@ -429,6 +429,20 @@
       "action": "camera.denoise(window_s=0.6, max_shift_px=24, max_zoom_shift=0.08, keep=['cuts','anchors'])",
       "weight": 0.75,
       "rationale": "Solver or keying noise becomes visible shake after interpolation; capped smoothing removes direction flips while keeping deliberate fast moves and story-beat framings."
+    },
+    {
+      "trigger_id": "demographic_split_over_divider",
+      "condition": "story.premise_has_percentage_divide and scene.has_meridian_or_line",
+      "action": "overlay.pop_silhouette_row(10); overlay.split_row_across_divider(); overlay.pair_percentage_with_compact_population_pill()",
+      "weight": 0.82,
+      "rationale": "Physically splitting a 10-figure silhouette row across a glowing dividing line makes asymmetric population ratios instantly legible before introducing exact headcount pills."
+    },
+    {
+      "trigger_id": "delayed_prohibition_pin_escalation",
+      "condition": "narration.states_environmental_or_resource_deficit",
+      "action": "overlay.stagger_teardrop_domain_pins(pop_ms=260, slash_delay_ms=360); overlay.layer_second_deficit_category()",
+      "weight": 0.78,
+      "rationale": "Popping the positive resource icon (water droplet, wheat crop) before drawing the crimson prohibition slash turns each pin into a two-beat visual argument."
     }
   ],
   "exemplar_bank": [
@@ -1333,6 +1347,33 @@
       "end_s": 96.6,
       "hyperframes_pattern": "micro_isthmus_glow_line_and_dual_unit_stack",
       "notes": "A slow aerial pull-out reveals an orange-rimmed peninsula joined to turquoise mainland by a narrow sandy neck; a luminous golden border line glows across the neck before stacked white dual-unit text ('85 m' / '(279 ft)') pops cleanly over the line."
+    },
+    {
+      "exemplar_id": "ref_us_rain_shadow_divide_hook_split",
+      "source_video_id": "ref_us_rain_shadow_divide",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 18.5,
+      "hyperframes_pattern": "silhouette_row_split_meridian_and_subzone_breakdown",
+      "notes": "Ten white human silhouettes pop sequentially beneath a cyan count-up to 80% as a glowing national perimeter draws on; a cyan meridian slices north-to-south while the silhouette row splits 2-vs-8 across warm-orange west and cyan east zones, followed by yellow coastal state highlights with typewriter labels and compact population pills (50M, 30M, 250M)."
+    },
+    {
+      "exemplar_id": "ref_us_rain_shadow_divide_rain_shadow_mechanism",
+      "source_video_id": "ref_us_rain_shadow_divide",
+      "role": "proof",
+      "start_s": 27.0,
+      "end_s": 51.5,
+      "hyperframes_pattern": "directional_mountain_sweep_cloud_barrier_and_wind_deflection",
+      "notes": "A gold mountain-range polygon sweeps north-to-south during an oblique bearing dive with typewriter map-plane labels; sunlit volumetric clouds with ground shadows drift from the highlighted ocean and stall against the range, then eastern clouds travel inland before tapered white wind streamlines from the gulf deflect them northward along the persistent meridian."
+    },
+    {
+      "exemplar_id": "ref_us_rain_shadow_divide_prohibition_cluster",
+      "source_video_id": "ref_us_rain_shadow_divide",
+      "role": "outro",
+      "start_s": 51.8,
+      "end_s": 60.0,
+      "hyperframes_pattern": "arid_region_fill_and_two_stage_prohibition_pins",
+      "notes": "Warm arid-ochre shading fades across the western half while four teardrop water-drop pins pop and receive crimson prohibition slashes ~350 ms later, followed by four wheat-crop pins undergoing the same two-stage negation during a wide continental pull-out."
     }
   ]
 }

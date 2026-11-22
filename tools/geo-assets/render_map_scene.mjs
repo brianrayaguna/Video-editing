@@ -323,9 +323,95 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       return "rgba(" + r + "," + g + "," + b + "," + clamp(alpha, 0, 1).toFixed(3) + ")";
     }
 
-    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter reveal + optional diagonal hatch & flash surge
-    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0 } = {}) {
+    function computeGeomBounds(geom) {
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+      const visitRing = (ring) => {
+        for (const pt of ring) {
+          if (pt[0] < minLng) minLng = pt[0];
+          if (pt[0] > maxLng) maxLng = pt[0];
+          if (pt[1] < minLat) minLat = pt[1];
+          if (pt[1] > maxLat) maxLat = pt[1];
+        }
+      };
+      const visit = (g) => {
+        if (!g) return;
+        if (Array.isArray(g)) { for (const it of g) visit(it.geometry || it); return; }
+        if (g.type === "Polygon") { for (const r of g.coordinates) visitRing(r); }
+        else if (g.type === "MultiPolygon") { for (const p of g.coordinates) for (const r of p) visitRing(r); }
+      };
+      visit(geom);
+      if (!Number.isFinite(minLng)) return null;
+      return [minLng, minLat, maxLng, maxLat];
+    }
+
+    function applyWorldDirectionalClip(targetCtx, geom, axis, progress, explicitBounds = null) {
+      const p = clamp(progress, 0, 1);
+      if (p >= 0.999) return true;
+      if (p <= 0.001) return false;
+      const b = explicitBounds || computeGeomBounds(geom);
+      if (!b) return true;
+      const [minLng, minLat, maxLng, maxLat] = b;
+      const padLng = Math.max(12, (maxLng - minLng) * 0.45);
+      const padLat = Math.max(12, (maxLat - minLat) * 0.45);
+      let w = minLng - padLng, e = maxLng + padLng, s = minLat - padLat, n = maxLat + padLat;
+      if (axis === "north_south") {
+        s = lerp(maxLat + 0.5, minLat - padLat, p);
+      } else if (axis === "south_north") {
+        n = lerp(minLat - 0.5, maxLat + padLat, p);
+      } else if (axis === "west_east") {
+        e = lerp(minLng - 0.5, maxLng + padLng, p);
+      } else if (axis === "east_west") {
+        w = lerp(maxLng + 0.5, minLng - padLng, p);
+      }
+      const corners = [[w, n], [e, n], [e, s], [w, s]];
+      targetCtx.beginPath();
+      for (let i = 0; i < corners.length; i++) {
+        const sp = map.project(corners[i]);
+        if (i === 0) targetCtx.moveTo(sp.x, sp.y);
+        else targetCtx.lineTo(sp.x, sp.y);
+      }
+      targetCtx.closePath();
+      targetCtx.clip();
+      return true;
+    }
+
+    function drawProgressiveGeomPerimeter(geom, progress, { rimHex = "#F4F1EA", rimWidth = 3.2, bloomHex = "#60A5FA", bloomScale = 1.0, alpha = 1.0 } = {}) {
+      if (alpha <= 0.005 || progress <= 0.001 || !geom) return;
+      const rings = [];
+      const collect = (g) => {
+        if (!g) return;
+        if (Array.isArray(g)) { for (const it of g) collect(it.geometry || it); return; }
+        if (g.type === "Polygon" && g.coordinates[0]) rings.push(g.coordinates[0]);
+        else if (g.type === "MultiPolygon") { for (const p of g.coordinates) if (p[0]) rings.push(p[0]); }
+      };
+      collect(geom);
+      for (const ring of rings) {
+        if (ring.length < 3) continue;
+        // Trace ring symmetrically from two opposite anchors so perimeter closes swiftly across the continent
+        const mid = Math.floor(ring.length / 2);
+        const segA = ring.slice(0, mid + 1);
+        const segB = ring.slice(mid);
+        const drawHalf = (coords) => {
+          drawPartialRoute(coords, progress, {
+            color: rimHex,
+            bloom: bloomHex || rimHex,
+            core: "#FFFFFF",
+            width: rimWidth,
+            alpha,
+          });
+        };
+        drawHalf(segA);
+        drawHalf(segB);
+      }
+    }
+
+    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter/directional reveal + optional diagonal hatch & flash surge
+    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, revealAxis = null, revealProgress = 1.0, revealBounds = null, outlineOnly = false, perimeterProgress = 1.0, featherPx = 0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0 } = {}) {
       if (alpha <= 0.005 || !geom) return;
+      if (outlineOnly && perimeterProgress < 0.999) {
+        drawProgressiveGeomPerimeter(geom, perimeterProgress, { rimHex, rimWidth, bloomHex, bloomScale, alpha });
+        return;
+      }
 
       // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
       maskCtx.clearRect(0, 0, W, H);
@@ -352,7 +438,12 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
 
       // 3. Exterior-only Gaussian bloom (never stacks opaque color over interior mountain texture)
       ctx.save();
-      if (borderReveal < 0.999) {
+      if (revealAxis && revealProgress < 0.999) {
+        if (!applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds)) {
+          ctx.restore();
+          return;
+        }
+      } else if (borderReveal < 0.999) {
         ctx.beginPath();
         ctx.rect(0, 0, W, H * clamp(borderReveal, 0, 1));
         ctx.clip();
@@ -390,7 +481,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.restore();
 
       // 5. Terrain-preserving interior fill (single clean translucent pass so mountain ridges shine through)
-      if (fillReveal > 0.005) {
+      if (!outlineOnly && fillReveal > 0.005) {
         rimCtx.clearRect(0, 0, W, H);
         rimCtx.globalCompositeOperation = "source-over";
         rimCtx.drawImage(maskCanvas, 0, 0);
@@ -399,8 +490,18 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         rimCtx.fillRect(0, 0, W, H);
 
         ctx.save();
+        if (revealAxis && revealProgress < 0.999) {
+          if (!applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds)) {
+            ctx.restore();
+            return;
+          }
+        }
         ctx.globalCompositeOperation = "source-over";
         ctx.globalAlpha = alpha * fillAlpha * clamp(fillReveal, 0, 1);
+        if (featherPx > 0) {
+          ctx.shadowColor = fillHex;
+          ctx.shadowBlur = featherPx;
+        }
         ctx.drawImage(rimCanvas, 0, 0);
         ctx.restore();
 
@@ -420,6 +521,9 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           }
           rimCtx.stroke();
           ctx.save();
+          if (revealAxis && revealProgress < 0.999) {
+            applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds);
+          }
           ctx.globalAlpha = alpha * clamp(fillReveal, 0, 1);
           ctx.drawImage(rimCanvas, 0, 0);
           ctx.restore();
@@ -530,9 +634,13 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       };
     }
 
-    // Multi-ring luminous text glow with continuous sub-pixel transform scaling (zero 1px font-step jitter)
-    function drawGlowingText(text, x, y, fontPx, { fill = "#FFFFFF", glowHex = "#22C55E", glowStrength = "luminous", angle = 0, scale = 1.0, alpha = 1, family = "Space Grotesk", weight = 800 } = {}) {
+    // Multi-ring luminous text glow with continuous sub-pixel transform scaling (zero 1px font-step jitter),
+    // optional stroke outline, multi-line text support, and compact sub-pill for discrete headcounts.
+    function drawGlowingText(text, x, y, fontPx, { fill = "#FFFFFF", glowHex = "#22C55E", glowStrength = "luminous", angle = 0, scale = 1.0, alpha = 1, family = "Space Grotesk", weight = 800, strokeHex = null, strokeWidth = 0, lineHeightMult = 1.08, subPill = null } = {}) {
       if (alpha <= 0.005 || scale <= 0.01) return;
+      const lines = String(text ?? "").split("\\n");
+      const lineStep = fontPx * lineHeightMult;
+      const totalH = (lines.length - 1) * lineStep;
       ctx.save();
       ctx.translate(x, y);
       if (angle) ctx.rotate(angle);
@@ -552,7 +660,9 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           ctx.shadowColor = glowHex;
           ctx.shadowBlur = blurR;
           ctx.fillStyle = fill;
-          ctx.fillText(text, 0, 0);
+          for (let li = 0; li < lines.length; li++) {
+            ctx.fillText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+          }
           ctx.restore();
         }
       }
@@ -560,8 +670,405 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       ctx.shadowColor = "rgba(0,0,0,0.85)";
       ctx.shadowBlur = Math.max(4, fontPx * 0.14);
       ctx.shadowOffsetY = 3;
+      if (strokeHex && strokeWidth > 0) {
+        ctx.strokeStyle = strokeHex;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = "round";
+        for (let li = 0; li < lines.length; li++) {
+          ctx.strokeText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+        }
+      }
       ctx.fillStyle = fill;
-      ctx.fillText(text, 0, 0);
+      for (let li = 0; li < lines.length; li++) {
+        ctx.fillText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+      }
+
+      if (subPill && subPill.alpha > 0.01 && subPill.text) {
+        const pScale = subPill.scale ?? 1.0;
+        const pFont = subPill.font_px ?? Math.max(18, Math.round(fontPx * 0.26));
+        const pY = (totalH * 0.5) + fontPx * 0.52 + (subPill.dy ?? 6);
+        ctx.save();
+        ctx.translate(0, pY);
+        ctx.scale(pScale, pScale);
+        ctx.globalAlpha = alpha * subPill.alpha;
+        ctx.font = "800 " + pFont + "px '" + family + "', sans-serif";
+        const tw = ctx.measureText(subPill.text).width;
+        const iconW = subPill.icon === "person" ? pFont * 0.95 : 0;
+        const padX = pFont * 0.55;
+        const pillW = tw + iconW + padX * 2;
+        const pillH = pFont * 1.48;
+        const r = pillH * 0.5;
+        ctx.shadowColor = "rgba(0,0,0,0.65)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 3;
+        ctx.fillStyle = subPill.bg_hex || fill;
+        ctx.beginPath();
+        ctx.roundRect(-pillW * 0.5, -pillH * 0.5, pillW, pillH, r);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        if (subPill.border_hex) {
+          ctx.strokeStyle = subPill.border_hex;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        const fg = subPill.text_hex || "#FFFFFF";
+        if (subPill.icon === "person") {
+          const ix = -pillW * 0.5 + padX + iconW * 0.36;
+          ctx.fillStyle = fg;
+          ctx.beginPath();
+          ctx.arc(ix, -pFont * 0.20, pFont * 0.19, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(ix, pFont * 0.36, pFont * 0.33, Math.PI, 0, false);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.fillStyle = fg;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(subPill.text, -pillW * 0.5 + padX + iconW, 1);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    function drawHumanFigure(x, y, h, color = "#FFFFFF", alpha = 1.0) {
+      if (alpha <= 0.005 || h <= 1) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = "rgba(0,0,0,0.65)";
+      ctx.shadowBlur = Math.max(4, h * 0.14);
+      ctx.shadowOffsetY = 2;
+      ctx.fillStyle = color;
+      // Head
+      const headR = h * 0.135;
+      ctx.beginPath();
+      ctx.arc(0, -h * 0.37, headR, 0, Math.PI * 2);
+      ctx.fill();
+      // Torso + arms (clean pill silhouette)
+      const w = h * 0.38;
+      ctx.beginPath();
+      ctx.roundRect(-w * 0.5, -h * 0.20, w, h * 0.38, w * 0.36);
+      ctx.fill();
+      // Legs
+      const legW = w * 0.34;
+      const legGap = w * 0.12;
+      ctx.beginPath();
+      ctx.roundRect(-legGap * 0.5 - legW, h * 0.10, legW, h * 0.38, legW * 0.45);
+      ctx.roundRect(legGap * 0.5, h * 0.10, legW, h * 0.38, legW * 0.45);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawLandmarkSilhouette(x, y, heightPx, landmark = "statue_of_liberty", { fillHex = "#94A3B8", accentHex = "#CBD5E1", rimHex = "#E2E8F0", alpha = 1.0, riseProgress = 1.0 } = {}) {
+      if (alpha <= 0.005 || heightPx <= 2 || riseProgress <= 0.01) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha = alpha;
+      // Clip from baseline upward so the monument rises out of the map anchor cleanly
+      ctx.beginPath();
+      ctx.rect(-heightPx * 0.9, -heightPx * 1.35, heightPx * 1.8, heightPx * 1.40);
+      ctx.clip();
+      const slideY = (1 - riseProgress) * heightPx * 1.15;
+      ctx.translate(0, slideY);
+      const s = heightPx / 200;
+      ctx.scale(s, s);
+      ctx.shadowColor = "rgba(0,0,0,0.65)";
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 5;
+
+      if (landmark === "statue_of_liberty") {
+        // Pedestal base
+        ctx.fillStyle = "#64748B";
+        ctx.beginPath();
+        ctx.roundRect(-24, -18, 48, 18, 3);
+        ctx.fill();
+        // Draped robe & body silhouette
+        const grad = ctx.createLinearGradient(-22, -160, 26, -18);
+        grad.addColorStop(0, accentHex);
+        grad.addColorStop(0.55, fillHex);
+        grad.addColorStop(1, "#475569");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-20, -18);
+        ctx.lineTo(-16, -95);
+        ctx.lineTo(-22, -124);
+        ctx.lineTo(-10, -138);
+        // Raised torch arm (right side)
+        ctx.lineTo(14, -142);
+        ctx.lineTo(22, -182);
+        ctx.lineTo(29, -182);
+        ctx.lineTo(24, -132);
+        ctx.lineTo(18, -95);
+        ctx.lineTo(21, -18);
+        ctx.closePath();
+        ctx.fill();
+        // Tablet in left arm
+        ctx.fillStyle = "#475569";
+        ctx.beginPath();
+        ctx.roundRect(-24, -118, 13, 22, 2);
+        ctx.fill();
+        // Head & 7-ray crown
+        ctx.fillStyle = accentHex;
+        ctx.beginPath();
+        ctx.arc(-1, -149, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = rimHex;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = "round";
+        for (let i = -3; i <= 3; i++) {
+          const ang = -Math.PI * 0.5 + i * 0.34;
+          ctx.beginPath();
+          ctx.moveTo(-1 + Math.cos(ang) * 9, -151 + Math.sin(ang) * 9);
+          ctx.lineTo(-1 + Math.cos(ang) * 19, -151 + Math.sin(ang) * 19);
+          ctx.stroke();
+        }
+        // Torch cup & flame
+        ctx.fillStyle = "#CBD5E1";
+        ctx.beginPath();
+        ctx.roundRect(19, -187, 13, 7, 2);
+        ctx.fill();
+        ctx.fillStyle = "#FACC15";
+        ctx.shadowColor = "#F59E0B";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.moveTo(25.5, -203);
+        ctx.quadraticCurveTo(32, -193, 25.5, -186);
+        ctx.quadraticCurveTo(19, -193, 25.5, -203);
+        ctx.fill();
+      } else {
+        // Generic monument spire
+        ctx.fillStyle = fillHex;
+        ctx.beginPath();
+        ctx.moveTo(-16, 0);
+        ctx.lineTo(-9, -155);
+        ctx.lineTo(0, -195);
+        ctx.lineTo(9, -155);
+        ctx.lineTo(16, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawShadedCloud(x, y, radiusPx, alpha, tLocal, seed = 1, shadowDx = 14, shadowDy = 36) {
+      if (alpha <= 0.005 || radiusPx <= 2) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha = alpha;
+      const s = radiusPx / 90;
+      ctx.scale(s, s);
+      // Soft elongated ground shadow cast clearly beneath cloud onto terrain
+      ctx.save();
+      ctx.translate(shadowDx, shadowDy);
+      ctx.scale(1.55, 0.42);
+      const sh = ctx.createRadialGradient(0, 0, 10, 0, 0, 105);
+      sh.addColorStop(0, "rgba(2, 10, 14, 0.62)");
+      sh.addColorStop(0.55, "rgba(2, 10, 14, 0.28)");
+      sh.addColorStop(1, "rgba(2, 10, 14, 0)");
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.arc(0, 0, 105, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Elongated realistic cumulus/stratocumulus silhouette (wider than tall, crisp sunlit tops)
+      ctx.save();
+      ctx.scale(1.22, 0.56);
+      const puffs = [
+        [-84, 14, 38, 0.86], [-48, -14, 52, 0.95], [-6, -24, 62, 0.99],
+        [40, -14, 54, 0.96], [78, 8, 42, 0.88], [-24, 16, 48, 0.94],
+        [24, 16, 46, 0.92], [102, 18, 28, 0.78],
+      ];
+      for (let i = 0; i < puffs.length; i++) {
+        const [px, py, pr, pa] = puffs[i];
+        const jx = Math.sin(seed * 7.1 + i * 2.3 + tLocal * 1.1) * 3.5;
+        const jy = Math.cos(seed * 5.3 + i * 1.9 + tLocal * 0.8) * 2.2;
+        const cx = px + jx, cy = py + jy;
+        const g = ctx.createRadialGradient(cx - pr * 0.22, cy - pr * 0.36, pr * 0.12, cx, cy, pr);
+        g.addColorStop(0, "rgba(255, 255, 255, " + pa + ")");
+        g.addColorStop(0.56, "rgba(238, 244, 249, " + (pa * 0.95) + ")");
+        g.addColorStop(0.84, "rgba(176, 192, 204, " + (pa * 0.58) + ")");
+        g.addColorStop(1, "rgba(142, 162, 178, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function samplePolylineCoord(coords, u) {
+      if (!coords || coords.length === 0) return [0, 0];
+      if (coords.length === 1) return coords[0];
+      const p = clamp(u, 0, 1);
+      const segLens = [];
+      let total = 0;
+      for (let i = 1; i < coords.length; i++) {
+        const d = Math.hypot(coords[i][0] - coords[i - 1][0], coords[i][1] - coords[i - 1][1]);
+        segLens.push(d);
+        total += d;
+      }
+      if (total <= 1e-6) return coords[0];
+      const target = total * p;
+      let acc = 0;
+      for (let i = 0; i < segLens.length; i++) {
+        if (acc + segLens[i] >= target || i === segLens.length - 1) {
+          const f = segLens[i] > 1e-6 ? clamp((target - acc) / segLens[i], 0, 1) : 0;
+          return [
+            lerp(coords[i][0], coords[i + 1][0], f),
+            lerp(coords[i][1], coords[i + 1][1], f),
+          ];
+        }
+        acc += segLens[i];
+      }
+      return coords[coords.length - 1];
+    }
+
+    function drawWindStreamline(coords, headU, tailFrac, { widthPx = 4.5, color = "#FFFFFF", glowHex = "#7CE0F9", alpha = 1.0 } = {}) {
+      if (alpha <= 0.005 || !coords || coords.length < 2) return;
+      const u1 = clamp(headU, 0, 1 + tailFrac);
+      const u0 = u1 - tailFrac;
+      const segStart = clamp(u0, 0, 1);
+      const segEnd = clamp(u1, 0, 1);
+      if (segEnd - segStart <= 0.005) return;
+      const steps = 28;
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const u = lerp(segStart, segEnd, i / steps);
+        const c = samplePolylineCoord(coords, u);
+        pts.push(map.project(c));
+      }
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (let i = 1; i < pts.length; i++) {
+        const frac = i / (pts.length - 1);
+        const taper = Math.sin(frac * Math.PI);
+        const segAlpha = alpha * Math.pow(frac, 0.8) * (0.25 + 0.75 * taper);
+        if (segAlpha <= 0.01) continue;
+        ctx.strokeStyle = rgbaStr(color, segAlpha);
+        ctx.lineWidth = Math.max(1.2, widthPx * (0.28 + 0.72 * taper));
+        ctx.shadowColor = glowHex || color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+        ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawProhibitionPin(x, y, radiusPx, iconKind, popScale, slashProgress, alpha) {
+      if (alpha <= 0.005 || popScale <= 0.01) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(popScale, popScale);
+      ctx.globalAlpha = alpha;
+      const r = radiusPx;
+      // Anchor is at the bottom tip of the teardrop pin (0, 0)
+      const cy = -r * 1.24;
+
+      // Ground drop shadow
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      ctx.beginPath();
+      ctx.ellipse(0, 3, r * 0.44, r * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // White teardrop pin body
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 4;
+      ctx.fillStyle = "#FFFFFF";
+      ctx.beginPath();
+      ctx.arc(0, cy, r, Math.PI * 0.22, Math.PI * 0.78, true);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Inner domain icon
+      ctx.save();
+      ctx.translate(0, cy);
+      if (iconKind === "water_drop") {
+        // Glossy hydro-blue raindrop
+        const dg = ctx.createLinearGradient(-r * 0.3, -r * 0.55, r * 0.35, r * 0.55);
+        dg.addColorStop(0, "#38BDF8");
+        dg.addColorStop(1, "#0284C7");
+        ctx.fillStyle = dg;
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.56);
+        ctx.bezierCurveTo(r * 0.46, -r * 0.04, r * 0.48, r * 0.50, 0, r * 0.54);
+        ctx.bezierCurveTo(-r * 0.48, r * 0.50, -r * 0.46, -r * 0.04, 0, -r * 0.56);
+        ctx.closePath();
+        ctx.fill();
+        // Specular highlight
+        ctx.fillStyle = "rgba(255,255,255,0.68)";
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.14, r * 0.06, r * 0.08, r * 0.17, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (iconKind === "wheat_crop") {
+        // Golden wheat stalks sprouting from dark soil mound
+        ctx.fillStyle = "#F59E0B";
+        ctx.strokeStyle = "#D97706";
+        ctx.lineWidth = Math.max(1.5, r * 0.06);
+        const stalks = [-0.28, -0.10, 0.10, 0.28];
+        for (const sx of stalks) {
+          const topY = -r * (0.48 - Math.abs(sx) * 0.35);
+          ctx.beginPath();
+          ctx.moveTo(sx * r, r * 0.24);
+          ctx.quadraticCurveTo(sx * r * 1.15, topY * 0.5, sx * r * 1.25, topY);
+          ctx.stroke();
+          // Wheat grains
+          for (let g = 0; g < 3; g++) {
+            const gy = lerp(topY + r * 0.06, r * 0.06, g / 2.4);
+            const gx = sx * r * (1.22 - g * 0.06);
+            ctx.beginPath();
+            ctx.ellipse(gx, gy, r * 0.085, r * 0.13, sx * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        // Rich soil mound at bottom
+        ctx.fillStyle = "#5C3A21";
+        ctx.beginPath();
+        ctx.arc(0, r * 0.42, r * 0.56, Math.PI * 1.12, Math.PI * 1.88, false);
+        ctx.quadraticCurveTo(0, r * 0.60, -r * 0.50, r * 0.22);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // Fallback geometric circle emblem
+        ctx.fillStyle = "#3B82F6";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Stage 2: Animated crimson prohibition ring + diagonal slash
+      if (slashProgress > 0.01) {
+        const sp = clamp(slashProgress, 0, 1);
+        const ringP = clamp(sp / 0.65, 0, 1);
+        const barP = clamp((sp - 0.30) / 0.70, 0, 1);
+        ctx.strokeStyle = "#DC2626";
+        ctx.lineWidth = Math.max(4, r * 0.19);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.86, -Math.PI * 0.75, -Math.PI * 0.75 + Math.PI * 2 * ringP);
+        ctx.stroke();
+        if (barP > 0.01) {
+          const d = r * 0.62;
+          ctx.beginPath();
+          ctx.moveTo(-d, -d);
+          ctx.lineTo(lerp(-d, d, barP), lerp(-d, d, barP));
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
       ctx.restore();
     }
 
@@ -929,6 +1436,12 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           const fillReveal = layer.fill_draw_s
             ? easeOutCubic(seg(t, tStart, tStart + layer.fill_draw_s))
             : 1.0;
+          const revealProgress = layer.reveal_duration_s
+            ? easeInOutCubic(seg(t, tStart + (layer.reveal_delay_s ?? 0), tStart + (layer.reveal_delay_s ?? 0) + layer.reveal_duration_s))
+            : 1.0;
+          const perimeterProgress = layer.perimeter_draw_s
+            ? easeOutCubic(seg(t, tStart + (layer.perimeter_delay_s ?? 0), tStart + (layer.perimeter_delay_s ?? 0) + layer.perimeter_draw_s))
+            : 1.0;
           let flashHex = null;
           let flashIntensity = 0;
           for (const fl of layer.flashes || []) {
@@ -953,6 +1466,12 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
               alpha: baseAlpha,
               borderReveal,
               fillReveal,
+              revealAxis: layer.reveal_axis || null,
+              revealProgress,
+              revealBounds: layer.reveal_bounds || null,
+              outlineOnly: Boolean(layer.outline_only),
+              perimeterProgress,
+              featherPx: layer.feather_px ?? 0,
               hatch: Boolean(layer.hatch),
               hatchColor: layer.hatch_color || "rgba(255,255,255,0.24)",
               hatchSpacing: layer.hatch_spacing ?? 22,
@@ -991,7 +1510,10 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           }
         } else if (layer.type === "glow_label") {
           const space = layer.space || (layer.ref_zoom != null ? "map_plane" : "world_billboard");
-          let sc = layer.pop_scale ? lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.35))) : 1.0;
+          let sc = layer.pop_scale ? lerp(0.84, 1.0, easeOutBack(seg(t, tStart, tStart + (layer.pop_duration_s ?? 0.35)))) : 1.0;
+          if (layer.exit_scale_down_s && t > tEnd - layer.exit_scale_down_s) {
+            sc *= 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd));
+          }
           let yFly = 0;
           if (layer.fly_through) {
             const enterP = easeOutExpo(seg(t, tStart, tStart + 0.52));
@@ -999,47 +1521,79 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             sc = lerp(5.2, 1.0, enterP) * lerp(1.0, 4.8, exitP);
             yFly = lerp(320, 0, enterP) - lerp(0, 220, exitP);
           }
+          let displayText = String(layer.text ?? "");
+          if (layer.count_to != null) {
+            const cStart = tStart + (layer.count_delay_s ?? 0);
+            const cDur = layer.count_duration_s ?? 0.85;
+            const cu = easeOutCubic(seg(t, cStart, cStart + cDur));
+            const val = Math.round(lerp(layer.count_from ?? 0, layer.count_to, cu));
+            displayText = (layer.count_prefix || "") + val.toLocaleString("en-US") + (layer.count_suffix || "");
+          } else if (layer.typewriter_s) {
+            const twStart = tStart + (layer.typewriter_delay_s ?? 0);
+            const twU = clamp(seg(t, twStart, twStart + layer.typewriter_s), 0, 1);
+            const chars = Math.max(0, Math.round(displayText.length * twU));
+            displayText = displayText.slice(0, chars);
+          }
+          let curCoord = layer.coord;
+          if (curCoord && layer.move_to_coord && layer.move_start_s != null) {
+            const mu = easeInOutCubic(seg(t, layer.move_start_s, layer.move_start_s + (layer.move_duration_s ?? 0.6)));
+            curCoord = [
+              lerp(curCoord[0], layer.move_to_coord[0], mu),
+              lerp(curCoord[1], layer.move_to_coord[1], mu),
+            ];
+          }
+          let subPill = null;
+          if (layer.sub_pill) {
+            const spStart = layer.sub_pill.start_s ?? (tStart + (layer.sub_pill.delay_s ?? 0));
+            const spEnd = layer.sub_pill.end_s ?? tEnd;
+            if (t >= spStart && t <= spEnd) {
+              const spIn = easeOutBack(seg(t, spStart, spStart + (layer.sub_pill.pop_s ?? 0.28)));
+              const spOut = layer.sub_pill.fade_out_s ? 1 - seg(t, spEnd - layer.sub_pill.fade_out_s, spEnd) : 1;
+              subPill = {
+                ...layer.sub_pill,
+                alpha: clamp(spOut, 0, 1),
+                scale: clamp(spIn, 0, 1.15),
+              };
+            }
+          }
           const angDeg = layer.angle_end != null
             ? lerp(layer.angle_start || 0, layer.angle_end, seg(t, tStart, tEnd))
             : (layer.angle || 0);
           const angRad = angDeg * Math.PI / 180;
           const baseFont = layer.font_px || 64;
-          if (space === "map_plane" && layer.coord && !layer.fly_through) {
-            const m = getMapPlaneMatrix(layer.coord, layer.ref_zoom ?? map.getZoom());
+          const textOpts = {
+            fill: layer.fill || "#FFFFFF",
+            glowHex: layer.glow_hex ?? "#22C55E",
+            glowStrength: layer.glow_strength || "luminous",
+            angle: angRad,
+            scale: sc,
+            alpha: baseAlpha,
+            family: layer.family || "Rubik",
+            weight: layer.weight || 800,
+            strokeHex: layer.stroke_hex || null,
+            strokeWidth: layer.stroke_width ?? 0,
+            lineHeightMult: layer.line_height_mult ?? 1.08,
+            subPill,
+          };
+          if (space === "map_plane" && curCoord && !layer.fly_through) {
+            const m = getMapPlaneMatrix(curCoord, layer.ref_zoom ?? map.getZoom());
             const mag = Math.hypot(m.a, m.b);
             const minSc = layer.min_scale ?? 0.35;
             const maxSc = layer.max_scale ?? 3.2;
             const clampFactor = mag > 1e-4 ? clamp(mag, minSc, maxSc) / mag : 1.0;
             ctx.save();
             ctx.transform(m.a * clampFactor, m.b * clampFactor, m.c * clampFactor, m.d * clampFactor, m.e, m.f);
-            drawGlowingText(layer.text, layer.dx || 0, layer.dy || 0, baseFont, {
-              fill: layer.fill || "#FFFFFF",
-              glowHex: layer.glow_hex || "#22C55E",
-              glowStrength: layer.glow_strength || "luminous",
-              angle: angRad,
-              scale: sc,
-              alpha: baseAlpha,
-              family: layer.family || "Rubik",
-              weight: layer.weight || 800,
-            });
+            drawGlowingText(displayText, layer.dx || 0, layer.dy || 0, baseFont, textOpts);
             ctx.restore();
           } else {
-            const pt = map.project(layer.coord);
+            const pt = map.project(curCoord);
             if (layer.ref_zoom != null) {
               const coupling = layer.scale_coupling ?? 0.45;
               const zScale = Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling);
               sc *= clamp(zScale, layer.min_scale ?? 0.45, layer.max_scale ?? 2.4);
+              textOpts.scale = sc;
             }
-            drawGlowingText(layer.text, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, baseFont, {
-              fill: layer.fill || "#FFFFFF",
-              glowHex: layer.glow_hex || "#22C55E",
-              glowStrength: layer.glow_strength || "luminous",
-              angle: angRad,
-              scale: sc,
-              alpha: baseAlpha,
-              family: layer.family || "Rubik",
-              weight: layer.weight || 800,
-            });
+            drawGlowingText(displayText, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, baseFont, textOpts);
           }
         } else if (layer.type === "crimson_x") {
           const pt = map.project(layer.coord);
@@ -1957,6 +2511,156 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             family: "Rubik",
             weight: 800,
           });
+        } else if (layer.type === "human_silhouette_row") {
+          const count = layer.count || 10;
+          const figH = layer.figure_h_px || 66;
+          const spacing = layer.spacing_px || (figH * 0.50);
+          const stagger = layer.pop_stagger_s ?? 0.055;
+          const popDur = layer.pop_duration_s ?? 0.22;
+          const splitAt = layer.split_at_s;
+          const splitDur = layer.split_duration_s ?? 0.55;
+          const splitLeftCount = layer.split_left_count ?? 2;
+          const splitU = splitAt != null ? easeInOutCubic(seg(t, splitAt, splitAt + splitDur)) : 0;
+          const exitScale = (layer.exit_scale_down_s && t > tEnd - layer.exit_scale_down_s)
+            ? 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd))
+            : 1.0;
+
+          const basePt = map.project(layer.coord);
+          const leftPt = layer.left_coord ? map.project(layer.left_coord) : basePt;
+          const rightPt = layer.right_coord ? map.project(layer.right_coord) : basePt;
+          const refZoom = layer.ref_zoom ?? map.getZoom();
+          const coupling = layer.scale_coupling ?? 0.85;
+          const zSc = clamp(Math.pow(2, (map.getZoom() - refZoom) * coupling), layer.min_scale ?? 0.35, layer.max_scale ?? 2.6) * exitScale;
+
+          for (let i = 0; i < count; i++) {
+            const p = easeOutBack(seg(t, tStart + i * stagger, tStart + i * stagger + popDur));
+            if (p <= 0.01) continue;
+            const unifiedX = basePt.x + (layer.dx || 0) + (i - (count - 1) * 0.5) * spacing * zSc;
+            const unifiedY = basePt.y + (layer.dy || 0);
+            let tx = unifiedX;
+            let ty = unifiedY;
+            if (splitAt != null && splitU > 0.001) {
+              if (i < splitLeftCount) {
+                const lx = leftPt.x + (layer.left_dx || 0) + (i - (splitLeftCount - 1) * 0.5) * spacing * zSc;
+                const ly = leftPt.y + (layer.left_dy || 0);
+                tx = lerp(unifiedX, lx, splitU);
+                ty = lerp(unifiedY, ly, splitU);
+              } else {
+                const rIdx = i - splitLeftCount;
+                const rCount = count - splitLeftCount;
+                const rx = rightPt.x + (layer.right_dx || 0) + (rIdx - (rCount - 1) * 0.5) * spacing * zSc;
+                const ry = rightPt.y + (layer.right_dy || 0);
+                tx = lerp(unifiedX, rx, splitU);
+                ty = lerp(unifiedY, ry, splitU);
+              }
+            }
+            let figAlpha = baseAlpha;
+            if (i < splitLeftCount && layer.left_end_s != null) {
+              if (t > layer.left_end_s) continue;
+              if (layer.left_fade_out_s) figAlpha *= 1 - seg(t, layer.left_end_s - layer.left_fade_out_s, layer.left_end_s);
+            }
+            if (i >= splitLeftCount && layer.right_end_s != null) {
+              if (t > layer.right_end_s) continue;
+              if (layer.right_fade_out_s) figAlpha *= 1 - seg(t, layer.right_end_s - layer.right_fade_out_s, layer.right_end_s);
+            }
+            drawHumanFigure(tx, ty, figH * zSc * clamp(p, 0, 1.18), layer.color || "#FFFFFF", figAlpha);
+          }
+        } else if (layer.type === "landmark_silhouette") {
+          const pt = map.project(layer.coord);
+          const coupling = layer.scale_coupling ?? 0.55;
+          const zSc = layer.ref_zoom != null
+            ? clamp(Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling), layer.min_scale ?? 0.45, layer.max_scale ?? 2.4)
+            : 1.0;
+          const riseP = layer.rise_duration_s
+            ? easeOutBack(seg(t, tStart, tStart + layer.rise_duration_s))
+            : 1.0;
+          const exitScale = (layer.exit_scale_down_s && t > tEnd - layer.exit_scale_down_s)
+            ? 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd))
+            : 1.0;
+          drawLandmarkSilhouette(
+            pt.x + (layer.dx || 0),
+            pt.y + (layer.dy || 0),
+            (layer.height_px || 190) * zSc * exitScale,
+            layer.landmark || "statue_of_liberty",
+            {
+              fillHex: layer.fill_hex || "#94A3B8",
+              accentHex: layer.accent_hex || "#CBD5E1",
+              rimHex: layer.rim_hex || "#E2E8F0",
+              alpha: baseAlpha,
+              riseProgress: clamp(riseP, 0, 1.08),
+            },
+          );
+        } else if (layer.type === "cloud_system") {
+          const refZoom = layer.ref_zoom ?? map.getZoom();
+          const coupling = layer.scale_coupling ?? 0.85;
+          const zSc = clamp(Math.pow(2, (map.getZoom() - refZoom) * coupling), layer.min_scale ?? 0.35, layer.max_scale ?? 3.0);
+          for (let ci = 0; ci < (layer.clouds || []).length; ci++) {
+            const cl = layer.clouds[ci];
+            const cStart = cl.start_s ?? tStart;
+            const cEnd = cl.end_s ?? tEnd;
+            if (t < cStart - 0.001 || t > cEnd + 0.001) continue;
+            const cIn = easeOutCubic(seg(t, cStart, cStart + (cl.fade_in_s ?? 0.45)));
+            const cOut = 1 - seg(t, cEnd - (cl.fade_out_s ?? 0.45), cEnd);
+            const cAlpha = baseAlpha * clamp(cIn * cOut * (cl.opacity ?? 0.96), 0, 1);
+            const moveDur = cl.move_duration_s ?? (cEnd - cStart);
+            const rawU = seg(t, cStart, cStart + moveDur);
+            const u = cl.easing === "linear" ? rawU : cl.easing === "ease_in_out" ? easeInOutCubic(rawU) : easeOutCubic(rawU);
+            const coord = samplePolylineCoord(cl.path, u);
+            const pt = map.project(coord);
+            drawShadedCloud(
+              pt.x + (cl.dx || 0),
+              pt.y + (cl.dy || 0),
+              (cl.radius_px || 78) * zSc,
+              cAlpha,
+              t - cStart,
+              cl.seed ?? (ci + 1),
+              (cl.shadow_dx ?? 18) * zSc,
+              (cl.shadow_dy ?? 34) * zSc,
+            );
+          }
+        } else if (layer.type === "wind_streamlines") {
+          for (const st of layer.streams || []) {
+            const sStart = st.start_s ?? tStart;
+            const sEnd = st.end_s ?? tEnd;
+            if (t < sStart || t > sEnd) continue;
+            const dur = st.duration_s ?? 1.4;
+            const rep = st.repeat_s ?? 0;
+            const localT = t - sStart;
+            const tailFrac = st.tail_frac ?? 0.42;
+            const cycles = rep > 0 ? Math.floor(localT / rep) + 1 : 1;
+            for (let c = 0; c < cycles; c++) {
+              const ct = localT - c * rep;
+              if (ct < 0 || ct > dur * (1 + tailFrac)) continue;
+              const headU = (ct / dur) * (1 + tailFrac);
+              drawWindStreamline(st.coords, headU, tailFrac, {
+                widthPx: st.width_px ?? 4.8,
+                color: st.color || "#FFFFFF",
+                glowHex: st.glow_hex || "#7CE0F9",
+                alpha: baseAlpha * (st.opacity ?? 0.88),
+              });
+            }
+          }
+        } else if (layer.type === "prohibition_pins") {
+          const refZoom = layer.ref_zoom ?? map.getZoom();
+          const coupling = layer.scale_coupling ?? 0.72;
+          const zSc = clamp(Math.pow(2, (map.getZoom() - refZoom) * coupling), layer.min_scale ?? 0.40, layer.max_scale ?? 2.2);
+          for (const pin of layer.pins || []) {
+            const pStart = pin.pop_s ?? tStart;
+            if (t < pStart) continue;
+            const popP = easeOutBack(seg(t, pStart, pStart + (pin.pop_duration_s ?? 0.26)));
+            const slashStart = pStart + (pin.slash_delay_s ?? 0.36);
+            const slashP = easeOutCubic(seg(t, slashStart, slashStart + (pin.slash_duration_s ?? 0.24)));
+            const pt = map.project(pin.coord);
+            drawProhibitionPin(
+              pt.x + (pin.dx || 0),
+              pt.y + (pin.dy || 0),
+              (pin.radius_px || 44) * zSc,
+              pin.icon || "water_drop",
+              clamp(popP, 0, 1.15),
+              slashP,
+              baseAlpha,
+            );
+          }
         }
       }
     }

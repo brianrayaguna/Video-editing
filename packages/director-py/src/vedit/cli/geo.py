@@ -72,6 +72,97 @@ def _simplify_geom(geom: dict[str, Any], step: int = 1, min_pts: int = 0) -> dic
     return geom
 
 
+def _clip_ring_half_plane(
+    ring: list[list[float]], split_lon: float, keep_east: bool
+) -> list[list[float]]:
+    """Clip a closed lon/lat ring against the vertical meridian x = split_lon."""
+    if len(ring) < 3:
+        return []
+    pts = ring[:-1] if ring[0] == ring[-1] else list(ring)
+    if len(pts) < 3:
+        return []
+
+    def _inside(p: list[float]) -> bool:
+        return p[0] >= split_lon if keep_east else p[0] <= split_lon
+
+    def _intersect(a: list[float], b: list[float]) -> list[float]:
+        dx = b[0] - a[0]
+        if abs(dx) < 1e-12:
+            return [round(split_lon, 4), round(a[1], 4)]
+        t = (split_lon - a[0]) / dx
+        return [round(split_lon, 4), round(a[1] + t * (b[1] - a[1]), 4)]
+
+    out: list[list[float]] = []
+    prev = pts[-1]
+    prev_in = _inside(prev)
+    for curr in pts:
+        curr_in = _inside(curr)
+        if curr_in:
+            if not prev_in:
+                out.append(_intersect(prev, curr))
+            out.append([round(curr[0], 4), round(curr[1], 4)])
+        elif prev_in:
+            out.append(_intersect(prev, curr))
+        prev = curr
+        prev_in = curr_in
+
+    if len(out) < 3:
+        return []
+    if out[0] != out[-1]:
+        out.append(out[0])
+    return out
+
+
+def split_polygon_by_longitude(geom: dict[str, Any], split_lon: float) -> dict[str, dict[str, Any]]:
+    """Split a GeoJSON Polygon/MultiPolygon along a meridian into west and east MultiPolygons."""
+    polys = (
+        [geom["coordinates"]]
+        if geom.get("type") == "Polygon"
+        else list(geom.get("coordinates") or [])
+    )
+    west_polys: list[list[list[list[float]]]] = []
+    east_polys: list[list[list[list[float]]]] = []
+    for poly in polys:
+        if not poly:
+            continue
+        w_outer = _clip_ring_half_plane(poly[0], split_lon, keep_east=False)
+        if len(w_outer) >= 4:
+            west_polys.append([w_outer])
+        e_outer = _clip_ring_half_plane(poly[0], split_lon, keep_east=True)
+        if len(e_outer) >= 4:
+            east_polys.append([e_outer])
+    return {
+        "west": {"type": "MultiPolygon", "coordinates": west_polys, "dissolve_seams": True},
+        "east": {"type": "MultiPolygon", "coordinates": east_polys, "dissolve_seams": True},
+    }
+
+
+def filter_polygons_by_bbox(
+    geom: dict[str, Any],
+    *,
+    min_lon: float,
+    max_lon: float,
+    min_lat: float,
+    max_lat: float,
+) -> dict[str, Any]:
+    """Retain only polygon rings whose centroid lies within the specified lon/lat bounding box."""
+    polys = (
+        [geom["coordinates"]]
+        if geom.get("type") == "Polygon"
+        else list(geom.get("coordinates") or [])
+    )
+    kept: list[list[list[list[float]]]] = []
+    for poly in polys:
+        if not poly or not poly[0]:
+            continue
+        ring = poly[0]
+        cx = sum(p[0] for p in ring) / len(ring)
+        cy = sum(p[1] for p in ring) / len(ring)
+        if min_lon <= cx <= max_lon and min_lat <= cy <= max_lat:
+            kept.append(poly)
+    return {"type": "MultiPolygon", "coordinates": kept, "dissolve_seams": True}
+
+
 def extract_project_vectors(
     *,
     repo_root: Path,
@@ -99,6 +190,7 @@ def extract_project_vectors(
         "countries": {},
         "continents": {},
         "provinces": [],
+        "provinces_by_name": {},
         "dissolved_region": None,
     }
 
@@ -133,6 +225,8 @@ def extract_project_vectors(
                 continue
             geom = _simplify_geom(feat["geometry"], step=1)
             result["provinces"].append({"admin": admin, "name": pname, "geometry": geom})
+            if pname:
+                result["provinces_by_name"][pname] = geom
             polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
             for poly in polys:
                 outer = poly[0]
