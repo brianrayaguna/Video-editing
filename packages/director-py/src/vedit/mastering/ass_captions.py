@@ -95,7 +95,9 @@ def _format_ass_time(seconds: float) -> str:
 
 
 def _escape_ass_text(text: str) -> str:
-    return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = cleaned.replace("\\", "\\\u2060").replace("{", r"\{").replace("}", r"\}")
+    return cleaned.replace("\n", r"\N")
 
 
 def _primary_font_name(raw_family: Any, default: str = "Space Grotesk") -> str:
@@ -340,12 +342,6 @@ def write_ass_overlays_file(
 
 
 def escape_ffmpeg_filter_path(path: Path) -> str:
-    """Escape a filesystem path for FFmpeg's `ass`/`subtitles` filter argument syntax."""
+    """Escape a filesystem path for single-quoted FFmpeg `ass`/`subtitles` filter options."""
     raw = str(path.resolve())
-    return (
-        raw.replace("\\", r"\\")
-        .replace(":", r"\:")
-        .replace("'", r"\'")
-        .replace("[", r"\[")
-        .replace("]", r"\]")
-    )
+    return raw.replace("\\", r"\\\\").replace(":", r"\:").replace("'", r"'\\\''")

@@ -109,12 +109,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     @font-face {
       font-family: "Rubik";
       src: url("${baseUrl}/fonts/Rubik-Bold.ttf") format("truetype");
-      font-weight: 700;
-    }
-    @font-face {
-      font-family: "Rubik";
-      src: url("${baseUrl}/fonts/Rubik-ExtraBold.ttf") format("truetype");
-      font-weight: 800;
+      font-weight: 700 800;
     }
     @font-face {
       font-family: "Rubik";
@@ -308,7 +303,16 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     }
 
     function parseHexRgb(hex) {
-      const h = (hex || "#FFFFFF").replace("#", "");
+      const raw = String(hex || "#FFFFFF").trim();
+      const rgbMatch = raw.match(/^rgba?\\(\\s*([\\d.]+)\\s*,\\s*([\\d.]+)\\s*,\\s*([\\d.]+)/i);
+      if (rgbMatch) {
+        return [
+          clamp(Math.round(Number(rgbMatch[1])), 0, 255),
+          clamp(Math.round(Number(rgbMatch[2])), 0, 255),
+          clamp(Math.round(Number(rgbMatch[3])), 0, 255),
+        ];
+      }
+      const h = raw.replace("#", "");
       return [
         parseInt(h.slice(0, 2), 16) || 0,
         parseInt(h.slice(2, 4), 16) || 0,
@@ -1604,7 +1608,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             ctx.transform(m.a * clampFactor, m.b * clampFactor, m.c * clampFactor, m.d * clampFactor, m.e, m.f);
             drawGlowingText(displayText, layer.dx || 0, layer.dy || 0, baseFont, textOpts);
             ctx.restore();
-          } else {
+          } else if (curCoord) {
             const pt = map.project(curCoord);
             if (layer.ref_zoom != null) {
               const coupling = layer.scale_coupling ?? 0.45;
@@ -2692,9 +2696,32 @@ function sampleCameraAt(samples, frameIndex, subOffset = 0) {
 }
 
 async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, outDir) {
-  const outMp4 = join(outDir, act.output_file || act.output_name || `${act.act_id}.mp4`);
-  const actKind = act.kind || act.mode || "map";
+  const outName = act.output_file || act.output_name || `${act.act_id}.mp4`;
+  const outMp4 = resolve(outDir, outName);
+  const resolvedOutDir = resolve(outDir);
+  if (outMp4 !== resolvedOutDir && !outMp4.startsWith(resolvedOutDir + "/")) {
+    throw new Error(`Output path escapes output directory (${resolvedOutDir}): ${outName}`);
+  }
+  const actKind = act.kind || act.mode || act.type || "map";
   const totalFrames = Math.max(1, Math.round(act.duration_s * fps));
+  if (actKind !== "blueprint_paper") {
+    const REJECTED_LAYERS = new Set([
+      "coord_plaque",
+      "scale_comparison",
+      "survey_pin",
+      "orbital_sightlines",
+      "culmination_sun",
+      "callout_badge",
+    ]);
+    for (const layer of act.layers || []) {
+      if (REJECTED_LAYERS.has(layer.type)) {
+        throw new Error(
+          `Rejected legacy chrome layer type "${layer.type}" in act "${act.act_id}". ` +
+          `Use calibrated boxless primitives instead (glow_label, pin_label, curved_pointer_label, dashed_distance, curved_arc_arrow, void_wipe, counter_odometer, ghost_overlay, prohibition_pins).`
+        );
+      }
+    }
+  }
   console.log(`\n=== Baking ${act.act_id} (${actKind}): ${act.duration_s.toFixed(3)}s (${totalFrames} frames) -> ${outMp4} ===`);
 
   const page = await browser.newPage();
@@ -2704,6 +2731,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   const encoder = spawnMjpegPipeEncoder(outMp4, { fps, crf: 15, gop: 1, preset: "fast", useVideoToolbox: false });
   const t0 = Date.now();
   const trackLog = [];
+  let succeeded = false;
 
   try {
     if (actKind === "blueprint_paper") {
@@ -2717,22 +2745,6 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         }
       }
     } else {
-      const REJECTED_LAYERS = new Set([
-        "coord_plaque",
-        "scale_comparison",
-        "survey_pin",
-        "orbital_sightlines",
-        "culmination_sun",
-        "callout_badge",
-      ]);
-      for (const layer of act.layers || []) {
-        if (REJECTED_LAYERS.has(layer.type)) {
-          throw new Error(
-            `Rejected legacy chrome layer type "${layer.type}" in act "${act.act_id}". ` +
-            `Use calibrated boxless primitives instead (glow_label, pin_label, curved_pointer_label, dashed_distance, curved_arc_arrow, void_wipe, counter_odometer, ghost_overlay, prohibition_pins).`
-          );
-        }
-      }
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
           tile_source: act.tile_source || "hybrid",
@@ -2745,6 +2757,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         { waitUntil: "load" }
       );
       await page.evaluate(() => window.__ready);
+      await page.evaluate(() => document.fonts.ready);
       const samples = act.camera_samples || [];
       const layers = act.layers || [];
       const preloadUrls = [];
@@ -2798,9 +2811,13 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         writeFileSync(join(outDir, `${act.act_id}_camera_track.json`), JSON.stringify(trackLog));
       }
     }
+    succeeded = true;
   } finally {
     await shotter.close();
     await page.close();
+    if (!succeeded) {
+      await encoder.abort();
+    }
   }
   await encoder.finish();
 }

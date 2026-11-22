@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
@@ -11,8 +12,12 @@ from typing import Any, Literal
 
 from vedit.models import PlatformTarget
 
-_EBUR128_I_RE = re.compile(r"Integrated loudness:\s*\n\s*I:\s*([-\d.]+)\s*LUFS", re.I)
-_EBUR128_TP_RE = re.compile(r"True peak:\s*\n\s*Peak:\s*([-\d.]+)\s*dBFS", re.I)
+_EBUR128_I_RE = re.compile(
+    r"Integrated loudness:\s*\n\s*I:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*LUFS", re.I
+)
+_EBUR128_TP_RE = re.compile(
+    r"True peak:\s*\n\s*Peak:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*dBFS", re.I
+)
 _BLACK_RE = re.compile(
     r"black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)",
     re.I,
@@ -21,7 +26,7 @@ _FREEZE_START_RE = re.compile(r"freeze_start:\s*([\d.]+)", re.I)
 _FREEZE_DUR_RE = re.compile(r"freeze_duration:\s*([\d.]+)", re.I)
 _VMAF_SCORE_RE = re.compile(r"VMAF score:\s*([\d.]+)", re.I)
 _SSIM_ALL_RE = re.compile(r"All:([\d.]+)", re.I)
-_PSNR_AVG_RE = re.compile(r"average:([\d.inf]+)", re.I)
+_PSNR_AVG_RE = re.compile(r"average:(\d+(?:\.\d+)?|inf)", re.I)
 
 
 @dataclass(slots=True)
@@ -81,7 +86,13 @@ def _run_visual_anomaly_scan(
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
+    if proc.returncode != 0:
+        err_tail = (proc.stderr or "")[-400:]
+        raise RuntimeError(
+            f"FFmpeg visual anomaly scan failed (exit {proc.returncode}): {err_tail}"
+        )
     stderr = proc.stderr or ""
     blacks = [
         {
@@ -176,7 +187,10 @@ def compute_ssim_psnr_scores(
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
+    if proc.returncode != 0:
+        return {}
     stderr = proc.stderr or ""
     ssim_m = _SSIM_ALL_RE.search(stderr)
     psnr_m = _PSNR_AVG_RE.search(stderr)
@@ -423,7 +437,17 @@ def audit_mastered_deliverable(
                 )
 
         if check_visual:
-            blacks, freezes = _run_visual_anomaly_scan(media_path)
+            try:
+                blacks, freezes = _run_visual_anomaly_scan(media_path)
+            except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                errors.append(
+                    QCIssue(
+                        severity="error",
+                        code="VISUAL_SCAN_FAILED",
+                        message=str(exc),
+                    )
+                )
+                blacks, freezes = [], []
             metrics["black_segments"] = blacks
             metrics["freeze_segments"] = freezes
             if blacks:
@@ -521,29 +545,54 @@ def audit_mastered_deliverable(
             capture_output=True,
             text=True,
             check=False,
+            timeout=300,
         )
         i_match = _EBUR128_I_RE.search(ebur.stderr)
         tp_match = _EBUR128_TP_RE.search(ebur.stderr)
-        if i_match:
+        if ebur.returncode != 0:
+            errors.append(
+                QCIssue(
+                    severity="error",
+                    code="LOUDNESS_MEASUREMENT_FAILED",
+                    message=(
+                        f"FFmpeg ebur128 measurement failed (exit {ebur.returncode}): "
+                        f"{(ebur.stderr or '').strip()[-240:]}"
+                    ),
+                )
+            )
+        elif i_match:
             lufs = float(i_match.group(1))
-            metrics["integrated_lufs"] = lufs
-            diff = abs(lufs - platform_target.audio.target_lufs)
-            if diff > platform_target.audio.lufs_tolerance:
+            if not math.isfinite(lufs):
+                metrics["integrated_lufs"] = None
                 errors.append(
                     QCIssue(
                         severity="error",
-                        code="LOUDNESS_OUT_OF_TOLERANCE",
+                        code="SILENT_AUDIO_STREAM",
                         message=(
-                            f"Integrated loudness {lufs:.2f} LUFS misses target "
-                            f"{platform_target.audio.target_lufs:.1f} "
-                            f"+/- {platform_target.audio.lufs_tolerance:.1f} LUFS."
+                            f"Integrated loudness is non-finite ({i_match.group(1)} LUFS); "
+                            "audio stream appears silent."
                         ),
                     )
                 )
+            else:
+                metrics["integrated_lufs"] = lufs
+                diff = abs(lufs - platform_target.audio.target_lufs)
+                if diff > platform_target.audio.lufs_tolerance:
+                    errors.append(
+                        QCIssue(
+                            severity="error",
+                            code="LOUDNESS_OUT_OF_TOLERANCE",
+                            message=(
+                                f"Integrated loudness {lufs:.2f} LUFS misses target "
+                                f"{platform_target.audio.target_lufs:.1f} "
+                                f"+/- {platform_target.audio.lufs_tolerance:.1f} LUFS."
+                            ),
+                        )
+                    )
         else:
-            warnings.append(
+            errors.append(
                 QCIssue(
-                    severity="warning",
+                    severity="error",
                     code="LOUDNESS_PARSE_UNAVAILABLE",
                     message="Could not parse integrated LUFS from ebur128 summary.",
                 )
@@ -563,10 +612,10 @@ def audit_mastered_deliverable(
                         ),
                     )
                 )
-        if tp_match:
+        if ebur.returncode == 0 and tp_match:
             tp = float(tp_match.group(1))
-            metrics["true_peak_dbtp"] = tp
-            if tp > platform_target.audio.max_true_peak_dbtp:
+            metrics["true_peak_dbtp"] = tp if math.isfinite(tp) else None
+            if math.isfinite(tp) and tp > platform_target.audio.max_true_peak_dbtp:
                 errors.append(
                     QCIssue(
                         severity="error",

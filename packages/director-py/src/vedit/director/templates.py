@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Literal
 
@@ -145,9 +146,12 @@ def _type_ok(var: BrandTemplateVariable, value: Any) -> bool:
     if var.type == "number":
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             return False
-        if var.min is not None and float(value) < var.min:
+        fval = float(value)
+        if not math.isfinite(fval):
             return False
-        if var.max is not None and float(value) > var.max:
+        if var.min is not None and fval < var.min:
+            return False
+        if var.max is not None and fval > var.max:
             return False
         return True
     if var.type == "boolean":
@@ -155,7 +159,7 @@ def _type_ok(var: BrandTemplateVariable, value: Any) -> bool:
     if var.type == "color":
         return isinstance(value, str) and bool(_HEX_RE.fullmatch(value.strip()))
     if var.type == "image":
-        return isinstance(value, str) and len(value) > 0
+        return isinstance(value, str) and len(value.strip()) > 0
     if var.type == "enum":
         return isinstance(value, str) and value in (var.enum_values or [])
     return False
@@ -164,6 +168,8 @@ def _type_ok(var: BrandTemplateVariable, value: Any) -> bool:
 def validate_overlay_template(
     overlay: OverlayCompositionOp,
     catalog: BrandTemplateCatalog | None,
+    *,
+    aspect_ratio: str | None = None,
 ) -> list[str]:
     """Return human-readable errors for template_id / variables on one overlay."""
     if not overlay.template_id:
@@ -201,5 +207,14 @@ def validate_overlay_template(
         errors.append(
             f"{overlay.overlay_id}: kind {overlay.kind!r} incompatible with "
             f"template_id {overlay.template_id!r} (expected {expected_kind!r})"
+        )
+    if (
+        aspect_ratio is not None
+        and entry.supported_aspects
+        and aspect_ratio not in entry.supported_aspects
+    ):
+        errors.append(
+            f"{overlay.overlay_id}: template_id {overlay.template_id!r} supports "
+            f"{entry.supported_aspects}, incompatible with aspect_ratio {aspect_ratio!r}"
         )
     return errors

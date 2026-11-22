@@ -20,9 +20,15 @@ struct FfprobeFormat {
 }
 
 #[derive(Debug, Deserialize)]
+struct FfprobeDisposition {
+    attached_pic: Option<u8>,
+}
+
+#[derive(Debug, Deserialize)]
 struct FfprobeStream {
     codec_type: Option<String>,
     codec_name: Option<String>,
+    disposition: Option<FfprobeDisposition>,
     width: Option<u32>,
     height: Option<u32>,
     r_frame_rate: Option<String>,
@@ -46,11 +52,23 @@ pub struct ProbeMetadata {
 pub fn parse_rational(raw: Option<&str>) -> f64 {
     let Some(s) = raw else { return 0.0 };
     if let Some((num_s, den_s)) = s.split_once('/') {
-        let num = num_s.trim().parse::<f64>().unwrap_or(0.0);
-        let den = den_s.trim().parse::<f64>().unwrap_or(1.0);
-        if den > 0.0 { num / den } else { 0.0 }
+        let Ok(num) = num_s.trim().parse::<f64>() else {
+            return 0.0;
+        };
+        let Ok(den) = den_s.trim().parse::<f64>() else {
+            return 0.0;
+        };
+        if num.is_finite() && den.is_finite() && num >= 0.0 && den > 0.0 {
+            num / den
+        } else {
+            0.0
+        }
     } else {
-        s.trim().parse::<f64>().unwrap_or(0.0)
+        s.trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(0.0)
     }
 }
 
@@ -77,9 +95,10 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
     let streams = raw.streams.unwrap_or_default();
     let fmt = raw.format.as_ref();
 
-    let vstream = streams
-        .iter()
-        .find(|s| s.codec_type.as_deref() == Some("video"));
+    let vstream = streams.iter().find(|s| {
+        s.codec_type.as_deref() == Some("video")
+            && s.disposition.as_ref().and_then(|d| d.attached_pic).unwrap_or(0) == 0
+    });
     let astream = streams
         .iter()
         .find(|s| s.codec_type.as_deref() == Some("audio"));
@@ -87,15 +106,18 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
     let duration_s = fmt
         .and_then(|f| f.duration.as_deref())
         .and_then(|d| d.parse::<f64>().ok())
+        .filter(|d| d.is_finite() && *d >= 0.0)
         .or_else(|| {
             vstream
                 .and_then(|s| s.duration.as_deref())
                 .and_then(|d| d.parse::<f64>().ok())
+                .filter(|d| d.is_finite() && *d >= 0.0)
         })
         .or_else(|| {
             astream
                 .and_then(|s| s.duration.as_deref())
                 .and_then(|d| d.parse::<f64>().ok())
+                .filter(|d| d.is_finite() && *d >= 0.0)
         })
         .unwrap_or(0.0)
         .max(0.0);
@@ -188,4 +210,20 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
         video,
         audio_base,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_rational;
+
+    #[test]
+    fn parses_valid_rationals_and_rejects_invalid_or_negative() {
+        assert!((parse_rational(Some("30000/1001")) - 29.97002997).abs() < 1e-4);
+        assert_eq!(parse_rational(Some("0/0")), 0.0);
+        assert_eq!(parse_rational(Some("-30/1")), 0.0);
+        assert_eq!(parse_rational(Some("30/abc")), 0.0);
+        assert_eq!(parse_rational(Some("NaN")), 0.0);
+        assert_eq!(parse_rational(Some("inf")), 0.0);
+        assert_eq!(parse_rational(None), 0.0);
+    }
 }

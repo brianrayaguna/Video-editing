@@ -444,7 +444,8 @@ def validate_map_scene(
 
     for act in spec.get("acts") or []:
         act_id = str(act.get("act_id") or "unknown")
-        if act.get("type", "map") != "map":
+        act_kind = str(act.get("kind") or act.get("mode") or act.get("type") or "map")
+        if act_kind != "map":
             continue
         dur = float(act.get("duration_s", 0.0))
         tile_source = str(act.get("tile_source") or "hybrid")
@@ -522,7 +523,8 @@ def validate_map_scene(
                         f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
                         "high-resolution aerial tiles in assets/geo/tiles_hq/. Run "
                         f"`vedit geo prepare --bbox \"{lng-0.06:.3f},{lat-0.06:.3f},"
-                        f"{lng+0.06:.3f},{lat+0.06:.3f}:13,14,15,16\" --hq` first."
+                        f"{lng+0.06:.3f},{lat+0.06:.3f}:13,14,15,16\" --hq "
+                        "-o media/maps/vectors.json` first."
                     )
                     break
 
@@ -549,11 +551,20 @@ def validate_map_scene(
 
 
 def _fmt_ass_time(sec: float) -> str:
-    s = max(0.0, sec)
-    h = int(s // 3600)
-    m = int((s % 3600) // 60)
-    rem = s % 60
-    return f"{h}:{m:02d}:{rem:05.2f}"
+    total_cs = max(0, round(sec * 100))
+    cs = total_cs % 100
+    total_s = total_cs // 100
+    s = total_s % 60
+    total_m = total_s // 60
+    m = total_m % 60
+    h = total_m // 60
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def _escape_geo_ass_text(text: str) -> str:
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = cleaned.replace("\\", "\\\u2060").replace("{", r"\{").replace("}", r"\}")
+    return cleaned.replace("\n", r"\N")
 
 
 def build_geoverum_ass_captions(
@@ -621,7 +632,7 @@ def build_geoverum_ass_captions(
             end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
             lines.append(
                 f"Dialogue: 0,{_fmt_ass_time(cur_t)},{_fmt_ass_time(end_t)},"
-                f"Default,,0,0,0,,{{\\fad(80,80)}}{txt}"
+                f"Default,,0,0,0,,{{\\fad(80,80)}}{_escape_geo_ass_text(txt)}"
             )
             cur_t = end_t
     return "\n".join(lines) + "\n"
@@ -854,72 +865,87 @@ def geo_mix_audio_cmd(
     duration_s = float(dur_proc.stdout.strip())
 
     tmp_bgm: Path | None = None
-    if bgm_file is not None:
-        bgm_path = bgm_file.expanduser().resolve()
-    else:
-        tmp_bgm = out_path.with_suffix(".bgm_bed.wav")
-        bgm_path = synthesize_documentary_bgm(duration_s + 0.5, tmp_bgm)
-
-    events = [
-        ev
-        for ev in derive_sfx_events_from_scene(spec)
-        if ev["t_s"] < duration_s - 0.15 and (sfx_dir / ev["sfx"]).is_file()
-    ]
-
-    cmd: list[str] = ["ffmpeg", "-y", "-i", str(vo_path), "-stream_loop", "-1", "-i", str(bgm_path)]
-    for ev in events:
-        cmd.extend(["-i", str(sfx_dir / ev["sfx"])])
-
-    chains = [
-        "[0:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[vo_dry][vo_sc]",
-        f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{duration_s:.3f},"
-        f"volume={bgm_gain_db:.1f}dB,equalizer=f=2200:t=o:w=1.2:g=-4.5[bgm_eq]",
-        "[bgm_eq][vo_sc]sidechaincompress=threshold=0.025:ratio=6:attack=20:release=260:makeup=1[bgm_bus]",
-    ]
-    mix_inputs = ["[vo_dry]", "[bgm_bus]"]
-    if events:
-        sfx_tags: list[str] = []
-        for idx, ev in enumerate(events):
-            inp = idx + 2
-            ms = round(ev["t_s"] * 1000)
-            tag = f"[s{idx}]"
-            chains.append(
-                f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo,"
-                f"volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
-            )
-            sfx_tags.append(tag)
-        if len(sfx_tags) == 1:
-            mix_inputs.append(sfx_tags[0])
-        else:
-            chains.append(
-                f"{''.join(sfx_tags)}amix=inputs={len(sfx_tags)}:duration=longest:normalize=0[sfx_bus]"
-            )
-            mix_inputs.append("[sfx_bus]")
-
-    chains.append(
-        f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:normalize=0,"
-        "loudnorm=I=-14.0:TP=-1.5:LRA=7[out_a]"
-    )
-    cmd.extend(
-        [
-            "-filter_complex",
-            ";".join(chains),
-            "-map",
-            "[out_a]",
-            "-t",
-            f"{duration_s:.3f}",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-c:a",
-            "pcm_s16le",
-            str(out_path),
-        ]
-    )
     try:
+        if bgm_file is not None:
+            bgm_path = bgm_file.expanduser().resolve()
+        else:
+            tmp_bgm = out_path.with_suffix(".bgm_bed.wav")
+            bgm_path = synthesize_documentary_bgm(duration_s + 0.5, tmp_bgm)
+
+        events = [
+            ev
+            for ev in derive_sfx_events_from_scene(spec)
+            if ev["t_s"] < duration_s - 0.15 and (sfx_dir / ev["sfx"]).is_file()
+        ]
+
+        cmd: list[str] = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(vo_path),
+            "-stream_loop",
+            "-1",
+            "-i",
+            str(bgm_path),
+        ]
+        for ev in events:
+            cmd.extend(["-i", str(sfx_dir / ev["sfx"])])
+
+        chains = [
+            "[0:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[vo_dry][vo_sc_raw]",
+            f"[vo_sc_raw]apad,atrim=0:{duration_s:.3f}[vo_sc]",
+            f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{duration_s:.3f},"
+            f"volume={bgm_gain_db:.1f}dB,equalizer=f=2200:t=o:w=1.2:g=-4.5[bgm_eq]",
+            "[bgm_eq][vo_sc]sidechaincompress=threshold=0.025:ratio=6:attack=20:release=260:makeup=1[bgm_bus]",
+        ]
+        mix_inputs = ["[vo_dry]", "[bgm_bus]"]
+        if events:
+            sfx_tags: list[str] = []
+            for idx, ev in enumerate(events):
+                inp = idx + 2
+                ms = round(ev["t_s"] * 1000)
+                tag = f"[s{idx}]"
+                chains.append(
+                    f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo,"
+                    f"volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
+                )
+                sfx_tags.append(tag)
+            if len(sfx_tags) == 1:
+                mix_inputs.append(sfx_tags[0])
+            else:
+                chains.append(
+                    f"{''.join(sfx_tags)}amix=inputs={len(sfx_tags)}:duration=longest:normalize=0[sfx_bus]"
+                )
+                mix_inputs.append("[sfx_bus]")
+
+        chains.append(
+            f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:normalize=0,"
+            "loudnorm=I=-14.0:TP=-1.5:LRA=7[out_a]"
+        )
+        cmd.extend(
+            [
+                "-filter_complex",
+                ";".join(chains),
+                "-map",
+                "[out_a]",
+                "-t",
+                f"{duration_s:.3f}",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-c:a",
+                "pcm_s16le",
+                str(out_path),
+            ]
+        )
         proc = subprocess.run(
-            cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+            cmd,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=600,
         )
         if proc.returncode != 0:
             err_tail = (proc.stderr or "").strip().splitlines()[-12:]

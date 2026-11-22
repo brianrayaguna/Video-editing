@@ -511,10 +511,25 @@ class EpidemicAudioCatalogProvider:
                     stem_type=stem_type,
                 )
 
-            assert signed_url is not None
+            if signed_url is None:
+                raise ProviderAPIError(
+                    self.provider_name, None, f"Failed to resolve download URL for {asset_id}"
+                )
             # Signed CDN URLs must be fetched unmodified without Bearer headers.
-            audio_resp = request_with_retry(client, "GET", signed_url, provider=self.provider_name)
-            cached_path.write_bytes(audio_resp.content)
+            audio_resp = request_with_retry(
+                client,
+                "GET",
+                signed_url,
+                provider=self.provider_name,
+                secret_to_redact=signed_url,
+            )
+            tmp_path = cached_path.with_suffix(cached_path.suffix + ".part")
+            try:
+                tmp_path.write_bytes(audio_resp.content)
+                tmp_path.replace(cached_path)
+            except BaseException:
+                tmp_path.unlink(missing_ok=True)
+                raise
         finally:
             if own_client:
                 client.close()

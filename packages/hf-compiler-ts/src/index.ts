@@ -12,10 +12,10 @@ export function assertPlanStructure(plan: EditPlan): void {
   if (plan.schema_version !== "1.0") {
     throw new Error(`Unsupported EditPlan schema_version: ${plan.schema_version}`);
   }
-  if (plan.duration_s <= 0 || plan.fps <= 0) {
-    throw new Error("EditPlan duration_s and fps must be positive.");
+  if (!Number.isFinite(plan.duration_s) || plan.duration_s <= 0 || !Number.isFinite(plan.fps) || plan.fps <= 0) {
+    throw new Error("EditPlan duration_s and fps must be finite and positive.");
   }
-  if (plan.width < 360 || plan.height < 360) {
-    throw new Error("EditPlan dimensions must be at least 360x360.");
+  if (!Number.isFinite(plan.width) || plan.width < 360 || !Number.isFinite(plan.height) || plan.height < 360) {
+    throw new Error("EditPlan dimensions must be finite and at least 360x360.");
   }
 }

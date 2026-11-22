@@ -74,6 +74,8 @@ def load_directing_idioms(path: Path) -> dict[str, Any]:
 
 def validate_storyboard_contract(storyboard: dict[str, Any]) -> list[str]:
     errors = validate_against_contract(storyboard, STORYBOARD_SCHEMA)
+    if errors:
+        return errors
     ids = [b.get("beat_id") for b in storyboard.get("beats", [])]
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     if dupes:
@@ -328,13 +330,12 @@ def _clean(word: str) -> str:
 def _split_clauses(
     words: list[dict[str, Any]], rules: dict[str, Any]
 ) -> list[list[dict[str, Any]]]:
+    kept = [w for w in words if not w.get("is_filler")]
     clauses: list[list[dict[str, Any]]] = []
     cur: list[dict[str, Any]] = []
-    for i, w in enumerate(words):
-        if w.get("is_filler"):
-            continue
+    for i, w in enumerate(kept):
         cur.append(w)
-        nxt = words[i + 1] if i + 1 < len(words) else None
+        nxt = kept[i + 1] if i + 1 < len(kept) else None
         ends_punct = any(w["text"].rstrip().endswith(p) for p in rules["punctuation"])
         pause = nxt is not None and nxt["start_s"] - w["end_s"] >= rules["pause_s"]
         if ends_punct or pause or len(cur) >= rules["max_words"] or nxt is None:
@@ -348,6 +349,8 @@ def _classify(
 ) -> tuple[str, dict[str, Any]]:
     stop = {s.lower() for s in auto["stopwords"]}
     questions = {q.lower() for q in auto["question_words"]}
+    clause_tokens = [_clean(w["text"]).lower() for w in clause]
+    clause_text = " ".join(t for t in clause_tokens if t)
     found: dict[str, dict[str, Any]] = {}
     for k, w in enumerate(clause):
         token = _clean(w["text"])
@@ -364,10 +367,20 @@ def _classify(
             found.setdefault("proper_noun", w)
         for rule in auto["device_rules"]:
             stems = rule.get("words")
-            # Stems of four or more letters match inflections; shorter words match exactly.
-            if stems and any(
-                low.startswith(st.lower()) if len(st) >= 4 else low == st.lower() for st in stems
-            ):
+            if not stems:
+                continue
+            # Single tokens match by stem (>=4 chars) or exact; phrases match clause text.
+            matched = False
+            for st in stems:
+                st_low = st.lower()
+                if " " in st_low:
+                    if st_low in clause_text and low == st_low.split()[0]:
+                        matched = True
+                        break
+                elif (len(st_low) >= 4 and low.startswith(st_low)) or low == st_low:
+                    matched = True
+                    break
+            if matched:
                 found.setdefault(rule["match"], w)
     for rule in auto["device_rules"]:
         if rule["match"] in found:

@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+import re
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+
+_SAFE_SLUG_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+_HEX_SHA_PATTERN = r"^[0-9a-fA-F]{16,64}$"
+_WIN_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _validate_safe_relative_path(value: str) -> str:
+    if not value or value.startswith(("/", "\\", "~")) or _WIN_DRIVE_RE.match(value):
+        raise ValueError(f"Expected a relative path without leading root/drive, got {value!r}")
+    parts = re.split(r"[\\/]", value)
+    if ".." in parts:
+        raise ValueError(f"Relative path cannot contain parent traversal ('..'): {value!r}")
+    return value
+
+
+SafeRelativePath = Annotated[str, AfterValidator(_validate_safe_relative_path)]
 
 
 class StrictModel(BaseModel):
@@ -268,10 +285,18 @@ class BoundingBox(StrictModel):
     right: float = Field(ge=0.0, le=1.0)
     label: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_ordered_bounds(self) -> BoundingBox:
+        if self.top >= self.bottom:
+            raise ValueError(f"BoundingBox requires top < bottom, got {self.top} >= {self.bottom}")
+        if self.left >= self.right:
+            raise ValueError(f"BoundingBox requires left < right, got {self.left} >= {self.right}")
+        return self
+
 
 class AssetRef(StrictModel):
     asset_id: str
-    sha256: str = Field(min_length=16)
+    sha256: str = Field(min_length=16, max_length=64, pattern=_HEX_SHA_PATTERN)
     kind: Literal["video", "audio_speech", "audio_bgm", "audio_sfx", "image", "font"]
     path: str
     duration_s: float | None = Field(default=None, ge=0.0)
@@ -315,7 +340,7 @@ class OverlayCompositionOp(StrictModel):
     safe_band: Literal[
         "lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"
     ] = "lower_third"
-    template_id: str | None = None
+    template_id: str | None = Field(default=None, min_length=1)
     variables: dict[str, Any] = Field(default_factory=dict)
     track_keyframes: list[OverlayTrackKeyframe] = Field(default_factory=list)
     props: dict[str, Any] = Field(default_factory=dict)
@@ -336,7 +361,7 @@ class AudioTrackOp(StrictModel):
 
 class EditPlan(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
-    job_id: str = Field(min_length=1)
+    job_id: str = Field(min_length=1, pattern=_SAFE_SLUG_PATTERN)
     project_id: str = Field(min_length=1)
     brand_id: str = Field(min_length=1)
     platform_target_id: str = Field(min_length=1)
@@ -569,27 +594,27 @@ class VideoBreakdownResult(StrictModel):
 
 
 class ProjectDirectories(StrictModel):
-    inputs: str = "inputs"
-    probes: str = "analysis/probes"
-    breakdowns: str = "analysis/breakdowns"
-    transcripts: str = "analysis/transcripts"
-    decisions: str = "analysis/decisions"
-    maps: str = "media/maps"
-    broll: str = "media/broll"
-    audio: str = "media/audio"
-    plan: str = "plan"
-    build: str = "build"
-    output: str = "output"
+    inputs: SafeRelativePath = "inputs"
+    probes: SafeRelativePath = "analysis/probes"
+    breakdowns: SafeRelativePath = "analysis/breakdowns"
+    transcripts: SafeRelativePath = "analysis/transcripts"
+    decisions: SafeRelativePath = "analysis/decisions"
+    maps: SafeRelativePath = "media/maps"
+    broll: SafeRelativePath = "media/broll"
+    audio: SafeRelativePath = "media/audio"
+    plan: SafeRelativePath = "plan"
+    build: SafeRelativePath = "build"
+    output: SafeRelativePath = "output"
 
 
 class ProjectArtifacts(StrictModel):
-    brief: str = "brief.md"
-    edit_plan: str = "plan/edit_plan.json"
-    verification: str = "plan/verification.json"
-    master: str = "output/master.mp4"
-    audit: str = "output/audit.json"
-    otio: str = "output/timeline.otio"
-    benchmark: str = "output/benchmark.json"
+    brief: SafeRelativePath = "brief.md"
+    edit_plan: SafeRelativePath = "plan/edit_plan.json"
+    verification: SafeRelativePath = "plan/verification.json"
+    master: SafeRelativePath = "output/master.mp4"
+    audit: SafeRelativePath = "output/audit.json"
+    otio: SafeRelativePath = "output/timeline.otio"
+    benchmark: SafeRelativePath = "output/benchmark.json"
 
 
 class ProjectManifest(StrictModel):

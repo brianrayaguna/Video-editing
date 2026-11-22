@@ -281,14 +281,14 @@ pub fn aggregate_palette_and_visual(
         }
     }
 
-    let mut buckets: Vec<LabBinAcc> = global_bins.into_values().collect();
-    buckets.sort_by_key(|b| std::cmp::Reverse(b.count));
+    let mut buckets: Vec<((i32, i32, i32), LabBinAcc)> = global_bins.into_iter().collect();
+    buckets.sort_by_key(|(key, acc)| (std::cmp::Reverse(acc.count), *key));
 
     let palette = buckets
         .into_iter()
         .take(top_k)
-        .filter(|b| b.count > 0)
-        .map(|b| {
+        .filter(|(_, b)| b.count > 0)
+        .map(|(_, b)| {
             let c = b.count as f64;
             let l = b.sum_l / c;
             let a = b.sum_a / c;
@@ -353,5 +353,35 @@ mod tests {
         assert!(metrics.lower_third_luma > 235.0);
         assert!(metrics.upper_luma < 80.0);
         assert!(metrics.sharpness > 50.0);
+    }
+
+    #[test]
+    fn aggregate_palette_tie_breaking_is_deterministic() {
+        let w = 8;
+        let h = 8;
+        let mut rgb = vec![0u8; w * h * 3];
+        for y in 0..h {
+            for x in 0..w {
+                let idx = (y * w + x) * 3;
+                if x < w / 2 {
+                    rgb[idx] = 220;
+                    rgb[idx + 1] = 20;
+                    rgb[idx + 2] = 20;
+                } else {
+                    rgb[idx] = 20;
+                    rgb[idx + 1] = 20;
+                    rgb[idx + 2] = 220;
+                }
+            }
+        }
+        let m = analyze_rgb24_frame(&rgb, w, h);
+        let first = aggregate_palette_and_visual(std::slice::from_ref(&m), 2).0;
+        for _ in 0..8 {
+            let again = aggregate_palette_and_visual(std::slice::from_ref(&m), 2).0;
+            assert_eq!(
+                first.iter().map(|c| &c.hex).collect::<Vec<_>>(),
+                again.iter().map(|c| &c.hex).collect::<Vec<_>>()
+            );
+        }
     }
 }

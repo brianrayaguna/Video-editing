@@ -49,7 +49,14 @@ class JobCheckpoint(BaseModel):
         platform_target_id: str,
     ) -> JobCheckpoint:
         if state_path.is_file():
-            return cls.model_validate_json(state_path.read_text(encoding="utf-8"))
+            loaded = cls.model_validate_json(state_path.read_text(encoding="utf-8"))
+            if (
+                loaded.job_id == job_id
+                and loaded.project_id == project_id
+                and loaded.brand_id == brand_id
+                and loaded.platform_target_id == platform_target_id
+            ):
+                return loaded
         return cls(
             job_id=job_id,
             project_id=project_id,
@@ -59,7 +66,9 @@ class JobCheckpoint(BaseModel):
 
     def save(self, state_path: Path) -> None:
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+        tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp_path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+        tmp_path.replace(state_path)
 
     def is_stage_done(self, stage: str, idempotency_key: str) -> bool:
         metric = self.completed_stages.get(stage)

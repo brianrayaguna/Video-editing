@@ -40,7 +40,8 @@
     (function () {
       const cx = Math.max(15, Math.min(85, Number("{{VAR_CENTER_X_PCT|50}}") || 50));
       const cy = Math.max(18, Math.min(72, Number("{{VAR_CENTER_Y_PCT|46}}") || 46));
-      const angle = Number("{{VAR_ANGLE_DEG|-18}}") || -18;
+      const rawAngle = Number("{{VAR_ANGLE_DEG|-18}}");
+      const angle = Number.isFinite(rawAngle) ? rawAngle : -18;
       const el = document.getElementById("{{SCENE_ID}}-stamp");
       if (el) {
         el.style.left = cx + "%";

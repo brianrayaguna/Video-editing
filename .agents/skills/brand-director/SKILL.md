@@ -29,12 +29,12 @@ When a user supplies only raw narration audio (with optional speed-up, e.g., `1.
 
 1. **Audio & Verbatim Self-Transcription**:
    - If a playback speedup is requested, render the sped-up master audio first (`ffmpeg -af "atempo=1.3"`).
-   - If cloud transcription providers (`xai` / `veed`) are unavailable, extract a `16 kHz` mono WAV and inspect it directly via `read_file` to author a verbatim `analysis/transcripts/transcript.json` with accurate segment timestamps. Never install local Whisper packages.
+   - If configured cloud transcription providers are unavailable, extract a `16 kHz` mono WAV and inspect it directly via `read_file` to author a verbatim `analysis/transcripts/transcript.json` with accurate segment timestamps. Never install local ASR/STT packages.
 2. **Locked Bottom-Band Boxless Captions (`vedit geo build-captions`)**:
    - Always generate `build/subtitles/captions.ass` via `vedit geo build-captions <transcript.json> -o build/subtitles/captions.ass [--speed 1.3]`.
    - This locks `Rubik` Bold `56 px`, `Alignment=2` (bottom-center, `MarginV=348`, `y ≈ 80%`), `Outline=1.6`, `Shadow=3.2`, `BorderStyle=1` (100% boxless), `2–4` words per line. Never place small captions at the top of the frame (`Alignment=8`) and never draw captions with ad-hoc `drawtext`.
 3. **Sharp Aerial Ortho Imagery for Close-Ups (`vedit geo prepare --hq`)**:
-   - Regional Sentinel-2 tiles (`z <= 12`) blur severely below `~2 km`. For every close-up landmark, monument, river crossing, or enclave (`zoom >= 13.5`), you MUST prepare high-resolution aerial tiles (`z=13,14,15,16` or `17`) using `vedit geo prepare --bbox "W,S,E,N:13,14,15,16" --hq` and keep `tile_source: "hybrid"` (default) or `"realistic"`.
+   - Regional Sentinel-2 tiles (`z <= 12`) blur severely below `~2 km`. For every close-up landmark, monument, river crossing, or enclave (`zoom >= 13.5`), you MUST prepare high-resolution aerial tiles (`z=13,14,15,16` or `17`) using `vedit geo prepare --bbox "W,S,E,N:13,14,15,16" --hq -o media/maps/vectors.json` and keep `tile_source: "hybrid"` (default) or `"realistic"`.
 4. **3D Cinema Camera Rig & Calibrated Primitives Only**:
    - Use `camera_smooth_s: 0.09`, `auto_shutter: true`, `optical_shutter_blur: true`, `micro_drift`, `snap_dive`/`hyperbolic_fly`/`orbit_cruise`, `pitch` (`10–38°`), and dynamic `bearing` / subtle `roll` (`±1–3°`).
    - Use 3-Tier Spatial Tracking (`space: "map_plane"`, `space: "world_billboard"`, `space: "screen"`) and only calibrated boxless primitives (`polygon`, `route`, `glow_label`, `pin_label`, `curved_pointer_label`, `dashed_distance`, `curved_arc_arrow`, `void_wipe`, `counter_odometer`, `ghost_overlay`, `flag_pin`, `human_silhouette_row`, `landmark_silhouette`, `cloud_system`, `wind_streamlines`, `prohibition_pins`).

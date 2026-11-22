@@ -50,7 +50,8 @@ $VEDIT director verify \
   --policy-file profiles/brands/<brand_id>/brand_style_policy.json \
   --brand-dir profiles/brands/<brand_id> \
   --platform shorts_9x16_1080p \
-  --transcript-file "$PROJECT/analysis/transcripts/vo.json"
+  --transcript-file "$PROJECT/analysis/transcripts/vo.json" \
+  --update-plan
 
 # 4. Dry-check HyperFrames compilation and static lint
 $VEDIT compile \

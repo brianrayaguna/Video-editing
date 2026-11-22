@@ -65,11 +65,3 @@ defaults:
       asr: false
       lang: en
       workers: 1
-
-  generative_planner:
-    # Optional companion generative planner when running headless outside an interactive directing client
-    primary: xai_grok
-    fallback: []
-    options:
-      auth_type: api_key
-      api_key_env: XAI_API_KEY

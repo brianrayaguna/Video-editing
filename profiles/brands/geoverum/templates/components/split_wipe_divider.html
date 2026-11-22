@@ -107,6 +107,7 @@
       const exitAt = Math.max(enterS + 0.35, dur - exitS);
 
       const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
       const targetX = (splitPct / 100) * W;
       const topX = Math.min(92, splitPct + 10);
       const botX = Math.max(8, splitPct - 10);
@@ -117,7 +118,9 @@
       const endClip = isDiag
         ? `polygon(${topX}% 0, 100% 0, 100% 100%, ${botX}% 100%)`
         : `inset(0 0 0 ${splitPct}%)`;
-      const barRot = isDiag ? 11 : 0;
+      const barRot = isDiag
+        ? Number((Math.atan2(((topX - botX) / 100) * W, Math.max(H, 1)) * (180 / Math.PI)).toFixed(2))
+        : 0;
 
       const tl = gsap.timeline({ paused: true });
       tl.fromTo(

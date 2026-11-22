@@ -196,10 +196,14 @@
 
       const tl = gsap.timeline({ paused: true });
       tl.set(["#{{SCENE_ID}}-lbl-1", "#{{SCENE_ID}}-lbl-2", "#{{SCENE_ID}}-lbl-3", "#{{SCENE_ID}}-lbl-4"], { xPercent: -50, yPercent: -50 });
-      tl.fromTo("#{{SCENE_ID}}-p1", { clipPath: "inset(0 100% 0 0)", opacity: 0 }, { clipPath: clip1, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
-      tl.fromTo("#{{SCENE_ID}}-p2", { clipPath: "inset(0 0 0 100%)", opacity: 0 }, { clipPath: clip2, opacity: 1, duration: enterS, ease: "expo.out" }, 0.14);
+      const isDiag = !isHoriz && !isQuad;
+      const start1 = isDiag ? "polygon(0 0, 0 0, 0 54%, 0 54%)" : "inset(0 100% 0 0)";
+      const start2 = isDiag ? "polygon(100% 0, 100% 0, 100% 48%, 100% 48%)" : "inset(0 0 0 100%)";
+      const start3 = isDiag ? "polygon(0 100%, 100% 100%, 100% 100%, 0 100%)" : "inset(100% 0 0 0)";
+      tl.fromTo("#{{SCENE_ID}}-p1", { clipPath: start1, opacity: 0 }, { clipPath: clip1, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
+      tl.fromTo("#{{SCENE_ID}}-p2", { clipPath: start2, opacity: 0 }, { clipPath: clip2, opacity: 1, duration: enterS, ease: "expo.out" }, 0.14);
       if (!isHoriz) {
-        tl.fromTo("#{{SCENE_ID}}-p3", { clipPath: "inset(100% 0 0 0)", opacity: 0 }, { clipPath: clip3, opacity: 1, duration: enterS, ease: "expo.out" }, 0.28);
+        tl.fromTo("#{{SCENE_ID}}-p3", { clipPath: start3, opacity: 0 }, { clipPath: clip3, opacity: 1, duration: enterS, ease: "expo.out" }, 0.28);
       }
       if (isQuad) {
         tl.fromTo("#{{SCENE_ID}}-p4", { clipPath: "inset(100% 0 0 50%)", opacity: 0 }, { clipPath: clip4, opacity: 1, duration: enterS, ease: "expo.out" }, 0.42);

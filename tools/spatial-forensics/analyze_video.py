@@ -641,33 +641,36 @@ def _load_sample_timestamps(
     shots_json: Path | None, duration_s: float, max_frames: int
 ) -> list[tuple[float, int | None, float, float]]:
     """Return list of (midpoint_s, shot_index, shot_start_s, shot_end_s)."""
+    max_frames = max(1, max_frames)
     shots: list[tuple[int, float, float]] = []
     if shots_json is not None and shots_json.is_file():
         data = json.loads(shots_json.read_text(encoding="utf-8"))
         raw_shots = data.get("shots") or []
         for idx, s in enumerate(raw_shots):
-            st = float(s.get("start_s", s.get("start", 0.0)))
-            en = float(s.get("end_s", s.get("end", st + 1.0)))
+            st = max(0.0, float(s.get("start_s", s.get("start", 0.0))))
+            en = max(st, float(s.get("end_s", s.get("end", st + 1.0))))
+            shot_id = max(0, int(s.get("shot_index", idx)))
             if en > st:
-                shots.append((int(s.get("shot_index", idx)), st, en))
+                shots.append((shot_id, st, en))
 
     if shots:
         if len(shots) > max_frames:
             step = len(shots) / max_frames
             shots = [shots[int(i * step)] for i in range(max_frames)]
         return [
-            (round((st + en) * 0.5, 3), idx, round(st, 3), round(en, 3))
+            (round(max(0.0, (st + en) * 0.5), 3), idx, round(st, 3), round(en, 3))
             for idx, st, en in shots
         ]
 
-    count = max(1, min(max_frames, max(3, int(round(duration_s / 3.0)))))
-    step = duration_s / count if count > 0 else 1.0
+    safe_dur = max(0.0, duration_s)
+    count = max(1, min(max_frames, max(3, int(round(safe_dur / 3.0)))))
+    step = safe_dur / count if count > 0 else 1.0
     return [
         (
-            round(min(duration_s - 0.05, (i + 0.5) * step), 3),
+            round(max(0.0, min(max(0.0, safe_dur - 0.05), (i + 0.5) * step)), 3),
             i,
             round(i * step, 3),
-            round(min(duration_s, (i + 1) * step), 3),
+            round(min(safe_dur, (i + 1) * step), 3),
         )
         for i in range(count)
     ]
@@ -776,6 +779,9 @@ def analyze_video(
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if width <= 0 or height <= 0:
+        cap.release()
+        raise RuntimeError(f"Video reported invalid dimensions ({width}x{height}): {video_path}")
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     duration_s = round(frame_count / fps, 3) if fps > 0 and frame_count > 0 else 0.0
@@ -1054,7 +1060,7 @@ def analyze_video(
         frame_entry: dict[str, Any] = {
             "frame_index": f_idx,
             "shot_index": shot_idx,
-            "timestamp_s": round(t_mid, 3),
+            "timestamp_s": round(max(0.0, t_mid), 3),
             "blueprint_path": str(bp_path),
             "saliency_centroid_norm": list(sal_centroid),
             "whitespace_ratio": whitespace_ratio,
@@ -1117,11 +1123,11 @@ def analyze_video(
     viol_frames = sum(1 for f in frame_results if f["safe_zone_violations"])
 
     regimes = [w["camera_regime"] for w in motion_windows]
-    dom_regime = max(set(regimes), key=regimes.count) if regimes else "static"
+    dom_regime = min(set(regimes), key=lambda r: (-regimes.count(r), r)) if regimes else "static"
     all_entrances = [e for w in motion_windows for e in w["entrances"]]
     ent_ms = [e["duration_ms"] for e in all_entrances if e["duration_ms"] > 0]
     easings = [e["easing_class"] for e in all_entrances if e["easing_class"] != "unknown"]
-    dom_easing = max(set(easings), key=easings.count) if easings else "unknown"
+    dom_easing = min(set(easings), key=lambda e: (-easings.count(e), e)) if easings else "unknown"
     idle_drift = any(e["landed_drift_px"] >= 3.5 for e in all_entrances)
 
     structure_md = out_dir / "STRUCTURE.md"

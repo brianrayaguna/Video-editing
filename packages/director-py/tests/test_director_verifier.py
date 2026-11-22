@@ -673,3 +673,78 @@ def test_verifier_map_content_type_visual_beats_program_mix_and_caption_glow() -
     assert "MISSING_SUBJECT_BOX_GROUNDING" not in warn_codes
     assert "HEAVY_CSS_BLUR" not in {e.code for e in report.errors}
     assert "CUT_WITHIN_KEYWORD_WINDOW" not in {e.code for e in report.errors}
+
+
+def test_verifier_rejects_inverted_overlay_box_and_unsupported_template_aspect(
+    tmp_path: Path,
+) -> None:
+    from vedit.contracts import find_repo_root, load_brand_template_catalog, load_platform_targets
+    from vedit.models import BrandTemplateCatalog, VideoClipOp
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(gv_dir / "templates" / "catalog.json", repo_root=root)
+    )
+    shorts = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+
+    plan = EditPlan(
+        job_id="verify_aspect_and_box",
+        project_id="proj_check",
+        brand_id="geoverum",
+        platform_target_id=shorts.platform_id,
+        render_strategy="hybrid",
+        duration_s=6.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(asset_id="v1", sha256="a" * 64, kind="video", path="a.mp4", duration_s=6.0),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="v1",
+                timeline_start_s=0.0,
+                timeline_duration_s=6.0,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                reframed_to_target=True,
+            )
+        ],
+        overlay_compositions=[
+            OverlayCompositionOp(
+                overlay_id="bad_box",
+                kind="kinetic_callout",
+                timeline_start_s=0.5,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="center_safe",
+                props={
+                    "text": "Inverted",
+                    "box": {"top": 0.7, "bottom": 0.2, "left": 0.7, "right": 0.2},
+                },
+            ),
+            OverlayCompositionOp(
+                overlay_id="wrong_aspect",
+                kind="data_card",
+                template_id="amber_fact_card",
+                timeline_start_s=3.0,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="lower_third",
+                variables={"number": "1803", "text": "Wrong aspect"},
+                props={},
+            ),
+        ],
+        audio_tracks=[],
+    )
+    report = verify_edit_plan(plan, policy, shorts, template_catalog=catalog)
+    err_codes = {e.code for e in report.errors}
+    assert report.passed is False
+    assert "INVALID_OVERLAY_BOX" in err_codes
+    assert "TEMPLATE_VARIABLE_INVALID" in err_codes

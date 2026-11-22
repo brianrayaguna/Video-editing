@@ -12,13 +12,15 @@ Two distinct profile kinds live under `profiles/`. Do not mix them.
 ```text
 profiles/brands/<brand_id>/
   brand_style_policy.json   # Runtime: soft_priors, hard_guardrails, calibration, provenance
+  directing_idioms.json     # Executable directing idioms, device realizations, auto-director rules
   editorial_playbook.json   # Optional advisory grammar/exemplars (not executed by vedit)
   CRAFT.md                  # Optional brand visual craft rules
+  DIRECTING.md              # Optional brand story-first directing playbook
   templates/catalog.json    # Optional typed brand templates (locked comps + variables)
   README.md                 # Brand overview and asset provenance
 ```
 
-Runtime consumers (`vedit director`, verifier) read **`brand_style_policy.json`**, and optionally `templates/catalog.json` when `--brand-dir` / `--template-catalog` is passed.  
+Runtime consumers (`vedit director`, `vedit storyboard`, `vedit critique`, verifier) read **`brand_style_policy.json`**, **`directing_idioms.json`**, and optionally `templates/catalog.json` when `--brand-dir` / `--template-catalog` is passed.  
 Advisory exemplars/grammar live in `editorial_playbook.json` (`vedit brand exemplars`).  
 Validate trees with `vedit contracts validate` or `vedit brand validate`.  
-Schemas: `brand_style_policy.schema.json`, `editorial_playbook.schema.json`, `brand_template.schema.json`.
+Schemas: `brand_style_policy.schema.json`, `directing_idioms.schema.json`, `editorial_playbook.schema.json`, `brand_template.schema.json`.

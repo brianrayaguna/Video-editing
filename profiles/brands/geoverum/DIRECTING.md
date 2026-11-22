@@ -201,7 +201,7 @@ Validate the storyboard by reading only the `head marker` column aloud with the 
 Every film is reviewed on rendered frames, not only on the plan:
 
 1. Render a low-resolution preview.
-2. `vedit critique packet --storyboard … --camera-track … --video …` runs the idiom check and the camera shake budget, and renders grid-anchored contact sheets at each beat's sync word (columns A–F, rows 1–10).
+2. `vedit critique packet --storyboard … --camera-track … --video … -o …` runs the idiom check and the camera shake budget, and renders grid-anchored contact sheets at each beat's sync word (columns A–F, rows 1–10).
 3. The reviewer scores every rubric criterion in `directing_idioms.json` from 0 to 1, citing frame labels and grid cells, and lists fixes per beat.
 4. `vedit critique gate` passes only when the deterministic checks pass, the weighted rubric score reaches `0.8`, and no criterion is below `0.5`. Otherwise apply the fixes and repeat (two or three rounds at most).
 

@@ -181,6 +181,15 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert "0:00:02.00,0:00:04.00" in ass
     assert "Hasilnya selisih 117 meter?" in ass
 
+    # Centisecond rollover near 60s must format 0:01:00.00 (never 0:00:60.00) and escape ASS tags
+    edge_ass = build_geoverum_ass_captions(
+        {"segments": [{"start": 59.999, "end": 61.0, "text": r"Test {tag} \N word"}]}
+    )
+    assert "0:00:60.00" not in edge_ass
+    assert "0:01:00.00,0:01:01.00" in edge_ass
+    assert r"\{tag\}" in edge_ass
+    assert r"\N" not in edge_ass.split("{\\fad(80,80)}", 1)[1]
+
 
 def test_map_plane_jacobian_has_near_plane_determinant_guard() -> None:
     repo = find_repo_root()

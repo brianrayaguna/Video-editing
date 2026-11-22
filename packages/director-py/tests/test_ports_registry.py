@@ -86,3 +86,76 @@ def test_job_checkpoint_records_telemetry_and_idempotency(tmp_path: Path) -> Non
     )
     assert reloaded.is_stage_done("probe", key) is True
     assert reloaded.total_estimated_usd == pytest.approx(0.0012)
+
+
+def test_registry_does_not_swallow_generative_prohibition_or_missing_files() -> None:
+    from vedit.ports.media_ops import GenerativeVideoProhibitedError
+    from vedit.providers.config import CapabilityProviderConfig, ProvidersConfig
+    from vedit.providers.registry import ProviderRegistry, ProviderSpec
+
+    cfg = ProvidersConfig(
+        defaults={
+            "media_ops": CapabilityProviderConfig(primary="p1", fallback=["p2"]),
+        }
+    )
+    reg = ProviderRegistry(cfg)
+    calls: list[str] = []
+
+    class P1:
+        def op_gen(self) -> None:
+            calls.append("p1_gen")
+            raise GenerativeVideoProhibitedError("forbidden")
+
+        def op_missing(self) -> None:
+            calls.append("p1_missing")
+            raise FileNotFoundError("missing input.wav")
+
+    class P2:
+        def op_gen(self) -> None:
+            calls.append("p2_gen")
+
+        def op_missing(self) -> None:
+            calls.append("p2_missing")
+
+    reg.register(ProviderSpec(capability="media_ops", name="p1", factory=lambda _: P1()))
+    reg.register(ProviderSpec(capability="media_ops", name="p2", factory=lambda _: P2()))
+
+    with pytest.raises(GenerativeVideoProhibitedError):
+        reg.call_with_fallback("media_ops", lambda p: p.op_gen())
+    assert calls == ["p1_gen"]
+
+    calls.clear()
+    with pytest.raises(FileNotFoundError):
+        reg.call_with_fallback("media_ops", lambda p: p.op_missing())
+    assert calls == ["p1_missing"]
+
+
+def test_http_retry_rewinds_seekable_file_handles() -> None:
+    import io
+
+    import httpx
+
+    from vedit.providers.http import request_with_retry
+
+    seen_bodies: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_bodies.append(request.read())
+        if len(seen_bodies) == 1:
+            return httpx.Response(503, text="retry")
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    payload = io.BytesIO(b"RIFF....WAVEfmt audio-bytes")
+    resp = request_with_retry(
+        client,
+        "POST",
+        "https://api.example.test/upload",
+        provider="test",
+        sleep_fn=lambda _: None,
+        files=[("file", ("vo.wav", payload, "audio/wav"))],
+    )
+    assert resp.status_code == 200
+    assert len(seen_bodies) == 2
+    assert b"audio-bytes" in seen_bodies[0]
+    assert b"audio-bytes" in seen_bodies[1]

@@ -88,7 +88,8 @@ function readTtfFamilyName(filePath: string): string | null {
       const len = buf.readUInt16BE(rec + 8);
       const off = strOffset + buf.readUInt16BE(rec + 10);
       if (off + len > buf.length) continue;
-      const slice = buf.subarray(off, off + len);
+      if ((platformId === 3 || platformId === 0) && len % 2 !== 0) continue;
+      const slice = Buffer.from(buf.subarray(off, off + len));
       const decoded =
         platformId === 3 || platformId === 0
           ? slice.swap16().toString("utf16le").replace(/\0/g, "").trim()
@@ -165,9 +166,34 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function escapeCssString(text: string): string {
+  return text
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/<\/style/gi, "<\\/style")
+    .trim();
+}
+
 function sanitizeId(raw: string): string {
-  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^[^a-zA-Z]+/, "id_");
-  return cleaned || "scene_item";
+  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (!cleaned) return "scene_item";
+  return /^[a-zA-Z]/.test(cleaned) ? cleaned : `id_${cleaned}`;
+}
+
+function allocateUniqueId(raw: string, usedIds: Set<string>): string {
+  const base = sanitizeId(raw);
+  if (!usedIds.has(base)) {
+    usedIds.add(base);
+    return base;
+  }
+  let suffix = 2;
+  while (usedIds.has(`${base}_${suffix}`)) {
+    suffix += 1;
+  }
+  const unique = `${base}_${suffix}`;
+  usedIds.add(unique);
+  return unique;
 }
 
 function resolveFontFamily(raw: unknown, extraFamilies: readonly string[] = []): string {
@@ -810,7 +836,11 @@ function renderParameterizedTemplate(
       tokens[`VAR_${upper}`] = /^#[0-9A-Fa-f]{6}$/.test(val.trim())
         ? val.trim().toUpperCase()
         : escapeHtml(val);
-    } else if (typeof val === "number" || typeof val === "boolean") {
+    } else if (typeof val === "number") {
+      if (Number.isFinite(val)) {
+        tokens[`VAR_${upper}`] = String(val);
+      }
+    } else if (typeof val === "boolean") {
       tokens[`VAR_${upper}`] = String(val);
     }
   }
@@ -834,18 +864,22 @@ function stageLocalAssets(plan: EditPlan, outDir: string, copyAssets: boolean): 
   const copiedAssets: string[] = [];
   const stagedFonts: StagedFontFace[] = [];
 
+  const usedAssetIds = new Set<string>();
   for (const asset of plan.assets) {
     if (plan.render_strategy === "hybrid" && asset.kind !== "font" && asset.kind !== "image") {
       continue;
     }
-    const cleanId = sanitizeId(asset.asset_id);
+    const cleanId = allocateUniqueId(asset.asset_id, usedAssetIds);
     const fallbackExt =
       asset.kind === "font"
         ? ".ttf"
-        : asset.kind.startsWith("audio")
-          ? ".mp3"
-          : ".mp4";
-    const ext = path.extname(asset.path) || fallbackExt;
+        : asset.kind === "image"
+          ? ".png"
+          : asset.kind.startsWith("audio")
+            ? ".mp3"
+            : ".mp4";
+    const rawExt = path.extname(asset.path).replace(/[^a-zA-Z0-9.]/g, "");
+    const ext = rawExt && rawExt.startsWith(".") ? rawExt : fallbackExt;
     const relPath = `assets/${cleanId}${ext}`;
     assetPathsById.set(asset.asset_id, relPath);
 
@@ -876,8 +910,8 @@ function buildLocalFontFaceCss(fonts: readonly StagedFontFace[]): string {
   return fonts
     .map(
       (f) => `    @font-face {
-      font-family: '${f.family}';
-      src: url('${f.relPath}') format('${f.format}');
+      font-family: '${escapeCssString(f.family)}';
+      src: url('${escapeCssString(f.relPath)}') format('${f.format}');
       font-weight: ${f.weight};
       font-style: ${f.style};
       font-display: block;
@@ -890,7 +924,8 @@ function injectOverlayTrackKeyframes(
   html: string,
   ov: OverlayCompositionOp,
   width: number,
-  height: number
+  height: number,
+  sceneId: string
 ): string {
   const kfs = ov.track_keyframes;
   if (!kfs || kfs.length === 0) {
@@ -900,23 +935,31 @@ function injectOverlayTrackKeyframes(
   const first = sorted[0]!;
   const baseX = first.x_pct;
   const baseY = first.y_pct;
-  const payload = sorted.map((kf) => ({
-    t: Number(kf.t_s.toFixed(4)),
-    dx: Number((((kf.x_pct - baseX) / 100) * width).toFixed(2)),
-    dy: Number((((kf.y_pct - baseY) / 100) * height).toFixed(2)),
-    scale: kf.scale ?? 1,
-    rotation: kf.rotation_deg ?? 0,
-    rotationX: kf.rotateX_deg ?? 0,
-    perspective: kf.perspective_px ?? 0,
-    opacity: kf.opacity ?? 1,
-  }));
+  let activePerspective = first.perspective_px ?? 1600;
+  const payload = sorted.map((kf) => {
+    if (kf.perspective_px && kf.perspective_px > 0) {
+      activePerspective = kf.perspective_px;
+    }
+    return {
+      t: Number(kf.t_s.toFixed(4)),
+      dx: Number((((kf.x_pct - baseX) / 100) * width).toFixed(2)),
+      dy: Number((((kf.y_pct - baseY) / 100) * height).toFixed(2)),
+      scale: kf.scale ?? 1,
+      rotation: kf.rotation_deg ?? 0,
+      rotationX: kf.rotateX_deg ?? 0,
+      perspective: kf.perspective_px ?? activePerspective,
+      opacity: kf.opacity ?? 1,
+    };
+  });
   const originX = Number(((baseX / 100) * width).toFixed(1));
   const originY = Number(((baseY / 100) * height).toFixed(1));
-  const has3d = payload.some((k) => Math.abs(k.rotationX) > 0.01 || k.perspective > 0);
+  const has3d = sorted.some(
+    (k) => Math.abs(k.rotateX_deg ?? 0) > 0.01 || (k.perspective_px ?? 0) > 0
+  );
   const trackScript = `
   <script data-vedit-object-track="true">
     (function() {
-      var target = document.getElementById("root") || document.body.firstElementChild;
+      var target = document.getElementById("root");
       if (!target || typeof gsap === "undefined") return;
       var kfs = ${JSON.stringify(payload)};
       gsap.set(target, {
@@ -954,13 +997,19 @@ function injectOverlayTrackKeyframes(
           ease: "none"
         }, prev.t);
       }
-      if (window.__hf && typeof window.__hf.register === "function") {
-        window.__hf.register(trackTl);
+      window.__timelines = window.__timelines || {};
+      var parentTl = window.__timelines[${JSON.stringify(sceneId)}];
+      if (parentTl && typeof parentTl.add === "function") {
+        trackTl.paused(false);
+        parentTl.add(trackTl, 0);
       } else {
-        trackTl.play();
+        window.__timelines[${JSON.stringify(sceneId)}] = trackTl;
       }
     })();
   </script>`;
+  if (html.includes("</template>")) {
+    return html.replace("</template>", `${trackScript}\n</template>`);
+  }
   if (html.includes("</body>")) {
     return html.replace("</body>", `${trackScript}\n</body>`);
   }
@@ -1035,17 +1084,17 @@ export function compileEditPlanToHyperframes(
   const hasCaptions = plan.overlay_compositions.some((ov) => ov.kind === "caption_rail");
   const captionLane = hasCaptions ? assignTrackLane(lanes, 0, plan.duration_s) : -1;
 
+  const usedSceneIds = new Set<string>();
   for (const ov of plan.overlay_compositions) {
-    const sceneId = sanitizeId(ov.overlay_id);
+    const sceneId = allocateUniqueId(ov.overlay_id, usedSceneIds);
     const scenePath = path.join(compDir, `${sceneId}.html`);
-    const catalogMatch =
-      ov.template_id && typeof ov.props.composition_path !== "string"
-        ? resolveBrandTemplateEntry(plan.brand_id, ov.template_id)
-        : null;
+    const catalogMatch = ov.template_id
+      ? resolveBrandTemplateEntry(plan.brand_id, ov.template_id)
+      : null;
     const mergedProps: Record<string, unknown> = {
       ...(catalogMatch?.defaults ?? {}),
-      ...(ov.variables ?? {}),
       ...ov.props,
+      ...(ov.variables ?? {}),
     };
     if (catalogMatch && typeof mergedProps.composition_path !== "string") {
       mergedProps.composition_path = catalogMatch.compositionPath;
@@ -1084,7 +1133,7 @@ export function compileEditPlanToHyperframes(
       );
       fs.writeFileSync(
         scenePath,
-        injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height),
+        injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height, sceneId),
         "utf8"
       );
     } else {
@@ -1098,7 +1147,7 @@ export function compileEditPlanToHyperframes(
       );
       fs.writeFileSync(
         scenePath,
-        injectOverlayTrackKeyframes(sceneHtml, effectiveOv, plan.width, plan.height),
+        injectOverlayTrackKeyframes(sceneHtml, effectiveOv, plan.width, plan.height, sceneId),
         "utf8"
       );
     }

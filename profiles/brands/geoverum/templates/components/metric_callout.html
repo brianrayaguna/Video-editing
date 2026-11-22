@@ -101,8 +101,7 @@
       if (subEl && !subEl.textContent.trim()) subEl.classList.add("gv-empty");
 
       if (primaryEl && !primaryEl.textContent.trim()) {
-        const legacyVal = ("{{VAR_VALUE|1.143 KM}}").trim();
-        primaryEl.textContent = legacyVal || "1.143 KM";
+        primaryEl.textContent = "1.143 KM";
       }
       const rawText = primaryEl ? primaryEl.textContent.trim() : "";
       const maxWidthPx = Math.round(Number({{WIDTH}}) * 0.84);

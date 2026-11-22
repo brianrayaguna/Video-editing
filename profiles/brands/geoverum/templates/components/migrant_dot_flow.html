@@ -22,21 +22,25 @@
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
-      <svg id="{{SCENE_ID}}-svg" class="gv-swarm-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <svg id="{{SCENE_ID}}-svg" class="gv-swarm-svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" xmlns="http://www.w3.org/2000/svg">
         <g id="{{SCENE_ID}}-dots"></g>
       </svg>
     </div>
   </div>
   <script>
     (function () {
+      const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
+      const S = Number({{SCALE_FACTOR}});
       const count = Math.max(4, Math.min(30, Math.round(Number("{{VAR_DOT_COUNT|18}}") || 18)));
-      const lossRatio = Math.max(0, Math.min(0.8, Number("{{VAR_LOSS_RATIO|0.28}}") || 0.28));
+      const rawLoss = Number("{{VAR_LOSS_RATIO|0.28}}");
+      const lossRatio = Math.max(0, Math.min(0.8, Number.isFinite(rawLoss) ? rawLoss : 0.28));
       const activeCol = ("{{VAR_ACTIVE_COLOR|#38BDF8}}").trim() || "#38BDF8";
       const lossCol = ("{{VAR_LOSS_COLOR|#EF4444}}").trim() || "#EF4444";
-      const sx = (Number("{{VAR_START_X_PCT|58}}") || 58) * 10;
-      const sy = (Number("{{VAR_START_Y_PCT|62}}") || 62) * 10;
-      const ex = (Number("{{VAR_END_X_PCT|42}}") || 42) * 10;
-      const ey = (Number("{{VAR_END_Y_PCT|28}}") || 28) * 10;
+      const sx = ((Number("{{VAR_START_X_PCT|58}}") || 58) / 100) * W;
+      const sy = ((Number("{{VAR_START_Y_PCT|62}}") || 62) / 100) * H;
+      const ex = ((Number("{{VAR_END_X_PCT|42}}") || 42) / 100) * W;
+      const ey = ((Number("{{VAR_END_Y_PCT|28}}") || 28) / 100) * H;
 
       const ns = "http://www.w3.org/2000/svg";
       const group = document.getElementById("{{SCENE_ID}}-dots");
@@ -47,10 +51,10 @@
       for (let i = 0; i < count; i += 1) {
         const s1 = ((i * 73 + 19) % 100) / 100 - 0.5;
         const s2 = ((i * 131 + 41) % 100) / 100 - 0.5;
-        const x0 = sx + s1 * 180;
-        const y0 = sy + s2 * 140;
-        const x1 = ex + s1 * 150;
-        const y1 = ey + s2 * 120;
+        const x0 = sx + s1 * 180 * S;
+        const y0 = sy + s2 * 140 * S;
+        const x1 = ex + s1 * 150 * S;
+        const y1 = ey + s2 * 120 * S;
 
         const cOuter = document.createElementNS(ns, "circle");
         cOuter.setAttribute("cx", String(x0));

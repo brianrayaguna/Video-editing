@@ -477,6 +477,7 @@ def _check_overlays_and_spatial_grounding(
 
         pattern_tags = [
             ov.kind.lower(),
+            (ov.template_id or "").lower(),
             str(merged_ov.get("pattern", "")).lower(),
             str(merged_ov.get("template", "")).lower(),
         ]
@@ -531,6 +532,30 @@ def _check_overlays_and_spatial_grounding(
         _check_overlay_contrast(ov, policy, errors)
 
         explicit_box = ov.props.get("box") if isinstance(ov.props.get("box"), dict) else None
+        if explicit_box is not None:
+            try:
+                box_top = float(explicit_box["top"])
+                box_bottom = float(explicit_box["bottom"])
+                box_left = float(explicit_box["left"])
+                box_right = float(explicit_box["right"])
+                valid_box = (
+                    0.0 <= box_top < box_bottom <= 1.0 and 0.0 <= box_left < box_right <= 1.0
+                )
+            except (KeyError, TypeError, ValueError):
+                valid_box = False
+            if not valid_box:
+                errors.append(
+                    VerificationIssue(
+                        severity="error",
+                        code="INVALID_OVERLAY_BOX",
+                        target_id=ov.overlay_id,
+                        message=(
+                            "Overlay props.box must have numeric ordered bounds "
+                            "(0 <= top < bottom <= 1 and 0 <= left < right <= 1)."
+                        ),
+                    )
+                )
+                continue
         rect = resolve_overlay_rect(ov.safe_band, safe_zone, explicit_box=explicit_box)
         resolved_boxes.append((ov, rect))
         if ov.safe_band != "fullscreen" or explicit_box is not None:
@@ -739,10 +764,13 @@ def _check_soft_temporal_priors(
 def _check_template_bindings(
     plan: EditPlan,
     template_catalog: BrandTemplateCatalog | None,
+    platform_target: PlatformTarget,
     errors: list[VerificationIssue],
 ) -> None:
     for ov in plan.overlay_compositions:
-        for msg in validate_overlay_template(ov, template_catalog):
+        for msg in validate_overlay_template(
+            ov, template_catalog, aspect_ratio=platform_target.aspect_ratio
+        ):
             errors.append(
                 VerificationIssue(
                     severity="error",
@@ -773,7 +801,7 @@ def verify_edit_plan(
     _check_overlays_and_spatial_grounding(plan, effective_policy, platform_target, errors)
     _check_audio_dag(plan, errors, warnings)
     _check_soft_temporal_priors(plan, effective_policy, warnings)
-    _check_template_bindings(plan, template_catalog, errors)
+    _check_template_bindings(plan, template_catalog, platform_target, errors)
 
     checked = [
         "edit_plan_schema",

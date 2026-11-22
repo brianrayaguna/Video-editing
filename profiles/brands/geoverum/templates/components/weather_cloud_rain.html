@@ -20,7 +20,7 @@
   </style>
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
-      <svg id="{{SCENE_ID}}-svg" class="gv-wx-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <svg id="{{SCENE_ID}}-svg" class="gv-wx-svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <radialGradient id="{{SCENE_ID}}-puff" cx="38%" cy="32%" r="64%">
             <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.96" />
@@ -43,8 +43,10 @@
   </div>
   <script>
     (function () {
-      const cx = (Number("{{VAR_CENTER_X_PCT|50}}") || 50) * 10 - 500;
-      const cy = (Number("{{VAR_CENTER_Y_PCT|44}}") || 44) * 10 - 440;
+      const W = Number({{WIDTH}});
+      const H = Number({{HEIGHT}});
+      const cx = ((Number("{{VAR_CENTER_X_PCT|50}}") || 50) / 100) * W - 500;
+      const cy = ((Number("{{VAR_CENTER_Y_PCT|44}}") || 44) / 100) * H - 440;
       const group = document.getElementById("{{SCENE_ID}}-group");
       const rain = document.getElementById("{{SCENE_ID}}-rain");
       if (group) group.setAttribute("transform", "translate(" + cx + "," + cy + ")");

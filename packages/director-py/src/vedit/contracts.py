@@ -36,7 +36,9 @@ def load_schema(schema_filename: str, repo_root: Path | None = None) -> dict[str
     schema_path = root / "contracts" / schema_filename
     if not schema_path.is_file():
         raise FileNotFoundError(f"Missing contract schema: {schema_path}")
-    return json.loads(schema_path.read_text(encoding="utf-8"))
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return schema
 
 
 def validate_against_contract(
@@ -108,10 +110,11 @@ def _resolve_template_composition_path(
 ) -> Path | None:
     raw = Path(comp_path)
     if raw.is_absolute():
-        return raw if raw.is_file() else None
+        return None
     for base in (repo_root, brand_dir, brand_dir / "templates"):
-        cand = (base / raw).resolve()
-        if cand.is_file():
+        base_resolved = base.resolve()
+        cand = (base_resolved / raw).resolve()
+        if cand.is_relative_to(base_resolved) and cand.is_file():
             return cand
     return None
 

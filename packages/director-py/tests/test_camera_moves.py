@@ -358,3 +358,49 @@ def test_project_world_anchor_supports_3d_pitch_and_map_plane() -> None:
     assert kfs[0]["rotateX_deg"] == pytest.approx(35.0, abs=0.1)
     assert kfs[1]["rotateX_deg"] == pytest.approx(40.0, abs=0.1)
     assert kfs[0]["perspective_px"] > 1000.0
+
+
+def test_camera_math_handles_extreme_zoom_duplicate_cuts_antimeridian_and_track_chaining() -> None:
+    from vedit.director.camera_moves import (
+        _van_wijk_fly_to,
+        build_cinema_camera_track,
+        camera_jitter_report,
+        project_world_anchor_to_track,
+    )
+
+    # Extreme zoom dive must not hit log(0) math domain error
+    x, y, z = _van_wijk_fly_to(0.0, 0.0, 18.0, 1e-4, 0.0, 1.0, 0.5)
+    assert z == z  # finite
+
+    # Duplicate-timestamp hard cut must not ZeroDivisionError and must not bleed spline jitter
+    static_with_cut = [
+        [0.0, 0.0, 0.0, 4.0, 0.0],
+        [1.5, 0.0, 0.0, 4.0, 0.0],
+        [1.5, 45.0, 20.0, 7.0, 0.0],
+        [3.0, 45.0, 20.0, 7.0, 0.0],
+    ]
+    report = camera_jitter_report(static_with_cut, cuts=[1.5], fps=30.0)
+    assert report["flagged_frames"] == 0
+    assert report["reversals"] == 0
+
+    # build_cinema_camera_track includes 't'/'frame', wraps antimeridian, and chains into projection
+    samples = build_cinema_camera_track(
+        [
+            {"t": 0.0, "center": [179.5, 10.0], "zoom": 6.0, "bearing": 0.0, "pitch": 10.0},
+            {"t": 1.0, "center": [-179.5, 10.0], "zoom": 6.5, "bearing": 0.0, "pitch": 15.0},
+        ],
+        duration_s=1.0,
+        fps=10.0,
+        smooth_s=0.0,
+    )
+    assert "t" in samples[0] and "frame" in samples[0]
+    assert samples[-1]["t"] > 0.5
+    # Must take shortest 1-degree path across antimeridian rather than zooming out to ~0
+    assert min(s["zoom"] for s in samples) >= 5.5
+
+    projected = project_world_anchor_to_track(
+        samples, lng=-179.5, lat=10.0, width=1080, height=1920, start_s=0.0, duration_s=1.0
+    )
+    assert len(projected) == len(samples)
+    assert projected[-1]["t_s"] > 0.5
+    assert all(0.0 <= kf["x_pct"] <= 100.0 for kf in projected)

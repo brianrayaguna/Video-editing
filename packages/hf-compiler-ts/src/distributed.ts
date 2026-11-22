@@ -30,7 +30,7 @@ export interface CreateDistributedPlanOptions {
 }
 
 export function clampChunkFrameBudget(requested?: number): number {
-  const val = requested ?? DEFAULT_CHUNK_FRAMES;
+  const val = requested !== undefined && Number.isFinite(requested) ? requested : DEFAULT_CHUNK_FRAMES;
   if (val < MIN_BOUNDED_CHUNK_FRAMES) {
     return MIN_BOUNDED_CHUNK_FRAMES;
   }

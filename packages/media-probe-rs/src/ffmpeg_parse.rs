@@ -16,7 +16,7 @@ fn parse_key_value_f64(line: &str, key: &str) -> Option<f64> {
     let token = rest
         .split(|c: char| c.is_whitespace() || c == ',' || c == '|')
         .next()?;
-    token.parse::<f64>().ok()
+    token.parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
 /// Parse single-pass FFmpeg stderr output for `scdet`, `blackdetect`, `silencedetect`, and `ebur128`.
@@ -45,11 +45,13 @@ pub fn parse_ffmpeg_stderr(stderr: &str, duration_s: f64) -> ParsedFfmpegStderr 
                 parse_key_value_f64(trimmed, "black_start:"),
                 parse_key_value_f64(trimmed, "black_end:"),
             ) {
+                let start_clamped = start.max(0.0);
+                let end_clamped = end.max(start_clamped);
                 let dur = parse_key_value_f64(trimmed, "black_duration:")
-                    .unwrap_or_else(|| (end - start).max(0.0));
+                    .unwrap_or_else(|| (end_clamped - start_clamped).max(0.0));
                 parsed.black_intervals.push(TimeInterval {
-                    start_s: start.max(0.0),
-                    end_s: end.max(start),
+                    start_s: start_clamped,
+                    end_s: end_clamped,
                     duration_s: dur.max(0.0),
                 });
             }
@@ -118,7 +120,7 @@ pub fn build_shots_and_stats(
     duration_s: f64,
     min_scene_s: f64,
 ) -> (Vec<ShotSegment>, ShotStats) {
-    if duration_s <= 0.0 {
+    if !duration_s.is_finite() || duration_s <= 0.0 {
         return (
             Vec::new(),
             ShotStats {
@@ -253,5 +255,27 @@ mod tests {
         assert_eq!(shots[2].end_s, 6.0);
         assert_eq!(stats.count, 3);
         assert!((stats.asl_p50_s - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn rejects_non_finite_loudness_and_clamps_negative_black_intervals() {
+        let sample = "\
+[blackdetect @ 0x1] black_start:-0.5 black_end:-0.1 black_duration:0.4
+[Parsed_ebur128_0 @ 0x2] Summary:
+  Integrated loudness:
+    I:         -inf LUFS
+  True peak:
+    Peak:      -inf dBFS
+";
+        let parsed = parse_ffmpeg_stderr(sample, 3.0);
+        assert_eq!(parsed.integrated_lufs, None);
+        assert_eq!(parsed.true_peak_dbtp, None);
+        assert_eq!(parsed.black_intervals.len(), 1);
+        assert_eq!(parsed.black_intervals[0].start_s, 0.0);
+        assert_eq!(parsed.black_intervals[0].end_s, 0.0);
+
+        let (shots, stats) = build_shots_and_stats(&[(1.0, 0.5)], f64::NAN, 0.4);
+        assert!(shots.is_empty());
+        assert_eq!(stats.count, 0);
     }
 }

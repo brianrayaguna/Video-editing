@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -60,7 +61,10 @@ def _parse_loudnorm_json(stderr_text: str) -> LoudnormMeasurement | None:
     match = _LOUDNORM_JSON_RE.search(stderr_text)
     if not match:
         return None
-    data = json.loads(match.group(0))
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
     return LoudnormMeasurement(
         input_i=str(data.get("input_i", "-inf")),
         input_tp=str(data.get("input_tp", "-inf")),
@@ -69,6 +73,13 @@ def _parse_loudnorm_json(stderr_text: str) -> LoudnormMeasurement | None:
         target_offset=str(data.get("target_offset", "0.0")),
         raw=data,
     )
+
+
+def _is_finite_loudnorm_val(raw: str) -> bool:
+    try:
+        return math.isfinite(float(raw))
+    except (TypeError, ValueError):
+        return False
 
 
 def _build_track_chain(
@@ -122,7 +133,10 @@ def _build_audio_mix_graph(
         else:
             sfx_labels.append(f"[{label}]")
 
-    effective_carve = 0.75 if carve_strength is None else carve_strength
+    should_carve = bool(
+        vo_labels and bgm_labels and carve_strength is not None and carve_strength > 0
+    )
+    effective_carve = carve_strength if carve_strength is not None else 0.0
 
     mix_inputs: list[str] = []
     if vo_labels:
@@ -132,9 +146,12 @@ def _build_audio_mix_graph(
             chains.append(
                 f"{''.join(vo_labels)}amix=inputs={len(vo_labels)}:duration=longest:normalize=0[vo_bus]"
             )
-        # Split voiceover into dry mix branch + sidechain trigger when ducking music.
-        if bgm_labels:
-            chains.append("[vo_bus]asplit=2[vo_mix][vo_sc]")
+        # Split VO into dry branch + padded sidechain trigger so BGM never cuts at VO EOF.
+        if should_carve:
+            chains.append(
+                f"[vo_bus]asplit=2[vo_mix][vo_sc_raw];"
+                f"[vo_sc_raw]apad,atrim=0:{plan.duration_s:.4f}[vo_sc]"
+            )
             mix_inputs.append("[vo_mix]")
         else:
             mix_inputs.append("[vo_bus]")
@@ -146,7 +163,7 @@ def _build_audio_mix_graph(
             chains.append(
                 f"{''.join(bgm_labels)}amix=inputs={len(bgm_labels)}:duration=longest:normalize=0[bgm_raw]"
             )
-        if vo_labels:
+        if should_carve:
             ratio = round(2.0 + effective_carve * 6.0, 2)
             eq_cut = round(-2.5 * effective_carve, 2)
             chains.append(
@@ -235,11 +252,22 @@ def master_audio_mix(
 
         measurement = _parse_loudnorm_json(p1_proc.stderr)
         output_audio_path.parent.mkdir(parents=True, exist_ok=True)
-        can_two_pass = (
-            measurement is not None
-            and measurement.input_i != "-inf"
-            and measurement.input_tp != "-inf"
+        can_two_pass = measurement is not None and all(
+            _is_finite_loudnorm_val(val)
+            for val in (
+                measurement.input_i,
+                measurement.input_tp,
+                measurement.input_lra,
+                measurement.input_thresh,
+                measurement.target_offset,
+            )
         )
+        if not can_two_pass:
+            print(
+                "Warning: loudnorm pass-1 measurements non-finite or unavailable; "
+                "falling back to single-pass dynamic loudnorm.",
+                file=sys.stderr,
+            )
         af_pass2 = (
             (
                 f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:"

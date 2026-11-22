@@ -845,3 +845,95 @@ def test_ffmpeg_xfade_preserves_timeline_duration_and_ssim_fallback(tmp_path: Pa
         audit.metrics.get("ssim") is not None
         or audit.metrics.get("vmaf_score") is not None
     )
+
+
+def test_audio_sidechain_pads_vo_and_qc_fails_on_silent_audio(tmp_path: Path) -> None:
+    from vedit.mastering.ffmpeg_master import _build_audio_mix_graph
+    from vedit.models import AudioTrackOp
+
+    vo = tmp_path / "vo.wav"
+    bgm = tmp_path / "bgm.wav"
+    vo.write_bytes(b"")
+    bgm.write_bytes(b"")
+    plan = EditPlan(
+        job_id="sidechain_pad_test",
+        project_id="proj",
+        brand_id="geoverum",
+        platform_target_id="shorts_9x16_1080p",
+        render_strategy="hybrid",
+        duration_s=10.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(asset_id="vo", sha256="a" * 64, kind="audio_speech", path=str(vo)),
+            AssetRef(asset_id="bgm", sha256="b" * 64, kind="audio_bgm", path=str(bgm)),
+        ],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[
+            AudioTrackOp(
+                track_id="t_vo",
+                asset_id="vo",
+                audio_group="voiceover",
+                timeline_start_s=0.0,
+                timeline_duration_s=4.0,
+                source_start_s=0.0,
+                cleaned_speech_stem=True,
+            ),
+            AudioTrackOp(
+                track_id="t_bgm",
+                asset_id="bgm",
+                audio_group="music",
+                timeline_start_s=0.0,
+                timeline_duration_s=10.0,
+                source_start_s=0.0,
+                carve_against_group="voiceover",
+                carve_strength=0.75,
+            ),
+        ],
+    )
+    _, graph, _ = _build_audio_mix_graph(plan, {"vo": vo, "bgm": bgm})
+    assert "[vo_sc_raw]apad,atrim=0:10.0000[vo_sc]" in graph
+
+    # Silent audio deliverable (-inf LUFS) must fail QC audit rather than pass
+    silent_mp4 = tmp_path / "silent.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=#0A2332:s=1080x1920:r=30:d=1.0",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=48000:cl=stereo:d=1.0",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            str(silent_mp4),
+        ],
+        check=True,
+    )
+    shorts_target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    audit = audit_mastered_deliverable(silent_mp4, shorts_target, check_visual=False)
+    assert audit.passed is False
+    assert audit.metrics.get("true_peak_dbtp") is None
+    assert {"SILENT_AUDIO_STREAM", "LOUDNESS_OUT_OF_TOLERANCE"} & {e.code for e in audit.errors}

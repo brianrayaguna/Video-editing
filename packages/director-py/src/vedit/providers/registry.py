@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
+from vedit.ports.media_ops import GenerativeVideoProhibitedError
 from vedit.providers.config import ProvidersConfig, load_providers_config
 from vedit.providers.http import ProviderAPIError
 
@@ -109,7 +110,9 @@ class ProviderRegistry:
             provider = self.resolve(capability, provider_name=name)
             try:
                 return fn(provider)
-            except (ProviderAPIError, RuntimeError, FileNotFoundError) as exc:
+            except (GenerativeVideoProhibitedError, FileNotFoundError):
+                raise
+            except (ProviderAPIError, RuntimeError) as exc:
                 errors.append(f"{name}: {exc}")
                 if idx == len(candidates) - 1:
                     if len(candidates) == 1:

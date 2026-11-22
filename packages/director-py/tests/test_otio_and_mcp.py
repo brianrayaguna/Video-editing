@@ -149,6 +149,56 @@ def test_export_edit_plan_to_otio_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
+    importlib.util.find_spec("opentimelineio") is None,
+    reason="Optional opentimelineio extra not installed.",
+)
+def test_export_otio_preserves_program_mix_and_splits_overlapping_sfx(tmp_path: Path) -> None:
+    import opentimelineio as otio
+
+    plan = _sample_edit_plan().model_copy(
+        update={
+            "audio_tracks": [
+                AudioTrackOp(
+                    track_id="mix_main",
+                    asset_id="a_vo",
+                    audio_group="program_mix",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=8.0,
+                    source_start_s=0.0,
+                    gain_db=0.0,
+                    cleaned_speech_stem=True,
+                ),
+                AudioTrackOp(
+                    track_id="sfx_1",
+                    asset_id="a_bgm",
+                    audio_group="sfx",
+                    timeline_start_s=1.0,
+                    timeline_duration_s=2.0,
+                    source_start_s=0.0,
+                    gain_db=-6.0,
+                ),
+                AudioTrackOp(
+                    track_id="sfx_2",
+                    asset_id="a_bgm",
+                    audio_group="sfx",
+                    timeline_start_s=1.5,
+                    timeline_duration_s=1.5,
+                    source_start_s=0.0,
+                    gain_db=-6.0,
+                ),
+            ]
+        }
+    )
+    out_otio = tmp_path / "program_mix.otio"
+    export_edit_plan_to_otio(plan, out_otio)
+    loaded = otio.adapters.read_from_file(str(out_otio))
+    track_names = [t.name for t in loaded.tracks]
+    assert "Audio_program_mix" in track_names
+    assert "Audio_sfx" in track_names
+    assert "Audio_sfx_2" in track_names
+
+
+@pytest.mark.skipif(
     importlib.util.find_spec("fastmcp") is None,
     reason="Optional fastmcp extra not installed.",
 )

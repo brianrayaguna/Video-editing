@@ -242,6 +242,38 @@ def test_critique_gate(idioms: dict) -> None:
     packet["review"]["scores"]["layout_tidiness"] = 0.3
     assert not gate_review(packet)["passed"]
 
+    # Deleting a criterion or inflating scores > 1.0 must fail closed.
+    tampered = json.loads(json.dumps(packet))
+    tampered["review"]["scores"] = {k: 0.9 for k in tampered["review"]["scores"]}
+    first_key = next(iter(tampered["review"]["scores"]))
+    del tampered["review"]["scores"][first_key]
+    tampered_gate = gate_review(tampered)
+    assert not tampered_gate["passed"]
+    assert any("unscored" in r for r in tampered_gate["reasons"])
+
+    inflated = json.loads(json.dumps(packet))
+    inflated["review"]["scores"] = {k: 1.5 for k in inflated["review"]["scores"]}
+    inflated_gate = gate_review(inflated)
+    assert not inflated_gate["passed"]
+    assert any("outside [0, 1]" in r for r in inflated_gate["reasons"])
+
+
+def test_split_clauses_preserves_trailing_clause_before_filler(idioms: dict) -> None:
+    transcript = {
+        "duration_s": 2.4,
+        "text": "Border without government control um",
+        "words": [
+            {"text": "Border", "start_s": 0.0, "end_s": 0.4},
+            {"text": "without", "start_s": 0.4, "end_s": 0.8},
+            {"text": "government", "start_s": 0.8, "end_s": 1.3},
+            {"text": "control", "start_s": 1.3, "end_s": 1.8},
+            {"text": "um", "start_s": 1.9, "end_s": 2.2, "is_filler": True},
+        ],
+    }
+    sb = scaffold_storyboard(transcript, idioms, project_id="filler_test")
+    assert len(sb["beats"]) == 1
+    assert sb["beats"][0]["device"] == "prohibition_badge"
+
 
 def test_storyboard_cli_roundtrip(tmp_path) -> None:
     tr = tmp_path / "t.json"

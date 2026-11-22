@@ -442,6 +442,7 @@ async function renderRangeToPipe({
     });
 
     const t0 = Date.now();
+    let succeeded = false;
     try {
       for (let i = startFrame; i < endFrame; i++) {
         await page.evaluate(([idx, total]) => window.__setCamFrame(idx, total), [i, N]);
@@ -456,8 +457,12 @@ async function renderRangeToPipe({
           console.log(`  [${NAME}:w${workerId}] rendered frame ${i + 1}/${N} (${elapsed}s)`);
         }
       }
+      succeeded = true;
     } finally {
       await shotter.close();
+      if (!succeeded) {
+        await encoder.abort();
+      }
     }
     await encoder.finish();
   } finally {

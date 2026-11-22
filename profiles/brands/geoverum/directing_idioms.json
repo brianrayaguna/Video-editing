@@ -397,10 +397,11 @@
     },
     "era_marker": {
       "surface": "overlay",
-      "template_id": "amber_fact_card",
+      "template_id": "historical_parchment_plate",
       "variables": {
-        "number": "$year",
-        "text": "$clause"
+        "variant": "era_stamp",
+        "year": "$year",
+        "title": "$clause"
       },
       "min_duration_s": 1.0,
       "max_duration_s": 2.5
@@ -697,7 +698,6 @@
           "pemberontak",
           "penyelundup",
           "perang",
-          "virus",
           "pandemi"
         ],
         "device": "hazard_icons",

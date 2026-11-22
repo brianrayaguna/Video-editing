@@ -19,7 +19,13 @@ from vedit.contracts import (
 from vedit.director.verifier import verify_edit_plan
 from vedit.interop.otio_bridge import export_edit_plan_to_otio
 from vedit.mastering.qc_audit import audit_mastered_deliverable
-from vedit.models import BrandStylePolicy, BrandTemplateCatalog, EditPlan, PlatformTarget
+from vedit.models import (
+    BrandStylePolicy,
+    BrandTemplateCatalog,
+    EditPlan,
+    NormalizedTranscript,
+    PlatformTarget,
+)
 from vedit.project_workspace import (
     init_project_workspace,
     inspect_project_status,
@@ -96,25 +102,57 @@ def create_mcp_server() -> Any:
         policy_file: str,
         platform_id: str,
         brand_dir: str | None = None,
+        transcript_file: str | None = None,
+        update_plan: bool = False,
     ) -> dict[str, Any]:
         """Deterministically verify an EditPlan against BrandStylePolicy and PlatformTarget."""
         plan_path = Path(plan_file).expanduser().resolve()
+        policy_path = Path(policy_file).expanduser().resolve()
         platforms = load_platform_targets()
         if platform_id not in platforms:
             raise ValueError(f"Unknown platform target: {platform_id}")
         platform_target = PlatformTarget.model_validate(platforms[platform_id])
         plan = EditPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
-        policy = BrandStylePolicy.model_validate_json(
-            Path(policy_file).expanduser().read_text(encoding="utf-8")
+        policy = BrandStylePolicy.model_validate_json(policy_path.read_text(encoding="utf-8"))
+        transcript: NormalizedTranscript | None = (
+            NormalizedTranscript.model_validate_json(
+                Path(transcript_file).expanduser().read_text(encoding="utf-8")
+            )
+            if transcript_file
+            else None
         )
         catalog: BrandTemplateCatalog | None = None
-        if brand_dir:
-            cat_path = Path(brand_dir).expanduser() / "templates" / "catalog.json"
-            if cat_path.is_file():
-                catalog = BrandTemplateCatalog.model_validate(
-                    load_brand_template_catalog(cat_path)
-                )
-        report = verify_edit_plan(plan, policy, platform_target, template_catalog=catalog)
+        if brand_dir is not None:
+            resolved_brand = Path(brand_dir).expanduser().resolve()
+            if not resolved_brand.is_dir():
+                raise FileNotFoundError(f"Brand directory not found: {resolved_brand}")
+            cat_path = resolved_brand / "templates" / "catalog.json"
+        else:
+            sibling = policy_path.parent / "templates" / "catalog.json"
+            repo_cat = (
+                find_repo_root()
+                / "profiles"
+                / "brands"
+                / policy.brand_id
+                / "templates"
+                / "catalog.json"
+            )
+            cat_path = sibling if sibling.is_file() else repo_cat
+        if cat_path.is_file():
+            catalog = BrandTemplateCatalog.model_validate(load_brand_template_catalog(cat_path))
+        report = verify_edit_plan(
+            plan,
+            policy,
+            platform_target,
+            transcript=transcript,
+            template_catalog=catalog,
+        )
+        if update_plan:
+            updated = plan.model_copy(update={"verifier_passed": report.passed})
+            plan_path.write_text(
+                updated.model_dump_json(indent=2, exclude_none=True) + "\n",
+                encoding="utf-8",
+            )
         return report.to_dict()
 
     @mcp.tool()
@@ -130,6 +168,8 @@ def create_mcp_server() -> Any:
         resolved_plan = resolve_plan_asset_paths(raw_plan, base_dir=plan_path.parent)
         target_id = platform_id or resolved_plan.platform_target_id
         platforms = load_platform_targets()
+        if platform_id is not None and platform_id not in platforms:
+            raise ValueError(f"Unknown platform target: {platform_id}")
         platform_target = (
             PlatformTarget.model_validate(platforms[target_id]) if target_id in platforms else None
         )

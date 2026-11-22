@@ -27,8 +27,9 @@ PROJECTS_ROOT_ENV = "VEDIT_PROJECTS_ROOT"
 MANIFEST_FILENAME = "project.json"
 
 _ABSOLUTE_PATH_RE = re.compile(
-    r"^(?:/Users/|/home/|/var/|/private/|/opt/|/mnt/|[A-Za-z]:\\)"
+    r"^(?:/Users/|/home/|/var/|/private/|/opt/|/mnt/|/tmp/|/Volumes/|/etc/|/usr/|/root/|/data/|/app/|~/|[A-Za-z]:[/\\])"
 )
+_SLUG_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 _URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 
 
@@ -177,6 +178,11 @@ def init_project_workspace(
 ) -> ProjectWorkspaceInfo:
     """Create a structured, self-contained editing project outside the engine repository."""
     engine_root = (repo_root or find_repo_root()).resolve()
+
+    if not _SLUG_ID_RE.match(project_id):
+        raise ValueError(f"Invalid project_id {project_id!r}; must match {_SLUG_ID_RE.pattern}")
+    if not _SLUG_ID_RE.match(brand_id):
+        raise ValueError(f"Invalid brand_id {brand_id!r}; must match {_SLUG_ID_RE.pattern}")
 
     platforms = load_platform_targets(repo_root=engine_root)
     if platform_target_id not in platforms:
@@ -567,8 +573,9 @@ def resolve_plan_asset_paths(
 
         resolved_hit: Path | None = None
         for root in search_roots:
-            cand = (root / p).resolve()
-            if cand.exists():
+            root_resolved = root.resolve()
+            cand = (root_resolved / p).resolve()
+            if _is_within(cand, root_resolved) and cand.exists():
                 resolved_hit = cand
                 break
 

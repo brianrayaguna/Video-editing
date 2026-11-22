@@ -103,37 +103,41 @@ def breakdown_analyze_cmd(
     media_file: Annotated[Path, typer.Argument(help="Reference video file to analyze.")],
     out_dir: Annotated[Path, typer.Option("--out-dir", "-o", help="Breakdown output directory.")],
     prepare_review: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--prepare-review/--no-prepare-review",
             help="Generate review_tasks.json and review_answers.json for visual review.",
         ),
-    ] = True,
+    ] = None,
     ocr: Annotated[
-        bool, typer.Option("--ocr/--no-ocr", help="Enable local OCR caption/text extraction.")
-    ] = True,
+        bool | None,
+        typer.Option("--ocr/--no-ocr", help="Enable local OCR caption/text extraction."),
+    ] = None,
     stems: Annotated[
-        bool, typer.Option("--stems/--no-stems", help="Enable local vocal/music stem separation.")
-    ] = True,
+        bool | None,
+        typer.Option("--stems/--no-stems", help="Enable local vocal/music stem separation."),
+    ] = None,
     packaging: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--packaging/--no-packaging",
             help="Extract subtitle lanes, styled text, and stickers.",
         ),
-    ] = True,
-    asr: Annotated[bool, typer.Option("--asr/--no-asr", help="Enable optional local ASR.")] = False,
+    ] = None,
+    asr: Annotated[
+        bool | None, typer.Option("--asr/--no-asr", help="Enable optional local ASR.")
+    ] = None,
     use_vlm: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--vlm/--no-vlm",
             help="Use external VLM API (disabled by default; prefer interactive visual review).",
         ),
-    ] = False,
-    lang: Annotated[Literal["en", "zh"], typer.Option("--lang")] = "en",
+    ] = None,
+    lang: Annotated[Literal["en", "zh"] | None, typer.Option("--lang")] = None,
     ocr_lang: Annotated[str | None, typer.Option("--ocr-lang")] = None,
     env_file: Annotated[Path | None, typer.Option("--env-file")] = None,
-    workers: Annotated[int, typer.Option("--workers")] = 3,
+    workers: Annotated[int | None, typer.Option("--workers")] = None,
     provider: Annotated[
         str | None, typer.Option("--provider", help="Override VideoBreakdownPort provider.")
     ] = None,
@@ -141,20 +145,29 @@ def breakdown_analyze_cmd(
     """Run forensic video breakdown and emit VIDEO.md + normalized video_breakdown.json."""
     registry = build_default_registry()
     engine = registry.resolve("video_breakdown", provider_name=provider)
+    cfg_opts = getattr(engine, "_options", None)
+    defaults = cfg_opts if isinstance(cfg_opts, dict) else {}
+    resolved_lang = lang if lang is not None else str(defaults.get("lang", "en"))
     result = engine.analyze(
         media_file,
         out_dir,
         BreakdownOptions(
-            use_vlm=use_vlm,
-            prepare_review=prepare_review,
-            ocr=ocr,
-            stems=stems,
-            packaging=packaging,
-            asr=asr,
-            lang=lang,
-            ocr_lang=ocr_lang,
+            use_vlm=use_vlm if use_vlm is not None else bool(defaults.get("use_vlm", False)),
+            prepare_review=(
+                prepare_review
+                if prepare_review is not None
+                else bool(defaults.get("prepare_review", True))
+            ),
+            ocr=ocr if ocr is not None else bool(defaults.get("ocr", True)),
+            stems=stems if stems is not None else bool(defaults.get("stems", True)),
+            packaging=(
+                packaging if packaging is not None else bool(defaults.get("packaging", True))
+            ),
+            asr=asr if asr is not None else bool(defaults.get("asr", False)),
+            lang="zh" if resolved_lang == "zh" else "en",
+            ocr_lang=ocr_lang if ocr_lang is not None else defaults.get("ocr_lang"),
             env_file=env_file,
-            workers=workers,
+            workers=workers if workers is not None else int(defaults.get("workers", 3)),
         ),
     )
     out_resolved = out_dir.expanduser().resolve()

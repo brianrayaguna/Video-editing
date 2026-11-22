@@ -60,15 +60,15 @@
   <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
       <div id="{{SCENE_ID}}-curtain" class="gv-sc-curtain"></div>
-      <svg id="{{SCENE_ID}}-iris" class="gv-sc-iris-svg gv-empty" data-layout-allow-overflow="true" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <svg id="{{SCENE_ID}}-iris" class="gv-sc-iris-svg gv-empty" data-layout-allow-overflow="true" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <mask id="{{SCENE_ID}}-iris-mask">
-            <rect width="1000" height="1000" fill="#FFFFFF" />
-            <circle id="{{SCENE_ID}}-hole" cx="500" cy="460" r="240" fill="#000000" />
+            <rect width="{{WIDTH}}" height="{{HEIGHT}}" fill="#FFFFFF" />
+            <circle id="{{SCENE_ID}}-hole" cx="540" cy="880" r="240" fill="#000000" />
           </mask>
         </defs>
-        <rect width="1000" height="1000" fill="#030D14" fill-opacity="0.96" mask="url(#{{SCENE_ID}}-iris-mask)" />
-        <circle id="{{SCENE_ID}}-ring" cx="500" cy="460" r="240" fill="none" stroke="#F4F1EA" stroke-opacity="0.52" stroke-width="3.5" />
+        <rect width="{{WIDTH}}" height="{{HEIGHT}}" fill="#030D14" fill-opacity="0.96" mask="url(#{{SCENE_ID}}-iris-mask)" />
+        <circle id="{{SCENE_ID}}-ring" cx="540" cy="880" r="240" fill="none" stroke="#F4F1EA" stroke-opacity="0.52" stroke-width="3.5" />
       </svg>
       <div id="{{SCENE_ID}}-label" class="gv-sc-label" data-var-text="label">{{VAR_LABEL|}}</div>
     </div>
@@ -95,10 +95,14 @@
       if (isIris) {
         if (curtainEl) curtainEl.classList.add("gv-empty");
         if (irisEl) irisEl.classList.remove("gv-empty");
-        const cx = String(cxPct * 10);
-        const cy = String(cyPct * 10);
-        if (holeEl) { holeEl.setAttribute("cx", cx); holeEl.setAttribute("cy", cy); }
-        if (ringEl) { ringEl.setAttribute("cx", cx); ringEl.setAttribute("cy", cy); }
+        const W = Number({{WIDTH}});
+        const H = Number({{HEIGHT}});
+        const S = Number({{SCALE_FACTOR}});
+        const cx = String((cxPct / 100) * W);
+        const cy = String((cyPct / 100) * H);
+        const rad = String(Math.round(240 * S));
+        if (holeEl) { holeEl.setAttribute("cx", cx); holeEl.setAttribute("cy", cy); holeEl.setAttribute("r", rad); }
+        if (ringEl) { ringEl.setAttribute("cx", cx); ringEl.setAttribute("cy", cy); ringEl.setAttribute("r", rad); }
       }
 
       const dur = Number({{DURATION_S}});

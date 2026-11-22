@@ -68,7 +68,8 @@ if [ ! -d "$UPSTREAM_DIR/.git" ]; then
   fi
 elif [ "$DO_UPDATE" -eq 1 ]; then
   echo "Updating $UPSTREAM_DIR..."
-  git -C "$UPSTREAM_DIR" pull --ff-only
+  git -C "$UPSTREAM_DIR" fetch --depth 1 origin "$PINNED_REF"
+  git -C "$UPSTREAM_DIR" checkout --detach FETCH_HEAD
 fi
 
 if [ ! -d "$VENV_DIR" ]; then

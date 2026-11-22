@@ -44,6 +44,22 @@ def require_api_key(options: dict[str, Any], default_env: str, provider: str) ->
     return val
 
 
+def _rewind_upload_files(files: Any) -> None:
+    """Rewind any seekable file handles inside an httpx `files` payload before retries."""
+    if files is None:
+        return
+    entries = files.values() if isinstance(files, dict) else (
+        item[1] if isinstance(item, tuple) and len(item) >= 2 else item for item in files
+    )
+    for entry in entries:
+        candidate = entry[1] if isinstance(entry, tuple) and len(entry) >= 2 else entry
+        if hasattr(candidate, "seek") and callable(candidate.seek):
+            try:
+                candidate.seek(0)
+            except (OSError, ValueError):
+                pass
+
+
 def request_with_retry(
     client: httpx.Client,
     method: str,
@@ -59,6 +75,8 @@ def request_with_retry(
     """Execute an HTTP request with exponential backoff on 429, 5xx, and transport errors."""
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
+        if attempt > 0 and "files" in kwargs:
+            _rewind_upload_files(kwargs["files"])
         try:
             response = client.request(method, url, **kwargs)
         except httpx.TransportError as exc:

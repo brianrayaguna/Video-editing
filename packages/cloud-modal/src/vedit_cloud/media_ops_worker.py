@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 import tempfile
 import time
@@ -93,6 +94,18 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _resolve_cas_path(cas_mount_path: Path, relpath: str) -> Path:
+    """Resolve a CAS-relative path and reject absolute or parent-traversal escapes."""
+    raw = Path(relpath)
+    if raw.is_absolute():
+        raise ValueError(f"CAS path must be relative, got absolute path: {relpath!r}")
+    root = cas_mount_path.resolve()
+    resolved = (root / raw).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"CAS path escapes mount root ({root}): {relpath!r}")
+    return resolved
+
+
 def run_clean_audio_cloud(
     source_relpath: str,
     *,
@@ -106,7 +119,7 @@ def run_clean_audio_cloud(
         raise ValueError(f"strength must be within [0.0, 1.0], got {strength}")
 
     cas_volume.reload()
-    src_path = cas_mount_path / source_relpath.lstrip("/")
+    src_path = _resolve_cas_path(cas_mount_path, source_relpath.lstrip("/"))
     if not src_path.is_file():
         raise FileNotFoundError(f"Missing staged source audio on Modal CAS: {src_path}")
 
@@ -138,6 +151,7 @@ def run_clean_audio_cloud(
             capture_output=True,
             text=True,
             check=False,
+            timeout=600,
         )
         if extract_proc.returncode != 0:
             raise RuntimeError(f"FFmpeg speech extraction failed: {extract_proc.stderr}")
@@ -162,6 +176,7 @@ def run_clean_audio_cloud(
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=600,
             )
             if df_proc.returncode != 0:
                 raise RuntimeError(
@@ -176,7 +191,7 @@ def run_clean_audio_cloud(
         out_rel = f"media_ops/clean_audio/{out_sha}.wav"
         out_cas = cas_mount_path / out_rel
         out_cas.parent.mkdir(parents=True, exist_ok=True)
-        out_cas.write_bytes(enhanced_wav.read_bytes())
+        shutil.copyfile(enhanced_wav, out_cas)
 
     cas_volume.commit()
     wall_ms = int((time.perf_counter() - t0) * 1000)
@@ -208,7 +223,7 @@ def run_reframe_video_cloud(
         raise ValueError(f"Unsupported target_aspect_ratio: {target_aspect_ratio!r}")
 
     cas_volume.reload()
-    src_path = cas_mount_path / source_relpath.lstrip("/")
+    src_path = _resolve_cas_path(cas_mount_path, source_relpath.lstrip("/"))
     if not src_path.is_file():
         raise FileNotFoundError(f"Missing staged source video on Modal CAS: {src_path}")
 
@@ -252,6 +267,7 @@ def run_reframe_video_cloud(
             capture_output=True,
             text=True,
             check=False,
+            timeout=900,
         )
         if proc.returncode != 0:
             raise RuntimeError(f"Cloud FFmpeg reframe failed: {proc.stderr}")
@@ -260,7 +276,7 @@ def run_reframe_video_cloud(
         out_rel = f"media_ops/reframe/{out_sha}_{target_w}x{target_h}.mp4"
         out_cas = cas_mount_path / out_rel
         out_cas.parent.mkdir(parents=True, exist_ok=True)
-        out_cas.write_bytes(out_local.read_bytes())
+        shutil.copyfile(out_local, out_cas)
 
     cas_volume.commit()
     wall_ms = int((time.perf_counter() - t0) * 1000)

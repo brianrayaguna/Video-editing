@@ -195,3 +195,102 @@ def test_cli_project_commands_work_end_to_end(tmp_path: Path) -> None:
     val_res = runner.invoke(app, ["project", "validate", str(proj_dir), "--json"])
     assert val_res.exit_code == 0, val_res.output
     assert json.loads(val_res.output)["passed"] is True
+
+
+def test_path_containment_blocks_traversal_in_workspace_manifest_and_templates(
+    tmp_path: Path,
+) -> None:
+    from pydantic import ValidationError
+
+    from vedit.contracts import _resolve_template_composition_path, validate_against_contract
+    from vedit.models import AssetRef, EditPlan, ProjectDirectories
+
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("sensitive", encoding="utf-8")
+    proj_root = tmp_path / "projects" / "geoverum" / "demo"
+    proj_root.mkdir(parents=True)
+
+    # ProjectDirectories and manifest schema must reject '..' and 'plan/..'
+    with pytest.raises(ValidationError):
+        ProjectDirectories(inputs="..")
+    with pytest.raises(ValidationError):
+        ProjectDirectories(plan="plan/..")
+    manifest_payload = {
+        "schema_version": "1.0",
+        "project_id": "demo",
+        "brand_id": "geoverum",
+        "platform_target_id": "shorts_9x16_1080p",
+        "created_at": "2026-01-01T00:00:00Z",
+        "directories": {
+            "inputs": "..",
+            "probes": "analysis/probes",
+            "breakdowns": "analysis/breakdowns",
+            "transcripts": "analysis/transcripts",
+            "decisions": "analysis/decisions",
+            "maps": "media/maps",
+            "broll": "media/broll",
+            "audio": "media/audio",
+            "plan": "plan/..",
+            "build": "build",
+            "output": "output",
+        },
+        "artifacts": {
+            "brief": "brief.md",
+            "edit_plan": "plan/edit_plan.json",
+            "verification": "plan/verification.json",
+            "master": "output/master.mp4",
+            "audit": "output/audit.json",
+            "otio": "output/timeline.otio",
+            "benchmark": "output/benchmark.json",
+        },
+    }
+    assert validate_against_contract(manifest_payload, "project_manifest.schema.json")
+
+    # resolve_plan_asset_paths must NOT resolve '..' traversal outside project root
+    plan = EditPlan(
+        job_id="safe_job",
+        project_id="demo",
+        brand_id="geoverum",
+        platform_target_id="shorts_9x16_1080p",
+        render_strategy="hybrid",
+        duration_s=2.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(
+                asset_id="a1",
+                sha256="a" * 64,
+                kind="video",
+                path="../../../secret.txt",
+            )
+        ],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[],
+    )
+    resolved = resolve_plan_asset_paths(plan, base_dir=proj_root)
+    assert resolved.assets[0].path == "../../../secret.txt"
+
+    # _resolve_template_composition_path rejects absolute and parent-escaping paths
+    brand_dir = tmp_path / "brand"
+    brand_dir.mkdir()
+    assert (
+        _resolve_template_composition_path(
+            str(secret_file), brand_dir=brand_dir, repo_root=brand_dir
+        )
+        is None
+    )
+    assert (
+        _resolve_template_composition_path(
+            "../secret.txt", brand_dir=brand_dir, repo_root=brand_dir
+        )
+        is None
+    )
+
+    # EditPlan rejects traversal job_id and non-hex sha256
+    with pytest.raises(ValidationError):
+        plan.model_copy(update={"job_id": "../escape"})
+        EditPlan.model_validate({**plan.model_dump(), "job_id": "../escape"})
+    with pytest.raises(ValidationError):
+        AssetRef(asset_id="bad", sha256="../../etc/passwd1234", kind="video", path="x.mp4")

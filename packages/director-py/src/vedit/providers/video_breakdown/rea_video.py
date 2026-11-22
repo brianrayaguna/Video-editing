@@ -219,7 +219,7 @@ def parse_rea_breakdown(
     rotation = int(source.get("rotation") or 0)
     raw_w = int(source.get("width") or 0)
     raw_h = int(source.get("height") or 0)
-    width, height = (raw_h, raw_w) if rotation in (90, 270) else (raw_w, raw_h)
+    width, height = (raw_h, raw_w) if abs(rotation) % 360 in (90, 270) else (raw_w, raw_h)
     fps = float(source.get("fps") or 0.0)
     duration_s = float(source.get("duration") or (raw.get("summary") or {}).get("duration") or 0.0)
     source_path = str(source.get("path") or source.get("filename") or "unknown")

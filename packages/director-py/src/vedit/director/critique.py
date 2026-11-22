@@ -13,6 +13,7 @@ The loop runs after a low-resolution preview (or the final master) exists:
 
 from __future__ import annotations
 
+import math
 import shutil
 import subprocess
 import tempfile
@@ -29,9 +30,20 @@ CELL_W, CELL_H = 270, 480
 
 def _render_cell(video: Path, t: float, label: str, out: Path) -> bool:
     grid = (
-        f"scale={CELL_W}:{CELL_H},drawgrid=w=iw/{len(GRID_COLS)}:h=ih/{GRID_ROWS}:t=1:c=yellow@0.45"
+        f"scale={CELL_W}:{CELL_H}:force_original_aspect_ratio=decrease,"
+        f"pad={CELL_W}:{CELL_H}:(ow-iw)/2:(oh-ih)/2:black,"
+        f"drawgrid=w=iw/{len(GRID_COLS)}:h=ih/{GRID_ROWS}:t=1:c=yellow@0.45"
     )
-    text = label.replace("'", "").replace(":", "-").replace("\\", "")
+    text = (
+        label.replace("\\", "")
+        .replace("'", "")
+        .replace(":", "-")
+        .replace(",", " ")
+        .replace(";", " ")
+        .replace("[", "(")
+        .replace("]", ")")
+        .replace("%", "pct")
+    )
     with_text = (
         grid
         + f",drawtext=text='{text}':x=6:y=6:fontsize=16:fontcolor=white:box=1:boxcolor=black@0.6"
@@ -195,17 +207,37 @@ def gate_review(packet: dict[str, Any], *, threshold: float = 0.8) -> dict[str, 
     """Weighted rubric score plus deterministic results → single pass/fail with reasons."""
     rubric = {c["criterion_id"]: c for c in packet["review"]["rubric"]}
     scores = packet["review"]["scores"]
-    missing = [cid for cid, v in scores.items() if v is None]
+    missing = [cid for cid in rubric if scores.get(cid) is None]
+    unknown = [cid for cid in scores if cid not in rubric]
     reasons: list[str] = []
     if missing:
         reasons.append(f"unscored criteria: {missing}")
-    total_w = sum(rubric[c]["weight"] for c in scores if scores[c] is not None) or 1.0
-    weighted = (
-        sum(rubric[c]["weight"] * float(v) for c, v in scores.items() if v is not None) / total_w
-    )
+    if unknown:
+        reasons.append(f"unknown rubric criteria: {unknown}")
+
+    valid_scores: dict[str, float] = {}
+    out_of_range: list[str] = []
+    for cid in rubric:
+        raw_v = scores.get(cid)
+        if raw_v is None:
+            continue
+        try:
+            fv = float(raw_v)
+        except (TypeError, ValueError):
+            out_of_range.append(cid)
+            continue
+        if not math.isfinite(fv) or fv < 0.0 or fv > 1.0:
+            out_of_range.append(cid)
+            continue
+        valid_scores[cid] = fv
+    if out_of_range:
+        reasons.append(f"scores outside [0, 1]: {out_of_range}")
+
+    total_w = sum(rubric[c]["weight"] for c in rubric) or 1.0
+    weighted = sum(rubric[c]["weight"] * v for c, v in valid_scores.items()) / total_w
     if weighted < threshold:
         reasons.append(f"rubric score {weighted:.2f} below {threshold}")
-    low = [c for c, v in scores.items() if v is not None and float(v) < 0.5]
+    low = [c for c, v in valid_scores.items() if v < 0.5]
     if low:
         reasons.append(f"criteria below 0.5: {low}")
     det = packet.get("deterministic", {})

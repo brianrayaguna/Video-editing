@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -68,10 +68,27 @@ export function resolveChrome() {
  * (`assets/geo/`) and an optional study directory so all relative `assets/...` URLs
  * resolve locally without external network calls.
  */
+function resolveContainedFile(rootDir, relPath) {
+  const rootResolved = resolve(rootDir);
+  const candidate = resolve(rootResolved, relPath.replace(/^\/+/, ""));
+  if (candidate !== rootResolved && !candidate.startsWith(rootResolved + sep)) {
+    return null;
+  }
+  return candidate;
+}
+
 export function startStudyAssetServer(studyDir, port = 0, host = "127.0.0.1") {
-  const geoRoot = join(REPO_ROOT, "assets/geo");
+  const geoRoot = resolve(REPO_ROOT, "assets/geo");
+  const resolvedStudyDir = studyDir ? resolve(studyDir) : null;
   const server = createServer((req, res) => {
-    const cleanUrl = (req.url || "/").split("?")[0];
+    let cleanUrl;
+    try {
+      cleanUrl = decodeURIComponent((req.url || "/").split("?")[0]);
+    } catch {
+      res.writeHead(400);
+      res.end("Bad request");
+      return;
+    }
     let filePath = null;
 
     if (cleanUrl === "/" || cleanUrl === "/host.html") {
@@ -81,32 +98,39 @@ export function startStudyAssetServer(studyDir, port = 0, host = "127.0.0.1") {
     }
 
     if (cleanUrl.startsWith("/geo/")) {
-      filePath = join(geoRoot, cleanUrl.slice(5));
-    } else if (studyDir) {
-      filePath = join(studyDir, cleanUrl.replace(/^\/+/, ""));
-      if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+      filePath = resolveContainedFile(geoRoot, cleanUrl.slice(5));
+    } else if (resolvedStudyDir) {
+      filePath = resolveContainedFile(resolvedStudyDir, cleanUrl);
+      if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
         // Fallback to assets/geo for shared fonts/flags/icons referenced inside study templates
         const rel = cleanUrl.replace(/^\/+/, "");
         if (rel.startsWith("assets/")) {
-          const geoCandidate = join(geoRoot, rel.slice("assets/".length));
-          if (existsSync(geoCandidate)) filePath = geoCandidate;
+          const geoCandidate = resolveContainedFile(geoRoot, rel.slice("assets/".length));
+          if (geoCandidate && existsSync(geoCandidate) && !statSync(geoCandidate).isDirectory()) {
+            filePath = geoCandidate;
+          }
         }
       }
     }
 
-    if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
+    try {
+      if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+
+      const body = readFileSync(filePath);
+      const mime = MIME_BY_EXT[extname(filePath).toLowerCase()] || "application/octet-stream";
+      res.writeHead(200, {
+        "Content-Type": mime,
+        "Cache-Control": "no-store",
+      });
+      res.end(body);
+    } catch {
       res.writeHead(404);
       res.end("Not found");
-      return;
     }
-
-    const mime = MIME_BY_EXT[extname(filePath).toLowerCase()] || "application/octet-stream";
-    res.writeHead(200, {
-      "Content-Type": mime,
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-store",
-    });
-    res.end(readFileSync(filePath));
   });
 
   return new Promise((resolvePromise, rejectPromise) => {
@@ -151,24 +175,25 @@ export async function renderTemplateFrames({
 }) {
   mkdirSync(framesDir, { recursive: true });
   const page = await browser.newPage();
-  await page.setViewport({ width, height, deviceScaleFactor: 1 });
+  try {
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
 
-  const gsapBytes = readFileSync(join(REPO_ROOT, "assets/geo/vendor/gsap.min.js"));
-  await page.setRequestInterception(true);
-  page.on("request", (req) => {
-    const u = req.url();
-    if (u.includes("gsap") && u.endsWith(".js")) {
-      req.respond({ status: 200, contentType: "application/javascript", body: gsapBytes });
-      return;
-    }
-    req.continue();
-  });
+    const gsapBytes = readFileSync(join(REPO_ROOT, "assets/geo/vendor/gsap.min.js"));
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const u = req.url();
+      if (u.includes("gsap") && u.endsWith(".js")) {
+        req.respond({ status: 200, contentType: "application/javascript", body: gsapBytes });
+        return;
+      }
+      req.continue();
+    });
 
-  const tplRaw = readFileSync(compositionHtmlPath, "utf8");
-  const innerMatch = tplRaw.match(/<template>([\s\S]*?)<\/template>/i);
-  const tplContent = innerMatch ? innerMatch[1] : tplRaw;
+    const tplRaw = readFileSync(compositionHtmlPath, "utf8");
+    const innerMatch = tplRaw.match(/<template>([\s\S]*?)<\/template>/i);
+    const tplContent = innerMatch ? innerMatch[1] : tplRaw;
 
-  const hostHtml = `<!DOCTYPE html>
+    const hostHtml = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -181,29 +206,31 @@ export async function renderTemplateFrames({
 </body>
 </html>`;
 
-  await page.setContent(hostHtml, { waitUntil: "networkidle0" });
-  await page.evaluate(() => document.fonts.ready);
+    await page.setContent(hostHtml, { waitUntil: "networkidle0" });
+    await page.evaluate(() => document.fonts.ready);
 
-  const t0 = Date.now();
-  for (let i = 0; i < totalFrames; i++) {
-    const tSec = i / fps;
-    await page.evaluate(
-      ([id, t]) => {
-        window.__timelines[id].seek(t, false);
-      },
-      [compositionId, tSec]
-    );
-    await page.screenshot({
-      path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
-      clip: { x: 0, y: 0, width, height },
-      optimizeForSpeed: true,
-    });
-    if (i % 60 === 0 || i === totalFrames - 1) {
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(`  [${compositionId}] rendered frame ${i + 1}/${totalFrames} (${elapsed}s)`);
+    const t0 = Date.now();
+    for (let i = 0; i < totalFrames; i++) {
+      const tSec = i / fps;
+      await page.evaluate(
+        ([id, t]) => {
+          window.__timelines[id].seek(t, false);
+        },
+        [compositionId, tSec]
+      );
+      await page.screenshot({
+        path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
+        clip: { x: 0, y: 0, width, height },
+        optimizeForSpeed: true,
+      });
+      if (i % 60 === 0 || i === totalFrames - 1) {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        console.log(`  [${compositionId}] rendered frame ${i + 1}/${totalFrames} (${elapsed}s)`);
+      }
     }
+  } finally {
+    await page.close();
   }
-  await page.close();
 }
 
 /**

@@ -1408,6 +1408,159 @@ test("overlay track_keyframes compiles 3D rotateX_deg and perspective_px cleanly
   const html = fs.readFileSync(compiled.compositionFiles[0]!, "utf8");
   assert.match(html, /rotationX: kfs\[0\]\.rotationX/);
   assert.match(html, /transformPerspective: kfs\[0\]\.perspective/);
+  assert.ok(
+    html.indexOf('data-vedit-object-track="true"') < html.lastIndexOf("</template>"),
+    "tracking script must be embedded inside <template>...</template>"
+  );
+  assert.doesNotMatch(html, /window\.__hf\.register|trackTl\.play\(\)|document\.body\.firstElementChild/);
+  assert.match(html, /parentTl\.add\(trackTl,\s*0\)/);
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.totalErrors, 0);
+  assert.equal(lintResult.ok, true);
+});
+
+test("sanitizeId preserves leading digits and disambiguates colliding overlay IDs", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-id-collision-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      overlay_compositions: [
+        {
+          overlay_id: "01_hook",
+          kind: "caption_rail",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 1.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: { text: "First" },
+        },
+        {
+          overlay_id: "02_hook",
+          kind: "caption_rail",
+          timeline_start_s: 1.0,
+          timeline_duration_s: 1.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: { text: "Second" },
+        },
+        {
+          overlay_id: "cap.1",
+          kind: "kinetic_callout",
+          timeline_start_s: 0.2,
+          timeline_duration_s: 0.8,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: { text: "Dot" },
+        },
+        {
+          overlay_id: "cap_1",
+          kind: "kinetic_callout",
+          timeline_start_s: 1.2,
+          timeline_duration_s: 0.8,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: { text: "Underscore" },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+  const basenames = compiled.compositionFiles.map((f) => path.basename(f));
+  assert.equal(new Set(basenames).size, 4);
+  assert.ok(basenames.includes("id_01_hook.html"));
+  assert.ok(basenames.includes("id_02_hook.html"));
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.totalErrors, 0);
+  assert.equal(lintResult.ok, true);
+});
+
+test("geoverum template fixes preserve clip scope, canvas viewBox, decibel unit, and non-zero entrance scale", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-template-regressions-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      assets: [
+        {
+          asset_id: "font_space_grotesk",
+          sha256: "1".repeat(64),
+          kind: "font",
+          path: "/nonexistent/SpaceGrotesk-Variable.ttf",
+        },
+        {
+          asset_id: "font_eb_garamond",
+          sha256: "2".repeat(64),
+          kind: "font",
+          path: "/nonexistent/EBGaramond-Variable.ttf",
+        },
+        {
+          asset_id: "font_archivo_black",
+          sha256: "3".repeat(64),
+          kind: "font",
+          path: "/nonexistent/ArchivoBlack-Regular.ttf",
+        },
+      ],
+      overlay_compositions: [
+        {
+          overlay_id: "scale_test",
+          kind: "full_scene",
+          template_id: "scale_ladder_and_bands",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          variables: { mode: "altitude_ladder" },
+          props: {},
+        },
+        {
+          overlay_id: "parch_test",
+          kind: "full_scene",
+          template_id: "historical_parchment_plate",
+          timeline_start_s: 2.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          variables: { variant: "timeline_bar", year: "1803", title: "Treaty" },
+          props: {},
+        },
+        {
+          overlay_id: "swarm_test",
+          kind: "kinetic_callout",
+          template_id: "migrant_dot_flow",
+          timeline_start_s: 4.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          variables: { loss_ratio: 0 },
+          props: {},
+        },
+        {
+          overlay_id: "gauge_test",
+          kind: "kinetic_callout",
+          template_id: "physical_gauge_callout",
+          timeline_start_s: 6.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          variables: { gauge_mode: "decibel", end_value: 210 },
+          props: {},
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+  const scaleHtml = fs.readFileSync(path.join(tmpDir, "compositions", "scale_test.html"), "utf8");
+  assert.doesNotMatch(scaleHtml, /\{\s*scale:\s*0(?:\s*[,}])/);
+  const parchHtml = fs.readFileSync(path.join(tmpDir, "compositions", "parch_test.html"), "utf8");
+  assert.ok(
+    parchHtml.indexOf('id="parch_test-timeline"') < parchHtml.lastIndexOf("</div>\n  </div>"),
+    "timeline_bar must reside inside .clip container"
+  );
+  const swarmHtml = fs.readFileSync(path.join(tmpDir, "compositions", "swarm_test.html"), "utf8");
+  assert.match(swarmHtml, /viewBox="0 0 1080 1920"/);
+  assert.match(swarmHtml, /Number\.isFinite\(rawLoss\)/);
+  const gaugeHtml = fs.readFileSync(path.join(tmpDir, "compositions", "gauge_test.html"), "utf8");
+  assert.match(gaugeHtml, /isDecibel && \(!rawUnit \|\| rawUnit === "°C"\) \? "dB"/);
   const lintResult = await lintHyperframesProjectDir(tmpDir);
   assert.equal(lintResult.totalErrors, 0);
   assert.equal(lintResult.ok, true);

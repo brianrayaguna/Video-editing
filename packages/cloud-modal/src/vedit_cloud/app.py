@@ -132,13 +132,31 @@ def stage_local_assets_for_cloud(plan: EditPlan, volume: Any) -> EditPlan:
     return plan.model_copy(update={"assets": rewritten_assets})
 
 
+def _resolve_cas_subpath(subpath: str) -> Path:
+    """Resolve a CAS-relative subpath strictly within `CAS_MOUNT_PATH`."""
+    raw = Path(subpath)
+    if raw.is_absolute():
+        raise ValueError(f"CAS subpath must be relative, got: {subpath!r}")
+    root = CAS_MOUNT_PATH.resolve()
+    resolved = (root / raw).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"CAS subpath escapes mount root ({root}): {subpath!r}")
+    return resolved
+
+
 def download_cas_file(volume: Any, remote_relpath: str, local_output_path: Path) -> Path:
-    """Download a completed deliverable from the Modal CAS Volume to a local path."""
+    """Download a completed deliverable from the Modal CAS Volume to a local path atomically."""
     local_output_path.parent.mkdir(parents=True, exist_ok=True)
     clean_rel = remote_relpath.lstrip("/")
-    with local_output_path.open("wb") as fp:
-        for chunk in volume.read_file(clean_rel):
-            fp.write(chunk)
+    part_path = local_output_path.with_suffix(local_output_path.suffix + ".part")
+    try:
+        with part_path.open("wb") as fp:
+            for chunk in volume.read_file(clean_rel):
+                fp.write(chunk)
+        os.replace(part_path, local_output_path)
+    except BaseException:
+        part_path.unlink(missing_ok=True)
+        raise
     return local_output_path
 
 
@@ -181,9 +199,9 @@ def render_chunk_worker(
         os.environ["PRODUCER_HEADLESS_SHELL_PATH"] = shell_path
     cas_volume.reload()
 
-    plan_v2_dir = CAS_MOUNT_PATH / plan_v2_subpath
+    plan_v2_dir = _resolve_cas_subpath(plan_v2_subpath)
     chunk_name = _chunk_filename(chunk_index, fmt)
-    out_chunk = CAS_MOUNT_PATH / job_subpath / "chunks" / chunk_name
+    out_chunk = _resolve_cas_subpath(f"{job_subpath}/chunks/{chunk_name}")
     out_chunk.parent.mkdir(parents=True, exist_ok=True)
     out_chunk.unlink(missing_ok=True)
 
@@ -264,10 +282,10 @@ def orchestrate_distributed_render(
 
     overlay_render_path: Path | None = None
     overlay_segments: list[tuple[float, float, Path]] = []
-    hf_dir = job_root / "hf_project"
     plan_v2_dir = job_root / "plan_v2"
     fmt: Literal["mov", "mp4"] = "mov" if plan.render_strategy == "hybrid" else "mp4"
     chunk_tag = f"{job_subpath}/{fmt}"
+    overlay_cache_token = "none"
 
     sparse_windows = (
         group_sparse_hf_windows(plan, hf_overlays)
@@ -283,83 +301,108 @@ def orchestrate_distributed_render(
     with tempfile.TemporaryDirectory(prefix=f"vedit_orch_{plan.job_id}_") as local_scratch:
         scratch_root = Path(local_scratch)
 
-        if needs_hf and use_sparse_windows:
-            # Fan out ONLY active animated HyperFrames windows in one parallel Modal starmap!
-            win_jobs: list[tuple[str, int, str, Literal["mov", "mp4"], int]] = []
-            win_meta: list[tuple[Any, Path, int]] = []
-            for win in sparse_windows:
-                local_plan = build_window_local_plan(plan, win)
-                local_w_hf = scratch_root / f"win_{win.window_index:02d}_hf"
-                local_w_p2 = scratch_root / f"win_{win.window_index:02d}_plan_v2"
-                cas_w_p2 = job_root / f"win_{win.window_index:02d}" / "plan_v2"
-                compiled = compile_edit_plan(
-                    local_plan,
-                    local_w_hf,
-                    platform_target=target,
-                    run_lint=True,
-                    repo_root=repo_root,
-                )
-                if compiled.lint and not compiled.lint.ok:
-                    raise RuntimeError(
-                        f"HyperFrames sparse window {win.window_index} lint failed: "
-                        f"{compiled.lint.hyperframes_findings}"
+        if needs_hf and use_sparse_windows and hf_plan is not None:
+            sparse_key = _stage_key(
+                "sparse_win",
+                f"{hf_plan.model_dump_json(exclude_none=True)}:{chunk_frames}:{quality}",
+            )
+            overlay_cache_token = sparse_key
+            expected_win_movs = [
+                job_root / f"win_{win.window_index:02d}" / "assembled.mov"
+                for win in sparse_windows
+            ]
+            if checkpoint.is_stage_done("render_sparse_windows", sparse_key) and all(
+                p.is_file() for p in expected_win_movs
+            ):
+                overlay_segments = [
+                    (win.start_s, win.end_s, mov_path)
+                    for win, mov_path in zip(sparse_windows, expected_win_movs, strict=True)
+                ]
+            else:
+                # Fan out ONLY active animated HyperFrames windows in one parallel Modal starmap!
+                win_jobs: list[tuple[str, int, str, Literal["mov", "mp4"], int]] = []
+                win_meta: list[tuple[Any, Path, int]] = []
+                for win in sparse_windows:
+                    local_plan = build_window_local_plan(plan, win)
+                    local_w_hf = scratch_root / f"win_{win.window_index:02d}_hf"
+                    local_w_p2 = scratch_root / f"win_{win.window_index:02d}_plan_v2"
+                    cas_w_p2 = job_root / f"win_{win.window_index:02d}" / "plan_v2"
+                    compiled = compile_edit_plan(
+                        local_plan,
+                        local_w_hf,
+                        platform_target=target,
+                        run_lint=True,
+                        repo_root=repo_root,
                     )
-                planned = plan_distributed_v2(
-                    local_w_hf,
-                    local_w_p2,
-                    fps=round(local_plan.fps),
-                    width=local_plan.width,
-                    height=local_plan.height,
-                    fmt="mov",
-                    quality=quality,
-                    chunk_frames=chunk_frames,
-                    repo_root=repo_root,
-                )
-                shutil.rmtree(cas_w_p2, ignore_errors=True)
-                shutil.copytree(local_w_p2, cas_w_p2)
-                c_count = int(planned["manifest"]["chunkCount"])
-                win_tag = f"{job_subpath}/win_{win.window_index:02d}"
-                for idx in range(c_count):
-                    win_jobs.append(
-                        (str(cas_w_p2.relative_to(CAS_MOUNT_PATH)), idx, win_tag, "mov", 2)
+                    if compiled.lint and not compiled.lint.ok:
+                        raise RuntimeError(
+                            f"HyperFrames sparse window {win.window_index} lint failed: "
+                            f"{compiled.lint.hyperframes_findings or compiled.lint.performance_violations}"
+                        )
+                    planned = plan_distributed_v2(
+                        local_w_hf,
+                        local_w_p2,
+                        fps=round(local_plan.fps),
+                        width=local_plan.width,
+                        height=local_plan.height,
+                        fmt="mov",
+                        quality=quality,
+                        chunk_frames=chunk_frames,
+                        repo_root=repo_root,
                     )
-                win_meta.append((win, cas_w_p2, c_count))
-            cas_volume.commit()
+                    shutil.rmtree(cas_w_p2, ignore_errors=True)
+                    shutil.copytree(local_w_p2, cas_w_p2)
+                    c_count = int(planned["manifest"]["chunkCount"])
+                    win_tag = f"{job_subpath}/win_{win.window_index:02d}"
+                    for idx in range(c_count):
+                        win_jobs.append(
+                            (str(cas_w_p2.relative_to(CAS_MOUNT_PATH)), idx, win_tag, "mov", 2)
+                        )
+                    win_meta.append((win, cas_w_p2, c_count))
+                cas_volume.commit()
 
-            t_chunks = time.perf_counter()
-            all_chunk_outputs = list(render_chunk_worker.starmap(win_jobs))
-            cas_volume.reload()
-            chunks_wall_ms = int((time.perf_counter() - t_chunks) * 1000)
-            chunks_usd = round(
-                sum(float(c["estimated_usd"]) for c in all_chunk_outputs),
-                6,
-            )
-            cursor = 0
-            for win, cas_w_p2, c_count in win_meta:
-                w_outs = all_chunk_outputs[cursor : cursor + c_count]
-                cursor += c_count
-                w_chunk_paths = [CAS_MOUNT_PATH / str(c["output_subpath"]) for c in w_outs]
-                local_mov = scratch_root / f"win_{win.window_index:02d}.mov"
-                assemble_v2(cas_w_p2, w_chunk_paths, local_mov, repo_root=repo_root)
-                overlay_segments.append((win.start_s, win.end_s, local_mov))
-            checkpoint.record(
-                StageMetric(
-                    stage="render_sparse_windows",
-                    status="completed",
-                    idempotency_key=_stage_key("sparse_win", f"{plan.job_id}:{len(win_jobs)}"),
-                    wall_ms=chunks_wall_ms,
-                    provider="modal_hyperframes_workers",
-                    estimated_usd=chunks_usd,
-                    output_artifacts=[str(p) for _, _, p in overlay_segments],
+                t_chunks = time.perf_counter()
+                all_chunk_outputs = list(render_chunk_worker.starmap(win_jobs))
+                cas_volume.reload()
+                chunks_wall_ms = int((time.perf_counter() - t_chunks) * 1000)
+                chunks_usd = round(
+                    sum(float(c["estimated_usd"]) for c in all_chunk_outputs),
+                    6,
                 )
-            )
-            checkpoint.save(checkpoint_path)
+                cursor = 0
+                for win, cas_w_p2, c_count in win_meta:
+                    w_outs = all_chunk_outputs[cursor : cursor + c_count]
+                    cursor += c_count
+                    w_chunk_paths = [
+                        _resolve_cas_subpath(str(c["output_subpath"])) for c in w_outs
+                    ]
+                    local_mov = scratch_root / f"win_{win.window_index:02d}.mov"
+                    assemble_v2(cas_w_p2, w_chunk_paths, local_mov, repo_root=repo_root)
+                    cas_mov = job_root / f"win_{win.window_index:02d}" / "assembled.mov"
+                    cas_mov.parent.mkdir(parents=True, exist_ok=True)
+                    cas_mov.unlink(missing_ok=True)
+                    shutil.move(str(local_mov), str(cas_mov))
+                    overlay_segments.append((win.start_s, win.end_s, cas_mov))
+                checkpoint.record(
+                    StageMetric(
+                        stage="render_sparse_windows",
+                        status="completed",
+                        idempotency_key=sparse_key,
+                        wall_ms=chunks_wall_ms,
+                        provider="modal_hyperframes_workers",
+                        estimated_usd=chunks_usd,
+                        output_artifacts=[str(p) for _, _, p in overlay_segments],
+                    )
+                )
+                checkpoint.save(checkpoint_path)
+                cas_volume.commit()
 
         elif needs_hf and hf_plan is not None:
             hf_plan_json = hf_plan.model_dump_json(exclude_none=True)
             compile_key = _stage_key("compile", f"{hf_plan_json}:{quality}")
             plan_v2_key = _stage_key("plan_v2", f"{hf_plan_json}:{chunk_frames}:{quality}:{fmt}")
             assemble_key = _stage_key("assemble", f"{plan_v2_key}:{fmt}")
+            overlay_cache_token = assemble_key
             assembled_hf_path = job_root / f"hf_assembled.{fmt}"
 
             if (
@@ -487,7 +530,10 @@ def orchestrate_distributed_render(
         final_deliverable = job_root / f"{plan.job_id}_master.mp4"
         master_key = _stage_key(
             "master",
-            f"{edit_plan_json}:{encode_preset}:{use_ass_fastpath}:{overlay_render_path}",
+            (
+                f"{edit_plan_json}:{quality}:{chunk_frames}:{encode_preset}:"
+                f"{use_ass_fastpath}:{overlay_cache_token}:{overlay_render_path}"
+            ),
         )
         if not (
             checkpoint.is_stage_done("hybrid_master", master_key)
@@ -543,7 +589,6 @@ def orchestrate_distributed_render(
 
     # Clean intermediate scratch dirs on Volume after QC passes to keep Volume inode counts low.
     if qc.passed:
-        shutil.rmtree(hf_dir, ignore_errors=True)
         shutil.rmtree(plan_v2_dir, ignore_errors=True)
         shutil.rmtree(CAS_MOUNT_PATH / chunk_tag, ignore_errors=True)
         for win in sparse_windows:

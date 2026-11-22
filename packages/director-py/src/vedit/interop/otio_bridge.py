@@ -89,44 +89,63 @@ def _append_audio_group_track(
 ) -> None:
     if not tracks_in_group:
         return
-    track = otio.schema.Track(name=f"Audio_{group_name}", kind=otio.schema.TrackKind.Audio)
-    cursor_s = 0.0
+    # Partition overlapping items within the same group into separate non-overlapping lanes.
+    lanes: list[list[AudioTrackOp]] = []
+    lane_ends: list[float] = []
     for item in sorted(tracks_in_group, key=lambda t: t.timeline_start_s):
-        gap_s = round(item.timeline_start_s - cursor_s, 4)
-        if gap_s > 0.01:
-            track.append(
-                otio.schema.Gap(
-                    source_range=otio.opentime.TimeRange(
-                        start_time=otio.opentime.RationalTime(0.0, fps),
-                        duration=otio.opentime.RationalTime(round(gap_s * fps, 4), fps),
+        placed = False
+        for lane_idx, end_s in enumerate(lane_ends):
+            if item.timeline_start_s >= end_s - 1e-4:
+                lanes[lane_idx].append(item)
+                lane_ends[lane_idx] = item.timeline_start_s + item.timeline_duration_s
+                placed = True
+                break
+        if not placed:
+            lanes.append([item])
+            lane_ends.append(item.timeline_start_s + item.timeline_duration_s)
+
+    for lane_idx, lane_items in enumerate(lanes):
+        suffix = "" if lane_idx == 0 else f"_{lane_idx + 1}"
+        track_name = f"Audio_{group_name}{suffix}"
+        track = otio.schema.Track(name=track_name, kind=otio.schema.TrackKind.Audio)
+        cursor_s = 0.0
+        for item in lane_items:
+            gap_s = round(item.timeline_start_s - cursor_s, 4)
+            if gap_s > 1e-4:
+                track.append(
+                    otio.schema.Gap(
+                        source_range=otio.opentime.TimeRange(
+                            start_time=otio.opentime.RationalTime(0.0, fps),
+                            duration=otio.opentime.RationalTime(round(gap_s * fps, 4), fps),
+                        )
                     )
                 )
+                cursor_s += gap_s
+            asset = assets_by_id.get(item.asset_id)
+            target_url = asset.path if asset is not None else item.asset_id
+            dur_hint = asset.duration_s if asset is not None else None
+            media_ref = _build_external_ref(otio, target_url, dur_hint, fps)
+            source_range = otio.opentime.TimeRange(
+                start_time=otio.opentime.RationalTime(round(item.source_start_s * fps, 4), fps),
+                duration=otio.opentime.RationalTime(round(item.timeline_duration_s * fps, 4), fps),
             )
-        asset = assets_by_id.get(item.asset_id)
-        target_url = asset.path if asset is not None else item.asset_id
-        dur_hint = asset.duration_s if asset is not None else None
-        media_ref = _build_external_ref(otio, target_url, dur_hint, fps)
-        source_range = otio.opentime.TimeRange(
-            start_time=otio.opentime.RationalTime(round(item.source_start_s * fps, 4), fps),
-            duration=otio.opentime.RationalTime(round(item.timeline_duration_s * fps, 4), fps),
-        )
-        otio_clip = otio.schema.Clip(
-            name=item.track_id,
-            media_reference=media_ref,
-            source_range=source_range,
-            metadata={
-                "vedit": {
-                    "asset_id": item.asset_id,
-                    "audio_group": item.audio_group,
-                    "gain_db": item.gain_db,
-                    "carve_against_group": item.carve_against_group,
-                    "carve_strength": item.carve_strength,
-                }
-            },
-        )
-        track.append(otio_clip)
-        cursor_s = max(cursor_s, item.timeline_start_s + item.timeline_duration_s)
-    timeline.tracks.append(track)
+            otio_clip = otio.schema.Clip(
+                name=item.track_id,
+                media_reference=media_ref,
+                source_range=source_range,
+                metadata={
+                    "vedit": {
+                        "asset_id": item.asset_id,
+                        "audio_group": item.audio_group,
+                        "gain_db": item.gain_db,
+                        "carve_against_group": item.carve_against_group,
+                        "carve_strength": item.carve_strength,
+                    }
+                },
+            )
+            track.append(otio_clip)
+            cursor_s += item.timeline_duration_s
+        timeline.tracks.append(track)
 
 
 def export_edit_plan_to_otio(
@@ -170,7 +189,7 @@ def export_edit_plan_to_otio(
 
     _append_video_track(otio, timeline, effective_plan.video_tracks, assets_by_id, fps)
 
-    for group in ("voiceover", "music", "sfx"):
+    for group in ("voiceover", "music", "sfx", "program_mix"):
         grouped = [t for t in effective_plan.audio_tracks if t.audio_group == group]
         _append_audio_group_track(otio, timeline, group, grouped, assets_by_id, fps)
 

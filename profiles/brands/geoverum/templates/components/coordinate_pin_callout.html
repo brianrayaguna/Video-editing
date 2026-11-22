@@ -107,6 +107,10 @@
       background: #111317;
       color: #F4F1EA;
     }
+    #{{SCENE_ID}}-tag-box.crimson-tone {
+      background: #B91C1C;
+      color: #F4F1EA;
+    }
     /* Style 4: etymology_arrow (bold place + curved hand-drawn arrow to italic meaning) */
     #{{SCENE_ID}}-ety-origin {
       position: absolute;
@@ -223,6 +227,7 @@
       if (etyNote && !etyNote.textContent.trim()) etyNote.classList.add("gv-empty");
       if (popEl && (!popValEl || !popValEl.textContent.trim())) popEl.classList.add("gv-empty");
       if (tagBox && tagTone === "charcoal") tagBox.classList.add("dark-tone");
+      else if (tagBox && tagTone === "crimson") tagBox.classList.add("crimson-tone");
 
       const dur = Number({{DURATION_S}});
       const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.28), dur * 0.3);

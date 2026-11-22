@@ -1,9 +1,20 @@
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Instant;
+
+static TMP_KF_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct TempDirGuard(PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 use anyhow::{Context, Result, anyhow, bail};
 use image::{RgbImage, codecs::jpeg::JpegEncoder};
@@ -100,12 +111,15 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
 
     let mut frame_metrics: Vec<FrameVisionMetrics> = Vec::new();
     let mut staged_frames: Vec<(f64, std::path::PathBuf, f64, f64)> = Vec::new();
-    let tmp_kf_dir = opts.extract_keyframes_dir.as_ref().map(|kf_dir| {
-        kf_dir.join(format!(".tmp_kf_{}", std::process::id()))
-    });
-    if let Some(ref tmp_dir) = tmp_kf_dir {
-        fs::create_dir_all(tmp_dir)?;
-    }
+    let tmp_kf_guard = if let Some(ref kf_dir) = opts.extract_keyframes_dir {
+        let seq = TMP_KF_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = kf_dir.join(format!(".tmp_kf_{}_{}", std::process::id(), seq));
+        fs::create_dir_all(&dir)?;
+        Some(TempDirGuard(dir))
+    } else {
+        None
+    };
+    let tmp_kf_dir = tmp_kf_guard.as_ref().map(|g| g.0.clone());
     let stderr_text: String = if video.present {
         let target_w = if opts.extract_keyframes_dir.is_some() && opts.analysis_width < 480 {
             480
@@ -160,12 +174,12 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         let mut stdout = child.stdout.take().context("Missing ffmpeg stdout pipe")?;
         let mut stderr = child.stderr.take().context("Missing ffmpeg stderr pipe")?;
 
-        // Drain stdout and stderr concurrently to guarantee zero pipe deadlock.
+        // Drain stdout and stderr concurrently; drop stdout before joining stderr to prevent pipe deadlock.
         let (stderr_out, read_res) = thread::scope(|s| {
             let err_handle = s.spawn(move || {
-                let mut err_buf = String::new();
-                let _ = stderr.read_to_string(&mut err_buf);
-                err_buf
+                let mut err_bytes = Vec::new();
+                let _ = stderr.read_to_end(&mut err_bytes);
+                String::from_utf8_lossy(&err_bytes).into_owned()
             });
 
             let mut buf = vec![0u8; frame_bytes];
@@ -194,12 +208,16 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
                     Err(e) => break Err(e.into()),
                 }
             };
+            drop(stdout);
+            if res.is_err() {
+                let _ = child.kill();
+            }
             let err_str = err_handle.join().unwrap_or_default();
             (err_str, res)
         });
 
-        read_res?;
         let status = child.wait()?;
+        read_res?;
         if !status.success() {
             bail!("ffmpeg exited with status {status}: {stderr_out}");
         }
@@ -285,9 +303,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
             }
         }
     }
-    if let Some(ref tmp_dir) = tmp_kf_dir {
-        let _ = fs::remove_dir_all(tmp_dir);
-    }
+    drop(tmp_kf_guard);
 
     let stream_analyze_ms = stream_t0.elapsed().as_millis() as u64;
     let total_ms = total_t0.elapsed().as_millis() as u64;

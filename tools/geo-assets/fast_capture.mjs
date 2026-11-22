@@ -106,27 +106,81 @@ export function spawnMjpegPipeEncoder(
 
   const proc = spawn("ffmpeg", args, { stdio: ["pipe", "ignore", "pipe"] });
   let stderr = "";
+  let exited = false;
+  let exitError = null;
   proc.stderr.on("data", (chunk) => {
     stderr += chunk.toString();
   });
+  proc.stdin.on("error", (err) => {
+    if (!exitError) exitError = err;
+  });
 
   const done = new Promise((resolve, reject) => {
-    proc.on("error", reject);
+    proc.on("error", (err) => {
+      exited = true;
+      exitError = err;
+      reject(err);
+    });
     proc.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`FFmpeg pipe encode failed (${code}) for ${outMp4}: ${stderr}`));
+      exited = true;
+      if (code === 0) {
+        resolve();
+      } else {
+        const err = new Error(`FFmpeg pipe encode failed (${code}) for ${outMp4}: ${stderr}`);
+        exitError = err;
+        reject(err);
+      }
     });
   });
+  // Prevent unhandled rejection if caller aborts before awaiting finish().
+  done.catch(() => {});
 
   return {
     async writeFrame(jpegBuffer) {
+      if (exited) {
+        throw exitError || new Error(`FFmpeg pipe encoder exited early for ${outMp4}`);
+      }
       if (!proc.stdin.write(jpegBuffer)) {
-        await new Promise((resolve) => proc.stdin.once("drain", resolve));
+        await new Promise((resolve, reject) => {
+          const onDrain = () => {
+            cleanup();
+            resolve();
+          };
+          const onFail = (err) => {
+            cleanup();
+            reject(err || exitError || new Error(`FFmpeg pipe closed early for ${outMp4}`));
+          };
+          const cleanup = () => {
+            proc.stdin.off("drain", onDrain);
+            proc.stdin.off("error", onFail);
+            proc.off("close", onFail);
+          };
+          proc.stdin.once("drain", onDrain);
+          proc.stdin.once("error", onFail);
+          proc.once("close", onFail);
+        });
       }
     },
     async finish() {
-      proc.stdin.end();
+      if (!proc.stdin.destroyed && !proc.stdin.writableEnded) {
+        proc.stdin.end();
+      }
       await done;
+    },
+    async abort() {
+      try {
+        if (!proc.stdin.destroyed) proc.stdin.destroy();
+      } catch {
+        // ignore pipe teardown errors
+      }
+      if (!exited) {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // ignore if process already exited
+        }
+      }
+      await done.catch(() => {});
     },
   };
 }

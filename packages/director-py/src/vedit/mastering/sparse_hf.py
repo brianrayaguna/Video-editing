@@ -151,9 +151,9 @@ def render_sparse_hf_windows(
             repo_root=repo_root,
         )
         if compiled.lint and not compiled.lint.ok:
+            details = compiled.lint.hyperframes_findings or compiled.lint.performance_violations
             raise RuntimeError(
-                f"Sparse HyperFrames window {win.window_index} lint failed: "
-                f"{compiled.lint.hyperframes_findings}"
+                f"Sparse HyperFrames window {win.window_index} lint failed: {details}"
             )
 
         planned = plan_distributed_v2(

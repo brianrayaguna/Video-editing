@@ -353,15 +353,20 @@ def _build_overlays(
     if transcript and transcript.words:
         max_words = typo.max_words_per_caption_group
         spoken = [w for w in transcript.words if not w.is_filler]
-        for chunk in _group_caption_words(spoken, max_words):
+        chunks = _group_caption_words(spoken, max_words)
+        for idx, chunk in enumerate(chunks):
             t_start = round(chunk[0].start_s, 3)
-            t_end = round(max(chunk[-1].end_s, t_start + 0.3), 3)
+            raw_end = max(chunk[-1].end_s, t_start + 0.3)
+            if idx + 1 < len(chunks):
+                next_start = round(chunks[idx + 1][0].start_s, 3)
+                if next_start > t_start:
+                    raw_end = min(raw_end, next_start)
+            t_end = round(max(raw_end, t_start + 0.05), 3)
             t_dur = round(t_end - t_start, 3)
-            mid_t = t_start + t_dur * 0.5
             active_boxes: list[BoundingBox] = []
             for clip in clips:
                 c_end = clip.timeline_start_s + clip.timeline_duration_s
-                if clip.timeline_start_s <= mid_t <= c_end:
+                if clip.timeline_start_s < t_end and c_end > t_start:
                     active_boxes.extend(clip.subject_safe_boxes)
 
             band = _choose_non_overlapping_band(pref_band, active_boxes, platform_target)
@@ -457,7 +462,7 @@ def _build_overlays(
                             catalog=template_catalog,
                         ),
                         timeline_start_s=t_start,
-                        timeline_duration_s=round(min(max(t_dur, 1.0), t_dur), 3),
+                        timeline_duration_s=round(t_dur, 3),
                         transparent=True,
                         safe_band=card_band,
                         template_id=card_template,

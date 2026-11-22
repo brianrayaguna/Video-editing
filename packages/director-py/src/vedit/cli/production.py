@@ -330,6 +330,9 @@ def compile_cmd(
     plan = resolve_plan_asset_paths(raw_plan, base_dir=plan_path.parent)
     target_id = platform_id or plan.platform_target_id
     platforms = load_platform_targets()
+    if platform_id is not None and platform_id not in platforms:
+        typer.echo(f"Unknown platform target: {platform_id}", err=True)
+        raise typer.Exit(code=2)
     platform_target = (
         PlatformTarget.model_validate(platforms[target_id]) if target_id in platforms else None
     )
@@ -605,3 +608,6 @@ def cloud_render_cmd(
                 force_hf=force_hf,
             )
     typer.echo(json.dumps(summary, indent=2, default=str))
+    qc_summary = summary.get("qc") if isinstance(summary, dict) else None
+    if isinstance(qc_summary, dict) and qc_summary.get("passed") is False:
+        raise typer.Exit(code=1)

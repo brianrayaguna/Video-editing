@@ -75,7 +75,8 @@ $VEDIT director verify \
   --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/plan/edit_plan.json" \
   --policy-file profiles/brands/geoverum/brand_style_policy.json \
   --brand-dir profiles/brands/geoverum \
-  --platform shorts_9x16_1080p
+  --platform shorts_9x16_1080p \
+  --update-plan
 
 $VEDIT cloud render \
   --plan-file "$VEDIT_PROJECTS_ROOT/geoverum/gibraltar_strait/plan/edit_plan.json" \

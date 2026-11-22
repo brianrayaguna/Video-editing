@@ -226,6 +226,9 @@
 
         const counter = { v: 0 };
         const target = vals[i];
+        const declaredText = valEl ? valEl.textContent.trim() : "";
+        const defaultFormatted = fmtInt(target) + (unitSuffix ? " " + unitSuffix : "");
+        const finalText = declaredText && declaredText !== String(target) ? declaredText : defaultFormatted;
         tl.fromTo(
           counter,
           { v: 0 },
@@ -234,7 +237,11 @@
             duration: 0.72,
             ease: "expo.out",
             onUpdate: () => {
-              if (valEl) valEl.textContent = fmtInt(counter.v) + (unitSuffix ? " " + unitSuffix : "");
+              if (!valEl) return;
+              valEl.textContent =
+                Math.abs(counter.v - target) < 0.5
+                  ? finalText
+                  : fmtInt(counter.v) + (unitSuffix ? " " + unitSuffix : "");
             },
           },
           rowStart + 0.06

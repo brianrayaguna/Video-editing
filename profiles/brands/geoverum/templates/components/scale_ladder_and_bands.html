@@ -232,22 +232,22 @@
       if (isBands) {
         tl.fromTo(
           ["#{{SCENE_ID}}-b1", "#{{SCENE_ID}}-b2", "#{{SCENE_ID}}-b3", "#{{SCENE_ID}}-b4", "#{{SCENE_ID}}-b5"],
-          { scaleY: 0, opacity: 0 },
+          { scaleY: 0.92, opacity: 0 },
           { scaleY: 1, opacity: 1, duration: enterS, stagger: 0.08, ease: "expo.out" },
           0.1
         );
       } else {
-        tl.fromTo("#{{SCENE_ID}}-spine", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: enterS, ease: "power2.out" }, 0.06);
-        tl.fromTo("#{{SCENE_ID}}-tick-1", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.16);
-        tl.fromTo("#{{SCENE_ID}}-dot-1", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.16);
+        tl.fromTo("#{{SCENE_ID}}-spine", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: enterS, ease: "expo.out" }, 0.06);
+        tl.fromTo("#{{SCENE_ID}}-tick-1", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "expo.out" }, 0.16);
+        tl.fromTo("#{{SCENE_ID}}-dot-1", { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "expo.out", transformOrigin: "50% 50%" }, 0.16);
         tl.fromTo("#{{SCENE_ID}}-r1", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.2);
 
-        tl.fromTo("#{{SCENE_ID}}-tick-2", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.34);
-        tl.fromTo("#{{SCENE_ID}}-dot-2", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.34);
+        tl.fromTo("#{{SCENE_ID}}-tick-2", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "expo.out" }, 0.34);
+        tl.fromTo("#{{SCENE_ID}}-dot-2", { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "expo.out", transformOrigin: "50% 50%" }, 0.34);
         tl.fromTo("#{{SCENE_ID}}-r2", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.38);
 
-        tl.fromTo("#{{SCENE_ID}}-tick-3", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "power2.out" }, 0.52);
-        tl.fromTo("#{{SCENE_ID}}-dot-3", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.6)", transformOrigin: "50% 50%" }, 0.52);
+        tl.fromTo("#{{SCENE_ID}}-tick-3", { strokeDashoffset: 110 }, { strokeDashoffset: 0, duration: 0.24, ease: "expo.out" }, 0.52);
+        tl.fromTo("#{{SCENE_ID}}-dot-3", { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "expo.out", transformOrigin: "50% 50%" }, 0.52);
         tl.fromTo("#{{SCENE_ID}}-r3", { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.26, ease: "expo.out" }, 0.56);
       }
 

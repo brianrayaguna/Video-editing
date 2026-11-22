@@ -65,7 +65,14 @@ def monotone_curve(points: list[list[float]] | None, u: float) -> float:
     if not points:
         return min(max(u, 0.0), 1.0)
     pts = sorted((float(a), float(b)) for a, b in points)
-    if u <= pts[0][0]:
+    dedup: list[tuple[float, float]] = []
+    for px, py in pts:
+        if dedup and abs(px - dedup[-1][0]) < 1e-12:
+            dedup[-1] = (px, py)
+        else:
+            dedup.append((px, py))
+    pts = dedup
+    if len(pts) == 1 or u <= pts[0][0]:
         return pts[0][1]
     if u >= pts[-1][0]:
         return pts[-1][1]
@@ -129,9 +136,9 @@ def _van_wijk_fly_to(
     w1 = 2.0 ** (-z1)
     # Convert Mercator radians (full world = 2*pi) into normalized world units matching w = 2^-z.
     dist = math.hypot(x1 - x0, y1 - y0) / (2.0 * math.pi)
-    if dist < 1e-9:
+    if dist < 1e-9 or rho <= 0.0:
         zoom = z0 + (z1 - z0) * u
-        return x0, y0, zoom
+        return x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, zoom
 
     rho2 = rho * rho
     rho4 = rho2 * rho2
@@ -142,7 +149,7 @@ def _van_wijk_fly_to(
         num = (w1 * w1 - w0 * w0) + sign * rho4 * dist * dist
         den = 2.0 * w_i * rho2 * dist
         b = num / max(den, 1e-12)
-        return math.log(math.sqrt(b * b + 1.0) - b)
+        return -math.asinh(b)
 
     r0 = _r(0)
     r1 = _r(1)
@@ -471,12 +478,20 @@ class _Monotone:
     """Prebuilt monotone cubic (Fritsch-Carlson) interpolant over strictly increasing xs."""
 
     def __init__(self, xs: list[float], ys: list[float]) -> None:
-        self.xs, self.ys = xs, ys
-        n = len(xs)
+        dedup_x: list[float] = []
+        dedup_y: list[float] = []
+        for x_val, y_val in zip(xs, ys, strict=True):
+            if dedup_x and abs(x_val - dedup_x[-1]) < 1e-12:
+                dedup_y[-1] = y_val
+            else:
+                dedup_x.append(x_val)
+                dedup_y.append(y_val)
+        self.xs, self.ys = dedup_x, dedup_y
+        n = len(self.xs)
         if n < 2:
             self.m = [0.0] * n
             return
-        d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(n - 1)]
+        d = [(self.ys[i + 1] - self.ys[i]) / (self.xs[i + 1] - self.xs[i]) for i in range(n - 1)]
         m = (
             [d[0]]
             + [0.0 if d[i - 1] * d[i] <= 0 else (d[i - 1] + d[i]) / 2 for i in range(1, n - 1)]
@@ -632,27 +647,16 @@ def camera_jitter_report(
             "max_bearing_accel_deg": 0.0,
         }
     times = [r[0] for r in rows]
-    fx = _Monotone(times, [_merc_x(r[1]) for r in rows])
-    fy = _Monotone(times, [_merc_y(r[2]) for r in rows])
-    fz = _Monotone(times, [r[3] for r in rows])
-    fb = _Monotone(times, [r[4] for r in rows])
-    f0, f1 = math.ceil(times[0] * fps), math.floor(times[-1] * fps)
+    spans = _spans(times, list(cuts))
     cut_frames = {round(c * fps) for c in cuts}
-    hint = 0
-    samples: list[tuple[int, float, float, float, float]] = []
-    for f in range(f0, f1 + 1):
-        t = f / fps
-        x, hint = fx(t, hint)
-        y, _ = fy(t, hint)
-        z, _ = fz(t, hint)
-        b, _ = fb(t, hint)
-        samples.append((f, x, y, z, b))
 
     def blocked(f: int) -> bool:
         return any(c - 1 <= f <= c + 1 for c in cut_frames)
 
     flagged: list[dict[str, Any]] = []
     reversals = zoom_reversals = 0
+    max_pan = max_zoom = max_bear = 0.0
+    total_frames = 0
     last_sign: dict[str, int] = {}
     last_flip: dict[str, float] = {}
 
@@ -668,36 +672,61 @@ def camera_jitter_report(
         last_flip[axis] = t
         return recent
 
-    max_pan = max_zoom = max_bear = 0.0
-    for k in range(2, len(samples)):
-        f = samples[k][0]
-        if blocked(f) or blocked(f - 1) or blocked(f - 2):
+    for lo, hi in spans:
+        sub = rows[lo:hi]
+        if len(sub) < 2:
             continue
-        a, b, c = samples[k - 2], samples[k - 1], samples[k]
-        scale = TILE_SIZE * 2.0 ** b[3] / (2.0 * math.pi)
-        vel_prev = ((b[1] - a[1]) * scale, (b[2] - a[2]) * scale)
-        vel_cur = ((c[1] - b[1]) * scale, (c[2] - b[2]) * scale)
-        pan = math.hypot(vel_cur[0] - vel_prev[0], vel_cur[1] - vel_prev[1])
-        zac = abs(c[3] - 2 * b[3] + a[3])
-        bac = abs(c[4] - 2 * b[4] + a[4])
-        t = f / fps
-        if flip("x", vel_cur[0], 0.05, t) or flip("y", vel_cur[1], 0.05, t):
-            reversals += 1
-        if flip("z", c[3] - b[3], 0.0005, t):
-            zoom_reversals += 1
-        max_pan, max_zoom, max_bear = max(max_pan, pan), max(max_zoom, zac), max(max_bear, bac)
-        if pan > pan_accel_px or zac > zoom_accel or bac > bearing_accel_deg:
-            flagged.append(
-                {
-                    "frame": f,
-                    "t": round(f / fps, 3),
-                    "pan_accel_px": round(pan, 2),
-                    "zoom_accel": round(zac, 5),
-                    "bearing_accel_deg": round(bac, 3),
-                }
-            )
+        sub_times = [r[0] for r in sub]
+        fx = _Monotone(sub_times, [_merc_x(r[1]) for r in sub])
+        fy = _Monotone(sub_times, [_merc_y(r[2]) for r in sub])
+        fz = _Monotone(sub_times, [r[3] for r in sub])
+        fb = _Monotone(sub_times, [r[4] for r in sub])
+        f0, f1 = math.ceil(sub_times[0] * fps), math.floor(sub_times[-1] * fps)
+        hint = 0
+        samples: list[tuple[int, float, float, float, float]] = []
+        for f in range(f0, f1 + 1):
+            t = f / fps
+            x, hint = fx(t, hint)
+            y, _ = fy(t, hint)
+            z, _ = fz(t, hint)
+            b, _ = fb(t, hint)
+            samples.append((f, x, y, z, b))
+        total_frames += len(samples)
+
+        last_sign.clear()
+        last_flip.clear()
+
+        for k in range(2, len(samples)):
+            f = samples[k][0]
+            if blocked(f) or blocked(f - 1) or blocked(f - 2):
+                continue
+            a, b, c = samples[k - 2], samples[k - 1], samples[k]
+            scale = TILE_SIZE * 2.0 ** b[3] / (2.0 * math.pi)
+            vel_prev = ((b[1] - a[1]) * scale, (b[2] - a[2]) * scale)
+            vel_cur = ((c[1] - b[1]) * scale, (c[2] - b[2]) * scale)
+            pan = math.hypot(vel_cur[0] - vel_prev[0], vel_cur[1] - vel_prev[1])
+            zac = abs(c[3] - 2 * b[3] + a[3])
+            bac = abs(c[4] - 2 * b[4] + a[4])
+            t = f / fps
+            if flip("x", vel_cur[0], 0.05, t) or flip("y", vel_cur[1], 0.05, t):
+                reversals += 1
+            if flip("z", c[3] - b[3], 0.0005, t):
+                zoom_reversals += 1
+            max_pan = max(max_pan, pan)
+            max_zoom = max(max_zoom, zac)
+            max_bear = max(max_bear, bac)
+            if pan > pan_accel_px or zac > zoom_accel or bac > bearing_accel_deg:
+                flagged.append(
+                    {
+                        "frame": f,
+                        "t": round(f / fps, 3),
+                        "pan_accel_px": round(pan, 2),
+                        "zoom_accel": round(zac, 5),
+                        "bearing_accel_deg": round(bac, 3),
+                    }
+                )
     return {
-        "frames": len(samples),
+        "frames": total_frames,
         "flagged_frames": len(flagged),
         "flagged": flagged,
         "reversals": reversals,
@@ -857,6 +886,16 @@ def build_cinema_camera_track(
             }
         )
     parsed.sort(key=lambda item: item["t"])
+    for idx in range(1, len(parsed)):
+        lng_cur = parsed[idx]["lng"]
+        lng_prev = parsed[idx - 1]["lng"]
+        while lng_cur - lng_prev > 180.0:
+            lng_cur -= 360.0
+        while lng_cur - lng_prev < -180.0:
+            lng_cur += 360.0
+        if lng_cur != parsed[idx]["lng"]:
+            parsed[idx]["lng"] = lng_cur
+            parsed[idx]["mx"], parsed[idx]["my"] = _mercator_norm(lng_cur, parsed[idx]["lat"])
 
     total = max(1, round(duration_s * fps))
     raw_mx: list[float] = []
@@ -869,12 +908,18 @@ def build_cinema_camera_track(
     m = len(parsed)
     for f in range(total):
         t = f / fps
+        orbit_t = None
+        orbit_r = 0.0
         if t <= parsed[0]["t"] or m == 1:
             k = parsed[0]
             mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
+            orbit_t = k["orbit_target"]
+            orbit_r = k["orbit_radius_deg"]
         elif t >= parsed[-1]["t"]:
             k = parsed[-1]
             mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
+            orbit_t = k["orbit_target"]
+            orbit_r = k["orbit_radius_deg"]
         else:
             seg_i = 0
             for i in range(m - 1):
@@ -921,14 +966,15 @@ def build_cinema_camera_track(
                 mx = k1["mx"] + (k2["mx"] - k1["mx"]) * u_pan
                 my = k1["my"] + (k2["my"] - k1["my"]) * u_pan
 
-            # Optional circular orbit trucking offset around an explicit landmark
             orbit_t = k2["orbit_target"] or k1["orbit_target"]
             orbit_r = max(k1["orbit_radius_deg"], k2["orbit_radius_deg"])
-            if orbit_t and orbit_r > 0.0:
-                ang = math.radians(b)
-                olng = float(orbit_t[0]) + math.sin(ang) * orbit_r
-                olat = float(orbit_t[1]) + math.cos(ang) * orbit_r * 0.65
-                mx, my = _mercator_norm(olng, olat)
+
+        # Optional circular orbit trucking offset around an explicit landmark
+        if orbit_t and orbit_r > 0.0:
+            ang = math.radians(b)
+            olng = float(orbit_t[0]) + math.sin(ang) * orbit_r
+            olat = float(orbit_t[1]) + math.cos(ang) * orbit_r * 0.65
+            mx, my = _mercator_norm(olng, olat)
 
         raw_mx.append(mx)
         raw_my.append(my)
@@ -987,6 +1033,8 @@ def build_cinema_camera_track(
                 break
         samples.append(
             {
+                "frame": f,
+                "t": round(t, 4),
                 "center": [round(lng, 5), round(lat, 5)],
                 "zoom": round(sm_z[f], 4),
                 "bearing": round(sm_b[f], 3),
@@ -1052,7 +1100,8 @@ def project_world_anchor_to_track(
     for t_abs, c_lng, c_lat, zoom, bearing, pitch, roll in window:
         cx, cy = _mercator_norm(c_lng, c_lat)
         world_px = tile_size * (2.0**zoom)
-        dx_px = (ax - cx) * world_px
+        dx_norm = ((ax - cx + 0.5) % 1.0) - 0.5
+        dx_px = dx_norm * world_px
         dy_px = (ay - cy) * world_px
         rad = math.radians(-bearing)
         cos_b, sin_b = math.cos(rad), math.sin(rad)
@@ -1062,20 +1111,29 @@ def project_world_anchor_to_track(
         # Apply 3D pinhole perspective foreshortening along camera pitch
         pitch_rad = math.radians(max(0.0, min(72.0, pitch)))
         cos_p, sin_p = math.cos(pitch_rad), math.sin(pitch_rad)
-        depth = max(0.2 * focal_px, focal_px - ry * sin_p)
+        raw_depth = focal_px - ry * sin_p
+        behind_camera = raw_depth <= 0.1 * focal_px
+        depth = max(0.2 * focal_px, raw_depth)
         persp = focal_px / depth
         px = rx * persp
         py = ry * cos_p * persp
 
-        # Apply optical Z-axis roll if present
+        # Apply optical Z-axis roll + overscan matching render_map_scene.mjs
+        overscan = 1.0
         if abs(roll) > 1e-4:
             rr = math.radians(roll)
             cr, sr = math.cos(rr), math.sin(rr)
-            px, py = px * cr - py * sr, px * sr + py * cr
+            aspect = max(width / max(height, 1), height / max(width, 1))
+            overscan = abs(cr) + abs(sr) * aspect
+            px, py = (px * cr - py * sr) * overscan, (px * sr + py * cr) * overscan
 
         x_pct = round(50.0 + (px / max(width, 1)) * 100.0, 2)
         y_pct = round(50.0 + (py / max(height, 1)) * 100.0, 2)
-        raw_scale = (2.0 ** ((zoom - ref_z) * scale_coupling)) * persp if scale_with_zoom else 1.0
+        raw_scale = (
+            (2.0 ** ((zoom - ref_z) * scale_coupling)) * persp * overscan
+            if scale_with_zoom
+            else overscan
+        )
         scale = max(0.05, min(8.0, round(raw_scale, 4)))
         kf: dict[str, float] = {
             "t_s": round(max(0.0, t_abs - start_s), 3),
@@ -1084,6 +1142,8 @@ def project_world_anchor_to_track(
             "scale": scale,
             "rotation_deg": round((-bearing if space == "map_plane" else 0.0) + roll, 2),
         }
+        if behind_camera:
+            kf["opacity"] = 0.0
         if space == "map_plane" and pitch > 0.1:
             kf["rotateX_deg"] = round(pitch, 2)
             kf["perspective_px"] = round(focal_px, 1)

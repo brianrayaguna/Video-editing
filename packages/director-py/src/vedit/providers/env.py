@@ -51,6 +51,9 @@ def upsert_env_var(env_path: Path, key: str, value: str) -> None:
     cleaned = value.strip()
     if not cleaned:
         raise ValueError(f"Cannot store an empty value for {key}.")
+    if "\n" in cleaned or "\r" in cleaned:
+        raise ValueError(f"Env value for {key} cannot contain newline characters.")
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
 
     lines: list[str] = []
     if env_path.is_file():
@@ -61,15 +64,23 @@ def upsert_env_var(env_path: Path, key: str, value: str) -> None:
     for raw in lines:
         stripped = raw.strip()
         if stripped.startswith(f"{key}=") or stripped.startswith(f"export {key}="):
-            updated_lines.append(f'{key}="{cleaned}"')
+            updated_lines.append(f'{key}="{escaped}"')
             replaced = True
         else:
             updated_lines.append(raw)
 
     if not replaced:
-        updated_lines.append(f'{key}="{cleaned}"')
+        updated_lines.append(f'{key}="{escaped}"')
 
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    env_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
-    os.chmod(env_path, 0o600)
+    tmp_path = env_path.with_suffix(env_path.suffix + ".tmp")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            fp.write("\n".join(updated_lines) + "\n")
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, env_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
     os.environ[key] = cleaned

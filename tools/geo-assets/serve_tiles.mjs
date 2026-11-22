@@ -10,8 +10,8 @@
  */
 
 import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, extname, join, normalize, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -58,7 +58,7 @@ async function resolveDemBuffer(z, x, y) {
     return demFallbackCache.get(cacheKey);
   }
   for (let pz = z - 1; pz >= 0; pz--) {
-    const scale = 1 << (z - pz);
+    const scale = 2 ** (z - pz);
     const px = Math.floor(x / scale);
     const py = Math.floor(y / scale);
     const parentPath = join(DEM_DIR, String(pz), String(px), `${py}.png`);
@@ -98,7 +98,7 @@ async function resolveTileBuffer(z, x, y) {
   }
 
   for (let pz = z - 1; pz >= 0; pz--) {
-    const scale = 1 << (z - pz);
+    const scale = 2 ** (z - pz);
     const px = Math.floor(x / scale);
     const py = Math.floor(y / scale);
     const parentPath = join(TILES_DIR, String(pz), String(px), `${py}.jpg`);
@@ -122,17 +122,26 @@ async function resolveTileBuffer(z, x, y) {
   return null;
 }
 
+const MAX_TILE_ZOOM = 22;
+
 export function startTileServer(port = PORT, host = HOST) {
+  const geoRootReal = existsSync(GEO_ROOT) ? realpathSync(GEO_ROOT) : resolve(GEO_ROOT);
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
-      const pathname = decodeURIComponent(url.pathname);
+      let pathname;
+      try {
+        pathname = decodeURIComponent(url.pathname);
+      } catch {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad request");
+        return;
+      }
 
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
 
       if (pathname === "/health") {
-        res.writeHead(200, { "Content-Type": "application/json" });
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ status: "ok", root: "assets/geo" }));
         return;
       }
@@ -142,6 +151,11 @@ export function startTileServer(port = PORT, host = HOST) {
         const z = Number(hybridMatch[1]);
         const x = Number(hybridMatch[2]);
         const y = Number(hybridMatch[3]);
+        if (z > MAX_TILE_ZOOM) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
         let buf = null;
         if (z >= 12) {
           const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
@@ -149,7 +163,7 @@ export function startTileServer(port = PORT, host = HOST) {
             buf = readFileSync(exactHq);
           } else {
             for (let pz = z - 1; pz >= 12; pz--) {
-              const scale = 1 << (z - pz);
+              const scale = 2 ** (z - pz);
               const px = Math.floor(x / scale);
               const py = Math.floor(y / scale);
               const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
@@ -173,7 +187,10 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
         res.end(buf);
         return;
       }
@@ -183,11 +200,16 @@ export function startTileServer(port = PORT, host = HOST) {
         const z = Number(hqMatch[1]);
         const x = Number(hqMatch[2]);
         const y = Number(hqMatch[3]);
+        if (z > MAX_TILE_ZOOM) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
         const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
         let buf = existsSync(exactHq) ? readFileSync(exactHq) : null;
         if (!buf) {
           for (let pz = z - 1; pz >= 5; pz--) {
-            const scale = 1 << (z - pz);
+            const scale = 2 ** (z - pz);
             const px = Math.floor(x / scale);
             const py = Math.floor(y / scale);
             const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
@@ -210,7 +232,10 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
         res.end(buf);
         return;
       }
@@ -220,13 +245,21 @@ export function startTileServer(port = PORT, host = HOST) {
         const z = Number(tileMatch[1]);
         const x = Number(tileMatch[2]);
         const y = Number(tileMatch[3]);
+        if (z > MAX_TILE_ZOOM) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
         const buf = await resolveTileBuffer(z, x, y);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
           return;
         }
-        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
         res.end(buf);
         return;
       }
@@ -236,33 +269,54 @@ export function startTileServer(port = PORT, host = HOST) {
         const z = Number(demMatch[1]);
         const x = Number(demMatch[2]);
         const y = Number(demMatch[3]);
+        if (z > MAX_TILE_ZOOM) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("DEM tile not found");
+          return;
+        }
         const buf = await resolveDemBuffer(z, x, y);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("DEM tile not found");
           return;
         }
-        res.writeHead(200, { "Content-Type": "image/png" });
+        res.writeHead(200, {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
         res.end(buf);
         return;
       }
 
       const safeRel = normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, "").replace(/^\/+/, "");
-      const filePath = join(GEO_ROOT, safeRel);
-      if (!filePath.startsWith(GEO_ROOT) || !existsSync(filePath)) {
+      const filePath = resolve(geoRootReal, safeRel);
+      if (
+        (filePath !== geoRootReal && !filePath.startsWith(geoRootReal + sep)) ||
+        !existsSync(filePath) ||
+        !statSync(filePath).isFile()
+      ) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not found");
+        return;
+      }
+      const realFile = realpathSync(filePath);
+      if (realFile !== geoRootReal && !realFile.startsWith(geoRootReal + sep)) {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("Not found");
         return;
       }
 
-      const ext = extname(filePath).toLowerCase();
+      const ext = extname(realFile).toLowerCase();
       const contentType = MIME_TYPES[ext] || "application/octet-stream";
-      const data = readFileSync(filePath);
-      res.writeHead(200, { "Content-Type": contentType });
+      const data = readFileSync(realFile);
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+      });
       res.end(data);
-    } catch (err) {
+    } catch {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(String(err));
+      res.end("Internal server error");
     }
   });
 
@@ -274,8 +328,13 @@ export function startTileServer(port = PORT, host = HOST) {
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  startTileServer(PORT, HOST).then(() => {
-    console.log(`Geoverum local tile & asset server listening on http://${HOST}:${PORT}`);
-  });
+if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
+  startTileServer(PORT, HOST)
+    .then(() => {
+      console.log(`Geoverum local tile & asset server listening on http://${HOST}:${PORT}`);
+    })
+    .catch((err) => {
+      console.error("Failed to start local tile server:", err);
+      process.exit(1);
+    });
 }

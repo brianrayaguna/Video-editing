@@ -141,7 +141,7 @@ def storyboard_overlays(
         if band not in _BANDS:
             band = "center_safe"
         props: dict[str, Any] = {"storyboard_beat_id": beat["beat_id"], "device": beat["device"]}
-        box = _anchor_box(bound, safe_zone)
+        box = _anchor_box(bound, safe_zone, variables=variables)
         if box is not None:
             props["box"] = box
         overlays.append(
@@ -166,7 +166,7 @@ def storyboard_overlays(
             prev = trimmed[prev_idx]
             prev_end = prev.timeline_start_s + prev.timeline_duration_s
             if prev_end > ov.timeline_start_s:
-                new_dur = round(max(0.3, ov.timeline_start_s - prev.timeline_start_s), 3)
+                new_dur = round(max(0.05, ov.timeline_start_s - prev.timeline_start_s), 3)
                 trimmed[prev_idx] = prev.model_copy(update={"timeline_duration_s": new_dur})
         last_by_band[ov.safe_band] = len(trimmed)
         trimmed.append(ov)
@@ -179,11 +179,16 @@ def storyboard_overlays(
 
 
 def _anchor_box(
-    bound: dict[str, Any], safe_zone: SafeZoneMargins | None
+    bound: dict[str, Any],
+    safe_zone: SafeZoneMargins | None,
+    *,
+    variables: dict[str, Any] | None = None,
 ) -> dict[str, float] | None:
+    matched_keys: tuple[str, str] | None = None
     for kx, ky in ANCHOR_KEYS:
         if kx in bound and ky in bound:
             cx, cy = float(bound[kx]) / 100.0, float(bound[ky]) / 100.0
+            matched_keys = (kx, ky)
             break
     else:
         return None
@@ -193,6 +198,12 @@ def _anchor_box(
     hi_y = 1.0 - safe_zone.bottom_pct if safe_zone else 1.0
     left = min(max(cx - ANCHOR_BOX_W / 2, lo_x), hi_x - ANCHOR_BOX_W)
     top = min(max(cy - ANCHOR_BOX_H / 2, lo_y), hi_y - ANCHOR_BOX_H)
+    if variables is not None and matched_keys is not None:
+        kx, ky = matched_keys
+        if kx in variables:
+            variables[kx] = round((left + ANCHOR_BOX_W / 2) * 100.0, 2)
+        if ky in variables:
+            variables[ky] = round((top + ANCHOR_BOX_H / 2) * 100.0, 2)
     return {
         "top": round(top, 4),
         "bottom": round(top + ANCHOR_BOX_H, 4),
