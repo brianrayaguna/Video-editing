@@ -33,3 +33,4 @@ When a user asks to produce, edit, or render a new video episode in natural lang
 - Python director & cloud workers: `packages/director-py/.venv/bin/ruff check packages/director-py packages/cloud-modal && packages/director-py/.venv/bin/pytest -v packages/director-py/tests`
 - Contracts & presets: `packages/director-py/.venv/bin/vedit contracts validate --json`
 - TypeScript compiler bridge: `cd packages/hf-compiler-ts && npm run typecheck && npm run build && npm test`
+- Geo tile server: `node --test tools/geo-assets/serve_tiles.test.mjs`

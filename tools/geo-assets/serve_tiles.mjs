@@ -124,6 +124,27 @@ async function resolveTileBuffer(z, x, y) {
 
 const MAX_TILE_ZOOM = 22;
 
+/** Zoom of the nearest existing tile at or above `{z}/{x}/{y}` (the tile itself first), or -1. */
+function nearestTileLevel(z, x, y, exists) {
+  for (let pz = z; pz >= 0; pz--) {
+    const scale = 2 ** (z - pz);
+    if (exists(pz, Math.floor(x / scale), Math.floor(y / scale))) return pz;
+  }
+  return -1;
+}
+
+/**
+ * Choose the source for a `/tiles_hq` request: whichever of the HQ aerial and regular tile sets
+ * holds the nearest ancestor (least upscaling) of `{z}/{x}/{y}`; HQ wins ties. Returns
+ * `{ source: "hq" | "regular", level }`, or `null` when neither set covers the tile.
+ */
+export function pickHqTileSource(z, x, y, hasHq, hasRegular) {
+  const hq = nearestTileLevel(z, x, y, hasHq);
+  const regular = nearestTileLevel(z, x, y, hasRegular);
+  if (hq < 0 && regular < 0) return null;
+  return hq >= regular ? { source: "hq", level: hq } : { source: "regular", level: regular };
+}
+
 export function startTileServer(port = PORT, host = HOST) {
   const geoRootReal = existsSync(GEO_ROOT) ? realpathSync(GEO_ROOT) : resolve(GEO_ROOT);
   const server = createServer(async (req, res) => {
@@ -205,25 +226,31 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        const exactHq = join(TILES_HQ_DIR, String(z), String(x), `${y}.jpg`);
-        let buf = existsSync(exactHq) ? readFileSync(exactHq) : null;
-        if (!buf) {
-          for (let pz = z - 1; pz >= 5; pz--) {
-            const scale = 2 ** (z - pz);
-            const px = Math.floor(x / scale);
-            const py = Math.floor(y / scale);
-            const parentHq = join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
-            if (existsSync(parentHq)) {
-              const subSize = Math.max(1, Math.floor(256 / scale));
-              const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
-              const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
-              buf = await sharp(parentHq)
-                .extract({ left, top, width: subSize, height: subSize })
-                .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
-                .jpeg({ quality: 88 })
-                .toBuffer();
-              break;
-            }
+        const tilePath = (dir) => (pz, px, py) => join(dir, String(pz), String(px), `${py}.jpg`);
+        const hqPath = tilePath(TILES_HQ_DIR);
+        const regularPath = tilePath(TILES_DIR);
+        const pick = pickHqTileSource(
+          z,
+          x,
+          y,
+          (pz, px, py) => existsSync(hqPath(pz, px, py)),
+          (pz, px, py) => existsSync(regularPath(pz, px, py)),
+        );
+        let buf = null;
+        if (pick?.source === "hq") {
+          const scale = 2 ** (z - pick.level);
+          const parentHq = hqPath(pick.level, Math.floor(x / scale), Math.floor(y / scale));
+          if (scale === 1) {
+            buf = readFileSync(parentHq);
+          } else {
+            const subSize = Math.max(1, Math.floor(256 / scale));
+            const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+            const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+            buf = await sharp(parentHq)
+              .extract({ left, top, width: subSize, height: subSize })
+              .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+              .jpeg({ quality: 90 })
+              .toBuffer();
           }
         }
         if (!buf) buf = await resolveTileBuffer(z, x, y);
