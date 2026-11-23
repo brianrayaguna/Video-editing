@@ -122,6 +122,8 @@ class TypographyTokens(StrictModel):
     caption_case: Literal["sentence", "uppercase", "title", "lowercase"]
     caption_style: Literal["plain", "chip", "bar"] | None = None
     caption_transition_ms: int | None = Field(default=None, ge=0, le=200)
+    caption_fade_in_ms: int | None = Field(default=None, ge=0, le=200)
+    caption_fade_out_ms: int | None = Field(default=None, ge=0, le=200)
     max_words_per_caption_group: int = Field(ge=1, le=12)
     default_caption_band: Literal[
         "lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"

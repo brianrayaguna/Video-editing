@@ -59,4 +59,4 @@ Brand palettes, typography families, and cartographic label rules belong in the 
 
 - Animate only `transform`, `opacity`, `clip-path`, or SVG `stroke-dashoffset`.
 - Never animate layout properties or runtime CSS `filter: blur()` / `backdrop-filter`. For luminous glowing typography, use multi-ring `text-shadow` stacks (`glow_color`, `glow_strength`) in HTML or native `libass` blur tags (`\blur`) on subtitles rather than CSS filter blurs.
-- Pre-bake whip/blur optical transitions and high-velocity camera motion blur (`shutter_samples` sub-frame accumulation) into map media; do not compute live filter blurs in Chromium.
+- Pre-bake whip/blur optical transitions, and camera motion blur only when an act opts in (`optical_shutter_blur: true`, `shutter_samples` sub-frame accumulation), into map media; map frames are otherwise captured crisp. Do not compute live filter blurs in Chromium.

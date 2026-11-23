@@ -29,11 +29,15 @@ import {
   getChromeArgs,
   spawnMjpegPipeEncoder,
 } from "./fast_capture.mjs";
-import { startTileServer } from "./serve_tiles.mjs";
+import { coverageReport, startTileServer } from "./serve_tiles.mjs";
+import { cutBlurAmount } from "./map_draw_math.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
 const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
+// Pure geometry helpers shared with Node tests; inlined into the page with `export` removed.
+const DRAW_MATH_SRC = readFileSync(join(__dirname, "map_draw_math.mjs"), "utf8").replace(/^export\s+/gm, "");
+const FLAG_RASTER_WIDTH = 1600;
 const puppeteer = require("puppeteer-core");
 
 function isExecutable(p) {
@@ -75,8 +79,11 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
-    if (k.startsWith("--") && i + 1 < argv.length) {
+    if (!k.startsWith("--")) continue;
+    if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
       args[k.slice(2)] = argv[++i];
+    } else {
+      args[k.slice(2)] = true;
     }
   }
   return args;
@@ -145,6 +152,8 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     const BASE_URL = ${JSON.stringify(baseUrl)};
     const VEC = ${vectorsJson};
     const W = ${width}, H = ${height};
+    const FLAG_RASTER_WIDTH = ${FLAG_RASTER_WIDTH};
+${DRAW_MATH_SRC}
 
     const map = new maplibregl.Map({
       container: "map",
@@ -201,6 +210,11 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     const compCanvas = document.getElementById("comp");
     const compCtx = compCanvas.getContext("2d");
 
+    // Offscreen canvas for the feathered organic reveal mask
+    const organicCanvas = document.createElement("canvas");
+    organicCanvas.width = W; organicCanvas.height = H;
+    const organicCtx = organicCanvas.getContext("2d");
+
     // Offscreen canvases for seamless dissolved polygon exterior glow & rim (zero internal borders)
     const maskCanvas = document.createElement("canvas");
     maskCanvas.width = W; maskCanvas.height = H;
@@ -219,10 +233,18 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => {
-          // Rasterize SVG into a crisp fixed-size offscreen canvas so drawImage slicing works reliably
+          // Rasterize SVG into a crisp offscreen canvas so drawImage slicing works reliably.
+          // Flags keep their natural aspect at a width large enough to cover a whole territory.
           const c = document.createElement("canvas");
-          c.width = 360;
-          c.height = 240;
+          if (u.includes("/flags/")) {
+            const nw = img.naturalWidth || 4;
+            const nh = img.naturalHeight || 3;
+            c.width = FLAG_RASTER_WIDTH;
+            c.height = Math.max(1, Math.round(FLAG_RASTER_WIDTH * (nh / nw)));
+          } else {
+            c.width = 360;
+            c.height = 240;
+          }
           const cx = c.getContext("2d");
           cx.drawImage(img, 0, 0, c.width, c.height);
           window.__imgCache[u] = c;
@@ -415,13 +437,153 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       }
     }
 
+    // Exterior rings of a (Multi)Polygon or feature list, in lng/lat.
+    function outerRingsLngLat(geom) {
+      return polygonRings(geom).outer;
+    }
+
+    // Per-ring start vertex and walk direction for a border trace, decided in lng/lat so the
+    // heads never jump between frames while the camera moves. Default start: northernmost vertex.
+    function borderTraceOptions(ringsLL, heads, startLngLat, dir) {
+      const startIndex = ringsLL.map((r) => {
+        if (startLngLat) {
+          return nearestVertexIndex(r.map((c) => ({ x: c[0], y: c[1] })), { x: startLngLat[0], y: startLngLat[1] });
+        }
+        let best = 0;
+        for (let i = 1; i < r.length; i++) if (r[i][1] > r[best][1]) best = i;
+        return best;
+      });
+      // Lat grows northward (y up), so a ring that is clockwise on a north-up screen has negative area here.
+      const wantCw = dir !== "ccw";
+      const direction = ringsLL.map((r) => {
+        const cwOnScreen = signedArea(r.map((c) => ({ x: c[0], y: c[1] }))) < 0;
+        return cwOnScreen === wantCw ? 1 : -1;
+      });
+      return { heads: heads === 1 ? 1 : 2, startIndex, direction };
+    }
+
+    // Draw a flag raster over a territory's screen bounds (upright, optional quarter turns).
+    // "stretch" maps the whole flag design onto the bounding box; "cover" keeps the flag's
+    // proportions and covers the box, cropping the overflow.
+    function drawFlagCover(tctx, img, bounds, rotateDeg = 0, fit = "stretch") {
+      const quarter = ((Math.round((rotateDeg || 0) / 90) % 4) + 4) % 4;
+      const aspect = quarter % 2 ? img.height / img.width : img.width / img.height;
+      const r = fit === "cover"
+        ? coverRect(bounds, aspect)
+        : { x: bounds.minX, y: bounds.minY, w: Math.max(1, bounds.maxX - bounds.minX), h: Math.max(1, bounds.maxY - bounds.minY) };
+      const dw = quarter % 2 ? r.h : r.w;
+      const dh = quarter % 2 ? r.w : r.h;
+      tctx.save();
+      tctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+      tctx.rotate((quarter * Math.PI) / 2);
+      tctx.imageSmoothingQuality = "high";
+      tctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+      tctx.restore();
+    }
+
+    // Cloth shading for a waving flag: highlight and shadow bands along "angleDeg" across the
+    // territory bounds, composited onto the flag pixels only (see clothWaveStops).
+    function applyClothShade(tctx, b, wave, t) {
+      const stops = clothWaveStops(t, wave);
+      const ang = ((wave.angleDeg ?? 20) * Math.PI) / 180;
+      const cx = (b.minX + b.maxX) / 2;
+      const cy = (b.minY + b.maxY) / 2;
+      const half = Math.max(1, Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2);
+      const dx = Math.cos(ang) * half;
+      const dy = Math.sin(ang) * half;
+      const grad = tctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+      for (const st of stops) {
+        grad.addColorStop(st.offset, st.light >= 0
+          ? "rgba(255,255,255," + st.light.toFixed(3) + ")"
+          : "rgba(0,0,0," + (-st.light).toFixed(3) + ")");
+      }
+      tctx.save();
+      tctx.globalCompositeOperation = "source-atop";
+      tctx.fillStyle = grad;
+      tctx.fillRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+      tctx.restore();
+    }
+
+    // Soft-edged reveal mask applied with destination-in: "radial" grows from "origin" (default
+    // bounds centre); "organic" grows a noise-edged seed from the same origin (see
+    // organicRevealRadii); "wipe_right" / "wipe_left" / "wipe_down" / "wipe_up" travel in the
+    // named direction (see wipeFrontEdge).
+    function applyRevealMask(tctx, mode, progress, b, origin = null, organic = null) {
+      const p = clamp(progress, 0, 1);
+      if (!b || mode === "fade" || p >= 0.999) return;
+      if (mode === "organic") {
+        const cx = origin ? origin.x : (b.minX + b.maxX) / 2;
+        const cy = origin ? origin.y : (b.minY + b.maxY) / 2;
+        const R = Math.max(
+          Math.hypot(b.minX - cx, b.minY - cy), Math.hypot(b.maxX - cx, b.minY - cy),
+          Math.hypot(b.minX - cx, b.maxY - cy), Math.hypot(b.maxX - cx, b.maxY - cy), 1
+        );
+        // Feather of 10% of the front: the inner copies add alpha so the core reaches 1.
+        const radii = organicRevealRadii(p, R * 1.11, {
+          points: 120,
+          roughness: organic && organic.roughness != null ? organic.roughness : 0.22,
+          seed: organic && organic.seed != null ? organic.seed : 1,
+        });
+        const K = 6;
+        organicCtx.save();
+        organicCtx.clearRect(0, 0, W, H);
+        organicCtx.globalCompositeOperation = "lighter";
+        organicCtx.globalAlpha = 1 / K;
+        organicCtx.fillStyle = "#000";
+        for (let k = 0; k < K; k++) {
+          const sc = 1 - 0.1 * (k / (K - 1));
+          organicCtx.beginPath();
+          radii.forEach((r, i) => {
+            const th = (2 * Math.PI * i) / radii.length;
+            const x = cx + Math.cos(th) * r * sc;
+            const y = cy + Math.sin(th) * r * sc;
+            if (i === 0) organicCtx.moveTo(x, y); else organicCtx.lineTo(x, y);
+          });
+          organicCtx.closePath();
+          organicCtx.fill();
+        }
+        organicCtx.restore();
+        tctx.save();
+        tctx.globalCompositeOperation = "destination-in";
+        tctx.drawImage(organicCanvas, 0, 0);
+        tctx.restore();
+        return;
+      }
+      tctx.save();
+      tctx.globalCompositeOperation = "destination-in";
+      let grad = null;
+      if (mode === "radial") {
+        const cx = origin ? origin.x : (b.minX + b.maxX) / 2;
+        const cy = origin ? origin.y : (b.minY + b.maxY) / 2;
+        const R = Math.max(
+          Math.hypot(b.minX - cx, b.minY - cy), Math.hypot(b.maxX - cx, b.minY - cy),
+          Math.hypot(b.minX - cx, b.maxY - cy), Math.hypot(b.maxX - cx, b.maxY - cy), 1
+        );
+        const feather = 0.12 * R;
+        const r1 = Math.max(0.01, p * (R + feather));
+        grad = tctx.createRadialGradient(cx, cy, Math.max(0, r1 - feather), cx, cy, r1);
+      } else {
+        const { horiz, back, front } = wipeFrontEdge(mode, p, b);
+        grad = horiz ? tctx.createLinearGradient(back, 0, front, 0) : tctx.createLinearGradient(0, back, 0, front);
+      }
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      tctx.fillStyle = grad;
+      tctx.fillRect(0, 0, W, H);
+      tctx.restore();
+    }
+
     // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter/directional reveal + optional diagonal hatch & flash surge
-    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, revealAxis = null, revealProgress = 1.0, revealBounds = null, outlineOnly = false, perimeterProgress = 1.0, featherPx = 0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0 } = {}) {
+    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, revealAxis = null, revealProgress = 1.0, revealBounds = null, outlineOnly = false, perimeterProgress = 1.0, featherPx = 0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0, traced = false, traceProgress = 1.0, traceHeads = 2, traceStart = null, traceDir = "cw", traceHeadGlow = false, flagImg = null, flagAlpha = 1.0, flagBlend = "source-over", flagRotateDeg = 0, flagFit = "stretch", fillRevealMode = "fade", fillRevealOrigin = null, fillRevealOrganic = null, flagWave = null, time = 0 } = {}) {
       if (alpha <= 0.005 || !geom) return;
-      if (outlineOnly && perimeterProgress < 0.999) {
+      if (outlineOnly && perimeterProgress < 0.999 && !traced) {
         drawProgressiveGeomPerimeter(geom, perimeterProgress, { rimHex, rimWidth, bloomHex, bloomScale, alpha });
         return;
       }
+      if (traced && traceProgress <= 0.001 && fillReveal <= 0.005) return;
+      const needOuter = traced || Boolean(flagImg) || fillRevealMode !== "fade";
+      const ringsLL = needOuter ? outerRingsLngLat(geom) : [];
+      const ringsPx = needOuter ? ringsLL.map((r) => r.map((c) => map.project(c))) : [];
 
       // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
       maskCtx.clearRect(0, 0, W, H);
@@ -434,14 +596,41 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
       maskCtx.fill();
       maskCtx.stroke();
 
-      // 2. Build exterior-only rim ring into rimCanvas (8-12 direction dilation minus inner mask)
+      // 2. Build exterior-only rim ring into rimCanvas (8-12 direction dilation minus inner mask).
+      // Traced borders stroke the exterior and hole rings instead (partial while tracing, closed
+      // after), with the same band width, so the finished trace of one polygon matches its rim.
       rimCtx.clearRect(0, 0, W, H);
       rimCtx.globalCompositeOperation = "source-over";
-      const dirs = 12;
       const rw = Math.max(2.0, rimWidth);
-      for (let k = 0; k < dirs; k++) {
-        const ang = (k / dirs) * Math.PI * 2;
-        rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw);
+      let traceHeadsPx = [];
+      if (traced) {
+        if (traceProgress > 0.001) {
+          const holesLL = polygonRings(geom).inner;
+          const holesPx = holesLL.map((r) => r.map((c) => map.project(c)));
+          const paths = [
+            ...perimeterPartialPaths(ringsPx, traceProgress, borderTraceOptions(ringsLL, traceHeads, traceStart, traceDir)),
+            ...perimeterPartialPaths(holesPx, traceProgress, borderTraceOptions(holesLL, traceHeads, traceStart, traceDir)),
+          ];
+          rimCtx.strokeStyle = "#FFFFFF";
+          rimCtx.lineWidth = 2 * (rw + 1.75);
+          rimCtx.lineCap = "round";
+          rimCtx.lineJoin = "round";
+          rimCtx.beginPath();
+          for (const path of paths) {
+            if (path.length < 2) continue;
+            rimCtx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) rimCtx.lineTo(path[i].x, path[i].y);
+            if (traceProgress >= 1) rimCtx.closePath();
+          }
+          rimCtx.stroke();
+          if (traceProgress < 1) traceHeadsPx = paths.map((p) => p[p.length - 1]);
+        }
+      } else {
+        const dirs = 12;
+        for (let k = 0; k < dirs; k++) {
+          const ang = (k / dirs) * Math.PI * 2;
+          rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw);
+        }
       }
       rimCtx.globalCompositeOperation = "destination-out";
       rimCtx.drawImage(maskCanvas, 0, 0);
@@ -488,16 +677,48 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         ctx.globalAlpha = alpha * 0.92;
         ctx.drawImage(rimCanvas, 0, 0);
       }
+      // Optional soft glow dot riding each trace head
+      if (traceHeadGlow && traceHeadsPx.length) {
+        const glowHex = bloomHex || rimHex;
+        for (const hp of traceHeadsPx) {
+          const rad = rw * 6;
+          const g = ctx.createRadialGradient(hp.x, hp.y, 0, hp.x, hp.y, rad);
+          g.addColorStop(0, "rgba(255,255,255," + (0.9 * alpha).toFixed(3) + ")");
+          g.addColorStop(0.35, rgbaStr(glowHex, 0.55 * alpha));
+          g.addColorStop(1, rgbaStr(glowHex, 0));
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(hp.x, hp.y, rad, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.restore();
 
-      // 5. Terrain-preserving interior fill (single clean translucent pass so mountain ridges shine through)
+      // 5. Terrain-preserving interior fill (single clean translucent pass so mountain ridges shine through),
+      // or a flag raster cover-fitted to the territory and clipped to its silhouette.
       if (!outlineOnly && fillReveal > 0.005) {
+        // Landmass clusters: the one on screen sets the flag fit and the reveal origin and
+        // radius; remote parts (overseas regions, far islands) carry their own flag copy.
+        const clusters = needOuter ? ringClusters(ringsPx, { viewport: { w: W, h: H } }) : [];
+        const fillBounds = clusters.length ? clusters[0].bounds : null;
         rimCtx.clearRect(0, 0, W, H);
         rimCtx.globalCompositeOperation = "source-over";
-        rimCtx.drawImage(maskCanvas, 0, 0);
-        rimCtx.globalCompositeOperation = "source-in";
-        rimCtx.fillStyle = fillHex;
-        rimCtx.fillRect(0, 0, W, H);
+        if (flagImg && fillBounds) {
+          for (const cluster of clusters) {
+            drawFlagCover(rimCtx, flagImg, cluster.bounds, flagRotateDeg, flagFit);
+            if (flagWave) applyClothShade(rimCtx, cluster.bounds, flagWave, time);
+          }
+          rimCtx.globalCompositeOperation = "destination-in";
+          rimCtx.drawImage(maskCanvas, 0, 0);
+        } else {
+          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.globalCompositeOperation = "source-in";
+          rimCtx.fillStyle = fillHex;
+          rimCtx.fillRect(0, 0, W, H);
+        }
+        if (fillRevealMode !== "fade") {
+          applyRevealMask(rimCtx, fillRevealMode, fillReveal, fillBounds, fillRevealOrigin ? map.project(fillRevealOrigin) : null, fillRevealOrganic);
+        }
+        const revealAlpha = fillRevealMode === "fade" ? clamp(fillReveal, 0, 1) : 1;
 
         ctx.save();
         if (revealAxis && revealProgress < 0.999) {
@@ -506,8 +727,9 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
             return;
           }
         }
-        ctx.globalCompositeOperation = "source-over";
-        ctx.globalAlpha = alpha * fillAlpha * clamp(fillReveal, 0, 1);
+        const useFlag = Boolean(flagImg && fillBounds);
+        ctx.globalCompositeOperation = useFlag ? flagBlend : "source-over";
+        ctx.globalAlpha = alpha * (useFlag ? flagAlpha : fillAlpha) * revealAlpha;
         if (featherPx > 0) {
           ctx.shadowColor = fillHex;
           ctx.shadowBlur = featherPx;
@@ -1456,9 +1678,42 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
           const borderReveal = layer.border_draw_s
             ? easeOutCubic(seg(t, tStart + (layer.border_delay_s ?? 0), tStart + (layer.border_delay_s ?? 0) + layer.border_draw_s))
             : 1.0;
-          const fillReveal = layer.fill_draw_s
-            ? easeOutCubic(seg(t, tStart, tStart + layer.fill_draw_s))
-            : 1.0;
+          // Border trace: the exterior rim grows along the perimeter, then fill/flag enters.
+          const traceS = Number(layer.border_trace_s || 0);
+          const traced = traceS > 0;
+          const traceStartS = tStart + (layer.border_trace_delay_s ?? 0);
+          const traceEndS = traceStartS + traceS;
+          let traceProgress = 1.0;
+          if (traced) {
+            const u = seg(t, traceStartS, traceEndS);
+            const ease = layer.border_trace_ease || "linear";
+            traceProgress = ease === "in_out" ? easeInOutCubic(u) : ease === "out" ? easeOutCubic(u) : u;
+            const traceHex = layer.border_trace_hex || rimHex;
+            const traceWidth = layer.border_trace_width ?? rimWidth;
+            const settleS = layer.border_trace_settle_s ?? 0;
+            const settle = settleS > 0 ? easeInOutCubic(seg(t, traceEndS, traceEndS + settleS)) : (t >= traceEndS ? 1 : 0);
+            if (traceHex !== rimHex) rimHex = mixHex(traceHex, rimHex, settle);
+            rimWidth = lerp(traceWidth, rimWidth, settle);
+          }
+          const fillStartS = layer.fill_delay_s != null ? tStart + layer.fill_delay_s : (traced ? traceEndS : tStart);
+          const fillDrawS = layer.fill_draw_s ?? (traced ? 0.15 : 0);
+          const fillReveal = fillDrawS > 0
+            ? easeOutCubic(seg(t, fillStartS, fillStartS + fillDrawS))
+            : (t >= fillStartS - 1e-6 ? 1.0 : 0.0);
+          const flagCode = layer.flag_fill ? String(layer.flag_fill).toLowerCase() : null;
+          const flagImg = flagCode ? (window.__imgCache[BASE_URL + "/flags/" + flagCode + ".svg"] || null) : null;
+          const fillRevealMode = (flagCode ? layer.flag_reveal : null) || layer.fill_reveal_mode || "fade";
+          const blendMap = { normal: "source-over", multiply: "multiply", overlay: "overlay", "soft-light": "soft-light", screen: "screen" };
+          const flagBlend = blendMap[layer.flag_blend || "normal"] || "source-over";
+          const waveAmp = layer.flag_wave === true ? 0.22 : Number(layer.flag_wave) || 0;
+          const flagWave = waveAmp > 0
+            ? {
+                amplitude: waveAmp,
+                cycles: layer.flag_wave_cycles ?? 2.5,
+                speed: layer.flag_wave_speed ?? 0.5,
+                angleDeg: layer.flag_wave_angle_deg ?? 20,
+              }
+            : null;
           const revealProgress = layer.reveal_duration_s
             ? easeInOutCubic(seg(t, tStart + (layer.reveal_delay_s ?? 0), tStart + (layer.reveal_delay_s ?? 0) + layer.reveal_duration_s))
             : 1.0;
@@ -1478,8 +1733,24 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
               }
             }
           }
-          if (layer.dissolve) {
+          if (layer.dissolve || traced || flagCode) {
             drawDissolvedPolygon(geom, {
+              traced,
+              traceProgress,
+              traceHeads: layer.border_trace_heads ?? 2,
+              traceStart: layer.border_trace_start || null,
+              traceDir: layer.border_trace_dir || "cw",
+              traceHeadGlow: Boolean(layer.border_trace_head_glow),
+              flagImg,
+              flagAlpha: layer.flag_alpha ?? 1.0,
+              flagBlend,
+              flagRotateDeg: layer.flag_rotate_deg ?? 0,
+              flagFit: layer.flag_fit === "cover" ? "cover" : "stretch",
+              fillRevealMode,
+              fillRevealOrigin: layer.fill_reveal_origin || null,
+              fillRevealOrganic: { roughness: layer.fill_reveal_roughness ?? 0.22, seed: layer.fill_reveal_seed ?? 1 },
+              flagWave,
+              time: t,
               fillHex,
               fillAlpha,
               rimHex,
@@ -1508,15 +1779,24 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         } else if (layer.type === "route") {
           let coords = resolveGeom(layer.coords_ref) || layer.coords || [];
           if (layer.reverse) coords = [...coords].reverse();
-          const prog = layer.draw_duration_s
-            ? easeOutCubic(seg(t, tStart, tStart + layer.draw_duration_s))
-            : 1;
+          // Routes draw on by default (0.9 s); "instant: true" shows the whole line at once.
+          const drawS = layer.instant === true ? 0 : (layer.draw_duration_s ?? 0.9);
+          const drawFrom = tStart + (layer.draw_delay_s ?? 0);
+          const drawEase = layer.draw_ease === "linear" ? (x) => x : layer.draw_ease === "in_out" ? easeInOutCubic : easeOutCubic;
+          const prog = drawS > 0 ? drawEase(seg(t, drawFrom, drawFrom + drawS)) : 1;
+          // Optional world-space width: doubles per zoom level above "width_ref_zoom" (coupling 1).
+          const baseWidth = layer.width || 8;
+          const widthPx = scaledWidth(
+            baseWidth, map.getZoom(), layer.width_ref_zoom ?? null, layer.width_coupling ?? 1.0,
+            layer.width_min_scale ?? 0.4, layer.width_max_scale ?? 6
+          );
+          const dash = layer.dash ? layer.dash.map((d) => d * (widthPx / baseWidth)) : null;
           drawPartialRoute(coords, prog, {
             color: layer.color || "#FDE047",
             bloom: layer.bloom || "#F5C542",
             core: layer.core ?? "#FFFFFF",
-            width: layer.width || 8,
-            dash: layer.dash || null,
+            width: widthPx,
+            dash,
             alpha: baseAlpha,
           });
           if (layer.beacon_coord) {
@@ -2468,6 +2748,43 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     window.__endShutterAccum = function() {
       compCanvas.style.display = "none";
     };
+
+    // Radial zoom blur around the frame centre for act cuts. Reads the shutter
+    // composite when one is showing, otherwise the map and overlay canvases with the
+    // current roll, then averages scaled copies from 1 to 1 + amount into the
+    // composite canvas. The caller hides the composite after capture.
+    const cutBlurSrc = document.createElement("canvas");
+    cutBlurSrc.width = W; cutBlurSrc.height = H;
+    const cutBlurSrcCtx = cutBlurSrc.getContext("2d");
+    window.__cutBlurComposite = function(amount, copies) {
+      cutBlurSrcCtx.save();
+      cutBlurSrcCtx.clearRect(0, 0, W, H);
+      if (compCanvas.style.display === "block") {
+        cutBlurSrcCtx.drawImage(compCanvas, 0, 0, W, H);
+      } else {
+        if (Math.abs(window.__currentRoll || 0) > 0.01) {
+          const sc = computeRollOverscan(window.__currentRoll);
+          cutBlurSrcCtx.translate(W * 0.5, H * 0.5);
+          cutBlurSrcCtx.rotate((window.__currentRoll * Math.PI) / 180);
+          cutBlurSrcCtx.scale(sc, sc);
+          cutBlurSrcCtx.translate(-W * 0.5, -H * 0.5);
+        }
+        cutBlurSrcCtx.drawImage(map.getCanvas(), 0, 0, W, H);
+        cutBlurSrcCtx.drawImage(ovCanvas, 0, 0, W, H);
+      }
+      cutBlurSrcCtx.restore();
+      const n = Math.max(2, Math.min(24, Math.round(copies) || 12));
+      compCanvas.style.display = "block";
+      compCtx.save();
+      compCtx.clearRect(0, 0, W, H);
+      for (let k = 0; k < n; k++) {
+        const sc = 1 + amount * (k / (n - 1));
+        compCtx.globalAlpha = 1 / (k + 1);
+        compCtx.setTransform(sc, 0, 0, sc, W * 0.5 * (1 - sc), H * 0.5 * (1 - sc));
+        compCtx.drawImage(cutBlurSrc, 0, 0, W, H);
+      }
+      compCtx.restore();
+    };
   </script>
 </body>
 </html>`;
@@ -2765,11 +3082,25 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         if (layer.type === "flag_pin" && layer.code) {
           preloadUrls.push(`${baseUrl}/flags/${String(layer.code).toLowerCase()}.svg`);
         }
+        if (layer.type === "polygon" && layer.flag_fill) {
+          preloadUrls.push(`${baseUrl}/flags/${String(layer.flag_fill).toLowerCase()}.svg`);
+        }
       }
       if (preloadUrls.length > 0) {
         await page.evaluate((urls) => window.__preloadAssets(urls), preloadUrls);
+        const missing = await page.evaluate((urls) => urls.filter((u) => !window.__imgCache[u]), [...new Set(preloadUrls)]);
+        for (const u of missing) {
+          console.warn(`  [${act.act_id}] warning: flag asset not found (${u.split("/").pop()}); layer falls back to its colour fill`);
+        }
       }
-      const enableShutter = act.optical_shutter_blur !== false;
+      // Sub-frame shutter accumulation is opt-in: reference shorts keep every frame crisp.
+      const enableShutter = act.optical_shutter_blur === true;
+      // Radial zoom blur that peaks on the act's first and/or last frame (cut accents).
+      const cutBlurIn = Number(act.cut_blur_in_s) || 0;
+      const cutBlurOut = Number(act.cut_blur_out_s) || 0;
+      const cutBlurStrength = act.cut_blur_strength ?? 0.12;
+      const IDLE_WAIT_MS = 6000;
+      let pendingFrames = 0;
 
       // Pre-warm tiles across act timeline
       for (let f = 0; f < totalFrames; f += Math.max(15, Math.floor(totalFrames / 8))) {
@@ -2780,25 +3111,34 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
 
       for (let f = 0; f < totalFrames; f++) {
         const cam = sampleCameraAt(samples, f, 0);
-        const subN = enableShutter ? Math.min(5, Math.max(1, cam.shutter_samples || 1)) : 1;
+        const subN = enableShutter ? Math.min(16, Math.max(1, cam.shutter_samples || 1)) : 1;
+        const blurAmt = cutBlurAmount(f, totalFrames, fps, cutBlurIn, cutBlurOut, cutBlurStrength);
+        const applyCutBlur = async () => {
+          if (blurAmt > 0.002) await page.evaluate((a) => window.__cutBlurComposite(a, 12), blurAmt);
+        };
         if (subN > 1 && f > 0) {
+          let pending = false;
           await page.evaluate(() => window.__beginShutterAccum());
           for (let k = 0; k < subN; k++) {
             const subOff = -0.5 + (k / (subN - 1)) * 0.5;
             const subCam = sampleCameraAt(samples, f, subOff);
             const subT = Math.max(0, (f + subOff) / fps);
             await page.evaluate((c) => window.__setSceneCamera(c), subCam);
-            await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+            pending = (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) || pending;
             await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, subT]);
             await page.evaluate((idx) => window.__accumSubframe(idx), k);
           }
+          if (pending) pendingFrames++;
+          await applyCutBlur();
           await encoder.writeFrame(await shotter.captureJpegBuffer());
           await page.evaluate(() => window.__endShutterAccum());
         } else {
           await page.evaluate((c) => window.__setSceneCamera(c), cam);
-          await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+          if (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) pendingFrames++;
           await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, f / fps]);
+          await applyCutBlur();
           await encoder.writeFrame(await shotter.captureJpegBuffer());
+          if (blurAmt > 0.002) await page.evaluate(() => window.__endShutterAccum());
         }
         if (act.export_camera_track) {
           trackLog.push({ frame: f, t: Number((f / fps).toFixed(4)), ...cam });
@@ -2807,6 +3147,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
       }
+      console.log(`  [${act.act_id}] frames captured with tiles still pending: ${pendingFrames}`);
       if (act.export_camera_track) {
         writeFileSync(join(outDir, `${act.act_id}_camera_track.json`), JSON.stringify(trackLog));
       }
@@ -2820,6 +3161,44 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
     }
   }
   await encoder.finish();
+}
+
+/**
+ * Coverage pass for one map act: step the camera over every 2nd frame (plus the last), waiting
+ * for tiles, without drawing overlays or capturing frames. The tile server records every raster
+ * tile it had to synthesise from an upscaled ancestor.
+ */
+async function coverageAct(browser, baseUrl, vectorsJson, width, height, act) {
+  const actKind = act.kind || act.mode || act.type || "map";
+  if (actKind === "blueprint_paper") return;
+  const fps = 30;
+  const samples = act.camera_samples || [];
+  const totalFrames = Math.max(1, samples.length || Math.round((act.duration_s || 1) * fps));
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    await page.setContent(
+      buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
+        tile_source: act.tile_source || "hybrid",
+        projection: act.projection || "mercator",
+        terrain_3d: Boolean(act.terrain_3d),
+        terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
+        dem_maxzoom: act.dem_maxzoom ?? 10,
+        allow_world_void: Boolean(act.allow_world_void),
+      }),
+      { waitUntil: "load" }
+    );
+    await page.evaluate(() => window.__ready);
+    const frames = [];
+    for (let f = 0; f < totalFrames; f += 2) frames.push(f);
+    if (frames[frames.length - 1] !== totalFrames - 1) frames.push(totalFrames - 1);
+    for (const f of frames) {
+      await page.evaluate((c) => window.__setSceneCamera(c), sampleCameraAt(samples, f, 0));
+      await page.evaluate((ms) => window.__waitIdle(ms), 6000);
+    }
+  } finally {
+    await page.close();
+  }
 }
 
 async function main() {
@@ -2864,7 +3243,13 @@ async function main() {
   }
   const vectorsJson = JSON.stringify(vectorsObj);
 
-  const server = await startTileServer(0);
+  // `--coverage-out <file>` (optionally with `--coverage-only`) lists ancestor-served tiles
+  // (z <= 16) as {"tiles": [[z, x, y], ...], "by_route": {route: [[z, x, y], ...]}} instead of baking.
+  const coverageOut = typeof args["coverage-out"] === "string" ? resolve(args["coverage-out"]) : null;
+  if (args["coverage-only"] && !coverageOut) {
+    throw new Error("--coverage-only requires --coverage-out <file>");
+  }
+  const server = await startTileServer(0, "127.0.0.1", { recordGaps: Boolean(coverageOut) });
   const url = `http://127.0.0.1:${server.address().port}`;
   const browser = await puppeteer.launch({
     executablePath: resolveChrome(),
@@ -2873,11 +3258,21 @@ async function main() {
   });
   try {
     for (const act of spec.acts || []) {
-      await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir);
+      if (coverageOut) {
+        await coverageAct(browser, url, vectorsJson, width, height, act);
+      } else {
+        await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir);
+      }
     }
   } finally {
     await browser.close();
     server.close();
+  }
+  if (coverageOut) {
+    const report = coverageReport(server.tileGaps);
+    writeFileSync(coverageOut, JSON.stringify(report));
+    console.log(`Coverage pass complete: ${report.tiles.length} tiles served from an upscaled ancestor -> ${coverageOut}`);
+    return;
   }
   console.log("Declarative map scene bake complete.");
 }

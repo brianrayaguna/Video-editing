@@ -815,11 +815,14 @@
     },
     {
       "criterion_id": "camera_smoothness",
-      "question": "Across consecutive sheet frames, does the camera move in one purposeful direction per beat without wobble, and does the subject stay in the middle 60 % of the frame?",
+      "question": "Across consecutive sheet frames, does the camera move in one purposeful direction per beat without wobble, arrive at each framing without a velocity corner, keep map frames sharp at every speed, and keep the subject in the middle 60 % of the frame?",
       "weight": 0.8,
       "fail_signs": [
         "subject drifting to the edge",
-        "back-and-forth framing between adjacent frames"
+        "back-and-forth framing between adjacent frames",
+        "camera starting or stopping abruptly inside a beat",
+        "smeared or ghosted map frames during an ordinary move",
+        "tiles sharpening mid-move or blurry upscaled tiles on a held frame"
       ]
     },
     {
@@ -839,6 +842,17 @@
         "boxed captions",
         "glow on everything",
         "generic interface chrome"
+      ]
+    },
+    {
+      "criterion_id": "territory_reveal",
+      "question": "When a territory or border is introduced, does its outline draw on along the real perimeter before the fill or flag appears, with the finished outline matching the static rim? Score 1 when the film introduces no territory.",
+      "weight": 0.6,
+      "fail_signs": [
+        "outline appearing whole in one frame",
+        "fill or flag visible before the outline closes",
+        "flag rendered sideways, cropped to one edge, or spilling past the coast without intent",
+        "rim jumping in width or colour when the trace completes"
       ]
     }
   ]

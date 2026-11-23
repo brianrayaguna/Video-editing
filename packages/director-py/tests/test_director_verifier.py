@@ -446,6 +446,9 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
         words = str(cap.props.get("text", "")).split()
         assert 1 <= len(words) <= max_words
         assert cap.props.get("caption_style") == "plain"
+        # Captions fade in over a few frames and cut out hard.
+        assert cap.props.get("caption_fade_in_ms") == 130
+        assert cap.props.get("caption_fade_out_ms") == 0
     assert not any(ov.template_id == "amber_fact_card" for ov in plan_9x16.overlay_compositions)
 
     # On 16:9, amber_fact_card is eligible for numeric phrases and keeps amber ground/ink tokens.

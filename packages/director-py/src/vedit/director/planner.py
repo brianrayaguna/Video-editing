@@ -389,6 +389,10 @@ def _build_overlays(
                 "pattern": "clean_caption_rail",
                 **motion,
             }
+            if typo.caption_fade_in_ms is not None:
+                caption_props["caption_fade_in_ms"] = typo.caption_fade_in_ms
+            if typo.caption_fade_out_ms is not None:
+                caption_props["caption_fade_out_ms"] = typo.caption_fade_out_ms
             if caption_path:
                 caption_props["composition_path"] = caption_path
             overlays.append(

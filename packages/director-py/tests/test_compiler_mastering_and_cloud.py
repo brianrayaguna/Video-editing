@@ -734,6 +734,30 @@ def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
     assert "\\blur12" in glow_layer and "\\1c&H42C5F5&" in glow_layer
     assert "\\fad(140,140)" in glow_layer
 
+    asym_ass = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="cap_asym",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    **base,
+                    "caption_transition_ms": 140,
+                    "caption_fade_in_ms": 130,
+                    "caption_fade_out_ms": 0,
+                },
+            )
+        ],
+        target,
+        tmp_path / "asym.ass",
+    ).read_text(encoding="utf-8")
+    asym_lines = [ln for ln in asym_ass.splitlines() if ln.startswith("Dialogue:")]
+    assert asym_lines and all("\\fad(130,0)" in ln for ln in asym_lines)
+
 
 def test_ffmpeg_xfade_preserves_timeline_duration_and_ssim_fallback(tmp_path: Path) -> None:
     shorts_target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
@@ -845,6 +869,181 @@ def test_ffmpeg_xfade_preserves_timeline_duration_and_ssim_fallback(tmp_path: Pa
         audit.metrics.get("ssim") is not None
         or audit.metrics.get("vmaf_score") is not None
     )
+
+
+def test_xfade_spec_maps_named_transitions() -> None:
+    from vedit.mastering.ffmpeg_master import _xfade_spec
+
+    assert _xfade_spec("hard_cut") is None
+    assert _xfade_spec("not_a_transition") is None
+    zoom = _xfade_spec("whip_zoom_blur")
+    assert zoom is not None and zoom[0] == "zoomin"
+    disc = _xfade_spec("disc_sweep")
+    assert disc is not None
+    assert disc[0].startswith("custom:expr=")
+    assert disc[2] == "gbrp"
+    assert 0.15 <= disc[1] <= 0.25
+    fade = _xfade_spec(" Clean_Crossfade ")
+    assert fade is not None and fade[0] == "fade" and fade[2] == ""
+
+
+def _frame_luma(path: Path, t_s: float) -> tuple[float, int]:
+    """Mean and max luma of one frame, nearest-neighbour downscaled to keep thin streaks."""
+    proc = subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-ss", f"{t_s:.4f}", "-i", str(path),
+            "-frames:v", "1", "-vf", "scale=270:480:flags=neighbor,format=gray",
+            "-f", "rawvideo", "-",
+        ],
+        capture_output=True,
+        check=True,
+    )
+    data = proc.stdout
+    return sum(data) / max(1, len(data)), max(data)
+
+
+def _disc_sweep_frames(
+    first: str, size: str, frames: tuple[int, int], threads: int = 8
+) -> list[bytes]:
+    from vedit.mastering.ffmpeg_master import _xfade_spec
+
+    spec = _xfade_spec("disc_sweep")
+    assert spec is not None
+    w, h = (int(v) for v in size.split("x"))
+    graph = (
+        "[0]format=gbrp[a];[1]format=gbrp[b];"
+        f"[a][b]xfade=transition={spec[0]}:duration=0.2:offset=0.4,"
+        f"select='between(n\\,{frames[0]}\\,{frames[1]})',format=gray"
+    )
+    count = frames[1] - frames[0] + 1
+    proc = subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-filter_complex_threads", str(threads),
+            "-f", "lavfi", "-i", f"{first}{':' if '=' in first else '='}s={size}:r=30:d=1",
+            "-f", "lavfi", "-i", f"color=c=white:s={size}:r=30:d=1",
+            "-filter_complex", graph, "-fps_mode", "passthrough",
+            "-frames:v", str(count), "-f", "rawvideo", "-",
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return [proc.stdout[i * w * h : (i + 1) * w * h] for i in range(count)]
+
+
+def test_disc_sweep_follows_measured_black_profile() -> None:
+    """Six-frame sweep on a 9:16 frame: black fraction per frame as measured on the
+    reference register swap, fully black on the middle frame, entering from the right."""
+    measured = [0.13, 0.59, 0.99, 0.8, 0.26, 0.0]
+    w, h = 108, 192
+    frames = _disc_sweep_frames("color=c=white", f"{w}x{h}", (13, 18))
+    fractions = [sum(1 for v in f if v < 128) / (w * h) for f in frames]
+    for got, want in zip(fractions, measured, strict=True):
+        assert abs(got - want) <= 0.15, (fractions, measured)
+    assert fractions[2] >= 0.995, fractions
+    entering = frames[0]
+    right = sum(1 for y in range(h) for x in range(w // 2, w) if entering[y * w + x] < 128)
+    left = sum(1 for y in range(h) for x in range(0, w // 2) if entering[y * w + x] < 128)
+    assert right > 0 and left == 0, (left, right)
+
+
+def test_disc_sweep_expression_is_thread_safe() -> None:
+    """Slice threads share expression registers, so the expression must not use st()/ld()."""
+    (frame,) = _disc_sweep_frames("testsrc2", "540x960", (14, 14))
+
+    def region(xs: range) -> list[int]:
+        return [frame[y * 540 + x] for y in range(300, 660) for x in xs]
+
+    # Two frames in, the solid core of the disc covers x >= 160 across this band while
+    # the outgoing clip still shows at the left edge.
+    covered = region(range(160, 540))
+    assert max(covered) <= 8, f"{sum(1 for v in covered if v > 8)} pixels leak through the disc"
+    assert sum(region(range(0, 40))) / (40 * 360) > 40
+
+
+def test_disc_sweep_transition_dips_to_black_mid_cut(tmp_path: Path) -> None:
+    shorts_target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    src_a = tmp_path / "a.mp4"
+    src_b = tmp_path / "b.mp4"
+    mix_wav = tmp_path / "mix.wav"
+    _synth_video(src_a, duration_s=2.0, color="0xD8D8D8")
+    _synth_video(src_b, duration_s=2.0, color="0x9090C8")
+    _synth_audio(mix_wav, freq_hz=330, duration_s=3.0)
+
+    def asset(asset_id: str, path: Path, kind: str, dur: float, audio: bool) -> AssetRef:
+        return AssetRef(
+            asset_id=asset_id,
+            sha256=hash_media(path)["sha256"],
+            kind=kind,
+            path=str(path),
+            duration_s=dur,
+            has_audio=audio,
+        )
+
+    plan = EditPlan(
+        schema_version="1.0",
+        job_id="disc_sweep_test",
+        project_id="proj_disc",
+        brand_id="geoverum",
+        platform_target_id=shorts_target.platform_id,
+        render_strategy="hybrid",
+        duration_s=3.0,
+        fps=shorts_target.fps,
+        width=shorts_target.width,
+        height=shorts_target.height,
+        assets=[
+            asset("va", src_a, "video", 2.0, False),
+            asset("vb", src_b, "video", 2.0, False),
+            asset("am", mix_wav, "audio_speech", 3.0, True),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="va",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.5,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                reframed_to_target=True,
+            ),
+            VideoClipOp(
+                clip_id="c2",
+                asset_id="vb",
+                timeline_start_s=1.5,
+                timeline_duration_s=1.5,
+                source_start_s=0.0,
+                role="b_roll",
+                content_type="map",
+                reframed_to_target=True,
+                transition_in="disc_sweep",
+            ),
+        ],
+        overlay_compositions=[],
+        audio_tracks=[
+            AudioTrackOp(
+                track_id="mix",
+                asset_id="am",
+                audio_group="program_mix",
+                timeline_start_s=0.0,
+                timeline_duration_s=3.0,
+                source_start_s=0.0,
+                gain_db=0.0,
+                cleaned_speech_stem=True,
+            )
+        ],
+        verifier_passed=True,
+    )
+    out_mp4 = tmp_path / "master_disc.mp4"
+    assemble_hybrid_deliverable(plan, shorts_target, out_mp4, encode_preset="veryfast")
+    before, _ = _frame_luma(out_mp4, 1.2)
+    middle, middle_max = _frame_luma(out_mp4, 1.6)
+    after, _ = _frame_luma(out_mp4, 2.3)
+    assert before > 170, before
+    assert middle < 40, middle
+    assert middle_max < 60, f"streaks inside the disc (max luma {middle_max})"
+    assert 100 < after < 170, after
+    audit = audit_mastered_deliverable(out_mp4, shorts_target, reference_path=out_mp4)
+    assert abs(audit.metrics["video_duration_s"] - 3.0) < 0.15
 
 
 def test_audio_sidechain_pads_vo_and_qc_fails_on_silent_audio(tmp_path: Path) -> None:

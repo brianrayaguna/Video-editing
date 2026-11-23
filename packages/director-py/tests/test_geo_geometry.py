@@ -11,6 +11,7 @@ from vedit.cli.geo import (
     build_geoverum_ass_captions,
     derive_sfx_events_from_scene,
     filter_polygons_by_bbox,
+    hq_tile_urls,
     split_polygon_by_longitude,
     synthesize_documentary_bgm,
     validate_map_scene,
@@ -76,13 +77,20 @@ def test_render_map_scene_contains_atmospheric_and_demographic_primitives() -> N
     node_bin = shutil.which("node")
     if node_bin:
         mjs_path = str(repo / "tools" / "geo-assets" / "render_map_scene.mjs")
+        math_path = str(repo / "tools" / "geo-assets" / "map_draw_math.mjs")
+        # The page builder reads two module-level constants: the inlined draw-math source
+        # (export keywords stripped, as the module does) and the flag raster width.
         check_js = (
             'const fs = require("fs");'
             f'const src = fs.readFileSync({mjs_path!r}, "utf8");'
+            f'const mathSrc = fs.readFileSync({math_path!r}, "utf8")'
+            r'.replace(/^export\s+/gm, "");'
+            r"const flagWidth = Number(src.match(/const FLAG_RASTER_WIDTH = (\d+)/)[1]);"
             r"const m = src.match(/function buildMapSceneHtml[\s\S]*?\n\}\n/);"
-            'const fn = new Function(m[0] + "\\nreturn buildMapSceneHtml('
+            'const fn = new Function("DRAW_MATH_SRC", "FLAG_RASTER_WIDTH", '
+            'm[0] + "\\nreturn buildMapSceneHtml('
             '\\"http://x\\", 1080, 1920, \\"{}\\", {});");'
-            r"const script = fn().match(/<script>([\s\S]*?)<\/script>/)[1];"
+            r"const script = fn(mathSrc, flagWidth).match(/<script>([\s\S]*?)<\/script>/)[1];"
             "new Function(script);"
         )
         proc = subprocess.run(
@@ -128,6 +136,62 @@ def test_validate_map_scene_rejects_slop_microtext_and_blurry_closeups(tmp_path:
     assert "font_px=22" in joined
     assert "Sentinel-2 'graded'" in joined
     assert "camera_keyframes" in joined
+
+
+def test_hq_tile_urls_prefer_open_orthoimagery_then_sentinel2() -> None:
+    mid = hq_tile_urls(14, 3090, 6428)
+    assert len(mid) == 2
+    assert "nationalmap.gov" in mid[0]
+    assert "s2cloudless" in mid[1]
+    assert mid[1].endswith("/14/6428/3090.jpg")
+    deep = hq_tile_urls(16, 12360, 25712)
+    assert len(deep) == 1 and "nationalmap.gov" in deep[0]
+    assert hq_tile_urls(17, 24721, 51425) == []
+    low = hq_tile_urls(8, 97, 43)
+    assert len(low) == 1 and "s2cloudless" in low[0]
+
+
+def _closeup_scene(zoom: float) -> dict:
+    return {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "acts": [
+            {
+                "act_id": "closeup",
+                "type": "map",
+                "duration_s": 4.0,
+                "tile_source": "hybrid",
+                "camera_keyframes": [
+                    {"t": 0.0, "center": [-5.35, 36.14], "zoom": zoom, "pitch": 20.0},
+                    {"t": 4.0, "center": [-5.35, 36.14], "zoom": zoom, "pitch": 24.0},
+                ],
+                "layers": [],
+            }
+        ],
+    }
+
+
+def _touch_hq_tile(root: Path, lng: float, lat: float, z: int) -> None:
+    from vedit.cli.geo import _deg2num
+
+    x, y = _deg2num(lat, lng, z)
+    tile = root / "assets" / "geo" / "tiles_hq" / str(z) / str(x) / f"{y}.jpg"
+    tile.parent.mkdir(parents=True, exist_ok=True)
+    tile.write_bytes(b"\xff" * 128)
+
+
+def test_validate_map_scene_warns_when_closeup_exceeds_sentinel2_native_zoom(
+    tmp_path: Path,
+) -> None:
+    _touch_hq_tile(tmp_path, -5.35, 36.14, 14)
+    report = validate_map_scene(_closeup_scene(16.0), repo_root=tmp_path)
+    assert report["ok"] is True
+    assert any("native zoom" in w for w in report["warnings"])
+
+    _touch_hq_tile(tmp_path, -5.35, 36.14, 15)
+    sharp = validate_map_scene(_closeup_scene(16.0), repo_root=tmp_path)
+    assert not any("native zoom" in w for w in sharp["warnings"])
 
 
 def test_validate_map_scene_accepts_clean_3d_scene() -> None:
@@ -188,7 +252,18 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert "0:00:60.00" not in edge_ass
     assert "0:01:00.00,0:01:01.00" in edge_ass
     assert r"\{tag\}" in edge_ass
-    assert r"\N" not in edge_ass.split("{\\fad(80,80)}", 1)[1]
+    assert r"\N" not in edge_ass.split("{\\fad(130,0)}", 1)[1]
+
+
+def test_build_geoverum_ass_captions_fades_in_and_cuts_out() -> None:
+    seg = {"segments": [{"start": 0.0, "end": 1.0, "text": "Garis batas"}]}
+    assert "{\\fad(130,0)}Garis batas" in build_geoverum_ass_captions(seg)
+    custom = build_geoverum_ass_captions(seg, fade_in_ms=100, fade_out_ms=60)
+    assert "{\\fad(100,60)}Garis batas" in custom
+    clamped = build_geoverum_ass_captions(seg, fade_in_ms=900, fade_out_ms=-5)
+    assert "{\\fad(200,0)}Garis batas" in clamped
+    plain = build_geoverum_ass_captions(seg, fade_in_ms=0, fade_out_ms=0)
+    assert "\\fad" not in plain and ",,Garis batas" in plain
 
 
 def test_map_plane_jacobian_has_near_plane_determinant_guard() -> None:
@@ -231,3 +306,318 @@ def test_derive_sfx_events_and_synthesize_bgm(tmp_path: Path) -> None:
         assert wf.getnchannels() == 2
         assert wf.getframerate() == 48000
         assert wf.getnframes() == 48000
+
+
+def test_tile_list_parsing(tmp_path: Path) -> None:
+    import json
+
+    import pytest
+
+    from vedit.cli.geo import parse_tile_list
+
+    good = tmp_path / "coverage.json"
+    good.write_text(json.dumps({"tiles": [[13, 1, 2], [5, 3, 4], [13, 1, 2]]}), encoding="utf-8")
+    assert parse_tile_list(good) == {(13, 1, 2), (5, 3, 4)}
+
+    for bad_rows in ([[13, 1]], [["a", 1, 2]], [[3, 9, 0]], [[-1, 0, 0]], [[23, 0, 0]], "x"):
+        bad = tmp_path / "bad.json"
+        bad.write_text(json.dumps({"tiles": bad_rows}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            parse_tile_list(bad)
+    missing_key = tmp_path / "nokey.json"
+    missing_key.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError):
+        parse_tile_list(missing_key)
+
+
+def test_validate_scene_flag_fill_and_trace(tmp_path: Path) -> None:
+    flags = tmp_path / "assets" / "geo" / "flags"
+    flags.mkdir(parents=True)
+    (flags / "se.svg").write_text("<svg/>", encoding="utf-8")
+
+    def scene(*layers: dict) -> dict:
+        return {
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "acts": [
+                {
+                    "act_id": "trace_act",
+                    "type": "map",
+                    "duration_s": 4.0,
+                    "tile_source": "hybrid",
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [18.0, 60.0], "zoom": 5.0},
+                        {"t": 4.0, "center": [18.0, 60.0], "zoom": 5.4},
+                    ],
+                    "layers": list(layers),
+                }
+            ],
+        }
+
+    good = validate_map_scene(
+        scene(
+            {"type": "polygon", "geom_ref": "se", "flag_fill": "SE", "flag_reveal": "radial"},
+            {
+                "type": "polygon",
+                "geom_ref": "fi",
+                "border_trace_s": 1.5,
+                "border_trace_delay_s": 1.0,
+            },
+        ),
+        repo_root=tmp_path,
+    )
+    assert good["ok"] is True, good["errors"]
+    assert not any("border_trace" in w for w in good["warnings"])
+
+    missing = validate_map_scene(
+        scene({"type": "polygon", "geom_ref": "x", "flag_fill": "qq"}), repo_root=tmp_path
+    )
+    assert missing["ok"] is False
+    assert any("flag_fill 'qq'" in e for e in missing["errors"])
+
+    traversal = validate_map_scene(
+        scene({"type": "polygon", "geom_ref": "x", "flag_fill": "../se"}), repo_root=tmp_path
+    )
+    assert traversal["ok"] is False
+
+    long_trace = validate_map_scene(
+        scene(
+            {
+                "type": "polygon",
+                "geom_ref": "x",
+                "border_trace_s": 3.5,
+                "border_trace_delay_s": 1.0,
+            }
+        ),
+        repo_root=tmp_path,
+    )
+    assert long_trace["ok"] is True
+    assert any("border_trace" in w and "4.50" in w for w in long_trace["warnings"])
+
+    bad_enums = validate_map_scene(
+        scene(
+            {
+                "type": "polygon",
+                "geom_ref": "se",
+                "flag_fill": "se",
+                "flag_reveal": "spiral",
+                "flag_blend": "darken",
+                "flag_fit": "contain",
+                "border_trace_s": 1.0,
+                "border_trace_ease": "bounce",
+                "border_trace_dir": "left",
+                "border_trace_heads": 3,
+            }
+        ),
+        repo_root=tmp_path,
+    )
+    joined = "\n".join(bad_enums["errors"])
+    for key in (
+        "flag_reveal",
+        "flag_blend",
+        "flag_fit",
+        "border_trace_ease",
+        "border_trace_dir",
+        "border_trace_heads",
+    ):
+        assert key in joined, key
+
+
+def test_validate_scene_cut_blur_keys() -> None:
+    def scene(**act_keys: object) -> dict:
+        act = {
+            "act_id": "cut_act",
+            "type": "map",
+            "duration_s": 4.0,
+            "tile_source": "hybrid",
+            "camera_keyframes": [
+                {"t": 0.0, "center": [18.0, 60.0], "zoom": 5.0},
+                {"t": 4.0, "center": [18.0, 60.0], "zoom": 5.4},
+            ],
+            "layers": [],
+        }
+        act.update(act_keys)
+        return {"width": 1080, "height": 1920, "fps": 30, "acts": [act]}
+
+    good = validate_map_scene(
+        scene(cut_blur_in_s=0.4, cut_blur_out_s=0.3, cut_blur_strength=0.15)
+    )
+    assert good["ok"], good["errors"]
+    assert not [w for w in good["warnings"] if "cut_blur" in w]
+
+    strong = validate_map_scene(scene(cut_blur_in_s=0.4, cut_blur_strength=0.6))
+    assert not strong["ok"]
+    assert any("cut_blur_strength" in e for e in strong["errors"])
+
+    negative = validate_map_scene(scene(cut_blur_in_s=-0.1))
+    assert any("cut_blur_in_s" in e for e in negative["errors"])
+
+    text = validate_map_scene(scene(cut_blur_out_s="abc"))
+    assert any("cut_blur_out_s" in e for e in text["errors"])
+
+    overlap = validate_map_scene(scene(cut_blur_in_s=3.0, cut_blur_out_s=2.0))
+    assert overlap["ok"], overlap["errors"]
+    assert any("cut_blur" in w and "4.00" in w for w in overlap["warnings"])
+
+
+def test_validate_scene_flag_wave_and_organic_reveal(tmp_path: Path) -> None:
+    flags = tmp_path / "assets" / "geo" / "flags"
+    flags.mkdir(parents=True)
+    (flags / "se.svg").write_text("<svg/>", encoding="utf-8")
+
+    def scene(**layer_keys: object) -> dict:
+        layer = {"type": "polygon", "geom_ref": "se", "flag_fill": "se"}
+        layer.update(layer_keys)
+        return {
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "acts": [
+                {
+                    "act_id": "wave_act",
+                    "type": "map",
+                    "duration_s": 3.0,
+                    "tile_source": "hybrid",
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [18.0, 60.0], "zoom": 5.0},
+                        {"t": 3.0, "center": [18.0, 60.0], "zoom": 5.2},
+                    ],
+                    "layers": [layer],
+                }
+            ],
+        }
+
+    good = validate_map_scene(
+        scene(
+            flag_reveal="organic",
+            flag_wave=0.2,
+            flag_wave_speed=0.6,
+            flag_wave_cycles=3,
+            flag_wave_angle_deg=15,
+            fill_reveal_roughness=0.3,
+            fill_reveal_seed=4,
+        ),
+        repo_root=tmp_path,
+    )
+    assert good["ok"], good["errors"]
+    assert validate_map_scene(scene(flag_wave=True), repo_root=tmp_path)["ok"]
+    assert validate_map_scene(scene(fill_reveal_mode="organic"), repo_root=tmp_path)["ok"]
+
+    for key, value in (
+        ("flag_wave", 0.9),
+        ("flag_wave", "strong"),
+        ("flag_wave_speed", "fast"),
+        ("flag_wave_cycles", -1),
+        ("fill_reveal_roughness", 0.8),
+    ):
+        bad = validate_map_scene(scene(**{key: value}), repo_root=tmp_path)
+        assert not bad["ok"], (key, value)
+        assert any(key in e for e in bad["errors"]), (key, bad["errors"])
+
+
+def test_coverage_gaps_split_by_route(tmp_path: Path) -> None:
+    import json
+
+    from vedit.cli.geo import split_coverage_gaps
+
+    routed = tmp_path / "routed.json"
+    routed.write_text(
+        json.dumps(
+            {
+                "tiles": [[13, 1, 2], [14, 5, 6], [9, 0, 0]],
+                "by_route": {
+                    "tiles": [[13, 1, 2]],
+                    "tiles_hq": [[9, 0, 0]],
+                    "tiles_hybrid": [[14, 5, 6], [13, 1, 2]],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert split_coverage_gaps(routed) == (
+        {(13, 1, 2)},
+        {(9, 0, 0), (14, 5, 6), (13, 1, 2)},
+    )
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(json.dumps({"tiles": [[13, 1, 2]]}), encoding="utf-8")
+    assert split_coverage_gaps(legacy) == (set(), {(13, 1, 2)})
+
+
+def test_fill_coverage_gaps_routes_fetches_and_counts_unfillable(tmp_path: Path) -> None:
+    from vedit.cli.geo import fill_coverage_gaps
+
+    calls: list[tuple[set, object]] = []
+    absent = {(15, 7, 7), (14, 2, 2)}
+
+    def fake_fetch(root, coords, *, hq_aerial, grade_tiles, missing):
+        calls.append((set(coords), hq_aerial))
+        missing.update(c for c in coords if c in absent)
+        ok = [c for c in coords if c not in absent]
+        if hq_aerial is False:
+            return len(ok), 0
+        return sum(1 for c in ok if c[0] <= 12), sum(1 for c in ok if c[0] >= 13)
+
+    regular = {(13, 1, 1), (14, 2, 2), (16, 9, 9)}
+    hq = {(15, 7, 7), (16, 8, 8), (12, 3, 3)}
+    summary = fill_coverage_gaps(tmp_path, regular, hq, fetch=fake_fetch)
+    assert calls == [({(13, 1, 1), (14, 2, 2)}, False), (hq, None)]
+    assert summary == {
+        "coverage_gaps": 6,
+        "tiles_verified": 2,
+        "hq_tiles_verified": 1,
+        "coverage_unfillable": 3,
+    }
+    assert fill_coverage_gaps(tmp_path, set(), set(), fetch=fake_fetch)["coverage_gaps"] == 0
+
+
+def test_validate_scene_warns_on_border_trace_over_multipart_geometry(tmp_path: Path) -> None:
+    import json
+
+    from vedit.cli.geo import validate_map_scene
+
+    square = [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+    neighbour = [[[1, 0], [2, 0], [2, 1], [1, 1], [1, 0]]]
+    vectors = {
+        "countries": {"AA": {"type": "Polygon", "coordinates": square}},
+        "provinces_by_country": {
+            "AA": [
+                {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": square}},
+                {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": neighbour}},
+            ]
+        },
+        "dissolved_region": {
+            "type": "MultiPolygon",
+            "coordinates": [square, neighbour],
+            "dissolve_seams": True,
+        },
+    }
+    (tmp_path / "vectors.json").write_text(json.dumps(vectors), encoding="utf-8")
+
+    def scene(geom_ref: str, trace_s: float = 1.2) -> dict:
+        return {
+            "vectors_file": "vectors.json",
+            "acts": [
+                {
+                    "act_id": "reveal",
+                    "duration_s": 3.0,
+                    "layers": [
+                        {"type": "polygon", "geom_ref": geom_ref, "border_trace_s": trace_s}
+                    ],
+                }
+            ],
+        }
+
+    def trace_warnings(spec: dict) -> list[str]:
+        report = validate_map_scene(spec, base_dir=tmp_path)
+        return [w for w in report["warnings"] if "border_trace_s" in w]
+
+    assert trace_warnings(scene("countries.AA")) == []
+    assert len(trace_warnings(scene("provinces_by_country.AA"))) == 1
+    assert "2 separate parts" in trace_warnings(scene("provinces_by_country.AA"))[0]
+    assert len(trace_warnings(scene("dissolved_region"))) == 1
+    assert trace_warnings(scene("provinces_by_country.AA", trace_s=0)) == []
+    assert trace_warnings(scene("missing.ref")) == []
+    no_vectors = scene("provinces_by_country.AA")
+    no_vectors.pop("vectors_file")
+    assert trace_warnings(no_vectors) == []

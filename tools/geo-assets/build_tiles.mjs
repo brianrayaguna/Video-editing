@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { isMainModule } from "./entry_point.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -57,42 +58,13 @@ async function resolveBmngRgbBuffer(z, x, y) {
 }
 
 /**
- * Apply documentary marine-teal ocean bathymetry and natural relief grading to a 256x256 tile.
+ * Documentary per-pixel grade for a raw RGB buffer (3 bytes per pixel) of a tile at zoom `z`:
+ * marine-teal ocean bathymetry (optionally blended with a matching Blue Marble buffer `bmng`)
+ * and gently contrasted land relief. Returns a new buffer of the same length.
  */
-async function gradeTile(item, outPath) {
-  const inputPath = item.path;
-  const inputSize = statSync(inputPath).size;
-  const bmngData = await resolveBmngRgbBuffer(item.z, item.x, item.y);
-
-  if (inputSize <= 250 && !bmngData) {
-    mkdirSync(dirname(outPath), { recursive: true });
-    await sharp({
-      create: { width: 256, height: 256, channels: 3, background: { r: 10, g: 56, b: 70 } },
-    })
-      .jpeg({ quality: 86, mozjpeg: true })
-      .toFile(outPath);
-    return;
-  }
-
-  let data;
-  let width = 256;
-  let height = 256;
-  if (inputSize <= 250 && bmngData) {
-    data = bmngData;
-  } else {
-    const res = await sharp(inputPath)
-      .flatten({ background: { r: 10, g: 56, b: 70 } })
-      .removeAlpha()
-      .resize(256, 256)
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    data = res.data;
-    width = res.info.width;
-    height = res.info.height;
-  }
-
-  const landBlend = item.z <= 2 ? 0.42 : item.z <= 4 ? 0.24 : 0.0;
-  const oceanBathymetryBlend = item.z <= 4 ? 0.65 : item.z <= 6 ? 0.45 : 0.0;
+export function gradeRgb(data, z, bmngData = null) {
+  const landBlend = z <= 2 ? 0.42 : z <= 4 ? 0.24 : 0.0;
+  const oceanBathymetryBlend = z <= 4 ? 0.65 : z <= 6 ? 0.45 : 0.0;
 
   const out = Buffer.allocUnsafe(data.length);
   for (let i = 0; i < data.length; i += 3) {
@@ -140,6 +112,46 @@ async function gradeTile(item, outPath) {
     out[i + 2] = Math.max(0, Math.min(255, Math.round(b)));
   }
 
+  return out;
+}
+
+/**
+ * Apply documentary marine-teal ocean bathymetry and natural relief grading to a 256x256 tile.
+ */
+async function gradeTile(item, outPath) {
+  const inputPath = item.path;
+  const inputSize = statSync(inputPath).size;
+  const bmngData = await resolveBmngRgbBuffer(item.z, item.x, item.y);
+
+  if (inputSize <= 250 && !bmngData) {
+    mkdirSync(dirname(outPath), { recursive: true });
+    await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 10, g: 56, b: 70 } },
+    })
+      .jpeg({ quality: 86, mozjpeg: true })
+      .toFile(outPath);
+    return;
+  }
+
+  let data;
+  let width = 256;
+  let height = 256;
+  if (inputSize <= 250 && bmngData) {
+    data = bmngData;
+  } else {
+    const res = await sharp(inputPath)
+      .flatten({ background: { r: 10, g: 56, b: 70 } })
+      .removeAlpha()
+      .resize(256, 256)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    data = res.data;
+    width = res.info.width;
+    height = res.info.height;
+  }
+
+  const out = gradeRgb(data, item.z, bmngData);
+
   mkdirSync(dirname(outPath), { recursive: true });
   await sharp(out, { raw: { width, height, channels: 3 } })
     .jpeg({ quality: 86, mozjpeg: true })
@@ -169,8 +181,16 @@ function listTilesRecursive(rootDir) {
 
 async function main() {
   mkdirSync(TILES_OUT, { recursive: true });
-  const s2Tiles = listTilesRecursive(join(RAW_DIR, "tiles_s2_2016"));
-  console.log(`[tiles] Grading ${s2Tiles.length} tiles into assets/geo/tiles/ ...`);
+  // Incremental by default: a graded tile newer than its raw source is kept. `--force` re-grades all.
+  const force = process.argv.includes("--force");
+  const allTiles = listTilesRecursive(join(RAW_DIR, "tiles_s2_2016"));
+  const s2Tiles = force
+    ? allTiles
+    : allTiles.filter((item) => {
+        const outPath = join(TILES_OUT, String(item.z), String(item.x), `${item.y}.jpg`);
+        return !existsSync(outPath) || statSync(outPath).mtimeMs < statSync(item.path).mtimeMs;
+      });
+  console.log(`[tiles] Grading ${s2Tiles.length} of ${allTiles.length} tiles into assets/geo/tiles/ ...`);
 
   const concurrency = 16;
   let idx = 0;
@@ -193,7 +213,9 @@ async function main() {
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

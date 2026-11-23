@@ -8,6 +8,7 @@ so a whole shot is described by a handful of preset names instead of hand-tuned 
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from dataclasses import dataclass, replace
@@ -754,33 +755,88 @@ def _inv_mercator_norm(x: float, y: float) -> tuple[float, float]:
     return (lng, lat)
 
 
-def _quintic_smootherstep(u: float) -> float:
-    u = max(0.0, min(1.0, u))
-    return u * u * u * (u * (u * 6.0 - 15.0) + 10.0)
+# Velocity shape per curve name: Beta(a, b) profile u^(a-1) (1-u)^(b-1). Both exponents
+# exceed 2, so velocity and acceleration are zero at both ends of a move (C2 rest points),
+# and the velocity peak sits at (a-1)/(a+b-2) of the move.
+_PROFILE_SHAPES: dict[str, tuple[float, float]] = {
+    "glide": (2.6, 2.6),
+    "snap_dive": (2.2, 3.4),
+    "whip_snap": (3.2, 3.2),
+    "hyperbolic_fly": (2.6, 3.0),
+    "orbit_cruise": (2.2, 2.2),
+}
+_PROFILE_STEPS = 512
 
 
-def _catmull_rom_centripetal(
-    p0: float, p1: float, p2: float, p3: float, t: float, alpha: float = 0.5
-) -> float:
-    """1D centripetal Catmull-Rom evaluation between p1 (t=0) and p2 (t=1)."""
-    d01 = max(1e-4, abs(p1 - p0) ** alpha)
-    d12 = max(1e-4, abs(p2 - p1) ** alpha)
-    d23 = max(1e-4, abs(p3 - p2) ** alpha)
-    t0 = 0.0
-    t1 = t0 + d01
-    t2 = t1 + d12
-    t3 = t2 + d23
-    u = t1 + t * (t2 - t1)
-    a1 = ((t1 - u) * p0 + (u - t0) * p1) / (t1 - t0)
-    a2 = ((t2 - u) * p1 + (u - t1) * p2) / (t2 - t1)
-    a3 = ((t3 - u) * p2 + (u - t2) * p3) / (t3 - t2)
-    b1 = ((t2 - u) * a1 + (u - t0) * a2) / (t2 - t0)
-    b2 = ((t3 - u) * a2 + (u - t1) * a3) / (t3 - t1)
-    return ((t2 - u) * b1 + (u - t1) * b2) / (t2 - t1)
+@functools.lru_cache(maxsize=32)
+def _profile_cdf(a: float, b: float) -> tuple[float, ...]:
+    """Normalised cumulative Beta(a, b) velocity profile on a uniform grid (midpoint rule)."""
+    acc = [0.0]
+    total = 0.0
+    for i in range(_PROFILE_STEPS):
+        u = (i + 0.5) / _PROFILE_STEPS
+        total += u ** (a - 1.0) * (1.0 - u) ** (b - 1.0)
+        acc.append(total)
+    return tuple(v / total for v in acc)
+
+
+def eased_progress(u: float, curve: str) -> float:
+    """Map linear move time `u` in [0, 1] to eased progress for a named camera curve.
+
+    Monotone, 0 -> 0 and 1 -> 1, with zero slope and zero curvature at both ends. Unknown
+    names and `auto` use the symmetric `glide` profile.
+    """
+    a, b = _PROFILE_SHAPES.get(curve, _PROFILE_SHAPES["glide"])
+    cdf = _profile_cdf(a, b)
+    x = max(0.0, min(1.0, u)) * _PROFILE_STEPS
+    i = min(_PROFILE_STEPS - 1, int(x))
+    return cdf[i] + (cdf[i + 1] - cdf[i]) * (x - i)
+
+
+def _monotone_tangents(times: list[float], values: list[float]) -> list[float]:
+    """Finite-difference Hermite tangents limited so the curve never overshoots its keys."""
+    n = len(values)
+    slopes = [
+        (values[i + 1] - values[i]) / max(1e-6, times[i + 1] - times[i]) for i in range(n - 1)
+    ]
+    tangents = [0.0] * n
+    tangents[0] = slopes[0]
+    tangents[-1] = slopes[-1]
+    for i in range(1, n - 1):
+        s0, s1 = slopes[i - 1], slopes[i]
+        tangents[i] = 0.0 if s0 * s1 <= 0.0 else 0.5 * (s0 + s1)
+    for i, s in enumerate(slopes):
+        if s == 0.0:
+            tangents[i] = tangents[i + 1] = 0.0
+            continue
+        alpha, beta = tangents[i] / s, tangents[i + 1] / s
+        mag = math.hypot(alpha, beta)
+        if mag > 3.0:
+            tangents[i] = 3.0 * alpha / mag * s
+            tangents[i + 1] = 3.0 * beta / mag * s
+    return tangents
+
+
+def _hermite(times: list[float], values: list[float], tangents: list[float], tau: float) -> float:
+    """Evaluate a non-uniform cubic Hermite spline through `(times, values)` at `tau`."""
+    j = 0
+    while j < len(times) - 2 and tau > times[j + 1]:
+        j += 1
+    h = times[j + 1] - times[j]
+    if h <= 1e-9:
+        return values[j + 1]
+    x = max(0.0, min(1.0, (tau - times[j]) / h))
+    x2, x3 = x * x, x * x * x
+    return (
+        (2.0 * x3 - 3.0 * x2 + 1.0) * values[j]
+        + (x3 - 2.0 * x2 + x) * h * tangents[j]
+        + (-2.0 * x3 + 3.0 * x2) * values[j + 1]
+        + (x3 - x2) * h * tangents[j + 1]
+    )
 
 
 def _zero_phase_smooth(values: list[float], sigma_frames: float) -> list[float]:
-    """Zero-phase Gaussian smoothing preserving exact endpoints (C2 Steadicam feel)."""
+    """Zero-phase Gaussian smoothing preserving exact endpoints (C2 stabilized-rig feel)."""
     n = len(values)
     if n < 5 or sigma_frames <= 0.25:
         return list(values)
@@ -800,44 +856,33 @@ def _zero_phase_smooth(values: list[float], sigma_frames: float) -> list[float]:
     return out
 
 
-def _eval_speed_graph(u_lin: float, curve: str, *, is_boundary: bool) -> float:
-    """Remap linear segment time `u_lin` [0..1] through a cinema speed graph."""
-    u = max(0.0, min(1.0, u_lin))
-    if curve == "snap_dive":
-        # Punchy exponential/quintic whip-in with long, silky deceleration settle
-        return 1.0 - (1.0 - u) ** 5.0
-    if curve == "whip_snap":
-        # High-influence (88%) symmetrical speed-graph whip for fast lateral/zoom hops
-        return 16.0 * (u**5) if u < 0.5 else 1.0 - 16.0 * ((1.0 - u) ** 5)
-    if curve == "orbit_cruise":
-        # Near-constant angular/lateral cruise with subtle edge softening
-        return 0.14 * _quintic_smootherstep(u) + 0.86 * u
-    if curve == "hyperbolic_fly":
-        # Snappy power-4 S-curve so hyperbolic hops accelerate crisply through mid-altitude
-        return 8.0 * (u**4) if u < 0.5 else 1.0 - 8.0 * ((1.0 - u) ** 4)
-    # Default "glide" / "auto"
-    u_ease = _quintic_smootherstep(u)
-    return 0.72 * u_ease + 0.28 * u if is_boundary else 0.50 * u_ease + 0.50 * u
-
-
 def build_cinema_camera_track(
     keyframes: list[list[float]] | list[dict[str, Any]],
     duration_s: float,
     fps: float = 30.0,
     *,
-    smooth_s: float = 0.09,
+    smooth_s: float = 0.0,
     shutter_windows: list[list[float]] | None = None,
-    auto_shutter: bool = True,
+    auto_shutter: bool = False,
     micro_drift: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build a C2-continuous 3D cinema camera track from declarative waypoints.
 
     Each keyframe may be `[t_s, lng, lat, zoom, bearing, pitch, roll]` or a dict with
     `t`, `center`, `zoom`, `bearing`, `pitch`, `roll`, `curve` (`glide`, `snap_dive`,
-    `orbit_cruise`, `hyperbolic_fly`, `auto`), `rho`, and optional `orbit_target` /
-    `orbit_radius_deg`. Combines van Wijk & Nuij (2003) hyperbolic geodesics, 3-tier
-    rig channels (dolly, orbit/truck, pitch/roll), zero-phase Steadicam smoothing,
-    optional organic micro-drift, and velocity-adaptive optical shutter sampling.
+    `whip_snap`, `orbit_cruise`, `hyperbolic_fly`, `auto`), `rho`, `through`, and optional
+    `orbit_target` / `orbit_radius_deg`.
+
+    Every keyframe is a rest point (zero velocity and acceleration) unless it sets
+    `"through": true`; the first and last keyframes always rest. Each move between rest
+    points follows the velocity profile of its curve name (taken from the arriving key,
+    else the departing key). A run of `through` keyframes forms one eased multi-waypoint
+    move: eased run time is mapped back to the authored key times and every channel is
+    evaluated on a monotone cubic Hermite spline, so the camera keeps moving through them.
+    Long rest-to-rest hops (`hyperbolic_fly`, or `auto` beyond ~0.35 viewport widths) follow
+    the van Wijk & Nuij (2003) zoom-pan path; other moves couple pan to the zoom scale.
+    Optional zero-phase smoothing, organic micro-drift and an adaptive optical shutter
+    (`ceil(v_px / 2.5)` sub-frames, 1-16) are applied on top.
     """
     if not keyframes:
         return []
@@ -856,6 +901,7 @@ def build_cinema_camera_track(
             rho_k = float(row.get("rho", 1.42))
             orbit_t = row.get("orbit_target")
             orbit_r = float(row.get("orbit_radius_deg", 0.0))
+            through_k = bool(row.get("through", False))
         else:
             t_k = float(row[0])
             lng_k, lat_k = float(row[1]), float(row[2])
@@ -867,6 +913,7 @@ def build_cinema_camera_track(
             rho_k = 1.42
             orbit_t = None
             orbit_r = 0.0
+            through_k = False
         mx, my = _mercator_norm(lng_k, lat_k)
         parsed.append(
             {
@@ -883,6 +930,7 @@ def build_cinema_camera_track(
                 "rho": rho_k,
                 "orbit_target": orbit_t,
                 "orbit_radius_deg": orbit_r,
+                "through": through_k,
             }
         )
     parsed.sort(key=lambda item: item["t"])
@@ -906,65 +954,85 @@ def build_cinema_camera_track(
     raw_r: list[float] = []
 
     m = len(parsed)
+    rest_idx = [i for i, k in enumerate(parsed) if i in (0, m - 1) or not k["through"]]
+    runs = [
+        (r0, r1)
+        for r0, r1 in zip(rest_idx, rest_idx[1:], strict=False)
+        if parsed[r1]["t"] - parsed[r0]["t"] > 1e-9
+    ]
+    channels = ("mx", "my", "z", "b", "p", "r")
+    run_splines: dict[tuple[int, int], tuple[list[float], dict[str, tuple[list, list]]]] = {}
+    for r0, r1 in runs:
+        if r1 - r0 > 1:
+            keys = parsed[r0 : r1 + 1]
+            times = [k["t"] for k in keys]
+            splines = {}
+            for ch in channels:
+                vals = [k[ch] for k in keys]
+                splines[ch] = (vals, _monotone_tangents(times, vals))
+            run_splines[(r0, r1)] = (times, splines)
+
     for f in range(total):
         t = f / fps
         orbit_t = None
         orbit_r = 0.0
-        if t <= parsed[0]["t"] or m == 1:
-            k = parsed[0]
-            mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
-            orbit_t = k["orbit_target"]
-            orbit_r = k["orbit_radius_deg"]
-        elif t >= parsed[-1]["t"]:
-            k = parsed[-1]
+        run = None
+        if m > 1 and parsed[0]["t"] < t < parsed[-1]["t"]:
+            for r0, r1 in runs:
+                if parsed[r0]["t"] <= t < parsed[r1]["t"]:
+                    run = (r0, r1)
+                    break
+        if run is None:
+            k = parsed[0] if (m == 1 or t <= parsed[0]["t"]) else parsed[-1]
             mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
             orbit_t = k["orbit_target"]
             orbit_r = k["orbit_radius_deg"]
         else:
-            seg_i = 0
-            for i in range(m - 1):
-                if parsed[i]["t"] <= t <= parsed[i + 1]["t"]:
-                    seg_i = i
-                    break
-            k0 = parsed[max(0, seg_i - 1)]
-            k1 = parsed[seg_i]
-            k2 = parsed[seg_i + 1]
-            k3 = parsed[min(m - 1, seg_i + 2)]
-            u_lin = (t - k1["t"]) / max(1e-6, k2["t"] - k1["t"])
-            is_boundary = seg_i == 0 or seg_i == m - 2
+            r0, r1 = run
+            k1, k2 = parsed[r0], parsed[r1]
             seg_curve = k2["curve"] if k2["curve"] != "auto" else k1["curve"]
-            u = _eval_speed_graph(u_lin, seg_curve, is_boundary=is_boundary)
-
-            b = _catmull_rom_centripetal(k0["b"], k1["b"], k2["b"], k3["b"], u)
-            p = _catmull_rom_centripetal(k0["p"], k1["p"], k2["p"], k3["p"], u)
-            r = _catmull_rom_centripetal(k0["r"], k1["r"], k2["r"], k3["r"], u)
-
-            dist_norm = math.hypot(k2["mx"] - k1["mx"], k2["my"] - k1["my"])
-            max_w = max(2.0 ** (-k1["z"]), 2.0 ** (-k2["z"]))
-            use_hyperbolic = seg_curve == "hyperbolic_fly" or (
-                seg_curve == "auto" and dist_norm > 0.35 * max_w and dist_norm > 1e-4
-            )
-
-            if use_hyperbolic:
-                # True van Wijk & Nuij (2003) hyperbolic geodesic in Web Mercator radians
-                x0_rad, y0_rad = _merc_x(k1["lng"]), _merc_y(k1["lat"])
-                x1_rad, y1_rad = _merc_x(k2["lng"]), _merc_y(k2["lat"])
-                xr, yr, z = _van_wijk_fly_to(
-                    x0_rad, y0_rad, k1["z"], x1_rad, y1_rad, k2["z"], u, rho=k2["rho"]
+            span = k2["t"] - k1["t"]
+            u = eased_progress((t - k1["t"]) / span, seg_curve)
+            if run in run_splines:
+                times, splines = run_splines[run]
+                tau = k1["t"] + u * span
+                mx, my, z, b, p, r = (
+                    _hermite(times, splines[ch][0], splines[ch][1], tau) for ch in channels
                 )
-                mx, my = _mercator_norm(math.degrees(xr), _inv_merc_y(yr))
+                j = r0
+                while j < r1 - 1 and tau > parsed[j + 1]["t"]:
+                    j += 1
+                k1, k2 = parsed[j], parsed[j + 1]
             else:
-                z = _catmull_rom_centripetal(k0["z"], k1["z"], k2["z"], k3["z"], u)
-                dz = k2["z"] - k1["z"]
-                if abs(dz) > 0.25:
-                    s0 = 2.0 ** (-k1["z"])
-                    s1 = 2.0 ** (-k2["z"])
-                    sc = 2.0 ** (-z)
-                    u_pan = max(0.0, min(1.0, (sc - s0) / (s1 - s0))) if abs(s1 - s0) > 1e-9 else u
+                b = k1["b"] + (k2["b"] - k1["b"]) * u
+                p = k1["p"] + (k2["p"] - k1["p"]) * u
+                r = k1["r"] + (k2["r"] - k1["r"]) * u
+
+                dist_norm = math.hypot(k2["mx"] - k1["mx"], k2["my"] - k1["my"])
+                max_w = max(2.0 ** (-k1["z"]), 2.0 ** (-k2["z"]))
+                use_hyperbolic = seg_curve == "hyperbolic_fly" or (
+                    seg_curve == "auto" and dist_norm > 0.35 * max_w and dist_norm > 1e-4
+                )
+                if use_hyperbolic:
+                    # van Wijk & Nuij (2003) zoom-pan path in Web Mercator radians
+                    x0_rad, y0_rad = _merc_x(k1["lng"]), _merc_y(k1["lat"])
+                    x1_rad, y1_rad = _merc_x(k2["lng"]), _merc_y(k2["lat"])
+                    xr, yr, z = _van_wijk_fly_to(
+                        x0_rad, y0_rad, k1["z"], x1_rad, y1_rad, k2["z"], u, rho=k2["rho"]
+                    )
+                    mx, my = _mercator_norm(math.degrees(xr), _inv_merc_y(yr))
                 else:
-                    u_pan = u
-                mx = k1["mx"] + (k2["mx"] - k1["mx"]) * u_pan
-                my = k1["my"] + (k2["my"] - k1["my"]) * u_pan
+                    z = k1["z"] + (k2["z"] - k1["z"]) * u
+                    if abs(k2["z"] - k1["z"]) > 0.25:
+                        # Couple pan to the zoom scale so the target stays put on screen.
+                        s0 = 2.0 ** (-k1["z"])
+                        s1 = 2.0 ** (-k2["z"])
+                        sc = 2.0 ** (-z)
+                        u_pan = max(0.0, min(1.0, (sc - s0) / (s1 - s0)))
+                    else:
+                        u_pan = u
+                    mx = k1["mx"] + (k2["mx"] - k1["mx"]) * u_pan
+                    my = k1["my"] + (k2["my"] - k1["my"]) * u_pan
 
             orbit_t = k2["orbit_target"] or k1["orbit_target"]
             orbit_r = max(k1["orbit_radius_deg"], k2["orbit_radius_deg"])
@@ -991,7 +1059,7 @@ def build_cinema_camera_track(
     sm_p = _zero_phase_smooth(raw_p, sigma * 1.15)
     sm_r = _zero_phase_smooth(raw_r, sigma * 1.2)
 
-    # Optional organic Steadicam micro-drift (tapered to 0 at endpoints)
+    # Optional organic stabilized-rig micro-drift (tapered to 0 at endpoints)
     drift_cfg = (
         micro_drift if isinstance(micro_drift, dict) and micro_drift.get("enabled") else None
     )
@@ -1023,10 +1091,7 @@ def build_cinema_camera_track(
             d_zoom_px = abs(sm_z[f] - sm_z[f - 1]) * 380.0
             d_rot_px = abs(sm_b[f] - sm_b[f - 1]) * 8.0
             v_px = d_pan_px + d_zoom_px + d_rot_px
-            if v_px >= 55.0:
-                shutter = 5
-            elif v_px >= 18.0:
-                shutter = 3
+            shutter = max(1, min(16, math.ceil(v_px / 2.5 - 1e-6)))
         for sw in shutter_windows or []:
             if sw[0] <= t <= sw[1]:
                 shutter = int(sw[2])

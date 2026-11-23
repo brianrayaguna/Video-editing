@@ -416,6 +416,9 @@ test("parameterized Geoverum brand templates compile cleanly without SVG logo on
           props: {
             font_family: "Space Grotesk",
             composition_path: "profiles/brands/geoverum/templates/components/caption_rail.html",
+            caption_transition_ms: 150,
+            caption_fade_in_ms: 130,
+            caption_fade_out_ms: 0,
           },
           variables: {
             text: "Three plates collide",
@@ -470,6 +473,9 @@ test("parameterized Geoverum brand templates compile cleanly without SVG logo on
   assert.match(capHtml, /Three plates collide/);
   assert.match(capHtml, /left: 16%;\s*right: 16%;/);
   assert.match(capHtml, /bottom: 28\.5%;/);
+  // Captions fade in over a few frames and cut out hard.
+  assert.match(capHtml, /const fadeInS = Number\(0\.13\);/);
+  assert.match(capHtml, /const fadeOutS = Number\(0\);/);
 
   const bugHtml = fs.readFileSync(compiled.compositionFiles[1]!, "utf8");
   assert.match(bugHtml, />geoverum</);

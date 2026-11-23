@@ -5,11 +5,13 @@ from __future__ import annotations
 import array
 import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 import wave
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, Any
@@ -34,6 +36,45 @@ def _deg2num(lat: float, lon: float, z: int) -> tuple[int, int]:
     x = int((lon + 180.0) / 360.0 * n)
     y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
     return max(0, min(int(n) - 1, x)), max(0, min(int(n) - 1, y))
+
+
+# Open-licensed imagery sources used by `geo prepare`.
+# - Sentinel-2 cloudless 2016: CC BY 4.0 (EOX IT Services GmbH; contains modified Copernicus
+#   Sentinel data 2016). Global coverage at ~10 m native resolution (z14).
+# - National orthoimagery: public domain (U.S. Geological Survey, The National Map). Covers the
+#   United States at ~1 m (served to z16) and answers HTTP 404 outside its coverage at z13+;
+#   lower zooms return generic placeholder imagery, so it is requested only from z13.
+# High-resolution (`--hq`) tiles try the national orthoimagery first and fall back to Sentinel-2
+# up to its native zoom. Deeper tiles are not stored when only Sentinel-2 covers the area;
+# `serve_tiles.mjs` upsamples the nearest stored ancestor instead.
+S2_CLOUDLESS_MAX_NATIVE_Z = 14
+NATIONAL_ORTHO_MIN_Z = 13
+NATIONAL_ORTHO_MAX_Z = 16
+_TILE_ABSENT_HTTP_CODES = frozenset({"204", "400", "404"})
+
+
+def _s2_cloudless_url(z: int, x: int, y: int, subdomain: str = "a") -> str:
+    return (
+        f"https://{subdomain}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/"
+        f"{z}/{y}/{x}.jpg"
+    )
+
+
+def _national_ortho_url(z: int, x: int, y: int) -> str:
+    return (
+        "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/"
+        f"{z}/{y}/{x}"
+    )
+
+
+def hq_tile_urls(z: int, x: int, y: int, subdomain: str = "a") -> list[str]:
+    """Return open high-resolution tile URLs for `(z, x, y)` in fallback order."""
+    urls: list[str] = []
+    if NATIONAL_ORTHO_MIN_Z <= z <= NATIONAL_ORTHO_MAX_Z:
+        urls.append(_national_ortho_url(z, x, y))
+    if z <= S2_CLOUDLESS_MAX_NATIVE_Z:
+        urls.append(_s2_cloudless_url(z, x, y, subdomain))
+    return urls
 
 
 def _enum_bbox_tiles(w: float, s: float, e: float, n: float, z: int) -> list[tuple[int, int, int]]:
@@ -262,6 +303,198 @@ def extract_project_vectors(
     return result
 
 
+def parse_tile_list(path: Path) -> set[tuple[int, int, int]]:
+    """Read a coverage tile list `{"tiles": [[z, x, y], ...]}` into a set of tile coordinates.
+
+    Raises `ValueError` for a missing `tiles` list, rows that are not three integers, or tiles
+    outside the web-mercator grid (z 0-22).
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    rows = data.get("tiles") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise ValueError(f"{path}: expected an object with a 'tiles' list")
+    tiles: set[tuple[int, int, int]] = set()
+    for row in rows:
+        if not (
+            isinstance(row, list)
+            and len(row) == 3
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in row)
+        ):
+            raise ValueError(f"{path}: malformed tile row {row!r}; expected [z, x, y] integers")
+        z, x, y = row
+        if not (0 <= z <= 22 and 0 <= x < 2**z and 0 <= y < 2**z):
+            raise ValueError(f"{path}: tile {row!r} is outside the web-mercator grid")
+        tiles.add((z, x, y))
+    return tiles
+
+
+_REGULAR_COVERAGE_ROUTES = ("tiles",)
+_HQ_COVERAGE_ROUTES = ("tiles_hq", "tiles_hybrid")
+
+
+def split_coverage_gaps(
+    path: Path,
+) -> tuple[set[tuple[int, int, int]], set[tuple[int, int, int]]]:
+    """Split a coverage report into (regular-route gaps, HQ-route gaps).
+
+    Regular-route gaps are served from the graded Sentinel-2 set; HQ-route gaps from the
+    high-resolution set. A report without `by_route` treats every tile as an HQ-route gap.
+    """
+    tiles = parse_tile_list(path)
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    by_route = data.get("by_route")
+    if not isinstance(by_route, dict):
+        return set(), tiles
+
+    def _rows(routes: tuple[str, ...]) -> set[tuple[int, int, int]]:
+        out: set[tuple[int, int, int]] = set()
+        for route in routes:
+            for row in by_route.get(route) or []:
+                coord = tuple(row) if isinstance(row, list) and len(row) == 3 else None
+                if coord not in tiles:
+                    raise ValueError(f"{path}: route {route!r} lists {row!r}, absent from 'tiles'")
+                out.add(coord)  # type: ignore[arg-type]
+        return out
+
+    return _rows(_REGULAR_COVERAGE_ROUTES), _rows(_HQ_COVERAGE_ROUTES)
+
+
+def _fetch_tile_set(
+    root: Path,
+    coords: set[tuple[int, int, int]],
+    *,
+    hq_aerial: bool | None,
+    grade_tiles: bool,
+    missing: set[tuple[int, int, int]] | None = None,
+) -> tuple[int, int]:
+    """Fetch satellite tiles: z<=12 from Sentinel-2 2016 (graded), z>=13 high-resolution.
+
+    `hq_aerial` True sends every tile to the high-resolution fetcher, False sends every tile to
+    Sentinel-2; None splits at z=13. Returns (Sentinel-2 tiles present, HQ tiles present).
+    Tiles no source could supply are added to `missing` when it is given.
+    """
+    fetched_count = 0
+    hq_fetched_count = 0
+    raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
+    hq_dir = root / "assets" / "geo" / "tiles_hq"
+    s2_coords = sorted(c for c in coords if c[0] <= 12)
+    if hq_aerial is True:
+        hq_coords = sorted(coords)
+    elif hq_aerial is False:
+        hq_coords = []
+        s2_coords = sorted(coords)
+    else:
+        hq_coords = sorted(c for c in coords if c[0] >= 13)
+
+    def _fetch_url(dest: Path, url: str) -> bool:
+        if dest.is_file() and dest.stat().st_size >= 64:
+            return True
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".jpg.part")
+        for attempt in range(4):
+            proc = subprocess.run(
+                [
+                    "curl",
+                    "-sS",
+                    "-L",
+                    "--connect-timeout",
+                    "5",
+                    "--max-time",
+                    "12",
+                    "-w",
+                    "%{http_code}",
+                    "-o",
+                    str(tmp),
+                    url,
+                ],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            status = proc.stdout.strip()
+            if (
+                proc.returncode == 0
+                and status.startswith("2")
+                and status not in _TILE_ABSENT_HTTP_CODES
+                and tmp.is_file()
+                and tmp.stat().st_size >= 64
+            ):
+                tmp.replace(dest)
+                return True
+            tmp.unlink(missing_ok=True)
+            if status in _TILE_ABSENT_HTTP_CODES:
+                return False
+            time.sleep(0.3 * (attempt + 1))
+        return False
+
+    def _download_s2(item: tuple[int, tuple[int, int, int]]) -> bool:
+        idx, (z, x, y) = item
+        dest = raw_dir / str(z) / str(x) / f"{y}.jpg"
+        sub = ("a", "b", "c", "d")[idx % 4]
+        return _fetch_url(dest, _s2_cloudless_url(z, x, y, sub))
+
+    def _download_hq(item: tuple[int, tuple[int, int, int]]) -> bool:
+        idx, (z, x, y) = item
+        dest = hq_dir / str(z) / str(x) / f"{y}.jpg"
+        sub = ("a", "b", "c", "d")[idx % 4]
+        return any(_fetch_url(dest, url) for url in hq_tile_urls(z, x, y, sub))
+
+    if s2_coords:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            s2_ok = list(pool.map(_download_s2, enumerate(s2_coords)))
+        fetched_count = sum(s2_ok)
+        if missing is not None:
+            missing.update(c for c, ok in zip(s2_coords, s2_ok, strict=True) if not ok)
+
+    if hq_coords:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            hq_ok = list(pool.map(_download_hq, enumerate(hq_coords)))
+        hq_fetched_count = sum(hq_ok)
+        if missing is not None:
+            missing.update(c for c, ok in zip(hq_coords, hq_ok, strict=True) if not ok)
+
+    if grade_tiles and s2_coords:
+        node_bin = shutil.which("node")
+        if not node_bin:
+            raise RuntimeError("Node.js >= 22 is required to run tools/geo-assets/build_tiles.mjs.")
+        subprocess.run(
+            [node_bin, str(root / "tools" / "geo-assets" / "build_tiles.mjs")],
+            check=True,
+        )
+    return fetched_count, hq_fetched_count
+
+
+def fill_coverage_gaps(
+    root: Path,
+    regular_gaps: set[tuple[int, int, int]],
+    hq_gaps: set[tuple[int, int, int]],
+    *,
+    fetch: Callable[..., tuple[int, int]] | None = None,
+) -> dict[str, int]:
+    """Fetch coverage gaps through the source each route serves and summarise the result.
+
+    Regular-route gaps go to Sentinel-2 only (graded), up to its native zoom; deeper ones are
+    unfillable by construction. HQ-route gaps use the default z=13 split. `coverage_unfillable`
+    counts distinct tiles that still upscale an ancestor on at least one route.
+    """
+    fetch = fetch or _fetch_tile_set
+    unfillable = {c for c in regular_gaps if c[0] > S2_CLOUDLESS_MAX_NATIVE_Z}
+    regular_fetch = regular_gaps - unfillable
+    missing: set[tuple[int, int, int]] = set()
+    s2_count = hq_count = 0
+    if regular_fetch:
+        s2_count, _ = fetch(root, regular_fetch, hq_aerial=False, grade_tiles=True, missing=missing)
+    if hq_gaps:
+        s2_more, hq_count = fetch(root, hq_gaps, hq_aerial=None, grade_tiles=True, missing=missing)
+        s2_count += s2_more
+    return {
+        "coverage_gaps": len(regular_gaps | hq_gaps),
+        "tiles_verified": s2_count,
+        "hq_tiles_verified": hq_count,
+        "coverage_unfillable": len(unfillable | missing),
+    }
+
+
 @geo_app.command("prepare")
 def geo_prepare_cmd(
     out_file: Annotated[
@@ -295,8 +528,17 @@ def geo_prepare_cmd(
         bool | None,
         typer.Option(
             "--hq/--no-hq",
-            help="Fetch high-resolution aerial ortho tiles into assets/geo/tiles_hq/ "
-            "(default: auto-enabled for z >= 13).",
+            help="Fetch open high-resolution tiles into assets/geo/tiles_hq/: public-domain "
+            "national orthoimagery where covered (~1 m, z<=16), otherwise Sentinel-2 2016 "
+            "(~10 m, z<=14) (default: auto-enabled for z >= 13).",
+        ),
+    ] = None,
+    tile_list: Annotated[
+        Path | None,
+        typer.Option(
+            "--tile-list",
+            help="Coverage JSON with a 'tiles' list of [z, x, y] rows (from a bake coverage "
+            "pass), merged into the fetch set.",
         ),
     ] = None,
 ) -> None:
@@ -304,92 +546,23 @@ def geo_prepare_cmd(
     root = find_repo_root()
     fetched_count = 0
     hq_fetched_count = 0
-    if bbox:
+    if bbox or tile_list:
         coords: set[tuple[int, int, int]] = set()
-        for spec in bbox:
+        for spec in bbox or []:
             if ":" not in spec:
                 raise typer.BadParameter(f"Invalid --bbox {spec!r}; expected 'W,S,E,N:Z'.")
             box_part, z_part = spec.rsplit(":", 1)
             w, s, e, n = (float(v) for v in box_part.split(","))
             for z_token in z_part.split(","):
                 coords.update(_enum_bbox_tiles(w, s, e, n, int(z_token)))
-
-        raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
-        hq_dir = root / "assets" / "geo" / "tiles_hq"
-        s2_coords = sorted(c for c in coords if c[0] <= 12)
-        if hq_aerial is True:
-            hq_coords = sorted(coords)
-        elif hq_aerial is False:
-            hq_coords = []
-            s2_coords = sorted(coords)
-        else:
-            hq_coords = sorted(c for c in coords if c[0] >= 13)
-
-        def _fetch_url(dest: Path, url: str) -> bool:
-            if dest.is_file() and dest.stat().st_size >= 64:
-                return True
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dest.with_suffix(".jpg.part")
-            for attempt in range(4):
-                proc = subprocess.run(
-                    [
-                        "curl",
-                        "-sS",
-                        "-L",
-                        "--fail",
-                        "--connect-timeout",
-                        "5",
-                        "--max-time",
-                        "12",
-                        "-o",
-                        str(tmp),
-                        url,
-                    ],
-                    capture_output=True,
-                    check=False,
-                )
-                if proc.returncode == 0 and tmp.is_file() and tmp.stat().st_size >= 64:
-                    tmp.replace(dest)
-                    return True
-                time.sleep(0.3 * (attempt + 1))
-            return False
-
-        def _download_s2(item: tuple[int, tuple[int, int, int]]) -> bool:
-            idx, (z, x, y) = item
-            dest = raw_dir / str(z) / str(x) / f"{y}.jpg"
-            sub = ("a", "b", "c", "d")[idx % 4]
-            url = f"https://{sub}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"
-            return _fetch_url(dest, url)
-
-        def _download_hq(item: tuple[int, tuple[int, int, int]]) -> bool:
-            _idx, (z, x, y) = item
-            dest = hq_dir / str(z) / str(x) / f"{y}.jpg"
-            url = (
-                "https://server.arcgisonline.com/ArcGIS/rest/services/"
-                f"World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            )
-            return _fetch_url(dest, url)
-
-        if s2_coords:
-            with ThreadPoolExecutor(max_workers=16) as pool:
-                fetched_count = sum(1 for ok in pool.map(_download_s2, enumerate(s2_coords)) if ok)
-
-        if hq_coords:
-            with ThreadPoolExecutor(max_workers=16) as pool:
-                hq_fetched_count = sum(
-                    1 for ok in pool.map(_download_hq, enumerate(hq_coords)) if ok
-                )
-
-        if grade_tiles and s2_coords:
-            node_bin = shutil.which("node")
-            if not node_bin:
-                raise RuntimeError(
-                    "Node.js >= 22 is required to run tools/geo-assets/build_tiles.mjs."
-                )
-            subprocess.run(
-                [node_bin, str(root / "tools" / "geo-assets" / "build_tiles.mjs")],
-                check=True,
-            )
+        if tile_list:
+            try:
+                coords.update(parse_tile_list(tile_list))
+            except (OSError, ValueError) as exc:
+                raise typer.BadParameter(str(exc)) from exc
+        fetched_count, hq_fetched_count = _fetch_tile_set(
+            root, coords, hq_aerial=hq_aerial, grade_tiles=grade_tiles
+        )
 
     vectors = extract_project_vectors(
         repo_root=root,
@@ -430,13 +603,87 @@ REJECTED_SCENE_LAYER_TYPES = frozenset(
 
 _TEXT_LAYER_TYPES = frozenset({"glow_label", "pin_label", "curved_pointer_label", "year_badge"})
 
+_REVEAL_MODES = frozenset(
+    {"fade", "radial", "organic", "wipe_left", "wipe_right", "wipe_down", "wipe_up"}
+)
+# Numeric polygon keys: (lower bound, upper bound or None).
+_POLYGON_NUMERIC_KEYS: dict[str, tuple[float, float | None]] = {
+    "flag_wave_speed": (0.0, None),
+    "flag_wave_cycles": (0.0, None),
+    "flag_wave_angle_deg": (-360.0, 360.0),
+    "fill_reveal_roughness": (0.0, 0.6),
+}
+# Polygon keys whose unknown values the renderer would silently replace with a default.
+_POLYGON_ENUM_KEYS: dict[str, frozenset[Any]] = {
+    "flag_reveal": _REVEAL_MODES,
+    "fill_reveal_mode": _REVEAL_MODES,
+    "flag_blend": frozenset({"normal", "multiply", "overlay", "soft-light", "screen"}),
+    "flag_fit": frozenset({"stretch", "cover"}),
+    "border_trace_ease": frozenset({"linear", "in_out", "out"}),
+    "border_trace_dir": frozenset({"cw", "ccw"}),
+    "border_trace_heads": frozenset({1, 2}),
+}
+_FLAG_CODE_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def _load_scene_vectors(spec: dict[str, Any], base_dir: Path | None) -> dict[str, Any] | None:
+    """Load the scene's `vectors_file`; None when absent, unreadable, or relative without a base."""
+    ref = spec.get("vectors_file") or spec.get("vectors_path")
+    if not ref:
+        return None
+    path = Path(str(ref)).expanduser()
+    if not path.is_absolute():
+        if base_dir is None:
+            return None
+        path = base_dir / path
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _resolve_geom_ref(vectors: dict[str, Any] | None, ref: Any) -> Any:
+    """Resolve a layer `geom_ref` (inline geometry or dotted path into the vectors) or None."""
+    if isinstance(ref, dict) and ref.get("type"):
+        return ref
+    if not isinstance(ref, str) or vectors is None:
+        return None
+    cur: Any = vectors
+    for part in ref.split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur
+
+
+def _separately_traced_parts(geom: Any) -> int:
+    """Count parts a border trace walks independently with seams between them.
+
+    Feature lists, FeatureCollections and seam-dissolved MultiPolygons trace every part from its
+    own start; a single Polygon or a plain MultiPolygon (islands of one outline) counts as 1.
+    """
+    if isinstance(geom, list):
+        return sum(1 for g in geom if g)
+    if isinstance(geom, dict):
+        if geom.get("type") == "FeatureCollection":
+            return sum(1 for g in geom.get("features") or [] if g)
+        if geom.get("type") == "MultiPolygon" and geom.get("dissolve_seams"):
+            return len(geom.get("coordinates") or [])
+    return 1
+
 
 def validate_map_scene(
-    spec: dict[str, Any], *, repo_root: Path | None = None
+    spec: dict[str, Any], *, repo_root: Path | None = None, base_dir: Path | None = None
 ) -> dict[str, Any]:
-    """Validate declarative map_scene.json against Geoverum craft and sharpness guardrails."""
+    """Validate declarative map_scene.json against Geoverum craft and sharpness guardrails.
+
+    `base_dir` resolves a relative `vectors_file` so geometry-dependent checks can run.
+    """
     errors: list[str] = []
     warnings: list[str] = []
+    vectors = _load_scene_vectors(spec, base_dir)
     width = int(spec.get("width", 1080))
     height = int(spec.get("height", 1920))
     min_font_px = 36 if height >= 1600 else 28
@@ -450,6 +697,32 @@ def validate_map_scene(
         dur = float(act.get("duration_s", 0.0))
         tile_source = str(act.get("tile_source") or "hybrid")
         layers = list(act.get("layers") or [])
+
+        # 0. Cut-accent radial zoom blur windows and strength
+        cut_windows: list[float] = []
+        for key, upper in (
+            ("cut_blur_in_s", None),
+            ("cut_blur_out_s", None),
+            ("cut_blur_strength", 0.4),
+        ):
+            if key not in act:
+                continue
+            try:
+                value = float(act[key])
+            except (TypeError, ValueError):
+                errors.append(f"[{act_id}] {key} must be a number, got {act[key]!r}.")
+                continue
+            if not math.isfinite(value) or value < 0 or (upper is not None and value > upper):
+                bound = f"between 0 and {upper}" if upper is not None else "a finite value >= 0"
+                errors.append(f"[{act_id}] {key} must be {bound}, got {value}.")
+                continue
+            if key != "cut_blur_strength":
+                cut_windows.append(value)
+        if dur > 0 and sum(cut_windows) > dur + 1e-6:
+            warnings.append(
+                f"[{act_id}] cut_blur_in_s + cut_blur_out_s = {sum(cut_windows):.2f}s exceeds the "
+                f"act duration {dur:.2f}s; the blur never clears mid-act."
+            )
 
         # 1. Reject legacy/chrome slop layers and micro-typography
         text_intervals: list[tuple[float, float, str]] = []
@@ -518,6 +791,16 @@ def validate_map_scene(
                     if (hq_dir / str(probe_z) / str(tx) / f"{ty}.jpg").is_file():
                         has_hq = True
                         break
+                if has_hq and z >= 14.5:
+                    tx, ty = _deg2num(lat, lng, S2_CLOUDLESS_MAX_NATIVE_Z + 1)
+                    deep = hq_dir / str(S2_CLOUDLESS_MAX_NATIVE_Z + 1) / str(tx) / f"{ty}.jpg"
+                    if not deep.is_file():
+                        warnings.append(
+                            f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} exceeds "
+                            f"the ~10 m Sentinel-2 native zoom (z{S2_CLOUDLESS_MAX_NATIVE_Z}) "
+                            "and no sharper orthoimagery covers it; cap the zoom near 14.5 or "
+                            "supply a project-scoped aerial plate."
+                        )
                 if not has_hq:
                     errors.append(
                         f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
@@ -547,6 +830,77 @@ def validate_map_scene(
                     "consider 10-35 deg 3D pitch on approach and corridor beats."
                 )
 
+        # 5. Polygon border-trace timing, flag-fill assets, and enumerated keys
+        flags_dir = (repo_root / "assets" / "geo" / "flags") if repo_root else None
+        for idx, layer in enumerate(layers):
+            if str(layer.get("type") or "") != "polygon":
+                continue
+            for key, allowed in _POLYGON_ENUM_KEYS.items():
+                if key in layer and layer[key] not in allowed:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} {key}={layer[key]!r} is not one of "
+                        f"{sorted(str(v) for v in allowed)}."
+                    )
+            wave = layer.get("flag_wave")
+            if wave is not None and not isinstance(wave, bool):
+                try:
+                    wave_f = float(wave)
+                except (TypeError, ValueError):
+                    wave_f = float("nan")
+                if not (0.0 <= wave_f <= 0.6):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} flag_wave must be true/false or a shading "
+                        f"amplitude between 0 and 0.6, got {wave!r}."
+                    )
+            for key, (lo, hi) in _POLYGON_NUMERIC_KEYS.items():
+                if key not in layer:
+                    continue
+                try:
+                    val = float(layer[key])
+                except (TypeError, ValueError):
+                    val = float("nan")
+                if not math.isfinite(val) or val < lo or (hi is not None and val > hi):
+                    bound = f"between {lo:g} and {hi:g}" if hi is not None else f">= {lo:g}"
+                    errors.append(
+                        f"[{act_id}] layer #{idx} {key} must be a number {bound}, "
+                        f"got {layer[key]!r}."
+                    )
+            code = layer.get("flag_fill")
+            if code:
+                code_s = str(code).lower()
+                if not _FLAG_CODE_RE.fullmatch(code_s):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} flag_fill {code!r} is not a flag code "
+                        "(lowercase letters, digits and hyphens, e.g. 'se' or 'gb-sct')."
+                    )
+                elif flags_dir is not None and not (flags_dir / f"{code_s}.svg").is_file():
+                    errors.append(
+                        f"[{act_id}] layer #{idx} flag_fill '{code_s}' has no "
+                        f"assets/geo/flags/{code_s}.svg; the bake would fall back to the "
+                        "colour fill."
+                    )
+            trace_s = float(layer.get("border_trace_s") or 0.0)
+            if trace_s > 0:
+                start_s = float(layer.get("start_s", 0.0))
+                trace_end = start_s + float(layer.get("border_trace_delay_s") or 0.0) + trace_s
+                visible_end = float(layer.get("end_s", dur))
+                if dur > 0:
+                    visible_end = min(visible_end, dur)
+                if trace_end > visible_end + 1e-6:
+                    warnings.append(
+                        f"[{act_id}] layer #{idx} border_trace ends at {trace_end:.2f}s, after "
+                        f"the layer/act ends at {visible_end:.2f}s; the outline never closes "
+                        "on screen."
+                    )
+                parts = _separately_traced_parts(_resolve_geom_ref(vectors, layer.get("geom_ref")))
+                if parts > 1:
+                    warnings.append(
+                        f"[{act_id}] layer #{idx} border_trace_s runs over {parts} separate parts "
+                        f"of {layer.get('geom_ref')!r}; each part traces its own outline from its "
+                        "own start, so the border grows in fragments. Trace one country outline "
+                        "(countries.<ISO>) or reveal multi-part regions with border_draw_s."
+                    )
+
     return {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
@@ -574,10 +928,19 @@ def build_geoverum_ass_captions(
     max_words: int = 4,
     font_size: int = 56,
     margin_v: int = 348,
+    fade_in_ms: int = 130,
+    fade_out_ms: int = 0,
 ) -> str:
-    """Build locked Geoverum boxless bottom-band Rubik ASS subtitles from transcript segments."""
+    """Build locked Geoverum boxless bottom-band Rubik ASS subtitles from transcript segments.
+
+    Each caption group fades in over ``fade_in_ms`` and leaves over ``fade_out_ms``
+    (default 0: a hard cut to the next group). Both are clamped to 0-200 ms.
+    """
     if speed <= 0:
         raise ValueError("speed must be > 0")
+    fade_in = max(0, min(200, int(fade_in_ms)))
+    fade_out = max(0, min(200, int(fade_out_ms)))
+    fade_tag = f"{{\\fad({fade_in},{fade_out})}}" if (fade_in or fade_out) else ""
     segments = (
         transcript_data
         if isinstance(transcript_data, list)
@@ -632,7 +995,7 @@ def build_geoverum_ass_captions(
             end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
             lines.append(
                 f"Dialogue: 0,{_fmt_ass_time(cur_t)},{_fmt_ass_time(end_t)},"
-                f"Default,,0,0,0,,{{\\fad(80,80)}}{_escape_geo_ass_text(txt)}"
+                f"Default,,0,0,0,,{fade_tag}{_escape_geo_ass_text(txt)}"
             )
             cur_t = end_t
     return "\n".join(lines) + "\n"
@@ -646,8 +1009,9 @@ def geo_validate_scene_cmd(
 ) -> None:
     """Validate map_scene.json against Geoverum craft, sharpness, and clutter guardrails."""
     root = find_repo_root()
-    spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
-    report = validate_map_scene(spec, repo_root=root)
+    scene_path = scene_file.expanduser().resolve()
+    spec = json.loads(scene_path.read_text(encoding="utf-8"))
+    report = validate_map_scene(spec, repo_root=root, base_dir=scene_path.parent)
     typer.echo(json.dumps(report, indent=2))
     if not report["ok"]:
         raise typer.Exit(code=1)
@@ -673,11 +1037,23 @@ def geo_build_captions_cmd(
     margin_v: Annotated[
         int, typer.Option("--margin-v", help="Bottom safe margin in px (default 348 -> y~80%).")
     ] = 348,
+    fade_in_ms: Annotated[
+        int, typer.Option("--fade-in-ms", help="Caption fade-in in ms (0-200).")
+    ] = 130,
+    fade_out_ms: Annotated[
+        int, typer.Option("--fade-out-ms", help="Caption fade-out in ms (0 = hard cut out).")
+    ] = 0,
 ) -> None:
     """Generate locked Geoverum boxless bottom-band Rubik ASS subtitles."""
     data = json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
     ass_text = build_geoverum_ass_captions(
-        data, speed=speed, max_words=max_words, font_size=font_size, margin_v=margin_v
+        data,
+        speed=speed,
+        max_words=max_words,
+        font_size=font_size,
+        margin_v=margin_v,
+        fade_in_ms=fade_in_ms,
+        fade_out_ms=fade_out_ms,
     )
     out = out_file.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -982,6 +1358,16 @@ def geo_bake_scene_cmd(
         bool,
         typer.Option("--skip-validate", help="Bypass preflight craft/sharpness validation."),
     ] = False,
+    fill_tiles: Annotated[
+        bool,
+        typer.Option(
+            "--fill-tiles",
+            help="Before baking, run a tile coverage pass over every camera track and fetch "
+            "tiles that would otherwise be upscaled from an ancestor, through the source each "
+            "tile route serves (Sentinel-2 to z14, orthoimagery to z16); tiles no source covers "
+            "are reported as coverage_unfillable.",
+        ),
+    ] = False,
 ) -> None:
     """Expand smooth camera plans and bake declarative world-space map scenes via MapLibre."""
     root = find_repo_root()
@@ -992,7 +1378,7 @@ def geo_bake_scene_cmd(
     scene_path = scene_file.expanduser().resolve()
     spec = json.loads(scene_path.read_text(encoding="utf-8"))
     if not skip_validate:
-        report = validate_map_scene(spec, repo_root=root)
+        report = validate_map_scene(spec, repo_root=root, base_dir=scene_path.parent)
         if not report["ok"]:
             typer.echo(json.dumps(report, indent=2), err=True)
             raise typer.Exit(code=1)
@@ -1009,9 +1395,9 @@ def geo_bake_scene_cmd(
                 act["camera_keyframes"],
                 duration_s=float(act.get("duration_s", 1.0)),
                 fps=fps,
-                smooth_s=float(act.get("camera_smooth_s", 0.09)),
+                smooth_s=float(act.get("camera_smooth_s", 0.0)),
                 shutter_windows=act.get("shutter_windows"),
-                auto_shutter=bool(act.get("auto_shutter", True)),
+                auto_shutter=bool(act.get("auto_shutter", False)),
                 micro_drift=act.get("micro_drift"),
             )
 
@@ -1024,6 +1410,31 @@ def geo_bake_scene_cmd(
 
     try:
         runner = root / "tools" / "geo-assets" / "render_map_scene.mjs"
+        if fill_tiles:
+            coverage_path = expanded_path.with_suffix(".coverage.json")
+            try:
+                cov = subprocess.run(
+                    [
+                        node_bin,
+                        str(runner),
+                        "--scene-file",
+                        str(expanded_path),
+                        "--base-dir",
+                        str(scene_path.parent),
+                        "--out-dir",
+                        str(out_dir.expanduser().resolve()),
+                        "--coverage-only",
+                        "--coverage-out",
+                        str(coverage_path),
+                    ],
+                    check=False,
+                )
+                if cov.returncode != 0:
+                    raise typer.Exit(code=cov.returncode)
+                regular_gaps, hq_gaps = split_coverage_gaps(coverage_path)
+            finally:
+                coverage_path.unlink(missing_ok=True)
+            typer.echo(json.dumps(fill_coverage_gaps(root, regular_gaps, hq_gaps)))
         proc = subprocess.run(
             [
                 node_bin,

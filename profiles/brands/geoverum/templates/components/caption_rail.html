@@ -52,12 +52,16 @@
   <script>
     (function () {
       const tl = gsap.timeline({ paused: true });
-      const fadeS = Number({{CAPTION_TRANSITION_S}});
-      if (fadeS > 0) {
-        tl.fromTo("#{{SCENE_ID}}-inner", { opacity: 0 }, { opacity: 1, duration: fadeS, ease: "none" }, 0);
-        tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: fadeS, ease: "none" }, {{CAPTION_EXIT_AT_S}});
+      const fadeInS = Number({{CAPTION_TRANSITION_S}});
+      const fadeOutS = Number({{CAPTION_FADE_OUT_S}});
+      if (fadeInS > 0) {
+        tl.fromTo("#{{SCENE_ID}}-inner", { opacity: 0 }, { opacity: 1, duration: fadeInS, ease: "none" }, 0);
       } else {
         tl.set("#{{SCENE_ID}}-inner", { opacity: 1 }, 0);
+      }
+      if (fadeOutS > 0) {
+        tl.to("#{{SCENE_ID}}-inner", { opacity: 0, duration: fadeOutS, ease: "none" }, {{CAPTION_EXIT_AT_S}});
+      } else {
         tl.set("#{{SCENE_ID}}-inner", { opacity: 0 }, {{DURATION_S}});
       }
       window.__timelines = window.__timelines || {};

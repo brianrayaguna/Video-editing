@@ -303,7 +303,11 @@ def write_ass_overlays_file(
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
         trans_ms = max(0, min(200, int(merged.get("caption_transition_ms", 120))))
-        fade = f"\\fad({trans_ms},{trans_ms})" if trans_ms > 0 else ""
+        fade_in_ms = max(0, min(200, int(merged.get("caption_fade_in_ms", trans_ms))))
+        fade_out_ms = max(0, min(200, int(merged.get("caption_fade_out_ms", trans_ms))))
+        fade = (
+            f"\\fad({fade_in_ms},{fade_out_ms})" if (fade_in_ms or fade_out_ms) else ""
+        )
         fade_tag = f"{{{fade}}}" if fade else ""
         escaped_text = _escape_ass_text(raw_text)
         if cap_style["glow_color"] and cap_style["glow_px"] > 0:

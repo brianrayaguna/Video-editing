@@ -438,6 +438,42 @@ def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
     return dest_dir if copied > 0 else None
 
 
+# Feathered black disc that crosses the frame right to left at mid-height: ahead of its
+# centre the outgoing clip shows, behind it the incoming clip. Radius 0.69 x the long
+# side (about 1320 px on a 1920 px frame), feather 12% of the radius; the centre travels
+# from W + 1.4 R to -1.25 R, so over six frames the black fraction runs about
+# 0.06, 0.72, 1.0, 0.9, 0.21, 0 and the middle frame is fully black. Evaluated in planar
+# RGB so black is 0 on every plane. xfade progress P runs from 1 to 0. The expression
+# is written without st()/ld() registers: xfade evaluates it from several slice threads
+# that share one register set.
+_DISC_R = "(0.69*max(W,H))"
+_DISC_CX = f"(P*W+(2.65*P-1.25)*{_DISC_R})"
+_DISC_SWEEP_EXPR = (
+    f"if(gt(X,{_DISC_CX}),B,A)"
+    f"*(1-clip(({_DISC_R}-hypot(X-{_DISC_CX},Y-H/2))/(0.12*{_DISC_R}),0,1))"
+)
+
+_XFADE_MAP: dict[str, tuple[str, float, str]] = {
+    "clean_crossfade": ("fade", 0.30, ""),
+    "clean_fade": ("fade", 0.28, ""),
+    "wipe": ("wipeleft", 0.32, ""),
+    "wipe_left": ("wipeleft", 0.32, ""),
+    "wipe_right": ("wiperight", 0.32, ""),
+    "whip_zoom_blur": ("zoomin", 0.20, ""),
+    "color_flash": ("fadewhite", 0.18, ""),
+    "disc_sweep": (f"custom:expr='{_DISC_SWEEP_EXPR}'", 0.20, "gbrp"),
+}
+
+
+def _xfade_spec(transition: str | None) -> tuple[str, float, str] | None:
+    """Return (xfade transition argument, default duration s, input pixel format) or None.
+
+    An empty pixel format leaves format negotiation to FFmpeg; ``None`` means the
+    transition is a hard cut.
+    """
+    return _XFADE_MAP.get((transition or "").lower().strip())
+
+
 def assemble_hybrid_deliverable(
     plan: EditPlan,
     platform_target: PlatformTarget,
@@ -506,27 +542,19 @@ def assemble_hybrid_deliverable(
         clip_nodes.append((f"[{lbl}]", clip.timeline_duration_s, trans))
         cursor_s = clip.timeline_start_s + clip.timeline_duration_s
 
-    _XFADE_MAP = {
-        "clean_crossfade": ("fade", 0.30),
-        "clean_fade": ("fade", 0.28),
-        "wipe": ("wipeleft", 0.32),
-        "wipe_left": ("wipeleft", 0.32),
-        "wipe_right": ("wiperight", 0.32),
-        "whip_zoom_blur": ("smoothleft", 0.20),
-        "color_flash": ("fadewhite", 0.18),
-    }
-
     if len(clip_nodes) == 1:
         chains.append(f"{clip_nodes[0][0]}copy[v_base]")
-    elif any(trans in _XFADE_MAP for _, _, trans in clip_nodes[1:]):
+    elif any(_xfade_spec(trans) for _, _, trans in clip_nodes[1:]):
         fps_int = max(1, round(fps))
         cur_lbl, cur_dur, _ = clip_nodes[0]
         cur_frames = max(1, round(cur_dur * fps_int))
         for step_idx, (nxt_lbl, nxt_dur, trans) in enumerate(clip_nodes[1:], start=1):
             nxt_frames = max(1, round(nxt_dur * fps_int))
             out_lbl = "[v_base]" if step_idx == len(clip_nodes) - 1 else f"[vx_{step_idx}]"
-            if trans in _XFADE_MAP and cur_dur >= 0.35 and nxt_dur >= 0.35:
-                xf_name, default_d = _XFADE_MAP[trans]
+            spec = _xfade_spec(trans)
+            if spec is not None and cur_dur >= 0.35 and nxt_dur >= 0.35:
+                xf_name, default_d, xf_fmt = spec
+                pre_fmt = f",format={xf_fmt}" if xf_fmt else ""
                 d_frames = max(
                     2,
                     min(
@@ -543,9 +571,9 @@ def assemble_hybrid_deliverable(
                 chains.append(
                     f"{cur_lbl}fps={fps_int},setpts=PTS-STARTPTS,"
                     f"tpad=stop_mode=clone:stop={d_frames + 1},"
-                    f"settb=1/{fps_int}{pad_lbl};"
+                    f"settb=1/{fps_int}{pre_fmt}{pad_lbl};"
                     f"{nxt_lbl}fps={fps_int},setpts=PTS-STARTPTS,"
-                    f"settb=1/{fps_int}[vnxt_{step_idx}];"
+                    f"settb=1/{fps_int}{pre_fmt}[vnxt_{step_idx}];"
                     f"{pad_lbl}[vnxt_{step_idx}]xfade=transition={xf_name}:"
                     f"duration={d:.4f}:offset={offset_s:.4f},"
                     f"fps={fps_int},setpts=PTS-STARTPTS,format=yuv420p{out_lbl}"

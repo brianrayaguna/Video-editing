@@ -124,6 +124,8 @@
         "caption_case": "sentence",
         "caption_style": "plain",
         "caption_transition_ms": 150,
+        "caption_fade_in_ms": 130,
+        "caption_fade_out_ms": 0,
         "max_words_per_caption_group": 4,
         "default_caption_band": "lower_third"
       },
@@ -434,7 +436,7 @@
       "floating_mini_quote_card",
       "eyebrow_kicker_above_title"
     ],
-    "last_calibrated_at": "2026-11-20T10:35:00+00:00"
+    "last_calibrated_at": "2026-11-23T12:00:00+00:00"
   },
   "provenance": {
     "reference_video_count": 42,

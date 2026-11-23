@@ -555,10 +555,7 @@ function buildOverlayCompositionHtml(
     typeof ov.props.entrance_ms === "number" && Number.isFinite(ov.props.entrance_ms)
       ? Math.max(40, Math.min(2000, Number(ov.props.entrance_ms)))
       : null;
-  const captionTransitionMs =
-    typeof ov.props.caption_transition_ms === "number" && Number.isFinite(ov.props.caption_transition_ms)
-      ? Math.max(0, Math.min(200, Number(ov.props.caption_transition_ms)))
-      : 33;
+  const { inMs: captionTransitionMs, outMs: captionFadeOutMs } = captionFadeMs(ov.props);
   const easingFeel =
     typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "snappy_ease_out";
   const easeName =
@@ -577,7 +574,7 @@ function buildOverlayCompositionHtml(
         : Math.min(0.26, duration * 0.25)
     ).toFixed(3)
   );
-  const exitDur = Number((isCaption ? Math.min(captionTransitionMs / 1000, 0.033) : Math.max(0.11, enterDur * 0.48)).toFixed(3));
+  const exitDur = Number((isCaption ? Math.min(captionFadeOutMs / 1000, 0.033) : Math.max(0.11, enterDur * 0.48)).toFixed(3));
   const exitAt = Number(Math.max(0.05, duration - exitDur).toFixed(3));
   const posCss = hasCustomHtml
     ? "inset: 0;"
@@ -743,11 +740,9 @@ function renderParameterizedTemplate(
     ov.props.display_family ?? ov.props.font_family,
     extraFamilies
   );
-  const captionTransitionMs =
-    typeof ov.props.caption_transition_ms === "number" && Number.isFinite(ov.props.caption_transition_ms)
-      ? Math.max(0, Math.min(200, Number(ov.props.caption_transition_ms)))
-      : 33;
-  const captionTransitionS = Number(Math.min(captionTransitionMs / 1000, duration * 0.2).toFixed(3));
+  const captionFade = captionFadeMs(ov.props);
+  const captionTransitionS = Number(Math.min(captionFade.inMs / 1000, duration * 0.2).toFixed(3));
+  const captionFadeOutS = Number(Math.min(captionFade.outMs / 1000, duration * 0.2).toFixed(3));
   const entranceMs =
     typeof ov.props.entrance_ms === "number" && Number.isFinite(ov.props.entrance_ms)
       ? Math.max(40, Math.min(2000, Number(ov.props.entrance_ms)))
@@ -755,7 +750,7 @@ function renderParameterizedTemplate(
   const enterS = Number(Math.min(entranceMs / 1000, duration * 0.45).toFixed(3));
   const exitS = Number(Math.min(Math.max(0.12, enterS * 0.48), duration * 0.25).toFixed(3));
   const exitAtS = Number(Math.max(0.05, duration - exitS).toFixed(3));
-  const captionExitAtS = Number(Math.max(0.02, duration - captionTransitionS).toFixed(3));
+  const captionExitAtS = Number(Math.max(0.02, duration - captionFadeOutS).toFixed(3));
   const easingFeel =
     typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "smooth_editorial";
   const easeName =
@@ -818,6 +813,7 @@ function renderParameterizedTemplate(
     EXIT_S: String(exitS),
     EXIT_AT_S: String(exitAtS),
     CAPTION_TRANSITION_S: String(captionTransitionS),
+    CAPTION_FADE_OUT_S: String(captionFadeOutS),
     CAPTION_EXIT_AT_S: String(captionExitAtS),
     CAPTION_HTML: captionMarkup,
     MOTION_BLUR_ATTR: ov.props.motion_blur
@@ -1224,5 +1220,19 @@ ${hostTags.join("\n")}
     compositionFiles,
     copiedAssets,
     recommendedFormat: plan.render_strategy === "hybrid" ? "mov" : "mp4",
+  };
+}
+
+/**
+ * Caption fade-in and fade-out in ms (each 0-200). `caption_fade_in_ms` and
+ * `caption_fade_out_ms` override the symmetric `caption_transition_ms` (default 33).
+ */
+export function captionFadeMs(props: Record<string, unknown>): { inMs: number; outMs: number } {
+  const ms = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(200, v)) : null;
+  const symmetric = ms(props.caption_transition_ms) ?? 33;
+  return {
+    inMs: ms(props.caption_fade_in_ms) ?? symmetric,
+    outMs: ms(props.caption_fade_out_ms) ?? symmetric,
   };
 }

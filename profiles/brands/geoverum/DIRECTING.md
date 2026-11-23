@@ -168,6 +168,8 @@ The *story need* column is mandatory. A visual answer without a stated need is d
 | Story need | Candidate devices (pick by fit, rotate across episodes) |
 | :--- | :--- |
 | Locate a place | Dive-zoom from a recognisable parent; fill in mention order; pin 0–0.25 s before the name |
+| Introduce a territory or border | Trace the outline from the story anchor, then fill; one-headed north-to-south line for a border shared by two filled countries |
+| Show nationality or ownership | Flag clipped to the territory, revealed from an irregular seed (`organic`) or a bottom-up wipe, with a gentle cloth ripple while it holds, optionally replaced by the story's flat colour |
 | Prove scale | Familiar silhouette tiling; shape transplant; translucent overlay; pull-out until the subject is a pinhead |
 | Prove distance | Measurement line with count-up and dual units; glowing travel line for non-contiguous links |
 | Explain a physical process | Actors (clouds, wind, water) moving and being blocked; cross-section zoom-through; horizon-level terrain flight for vertical facts |
@@ -241,6 +243,8 @@ Within one film, each kind of jump keeps its own device so transitions read as g
 | Weather or atmosphere | Wash dissolve |
 | Hook flip | Colour-flash cut |
 | Surface swap at equal scale | White bar wipe (≈0.25 s) |
+| Basemap register swap at equal framing | Feathered black-disc sweep (`disc_sweep`, 6 frames), match-framed, captions unmasked |
+| Flat map ↔ globe | Continue the zoom through a radial blur peaking on the cut frame (`cut_blur_out_s` / `cut_blur_in_s`) |
 | Map level → character level | Lens or iris dissolve |
 | Abstract → real place | Whip-zoom into a real aerial with the same overlay |
 
@@ -272,7 +276,7 @@ Colours are cast per story, not fixed per role across all films.
 | Tint flashes, stamps, tool actions | On the action verb |
 | Joke beats | May lag deliberately; let a visual gag fill the pause |
 
-Camera moves follow the same sync table: a regime change (wide → regional → close) is one eased move that arrives with the place name, and between beats the camera keeps a slow drift rather than stopping dead. Measured or hand-keyed camera tracks are denoised before baking (`CRAFT.md` *Core motion*); a visible back-and-forth wobble reads as an error, never as energy.
+Camera moves follow the same sync table: a regime change (wide → regional → close) is one eased move that arrives with the place name, and between beats the camera keeps a slow drift rather than stopping dead. Each move arrives at its framing with zero velocity; a dive that ends on a cut keeps accelerating into the cut frame, and map frames stay sharp at every speed. Measured or hand-keyed camera tracks are denoised before baking (`CRAFT.md` *Core motion*); a visible back-and-forth wobble reads as an error, never as energy.
 
 Pacing follows story pressure: fastest at the hook and the escalation, a near-still hold only on a structural promise ("three main reasons"), a palate-cleanser clean frame before a new "why". A visual must never contradict a spoken number.
 

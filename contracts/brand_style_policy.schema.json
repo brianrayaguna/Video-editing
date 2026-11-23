@@ -89,6 +89,8 @@
                 "caption_case": { "type": "string", "enum": ["sentence", "uppercase", "title", "lowercase"] },
                 "caption_style": { "type": "string", "enum": ["plain", "chip", "bar"] },
                 "caption_transition_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
+                "caption_fade_in_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
+                "caption_fade_out_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "max_words_per_caption_group": { "type": "integer", "minimum": 1, "maximum": 12 },
                 "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] }
               }

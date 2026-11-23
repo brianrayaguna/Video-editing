@@ -443,6 +443,48 @@
       "action": "overlay.stagger_teardrop_domain_pins(pop_ms=260, slash_delay_ms=360); overlay.layer_second_deficit_category()",
       "weight": 0.78,
       "rationale": "Popping the positive resource icon (water droplet, wheat crop) before drawing the crimson prohibition slash turns each pin into a two-beat visual argument."
+    },
+    {
+      "trigger_id": "territory_border_trace_then_fill",
+      "condition": "narration.introduces_a_country_or_border_as_subject",
+      "action": "scene.polygon(border_trace_s=0.8-2.0, border_trace_heads=2, border_trace_start=story_anchor, border_trace_hex='#F3FA23', border_trace_width=7.5, border_trace_settle_s=0.1, rim_hex='#FFFFFF', rim_width=4); fill after the trace closes (fill_alpha=0.85-0.95, fill_draw_s=0.1-0.2)",
+      "weight": 0.84,
+      "rationale": "Drawing the outline from the story anchor before any colour lands tells the viewer where the territory ends; a bright constant-width head travelling at constant world speed reads as measurement, and the settle to a thin white rim hands the frame over to the fill."
+    },
+    {
+      "trigger_id": "nationality_flag_fill",
+      "condition": "narration.contrasts_nationality_or_ownership_of_territories",
+      "action": "scene.polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.15-0.25 for a waving cloth, flag_blend='multiply' on satellite relief, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
+      "weight": 0.78,
+      "rationale": "A flag clipped to the coast states ownership without a label; terrain blending keeps relief legible, and replacing the flag with a flat colour keeps the cast readable for the rest of the film."
+    },
+    {
+      "trigger_id": "border_line_single_head_draw",
+      "condition": "narration.names_the_border_between_two_filled_territories",
+      "action": "scene.route(border polyline ordered north to south, hex='#FDFD09', width=8, draw_duration_s=0.85-1.5, draw_ease='in_out', width_ref_zoom=<act zoom>, width_coupling=0.6) layered above both fills; a maritime continuation is dashed with round caps",
+      "weight": 0.72,
+      "rationale": "A shared border is one line, so it draws with one head along the true polyline on top of both fills; width that follows the zoom with an exponent below 1 keeps the line legible through dives."
+    },
+    {
+      "trigger_id": "rest_to_rest_crisp_camera",
+      "condition": "scene.camera_move",
+      "action": "camera_keyframes(curve='glide' for reframes, 'snap_dive' for dives, 'hyperbolic_fly' for cross-region hops; destination key past the act end when a dive cuts at peak speed; origin key before t=0 for a snap pull-out; through=true only inside one continuous flight); optical_shutter_blur=false; bake-scene --fill-tiles",
+      "weight": 0.86,
+      "rationale": "Every reframe arrives with zero velocity and no velocity corner, map frames stay sharp at every speed, and no frame is captured on upscaled tiles; speed reads from motion, not from smear."
+    },
+    {
+      "trigger_id": "register_swap_disc_sweep",
+      "condition": "edit.changes_basemap_register_at_equal_framing",
+      "action": "clip.transition_in='disc_sweep' (feathered black disc crossing right to left over 6 frames at 30 fps); swap the register while the frame is fully black; match-frame both sides; captions stay unmasked",
+      "weight": 0.7,
+      "rationale": "A match-framed sweep reads as a restyle of the same place rather than a jump to a new one."
+    },
+    {
+      "trigger_id": "projection_switch_zoom_through",
+      "condition": "edit.switches_between_flat_map_and_globe",
+      "action": "outgoing act: destination camera key placed after duration_s so the dive is still accelerating at the cut, cut_blur_out_s=0.3-0.45; incoming act: cut_blur_in_s=0.3-0.45, opening already framed on the same place in the other projection; clip.transition_in='hard_cut'",
+      "weight": 0.68,
+      "rationale": "Continuing the zoom across the cut hides the projection change inside motion the viewer is already following."
     }
   ],
   "exemplar_bank": [
@@ -1374,6 +1416,190 @@
       "end_s": 60.0,
       "hyperframes_pattern": "arid_region_fill_and_two_stage_prohibition_pins",
       "notes": "Warm arid-ochre shading fades across the western half while four teardrop water-drop pins pop and receive crimson prohibition slashes ~350 ms later, followed by four wheat-crop pins undergoing the same two-stage negation during a wide continental pull-out."
+    },
+    {
+      "exemplar_id": "ref_chimborazo_geoid_two_head_border_trace",
+      "source_video_id": "ref_chimborazo_geoid",
+      "role": "proof",
+      "start_s": 16.67,
+      "end_s": 23.17,
+      "hyperframes_pattern": "two_head_border_trace_then_tint_fill",
+      "measured_metrics": {
+        "trace_hex": "#F3FA23",
+        "trace_width_px": [
+          7,
+          8
+        ],
+        "trace_heads": 2,
+        "trace_speed": "constant world length per frame while the camera zooms out",
+        "trace_to_rim_crossfade_frames": 3,
+        "rim_width_px": 4,
+        "fill_alpha": 0.9,
+        "fill_fade_frames": [
+          3,
+          6
+        ],
+        "zoom_out_peak_log2_per_frame": 0.185,
+        "zoom_out_peak_position": 0.55
+      },
+      "notes": "The border draws from the summit marker in both directions at once with round caps and no glow while the camera keeps zooming out; only after it reaches the frame edges does it cross-fade to a thin white rim, and the two country tints fade in one after the other with their names."
+    },
+    {
+      "exemplar_id": "ref_chimborazo_geoid_projection_zoom_through",
+      "source_video_id": "ref_chimborazo_geoid",
+      "role": "broll_bridge",
+      "start_s": 24.67,
+      "end_s": 26.17,
+      "hyperframes_pattern": "flat_map_to_globe_zoom_through_cut",
+      "measured_metrics": {
+        "radial_blur_frames_before_cut": 8,
+        "globe_zoom_out_start_log2_per_frame": -0.39,
+        "globe_diameter_px": 860,
+        "background_fade_frames": 10
+      },
+      "notes": "An accelerating zoom-out on the flat map gains radial blur, cuts at its peak to a globe of the same view, and the zoom-out continues and settles on the globe while the space background fades in."
+    },
+    {
+      "exemplar_id": "ref_diomede_flag_bottom_up_wipe",
+      "source_video_id": "ref_diomede_islands",
+      "role": "proof",
+      "start_s": 21.87,
+      "end_s": 24.5,
+      "hyperframes_pattern": "flag_fill_bottom_up_wipe_during_zoom",
+      "measured_metrics": {
+        "zoom_in_log2": 1.5,
+        "flag_reveal_frames": 8,
+        "flag_fit": "upright, stretched to the territory bounds",
+        "flag_blend": "terrain-blended (white stripe renders tan)",
+        "rim_width_px": [
+          3,
+          4
+        ]
+      },
+      "notes": "During a zoom-in on the island its flag wipes in from the bottom edge, clipped to the coast and blended with the terrain, then cross-dissolves into high-resolution imagery under the next zoom so the imagery swap is never seen."
+    },
+    {
+      "exemplar_id": "ref_diomede_disc_sweep_register_swap",
+      "source_video_id": "ref_diomede_islands",
+      "role": "broll_bridge",
+      "start_s": 5.13,
+      "end_s": 5.3,
+      "hyperframes_pattern": "feathered_black_disc_sweep",
+      "measured_metrics": {
+        "duration_frames": 6,
+        "black_fraction_by_frame": [
+          0.13,
+          0.59,
+          0.99,
+          0.8,
+          0.26,
+          0.0
+        ],
+        "direction": "right_to_left",
+        "disc_diameter_px": [
+          1000,
+          1300
+        ],
+        "feather_px": [
+          150,
+          250
+        ]
+      },
+      "notes": "A feathered black disc crosses the frame right to left and the basemap register swaps underneath while the frame is fully black; both sides are framed identically, so the cut reads as a restyle, and the captions are never masked."
+    },
+    {
+      "exemplar_id": "ref_diomede_world_scaled_date_line",
+      "source_video_id": "ref_diomede_islands",
+      "role": "outro",
+      "start_s": 49.7,
+      "end_s": 60.0,
+      "hyperframes_pattern": "world_scaled_line_draw_and_zoom_along",
+      "measured_metrics": {
+        "draw_speed_px_per_frame": [
+          20,
+          25
+        ],
+        "line_width_px_by_zoom": {
+          "z4.4": 1.5,
+          "z8": 5,
+          "z9.1": 8.5
+        },
+        "zoom_in_log2": 4.66,
+        "zoom_in_peak_log2_per_s": 3.9
+      },
+      "notes": "The date line draws top to bottom with its label typed along it, then the camera zooms along the line; the stroke width follows the map scale above a thin floor, so the line thickens with the zoom instead of staying a hairline."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_flag_seed_reveal",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 4.87,
+      "hyperframes_pattern": "rotated_flag_seed_reveal_then_flat_recolour",
+      "measured_metrics": {
+        "flag_rotate_deg": 90,
+        "flag_reveal_frames": [
+          20,
+          22
+        ],
+        "flag_reveal_seed": "country centre",
+        "recolour_frames": [
+          14,
+          24
+        ],
+        "recolour_hex": [
+          "#58BC16",
+          "#1B5BA8"
+        ],
+        "rim_width_px": 3,
+        "land_border_hex": "#FDFD09",
+        "land_border_draw_frames": 26,
+        "land_border_head_px_per_frame": 30
+      },
+      "notes": "Each country's flag, turned a quarter so its long axis follows the country, grows from a seed at the centre until it fills the coastline; the flags are then replaced by flat saturated colours by a second region growth, and only then does the shared land border draw north to south on top of both fills."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_lens_dive_cut",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "setup",
+      "start_s": 7.3,
+      "end_s": 9.7,
+      "hyperframes_pattern": "lens_dive_ending_on_cut_at_peak_speed",
+      "measured_metrics": {
+        "dive_log2": 4.6,
+        "dive_peak_log2_per_frame": 0.42,
+        "dive_shape": "exponential ease-in, cut at peak speed",
+        "line_width_zoom_exponent": 0.6,
+        "post_cut_dissolve_frames": 5
+      },
+      "notes": "A magnifier fills the frame as the zoom accelerates into the cut; frames stay sharp at peak speed, the cut lands on a framing slightly wider than the last one, and the imagery change is covered by a five-frame dissolve into the dark plate."
+    },
+    {
+      "exemplar_id": "ref_baltic_lighthouse_glow_redraw",
+      "source_video_id": "ref_baltic_lighthouse_border",
+      "role": "proof",
+      "start_s": 12.87,
+      "end_s": 16.0,
+      "hyperframes_pattern": "single_head_line_redraw_with_zone_glow",
+      "measured_metrics": {
+        "head_speed_px_per_frame": [
+          28,
+          54,
+          28
+        ],
+        "head_speed_shape": "ease-in-out bell over 23 frames",
+        "zigzag_head_px_per_frame": [
+          25,
+          30
+        ],
+        "glow_hex": "#FF2020",
+        "glow_radius_px": [
+          60,
+          80
+        ],
+        "glow_fade_frames": 14
+      },
+      "notes": "A white line redraws the border from the top of the frame over the old dashed line; a red glow switches on exactly when the head enters the islet and fades after the zig-zag closes, so the glow marks the zone of interest rather than the whole line."
     }
   ]
 }

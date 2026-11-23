@@ -5,6 +5,8 @@
  * Serves:
  * - `GET /tiles/{z}/{x}/{y}.jpg` from `assets/geo/tiles/{z}/{x}/{y}.jpg` with automatic
  *   parent-tile quadrant cropping via `sharp` when an out-of-AOI high-zoom tile is requested.
+ * - `GET /tiles_hybrid/{z}/{x}/{y}.jpg`: nearest of the graded and high-resolution sets, with
+ *   high-resolution tiles passed through the same documentary grade as `assets/geo/tiles/`.
  * - `GET /vector/*`, `/fonts/*`, `/flags/*`, `/icons/*`, `/vendor/*` from `assets/geo/`.
  * - `GET /health` -> `200 OK` JSON status.
  */
@@ -14,6 +16,9 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+
+import { gradeRgb } from "./build_tiles.mjs";
+import { isMainModule } from "./entry_point.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -151,36 +156,113 @@ export function pickTileSource(z, x, y, hasHq, hasRegular, hqMinZoom = 0) {
 
 const hqTilePath = (pz, px, py) => join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
 const regularTilePath = (pz, px, py) => join(TILES_DIR, String(pz), String(px), `${py}.jpg`);
+const hasHqTile = (pz, px, py) => existsSync(hqTilePath(pz, px, py));
+const hasRegularTile = (pz, px, py) => existsSync(regularTilePath(pz, px, py));
+const noTile = () => false;
+
+/** Highest zoom the tile fetchers can supply; requests above it are never reported as gaps. */
+export const MAX_FETCH_ZOOM = 16;
+
+/**
+ * Highest fetchable zoom per raster route. `/tiles` serves the graded Sentinel-2 set, whose
+ * native resolution ends at z14; the HQ routes can also draw on orthoimagery to z16.
+ */
+export const ROUTE_MAX_FETCH_ZOOM = Object.freeze({ tiles: 14, tiles_hq: MAX_FETCH_ZOOM, tiles_hybrid: MAX_FETCH_ZOOM });
+
+/**
+ * Coverage report for recorded gaps: every gap once under `tiles`, plus the gaps each raster
+ * route requested under `by_route`, all sorted by z, x, y. Gaps above `MAX_FETCH_ZOOM` are dropped.
+ */
+export function coverageReport(tileGaps) {
+  const gaps = [...tileGaps.values()]
+    .filter((g) => g.z <= MAX_FETCH_ZOOM)
+    .sort((a, b) => a.z - b.z || a.x - b.x || a.y - b.y);
+  const byRoute = Object.fromEntries(Object.keys(ROUTE_MAX_FETCH_ZOOM).map((route) => [route, []]));
+  for (const g of gaps) {
+    for (const route of g.routes || []) byRoute[route]?.push([g.z, g.x, g.y]);
+  }
+  return { tiles: gaps.map((g) => [g.z, g.x, g.y]), by_route: byRoute };
+}
+
+/**
+ * Coverage gap for a tile request: `{ z, x, y, level }` when the chosen source would serve it
+ * by upscaling an ancestor at `level` (`-1` when nothing covers it), `null` when an exact tile
+ * exists or `z` is above `maxZoom`.
+ */
+export function gapForTile(z, x, y, hasHq, hasRegular, hqMinZoom = 0, maxZoom = MAX_FETCH_ZOOM) {
+  if (z > maxZoom) return null;
+  const pick = pickTileSource(z, x, y, hasHq, hasRegular, hqMinZoom);
+  if (!pick) return { z, x, y, level: -1 };
+  return pick.level < z ? { z, x, y, level: pick.level } : null;
+}
+
+const gradedHqCache = new Map();
+
+/** Apply the documentary tile grade to an HQ JPEG buffer (cached per tile key). */
+async function gradeHqBuffer(key, z, buf, jpegQuality) {
+  if (gradedHqCache.has(key)) return gradedHqCache.get(key);
+  const { data, info } = await sharp(buf)
+    .flatten({ background: { r: 10, g: 56, b: 70 } })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const out = await sharp(gradeRgb(data, z), {
+    raw: { width: info.width, height: info.height, channels: 3 },
+  })
+    .jpeg({ quality: jpegQuality })
+    .toBuffer();
+  if (gradedHqCache.size > 1024) gradedHqCache.delete(gradedHqCache.keys().next().value);
+  gradedHqCache.set(key, out);
+  return out;
+}
 
 /**
  * Serve `{z}/{x}/{y}` from the HQ set when it holds the nearest ancestor (cropping and upscaling
  * that ancestor's quadrant), otherwise from the regular set via `resolveTileBuffer`.
  */
-async function resolveHqOrRegularTile(z, x, y, hqMinZoom, jpegQuality) {
-  const pick = pickTileSource(
-    z,
-    x,
-    y,
-    (pz, px, py) => existsSync(hqTilePath(pz, px, py)),
-    (pz, px, py) => existsSync(regularTilePath(pz, px, py)),
-    hqMinZoom,
-  );
+async function resolveHqOrRegularTile(z, x, y, hqMinZoom, jpegQuality, grade = false) {
+  const pick = pickTileSource(z, x, y, hasHqTile, hasRegularTile, hqMinZoom);
   if (pick?.source !== "hq") return resolveTileBuffer(z, x, y);
   const scale = 2 ** (z - pick.level);
   const parentHq = hqTilePath(pick.level, Math.floor(x / scale), Math.floor(y / scale));
-  if (scale === 1) return readFileSync(parentHq);
-  const subSize = Math.max(1, Math.floor(256 / scale));
-  const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
-  const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
-  return sharp(parentHq)
-    .extract({ left, top, width: subSize, height: subSize })
-    .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
-    .jpeg({ quality: jpegQuality })
-    .toBuffer();
+  let buf;
+  if (scale === 1) {
+    buf = readFileSync(parentHq);
+  } else {
+    const subSize = Math.max(1, Math.floor(256 / scale));
+    const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
+    const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
+    buf = await sharp(parentHq)
+      .extract({ left, top, width: subSize, height: subSize })
+      .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: jpegQuality })
+      .toBuffer();
+  }
+  return grade ? gradeHqBuffer(`${z}/${x}/${y}`, z, buf, jpegQuality) : buf;
 }
 
-export function startTileServer(port = PORT, host = HOST) {
+/**
+ * Start the asset and tile server. With `{ recordGaps: true }`, `server.tileGaps` collects every
+ * raster tile request (`/tiles`, `/tiles_hybrid`, `/tiles_hq`) that is served by upscaling an
+ * ancestor and that the route's fetcher could fill (`ROUTE_MAX_FETCH_ZOOM`), keyed `"z/x/y"` ->
+ * `{ z, x, y, level, routes }`, for coverage passes.
+ */
+export function startTileServer(port = PORT, host = HOST, options = {}) {
   const geoRootReal = existsSync(GEO_ROOT) ? realpathSync(GEO_ROOT) : resolve(GEO_ROOT);
+  const tileGaps = options.recordGaps ? new Map() : null;
+  const noteGap = (route, z, x, y, hasHq, hqMinZoom) => {
+    if (!tileGaps) return;
+    const gap = gapForTile(z, x, y, hasHq, hasRegularTile, hqMinZoom, ROUTE_MAX_FETCH_ZOOM[route]);
+    if (!gap) return;
+    const key = `${z}/${x}/${y}`;
+    const known = tileGaps.get(key);
+    if (known) {
+      if (!known.routes.includes(route)) known.routes = [...known.routes, route].sort();
+      known.level = Math.min(known.level, gap.level);
+    } else {
+      tileGaps.set(key, { ...gap, routes: [route] });
+    }
+  };
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
@@ -211,7 +293,8 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
-        const buf = await resolveHqOrRegularTile(z, x, y, HYBRID_HQ_MIN_ZOOM, 88);
+        noteGap("tiles_hybrid", z, x, y, hasHqTile, HYBRID_HQ_MIN_ZOOM);
+        const buf = await resolveHqOrRegularTile(z, x, y, HYBRID_HQ_MIN_ZOOM, 88, true);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
@@ -235,6 +318,7 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
+        noteGap("tiles_hq", z, x, y, hasHqTile, 0);
         const buf = await resolveHqOrRegularTile(z, x, y, 0, 90);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
@@ -259,6 +343,7 @@ export function startTileServer(port = PORT, host = HOST) {
           res.end("Tile not found");
           return;
         }
+        noteGap("tiles", z, x, y, noTile, 0);
         const buf = await resolveTileBuffer(z, x, y);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
@@ -329,6 +414,8 @@ export function startTileServer(port = PORT, host = HOST) {
     }
   });
 
+  if (tileGaps) server.tileGaps = tileGaps;
+
   return new Promise((resolvePromise, rejectPromise) => {
     server.once("error", rejectPromise);
     server.listen(port, host, () => {
@@ -337,7 +424,7 @@ export function startTileServer(port = PORT, host = HOST) {
   });
 }
 
-if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
+if (isMainModule(import.meta.url)) {
   startTileServer(PORT, HOST)
     .then(() => {
       console.log(`Geoverum local tile & asset server listening on http://${HOST}:${PORT}`);

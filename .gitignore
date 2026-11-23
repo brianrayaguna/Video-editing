@@ -32,6 +32,8 @@ assets/geo/flags/
 assets/geo/icons/
 assets/geo/textures/
 assets/geo/LIGHTWEIGHT_PACK.json
+assets/geo/LIBRARY.json
+assets/geo/svg/
 assets/geo/vendor/
 assets/audio/
 *.mp4

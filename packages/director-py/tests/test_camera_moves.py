@@ -404,3 +404,121 @@ def test_camera_math_handles_extreme_zoom_duplicate_cuts_antimeridian_and_track_
     assert len(projected) == len(samples)
     assert projected[-1]["t_s"] > 0.5
     assert all(0.0 <= kf["x_pct"] <= 100.0 for kf in projected)
+
+
+def _zoom_velocity(samples: list[dict]) -> list[float]:
+    """Central-difference zoom velocity (log2 per frame) for every sample."""
+    zs = [s["zoom"] for s in samples]
+    vel = [0.0] * len(zs)
+    for i in range(1, len(zs) - 1):
+        vel[i] = (zs[i + 1] - zs[i - 1]) / 2.0
+    return vel
+
+
+def test_rest_keyframes_have_zero_velocity() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    kfs = [
+        {"t": 0.0, "center": [10.0, 50.0], "zoom": 4.0},
+        {"t": 1.2, "center": [10.0, 50.0], "zoom": 8.0, "curve": "snap_dive"},
+        {"t": 2.6, "center": [10.0, 50.0], "zoom": 6.0, "curve": "snap_dive"},
+    ]
+    samples = build_cinema_camera_track(kfs, duration_s=3.0, fps=30.0)
+    vel = _zoom_velocity(samples)
+    peak = max(abs(v) for v in vel)
+    assert peak > 0.05
+    for key_frame in (36, 78):
+        assert abs(vel[key_frame]) < 0.02 * peak, (key_frame, vel[key_frame], peak)
+    max_jump = max(abs(vel[i] - vel[i - 1]) for i in range(2, len(vel) - 1))
+    assert max_jump < 0.25 * peak
+
+
+def test_profile_peak_positions() -> None:
+    from vedit.director.camera_moves import eased_progress
+
+    def peak_fraction(curve: str) -> float:
+        steps = 2000
+        best_u, best_v = 0.0, -1.0
+        for i in range(steps):
+            u0, u1 = i / steps, (i + 1) / steps
+            v = eased_progress(u1, curve) - eased_progress(u0, curve)
+            if v > best_v:
+                best_u, best_v = (u0 + u1) / 2.0, v
+        return best_u
+
+    for curve in ("glide", "snap_dive", "whip_snap", "hyperbolic_fly", "orbit_cruise", "auto"):
+        assert eased_progress(0.0, curve) == pytest.approx(0.0, abs=1e-9)
+        assert eased_progress(1.0, curve) == pytest.approx(1.0, abs=1e-9)
+        values = [eased_progress(i / 200, curve) for i in range(201)]
+        assert all(b >= a for a, b in zip(values, values[1:], strict=False))
+        # Zero slope at both ends (rest points).
+        assert eased_progress(0.01, curve) < 0.01 * 0.2
+        assert 1.0 - eased_progress(0.99, curve) < 0.01 * 0.2
+    assert 0.28 <= peak_fraction("snap_dive") <= 0.42
+    assert 0.45 <= peak_fraction("glide") <= 0.55
+
+
+def test_through_keyframe_keeps_moving() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    kfs = [
+        {"t": 0.0, "center": [10.0, 50.0], "zoom": 4.0},
+        {"t": 1.0, "center": [10.0, 50.0], "zoom": 6.0, "through": True},
+        {"t": 2.0, "center": [10.0, 50.0], "zoom": 8.0},
+    ]
+    samples = build_cinema_camera_track(kfs, duration_s=2.0, fps=30.0)
+    vel = _zoom_velocity(samples)
+    peak = max(abs(v) for v in vel)
+    assert abs(vel[30]) > 0.5 * peak
+    assert samples[30]["zoom"] == pytest.approx(6.0, abs=0.35)
+
+
+def test_single_and_duplicate_keyframes() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    single = build_cinema_camera_track(
+        [{"t": 0.5, "center": [3.0, 4.0], "zoom": 7.0}], duration_s=1.0, fps=10.0
+    )
+    assert len(single) == 10
+    assert {s["zoom"] for s in single} == {7.0}
+    assert {tuple(s["center"]) for s in single} == {(3.0, 4.0)}
+
+    dup = build_cinema_camera_track(
+        [
+            {"t": 1.0, "center": [3.0, 4.0], "zoom": 7.0},
+            {"t": 1.0, "center": [3.0, 4.0], "zoom": 7.0, "through": True},
+            {"t": 1.0, "center": [3.0, 4.0], "zoom": 7.0},
+        ],
+        duration_s=2.0,
+        fps=10.0,
+    )
+    assert {s["zoom"] for s in dup} == {7.0}
+
+    cut = build_cinema_camera_track(
+        [
+            {"t": 0.0, "center": [0.0, 0.0], "zoom": 3.0},
+            {"t": 1.0, "center": [0.0, 0.0], "zoom": 5.0},
+            {"t": 1.0, "center": [20.0, 10.0], "zoom": 7.0},
+            {"t": 2.0, "center": [20.0, 10.0], "zoom": 7.0},
+        ],
+        duration_s=2.0,
+        fps=10.0,
+    )
+    assert cut[5]["zoom"] < 5.0
+    assert cut[15]["zoom"] == pytest.approx(7.0)
+
+
+def test_auto_shutter_adaptive() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    kfs = [
+        {"t": 0.0, "center": [10.0, 50.0], "zoom": 4.0},
+        {"t": 1.0, "center": [10.0, 50.0], "zoom": 9.0},
+        {"t": 2.0, "center": [10.0, 50.0], "zoom": 9.0},
+    ]
+    samples = build_cinema_camera_track(kfs, duration_s=2.0, fps=30.0, auto_shutter=True)
+    assert max(s["shutter_samples"] for s in samples[5:26]) >= 6
+    assert all(s["shutter_samples"] == 1 for s in samples[40:60])
+    assert max(s["shutter_samples"] for s in samples) <= 16
+    off = build_cinema_camera_track(kfs, duration_s=2.0, fps=30.0)
+    assert {s["shutter_samples"] for s in off} == {1}
