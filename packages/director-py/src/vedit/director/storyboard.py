@@ -304,14 +304,16 @@ def _check(
                 y_pct = float(xy[1]) / float(frame_h)
                 if x_pct < min_x or x_pct > max_x:
                     add(
-                        f"callout x={xy[0]:.0f}px ({x_pct:.0%}) violates safe margin [{min_x:.0%}, {max_x:.0%}]",
+                        f"callout x={xy[0]:.0f}px ({x_pct:.0%}) violates safe margin "
+                        f"[{min_x:.0%}, {max_x:.0%}]",
                         b,
                     )
                     break
                 min_required_y = ruler_min_top if is_ruler_beat else min_y
                 if y_pct < min_required_y or y_pct > max_y:
                     add(
-                        f"callout y={xy[1]:.0f}px ({y_pct:.0%}) violates safe margin [{min_required_y:.0%}, {max_y:.0%}]",
+                        f"callout y={xy[1]:.0f}px ({y_pct:.0%}) violates safe margin "
+                        f"[{min_required_y:.0%}, {max_y:.0%}]",
                         b,
                     )
                     break
