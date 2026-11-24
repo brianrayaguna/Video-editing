@@ -621,3 +621,199 @@ def test_validate_scene_warns_on_border_trace_over_multipart_geometry(tmp_path: 
     no_vectors = scene("provinces_by_country.AA")
     no_vectors.pop("vectors_file")
     assert trace_warnings(no_vectors) == []
+
+
+def test_coverage_validation_fill_dedup_and_prepare_routing(tmp_path: Path, monkeypatch) -> None:
+    import json
+    import subprocess
+
+    import pytest
+    from typer.testing import CliRunner
+
+    from vedit.cli import geo as geo_mod
+
+    # 1. split_coverage_gaps rejects bools/floats and preserves unrouted tiles
+    bad = tmp_path / "bad.json"
+    bad.write_text(
+        json.dumps({"tiles": [[1, 0, 1]], "by_route": {"tiles": [[True, False, True]]}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="malformed tile row"):
+        geo_mod.split_coverage_gaps(bad)
+
+    unrouted = tmp_path / "unrouted.json"
+    unrouted.write_text(json.dumps({"tiles": [[10, 1, 2]], "by_route": {}}), encoding="utf-8")
+    assert geo_mod.split_coverage_gaps(unrouted) == (set(), {(10, 1, 2)})
+
+    # 2. fill_coverage_gaps deduplicates overlapping z<=12 tiles across regular and HQ routes
+    calls: list[tuple[set, object, bool]] = []
+
+    def fake_fetch(root, coords, *, hq_aerial, grade_tiles, missing):
+        calls.append((set(coords), hq_aerial, grade_tiles))
+        return len(coords), 0
+
+    summary = geo_mod.fill_coverage_gaps(tmp_path, {(10, 1, 2)}, {(10, 1, 2)}, fetch=fake_fetch)
+    assert summary["coverage_gaps"] == 1
+    assert summary["tiles_verified"] == 1
+    assert calls == [({(10, 1, 2)}, False, True)]
+
+    # 3. _fetch_tile_set with hq_aerial=True does not download z<=12 into Sentinel-2
+    fake_root = tmp_path / "repo"
+    (fake_root / "assets" / "geo" / "tiles_hq" / "10" / "1").mkdir(parents=True)
+    (fake_root / "assets" / "geo" / "tiles_hq" / "10" / "1" / "2.jpg").write_bytes(b"x" * 128)
+    s2_n, hq_n = geo_mod._fetch_tile_set(
+        fake_root, {(10, 1, 2)}, hq_aerial=True, grade_tiles=False
+    )
+    assert (s2_n, hq_n) == (0, 1)
+    assert not (fake_root / "assets" / "geo" / "raw" / "tiles_s2_2016" / "10").exists()
+
+    # 4. validate_map_scene handles z=16-only HQ tiles cleanly and rejects bools/bad types
+    z16_dir = fake_root / "assets" / "geo" / "tiles_hq" / "16" / "10485"
+    z16_dir.mkdir(parents=True)
+    tx, ty = geo_mod._deg2num(37.78, -122.4, 16)
+    (fake_root / "assets" / "geo" / "tiles_hq" / "16" / str(tx)).mkdir(parents=True, exist_ok=True)
+    (
+        fake_root / "assets" / "geo" / "tiles_hq" / "16" / str(tx) / f"{ty}.jpg"
+    ).write_bytes(b"x" * 128)
+    ok_z16 = geo_mod.validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "z16",
+                    "duration_s": 3.0,
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [-122.4, 37.78], "zoom": 16.0},
+                        {"t": 3.0, "center": [-122.4, 37.78], "zoom": 16.0},
+                    ],
+                }
+            ]
+        },
+        repo_root=fake_root,
+    )
+    assert ok_z16["ok"] and ok_z16["warnings"] == []
+
+    bad_types = geo_mod.validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "bad",
+                    "duration_s": 3.0,
+                    "cut_blur_in_s": True,
+                    "layers": [
+                        {
+                            "type": "polygon",
+                            "geom_ref": "x",
+                            "border_trace_heads": True,
+                            "border_trace_s": "fast",
+                            "end_s": None,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert not bad_types["ok"]
+    assert any("cut_blur_in_s" in e for e in bad_types["errors"])
+    assert any("border_trace_heads" in e for e in bad_types["errors"])
+    assert any("border_trace_s" in e for e in bad_types["errors"])
+
+    # 5. geo prepare --tile-list respects by_route for regular z13-14 gaps
+    cov_json = tmp_path / "cov.json"
+    cov_json.write_text(
+        json.dumps(
+            {
+                "tiles": [[13, 1, 2]],
+                "by_route": {"tiles": [[13, 1, 2]], "tiles_hq": [], "tiles_hybrid": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    fetch_calls: list[tuple[set, object]] = []
+    monkeypatch.setattr(geo_mod, "find_repo_root", lambda: fake_root)
+    monkeypatch.setattr(
+        geo_mod,
+        "_fetch_tile_set",
+        lambda root, coords, *, hq_aerial, grade_tiles, missing=None: (
+            fetch_calls.append((set(coords), hq_aerial)) or (len(coords), 0)
+        ),
+    )
+    monkeypatch.setattr(
+        geo_mod,
+        "extract_project_vectors",
+        lambda **kw: {"countries": {}, "continents": {}, "provinces": []},
+    )
+    runner = CliRunner()
+    res = runner.invoke(
+        geo_mod.geo_app,
+        ["prepare", "--tile-list", str(cov_json), "-o", str(tmp_path / "vec.json")],
+    )
+    assert res.exit_code == 0, res.output
+    assert fetch_calls == [({(13, 1, 2)}, False)]
+
+    # 6. geo bake-scene --fill-tiles defers HQ tile presence check until after filling
+    scene_file = tmp_path / "scene.json"
+    scene_file.write_text(
+        json.dumps(
+            {
+                "acts": [
+                    {
+                        "act_id": "closeup",
+                        "duration_s": 2.0,
+                        "camera_keyframes": [
+                            {"t": 0.0, "center": [10.0, 10.0], "zoom": 14.0},
+                            {"t": 2.0, "center": [10.0, 10.0], "zoom": 14.0},
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(geo_mod.shutil, "which", lambda name: "/usr/bin/node")
+
+    def fake_run(cmd, check=False, **kw):
+        if "--coverage-out" in cmd:
+            cov_out = Path(cmd[cmd.index("--coverage-out") + 1])
+            tx14, ty14 = geo_mod._deg2num(10.0, 10.0, 14)
+            cov_out.write_text(
+                json.dumps(
+                    {
+                        "tiles": [[14, tx14, ty14]],
+                        "by_route": {
+                            "tiles": [],
+                            "tiles_hq": [],
+                            "tiles_hybrid": [[14, tx14, ty14]],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(geo_mod.subprocess, "run", fake_run)
+
+    def fake_fill(root, reg, hq):
+        for z, tx, ty in hq:
+            p = root / "assets" / "geo" / "tiles_hq" / str(z) / str(tx) / f"{ty}.jpg"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x" * 128)
+        return {
+            "coverage_gaps": len(reg | hq),
+            "tiles_verified": 0,
+            "hq_tiles_verified": len(hq),
+            "coverage_unfillable": 0,
+        }
+
+    monkeypatch.setattr(geo_mod, "fill_coverage_gaps", fake_fill)
+    bake_res = runner.invoke(
+        geo_mod.geo_app,
+        [
+            "bake-scene",
+            "--scene-file",
+            str(scene_file),
+            "-o",
+            str(tmp_path / "out"),
+            "--fill-tiles",
+        ],
+    )
+    assert bake_res.exit_code == 0, bake_res.output

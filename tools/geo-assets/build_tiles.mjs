@@ -8,7 +8,7 @@
  * while enhancing natural landmass relief clarity, avoiding runtime CSS filters.
  */
 
-import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -115,6 +115,34 @@ export function gradeRgb(data, z, bmngData = null) {
   return out;
 }
 
+async function writeAtomicJpeg(sharpPipeline, outPath) {
+  mkdirSync(dirname(outPath), { recursive: true });
+  const tmpPath = `${outPath}.part`;
+  try {
+    await sharpPipeline.toFile(tmpPath);
+    renameSync(tmpPath, outPath);
+  } catch (err) {
+    try {
+      if (existsSync(tmpPath)) unlinkSync(tmpPath);
+    } catch {
+      // Ignore cleanup errors.
+    }
+    throw err;
+  }
+}
+
+function bmngSourcePath(z, x, y) {
+  const maxBmngZ = 4;
+  if (z <= maxBmngZ) {
+    const p = join(RAW_DIR, "tiles_bmng", String(z), String(x), `${y}.jpg`);
+    return existsSync(p) && statSync(p).size > 250 ? p : null;
+  }
+  if (z > 6) return null;
+  const scale = 1 << (z - maxBmngZ);
+  const p = join(RAW_DIR, "tiles_bmng", String(maxBmngZ), String(Math.floor(x / scale)), `${Math.floor(y / scale)}.jpg`);
+  return existsSync(p) && statSync(p).size > 250 ? p : null;
+}
+
 /**
  * Apply documentary marine-teal ocean bathymetry and natural relief grading to a 256x256 tile.
  */
@@ -124,12 +152,12 @@ async function gradeTile(item, outPath) {
   const bmngData = await resolveBmngRgbBuffer(item.z, item.x, item.y);
 
   if (inputSize <= 250 && !bmngData) {
-    mkdirSync(dirname(outPath), { recursive: true });
-    await sharp({
-      create: { width: 256, height: 256, channels: 3, background: { r: 10, g: 56, b: 70 } },
-    })
-      .jpeg({ quality: 86, mozjpeg: true })
-      .toFile(outPath);
+    await writeAtomicJpeg(
+      sharp({
+        create: { width: 256, height: 256, channels: 3, background: { r: 10, g: 56, b: 70 } },
+      }).jpeg({ quality: 86, mozjpeg: true }),
+      outPath
+    );
     return;
   }
 
@@ -152,27 +180,32 @@ async function gradeTile(item, outPath) {
 
   const out = gradeRgb(data, item.z, bmngData);
 
-  mkdirSync(dirname(outPath), { recursive: true });
-  await sharp(out, { raw: { width, height, channels: 3 } })
-    .jpeg({ quality: 86, mozjpeg: true })
-    .toFile(outPath);
+  await writeAtomicJpeg(
+    sharp(out, { raw: { width, height, channels: 3 } }).jpeg({ quality: 86, mozjpeg: true }),
+    outPath
+  );
 }
 
-function listTilesRecursive(rootDir) {
+export function listTilesRecursive(rootDir) {
   const results = [];
   if (!existsSync(rootDir)) return results;
-  for (const zStr of readdirSync(rootDir)) {
-    const zDir = join(rootDir, zStr);
-    const z = Number(zStr);
-    if (!Number.isInteger(z)) continue;
-    for (const xStr of readdirSync(zDir)) {
-      const xDir = join(zDir, xStr);
-      const x = Number(xStr);
-      if (!Number.isInteger(x)) continue;
-      for (const yFile of readdirSync(xDir)) {
-        if (!yFile.endsWith(".jpg")) continue;
-        const y = Number(yFile.replace(/\.jpg$/, ""));
-        results.push({ z, x, y, path: join(xDir, yFile) });
+  for (const zEnt of readdirSync(rootDir, { withFileTypes: true })) {
+    if (!zEnt.isDirectory() || !/^\d+$/.test(zEnt.name)) continue;
+    const z = Number(zEnt.name);
+    if (!Number.isInteger(z) || z < 0 || z > 22) continue;
+    const zDir = join(rootDir, zEnt.name);
+    for (const xEnt of readdirSync(zDir, { withFileTypes: true })) {
+      if (!xEnt.isDirectory() || !/^\d+$/.test(xEnt.name)) continue;
+      const x = Number(xEnt.name);
+      if (!Number.isInteger(x) || x < 0 || x >= 2 ** z) continue;
+      const xDir = join(zDir, xEnt.name);
+      for (const yEnt of readdirSync(xDir, { withFileTypes: true })) {
+        if (!yEnt.isFile() || !yEnt.name.endsWith(".jpg")) continue;
+        const stem = yEnt.name.slice(0, -4);
+        if (!/^\d+$/.test(stem)) continue;
+        const y = Number(stem);
+        if (!Number.isInteger(y) || y < 0 || y >= 2 ** z) continue;
+        results.push({ z, x, y, path: join(xDir, yEnt.name) });
       }
     }
   }
@@ -188,7 +221,12 @@ async function main() {
     ? allTiles
     : allTiles.filter((item) => {
         const outPath = join(TILES_OUT, String(item.z), String(item.x), `${item.y}.jpg`);
-        return !existsSync(outPath) || statSync(outPath).mtimeMs < statSync(item.path).mtimeMs;
+        if (!existsSync(outPath)) return true;
+        const outStat = statSync(outPath);
+        if (outStat.size < 256) return true;
+        if (outStat.mtimeMs < statSync(item.path).mtimeMs) return true;
+        const bmngPath = bmngSourcePath(item.z, item.x, item.y);
+        return Boolean(bmngPath && outStat.mtimeMs < statSync(bmngPath).mtimeMs);
       });
   console.log(`[tiles] Grading ${s2Tiles.length} of ${allTiles.length} tiles into assets/geo/tiles/ ...`);
 

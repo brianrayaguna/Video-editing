@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { pickTileSource, startTileServer } from "./serve_tiles.mjs";
+import { gapForTile, isValidTileCoord, pickTileSource, startTileServer } from "./serve_tiles.mjs";
+
+const require = createRequire(new URL("../../packages/hf-compiler-ts/package.json", import.meta.url));
+const sharp = require("sharp");
 
 /** Build an existence predicate from a list of `"z/x/y"` keys. */
 function tiles(...keys) {
@@ -81,19 +85,28 @@ test("no gap when the exact tile exists in the chosen set", async () => {
   assert.equal(gapForTile(13, 100, 200, tiles("13/100/200"), tiles("10/12/25"), 12), null);
 });
 
-test("no gap above the fetchable zoom ceiling", async () => {
-  const { gapForTile } = await import("./serve_tiles.mjs");
+test("no gap above the fetchable zoom ceiling or outside the web-mercator grid", () => {
   assert.equal(gapForTile(17, 1, 1, tiles("16/0/0"), tiles("0/0/0")), null);
+  assert.equal(gapForTile(2, 4, 0, tiles(), tiles()), null);
+  assert.equal(gapForTile(0, 1, 0, tiles(), tiles()), null);
+  assert.equal(isValidTileCoord(14, 16384, 0), false);
+  assert.equal(isValidTileCoord(14, 16383, 16383), true);
 });
 
-test("server records ancestor-served raster tiles only when asked", async () => {
-  const { existsSync } = await import("node:fs");
+test("server records ancestor-served raster tiles only when asked", async (t) => {
   const root = new URL("../../assets/geo/tiles/0/0/0.jpg", import.meta.url);
-  if (!existsSync(root)) return;
+  if (!existsSync(root)) {
+    t.skip("local assets/geo/tiles/0/0/0.jpg not present");
+    return;
+  }
   const server = await startTileServer(0, "127.0.0.1", { recordGaps: true });
   try {
     const { port } = server.address();
-    const get = (p) => fetch(`http://127.0.0.1:${port}${p}`).then((r) => r.arrayBuffer());
+    const get = async (p) => {
+      const r = await fetch(`http://127.0.0.1:${port}${p}`);
+      assert.equal(r.status, 200);
+      return r.arrayBuffer();
+    };
     await get("/tiles/0/0/0.jpg");
     assert.equal(server.tileGaps.size, 0);
     await get("/tiles/14/0/0.jpg");
@@ -113,14 +126,20 @@ test("server records ancestor-served raster tiles only when asked", async () => 
   }
 });
 
-test("coverage gaps carry their routes and the regular route stops at the Sentinel-2 native zoom", async () => {
-  const { existsSync } = await import("node:fs");
+test("coverage gaps carry their routes and the regular route stops at the Sentinel-2 native zoom", async (t) => {
   const root = new URL("../../assets/geo/tiles/0/0/0.jpg", import.meta.url);
-  if (!existsSync(root)) return;
+  if (!existsSync(root)) {
+    t.skip("local assets/geo/tiles/0/0/0.jpg not present");
+    return;
+  }
   const server = await startTileServer(0, "127.0.0.1", { recordGaps: true });
   try {
     const { port } = server.address();
-    const get = (p) => fetch(`http://127.0.0.1:${port}${p}`).then((r) => r.arrayBuffer());
+    const get = async (p) => {
+      const r = await fetch(`http://127.0.0.1:${port}${p}`);
+      assert.equal(r.status, 200);
+      return r.arrayBuffer();
+    };
     await get("/tiles/14/0/0.jpg");
     assert.deepEqual(server.tileGaps.get("14/0/0").routes, ["tiles"]);
     await get("/tiles_hybrid/14/0/0.jpg");
@@ -131,6 +150,64 @@ test("coverage gaps carry their routes and the regular route stops at the Sentin
     assert.deepEqual(server.tileGaps.get("15/0/0").routes, ["tiles_hq"]);
   } finally {
     await new Promise((r) => server.close(r));
+  }
+});
+
+test("out-of-grid tile requests return 404 without poisoning tileGaps, and hybrid cache invalidates on new exact tile", async () => {
+  const geoRoot = mkdtempSync(join(tmpdir(), "geo-srv-"));
+  try {
+    const parentPath = join(geoRoot, "tiles_hq", "14", "0", "0.jpg");
+    mkdirSync(join(geoRoot, "tiles_hq", "14", "0"), { recursive: true });
+    await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 200, g: 40, b: 40 } },
+    })
+      .jpeg({ quality: 90 })
+      .toFile(parentPath);
+
+    const server = await startTileServer(0, "127.0.0.1", { recordGaps: true, geoRoot });
+    try {
+      const { port } = server.address();
+      const bad = await fetch(`http://127.0.0.1:${port}/tiles/2/100/200.jpg`);
+      assert.equal(bad.status, 404);
+      assert.equal(server.tileGaps.size, 0);
+
+      const first = await fetch(`http://127.0.0.1:${port}/tiles_hybrid/15/0/0.jpg`);
+      assert.equal(first.status, 200);
+      const firstPx = await sharp(Buffer.from(await first.arrayBuffer())).raw().toBuffer();
+
+      const exactDir = join(geoRoot, "tiles_hq", "15", "0");
+      mkdirSync(exactDir, { recursive: true });
+      await sharp({
+        create: { width: 256, height: 256, channels: 3, background: { r: 40, g: 200, b: 40 } },
+      })
+        .jpeg({ quality: 90 })
+        .toFile(join(exactDir, "0.jpg"));
+
+      const second = await fetch(`http://127.0.0.1:${port}/tiles_hybrid/15/0/0.jpg`);
+      assert.equal(second.status, 200);
+      const secondPx = await sharp(Buffer.from(await second.arrayBuffer())).raw().toBuffer();
+      assert.ok(secondPx[1] > firstPx[1] + 50, "cache should reflect newly installed exact tile");
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    rmSync(geoRoot, { recursive: true, force: true });
+  }
+});
+
+test("listTilesRecursive ignores non-numeric jpg files and non-directory levels", async () => {
+  const { listTilesRecursive } = await import("./build_tiles.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "geo-build-"));
+  try {
+    mkdirSync(join(dir, "10", "5"), { recursive: true });
+    writeFileSync(join(dir, "10", "5", "7.jpg"), "ok");
+    writeFileSync(join(dir, "10", "5", "preview.jpg"), "ignore");
+    writeFileSync(join(dir, "not_a_dir"), "ignore");
+    const items = listTilesRecursive(dir);
+    assert.equal(items.length, 1);
+    assert.deepEqual({ z: items[0].z, x: items[0].x, y: items[0].y }, { z: 10, x: 5, y: 7 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

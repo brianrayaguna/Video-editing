@@ -30,7 +30,7 @@ const TILES_DIR = join(GEO_ROOT, "tiles");
 const TILES_HQ_DIR = join(GEO_ROOT, "tiles_hq");
 const DEM_DIR = join(GEO_ROOT, "dem");
 
-const PORT = Number(process.env.PORT || 8765);
+const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : 8765;
 const HOST = process.env.HOST || "127.0.0.1";
 
 const MIME_TYPES = {
@@ -46,28 +46,43 @@ const MIME_TYPES = {
   ".woff2": "font/woff2",
 };
 
-const fallbackCache = new Map();
-const demFallbackCache = new Map();
+const MAX_TILE_ZOOM = 22;
+
+export function isValidTileCoord(z, x, y) {
+  if (!Number.isSafeInteger(z) || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return false;
+  if (z < 0 || z > MAX_TILE_ZOOM) return false;
+  const limit = 2 ** z;
+  return x >= 0 && x < limit && y >= 0 && y < limit;
+}
+
+function setBoundedCache(cache, key, val, limit) {
+  if (cache.size >= limit) {
+    const firstKey = cache.keys().next().value;
+    cache.delete(firstKey);
+  }
+  cache.set(key, val);
+}
 
 /**
- * Resolve a lossless Terrarium DEM PNG tile `{z}/{x}/{y}` from `assets/geo/dem/`
+ * Resolve a lossless Terrarium DEM PNG tile `{z}/{x}/{y}` from `demDir`
  * with nearest-neighbor ancestor fallback so RGB elevation encoding stays uncorrupted.
  */
-async function resolveDemBuffer(z, x, y) {
-  const exactPath = join(DEM_DIR, String(z), String(x), `${y}.png`);
+async function resolveDemBuffer(demDir, demFallbackCache, z, x, y) {
+  const exactPath = join(demDir, String(z), String(x), `${y}.png`);
   if (existsSync(exactPath)) {
     return readFileSync(exactPath);
-  }
-  const cacheKey = `${z}/${x}/${y}`;
-  if (demFallbackCache.has(cacheKey)) {
-    return demFallbackCache.get(cacheKey);
   }
   for (let pz = z - 1; pz >= 0; pz--) {
     const scale = 2 ** (z - pz);
     const px = Math.floor(x / scale);
     const py = Math.floor(y / scale);
-    const parentPath = join(DEM_DIR, String(pz), String(px), `${py}.png`);
+    const parentPath = join(demDir, String(pz), String(px), `${py}.png`);
     if (existsSync(parentPath)) {
+      const mtimeMs = statSync(parentPath).mtimeMs;
+      const cacheKey = `${z}/${x}/${y}:${parentPath}:${mtimeMs}`;
+      if (demFallbackCache.has(cacheKey)) {
+        return demFallbackCache.get(cacheKey);
+      }
       const subSize = Math.max(1, Math.floor(256 / scale));
       const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
       const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
@@ -76,11 +91,7 @@ async function resolveDemBuffer(z, x, y) {
         .resize(256, 256, { kernel: sharp.kernel.nearest })
         .png()
         .toBuffer();
-      if (demFallbackCache.size > 512) {
-        const firstKey = demFallbackCache.keys().next().value;
-        demFallbackCache.delete(firstKey);
-      }
-      demFallbackCache.set(cacheKey, buf);
+      setBoundedCache(demFallbackCache, cacheKey, buf, 512);
       return buf;
     }
   }
@@ -89,25 +100,25 @@ async function resolveDemBuffer(z, x, y) {
 
 /**
  * Resolve a tile `{z}/{x}/{y}` from disk, or synthesize it deterministically by cropping
- * the nearest ancestor tile in `assets/geo/tiles/` so out-of-AOI tiles never 404.
+ * the nearest ancestor tile in `tilesDir` so out-of-AOI tiles never 404.
  */
-async function resolveTileBuffer(z, x, y) {
-  const exactPath = join(TILES_DIR, String(z), String(x), `${y}.jpg`);
+async function resolveTileBuffer(tilesDir, fallbackCache, z, x, y) {
+  const exactPath = join(tilesDir, String(z), String(x), `${y}.jpg`);
   if (existsSync(exactPath)) {
     return readFileSync(exactPath);
-  }
-
-  const cacheKey = `${z}/${x}/${y}`;
-  if (fallbackCache.has(cacheKey)) {
-    return fallbackCache.get(cacheKey);
   }
 
   for (let pz = z - 1; pz >= 0; pz--) {
     const scale = 2 ** (z - pz);
     const px = Math.floor(x / scale);
     const py = Math.floor(y / scale);
-    const parentPath = join(TILES_DIR, String(pz), String(px), `${py}.jpg`);
+    const parentPath = join(tilesDir, String(pz), String(px), `${py}.jpg`);
     if (existsSync(parentPath)) {
+      const mtimeMs = statSync(parentPath).mtimeMs;
+      const cacheKey = `${z}/${x}/${y}:${parentPath}:${mtimeMs}`;
+      if (fallbackCache.has(cacheKey)) {
+        return fallbackCache.get(cacheKey);
+      }
       const subSize = Math.max(1, Math.floor(256 / scale));
       const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
       const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
@@ -116,18 +127,12 @@ async function resolveTileBuffer(z, x, y) {
         .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
         .jpeg({ quality: 85 })
         .toBuffer();
-      if (fallbackCache.size > 1024) {
-        const firstKey = fallbackCache.keys().next().value;
-        fallbackCache.delete(firstKey);
-      }
-      fallbackCache.set(cacheKey, buf);
+      setBoundedCache(fallbackCache, cacheKey, buf, 1024);
       return buf;
     }
   }
   return null;
 }
-
-const MAX_TILE_ZOOM = 22;
 
 /** Zoom of the nearest existing tile at or above `{z}/{x}/{y}` (the tile itself first), or -1. */
 function nearestTileLevel(z, x, y, exists) {
@@ -154,10 +159,6 @@ export function pickTileSource(z, x, y, hasHq, hasRegular, hqMinZoom = 0) {
   return hq >= regular ? { source: "hq", level: hq } : { source: "regular", level: regular };
 }
 
-const hqTilePath = (pz, px, py) => join(TILES_HQ_DIR, String(pz), String(px), `${py}.jpg`);
-const regularTilePath = (pz, px, py) => join(TILES_DIR, String(pz), String(px), `${py}.jpg`);
-const hasHqTile = (pz, px, py) => existsSync(hqTilePath(pz, px, py));
-const hasRegularTile = (pz, px, py) => existsSync(regularTilePath(pz, px, py));
 const noTile = () => false;
 
 /** Highest zoom the tile fetchers can supply; requests above it are never reported as gaps. */
@@ -187,58 +188,75 @@ export function coverageReport(tileGaps) {
 /**
  * Coverage gap for a tile request: `{ z, x, y, level }` when the chosen source would serve it
  * by upscaling an ancestor at `level` (`-1` when nothing covers it), `null` when an exact tile
- * exists or `z` is above `maxZoom`.
+ * exists, coordinates are out of grid, or `z` is above `maxZoom`.
  */
 export function gapForTile(z, x, y, hasHq, hasRegular, hqMinZoom = 0, maxZoom = MAX_FETCH_ZOOM) {
-  if (z > maxZoom) return null;
+  if (!isValidTileCoord(z, x, y) || z > maxZoom) return null;
   const pick = pickTileSource(z, x, y, hasHq, hasRegular, hqMinZoom);
   if (!pick) return { z, x, y, level: -1 };
   return pick.level < z ? { z, x, y, level: pick.level } : null;
-}
-
-const gradedHqCache = new Map();
-
-/** Apply the documentary tile grade to an HQ JPEG buffer (cached per tile key). */
-async function gradeHqBuffer(key, z, buf, jpegQuality) {
-  if (gradedHqCache.has(key)) return gradedHqCache.get(key);
-  const { data, info } = await sharp(buf)
-    .flatten({ background: { r: 10, g: 56, b: 70 } })
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const out = await sharp(gradeRgb(data, z), {
-    raw: { width: info.width, height: info.height, channels: 3 },
-  })
-    .jpeg({ quality: jpegQuality })
-    .toBuffer();
-  if (gradedHqCache.size > 1024) gradedHqCache.delete(gradedHqCache.keys().next().value);
-  gradedHqCache.set(key, out);
-  return out;
 }
 
 /**
  * Serve `{z}/{x}/{y}` from the HQ set when it holds the nearest ancestor (cropping and upscaling
  * that ancestor's quadrant), otherwise from the regular set via `resolveTileBuffer`.
  */
-async function resolveHqOrRegularTile(z, x, y, hqMinZoom, jpegQuality, grade = false) {
+async function resolveHqOrRegularTile(
+  tilesDir,
+  tilesHqDir,
+  caches,
+  z,
+  x,
+  y,
+  hqMinZoom,
+  jpegQuality,
+  grade = false
+) {
+  const hqTilePath = (pz, px, py) => join(tilesHqDir, String(pz), String(px), `${py}.jpg`);
+  const hasHqTile = (pz, px, py) => existsSync(hqTilePath(pz, px, py));
+  const hasRegularTile = (pz, px, py) => existsSync(join(tilesDir, String(pz), String(px), `${py}.jpg`));
+
   const pick = pickTileSource(z, x, y, hasHqTile, hasRegularTile, hqMinZoom);
-  if (pick?.source !== "hq") return resolveTileBuffer(z, x, y);
+  if (pick?.source !== "hq") return resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
+
   const scale = 2 ** (z - pick.level);
   const parentHq = hqTilePath(pick.level, Math.floor(x / scale), Math.floor(y / scale));
-  let buf;
-  if (scale === 1) {
-    buf = readFileSync(parentHq);
-  } else {
+  const mtimeMs = statSync(parentHq).mtimeMs;
+  const cacheKey = `${z}/${x}/${y}:${parentHq}:${mtimeMs}:${jpegQuality}:${grade ? 1 : 0}`;
+  if (caches.gradedHqCache.has(cacheKey)) {
+    return caches.gradedHqCache.get(cacheKey);
+  }
+
+  let pipeline = sharp(parentHq);
+  if (scale > 1) {
     const subSize = Math.max(1, Math.floor(256 / scale));
     const left = Math.min(256 - subSize, Math.round(((x % scale) / scale) * 256));
     const top = Math.min(256 - subSize, Math.round(((y % scale) / scale) * 256));
-    buf = await sharp(parentHq)
+    pipeline = pipeline
       .extract({ left, top, width: subSize, height: subSize })
-      .resize(256, 256, { kernel: sharp.kernel.lanczos3 })
+      .resize(256, 256, { kernel: sharp.kernel.lanczos3 });
+  }
+
+  let out;
+  if (grade) {
+    const { data, info } = await pipeline
+      .flatten({ background: { r: 10, g: 56, b: 70 } })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    out = await sharp(gradeRgb(data, z), {
+      raw: { width: info.width, height: info.height, channels: 3 },
+    })
       .jpeg({ quality: jpegQuality })
       .toBuffer();
+  } else if (scale === 1) {
+    return readFileSync(parentHq);
+  } else {
+    out = await pipeline.jpeg({ quality: jpegQuality }).toBuffer();
   }
-  return grade ? gradeHqBuffer(`${z}/${x}/${y}`, z, buf, jpegQuality) : buf;
+
+  setBoundedCache(caches.gradedHqCache, cacheKey, out, 1024);
+  return out;
 }
 
 /**
@@ -248,7 +266,19 @@ async function resolveHqOrRegularTile(z, x, y, hqMinZoom, jpegQuality, grade = f
  * `{ z, x, y, level, routes }`, for coverage passes.
  */
 export function startTileServer(port = PORT, host = HOST, options = {}) {
-  const geoRootReal = existsSync(GEO_ROOT) ? realpathSync(GEO_ROOT) : resolve(GEO_ROOT);
+  const geoRoot = options.geoRoot ? resolve(options.geoRoot) : GEO_ROOT;
+  const tilesDir = join(geoRoot, "tiles");
+  const tilesHqDir = join(geoRoot, "tiles_hq");
+  const demDir = join(geoRoot, "dem");
+  const hasHqTile = (pz, px, py) => existsSync(join(tilesHqDir, String(pz), String(px), `${py}.jpg`));
+  const hasRegularTile = (pz, px, py) => existsSync(join(tilesDir, String(pz), String(px), `${py}.jpg`));
+  const caches = {
+    fallbackCache: new Map(),
+    demFallbackCache: new Map(),
+    gradedHqCache: new Map(),
+  };
+
+  const geoRootReal = existsSync(geoRoot) ? realpathSync(geoRoot) : resolve(geoRoot);
   const tileGaps = options.recordGaps ? new Map() : null;
   const noteGap = (route, z, x, y, hasHq, hqMinZoom) => {
     if (!tileGaps) return;
@@ -263,13 +293,19 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
       tileGaps.set(key, { ...gap, routes: [route] });
     }
   };
+  const urlHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const server = createServer(async (req, res) => {
     try {
-      const url = new URL(req.url || "/", `http://${host}:${port}`);
+      const url = new URL(req.url || "/", `http://${urlHost}:${port}`);
       let pathname;
       try {
         pathname = decodeURIComponent(url.pathname);
       } catch {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad request");
+        return;
+      }
+      if (pathname.includes("\0")) {
         res.writeHead(400, { "Content-Type": "text/plain" });
         res.end("Bad request");
         return;
@@ -288,13 +324,23 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         const z = Number(hybridMatch[1]);
         const x = Number(hybridMatch[2]);
         const y = Number(hybridMatch[3]);
-        if (z > MAX_TILE_ZOOM) {
+        if (!isValidTileCoord(z, x, y)) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
           return;
         }
         noteGap("tiles_hybrid", z, x, y, hasHqTile, HYBRID_HQ_MIN_ZOOM);
-        const buf = await resolveHqOrRegularTile(z, x, y, HYBRID_HQ_MIN_ZOOM, 88, true);
+        const buf = await resolveHqOrRegularTile(
+          tilesDir,
+          tilesHqDir,
+          caches,
+          z,
+          x,
+          y,
+          HYBRID_HQ_MIN_ZOOM,
+          88,
+          true
+        );
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
@@ -313,13 +359,13 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         const z = Number(hqMatch[1]);
         const x = Number(hqMatch[2]);
         const y = Number(hqMatch[3]);
-        if (z > MAX_TILE_ZOOM) {
+        if (!isValidTileCoord(z, x, y)) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
           return;
         }
         noteGap("tiles_hq", z, x, y, hasHqTile, 0);
-        const buf = await resolveHqOrRegularTile(z, x, y, 0, 90);
+        const buf = await resolveHqOrRegularTile(tilesDir, tilesHqDir, caches, z, x, y, 0, 90);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
@@ -338,13 +384,13 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         const z = Number(tileMatch[1]);
         const x = Number(tileMatch[2]);
         const y = Number(tileMatch[3]);
-        if (z > MAX_TILE_ZOOM) {
+        if (!isValidTileCoord(z, x, y)) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
           return;
         }
         noteGap("tiles", z, x, y, noTile, 0);
-        const buf = await resolveTileBuffer(z, x, y);
+        const buf = await resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("Tile not found");
@@ -363,12 +409,12 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         const z = Number(demMatch[1]);
         const x = Number(demMatch[2]);
         const y = Number(demMatch[3]);
-        if (z > MAX_TILE_ZOOM) {
+        if (!isValidTileCoord(z, x, y)) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("DEM tile not found");
           return;
         }
-        const buf = await resolveDemBuffer(z, x, y);
+        const buf = await resolveDemBuffer(demDir, caches.demFallbackCache, z, x, y);
         if (!buf) {
           res.writeHead(404, { "Content-Type": "text/plain" });
           res.end("DEM tile not found");
@@ -408,8 +454,11 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         "Cache-Control": "public, max-age=31536000, immutable",
       });
       res.end(data);
-    } catch {
-      res.writeHead(500, { "Content-Type": "text/plain" });
+    } catch (err) {
+      console.error("Tile server request error:", err);
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+      }
       res.end("Internal server error");
     }
   });
@@ -425,9 +474,16 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
 }
 
 if (isMainModule(import.meta.url)) {
+  if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
+    console.error(`Invalid PORT: ${process.env.PORT}`);
+    process.exit(1);
+  }
   startTileServer(PORT, HOST)
-    .then(() => {
-      console.log(`Geoverum local tile & asset server listening on http://${HOST}:${PORT}`);
+    .then((server) => {
+      const addr = server.address();
+      const boundPort = typeof addr === "object" && addr ? addr.port : PORT;
+      const displayHost = HOST.includes(":") && !HOST.startsWith("[") ? `[${HOST}]` : HOST;
+      console.log(`Geoverum local tile & asset server listening on http://${displayHost}:${boundPort}`);
     })
     .catch((err) => {
       console.error("Failed to start local tile server:", err);

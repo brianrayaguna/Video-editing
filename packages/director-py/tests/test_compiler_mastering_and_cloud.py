@@ -1136,3 +1136,50 @@ def test_audio_sidechain_pads_vo_and_qc_fails_on_silent_audio(tmp_path: Path) ->
     assert audit.passed is False
     assert audit.metrics.get("true_peak_dbtp") is None
     assert {"SILENT_AUDIO_STREAM", "LOUDNESS_OUT_OF_TOLERANCE"} & {e.code for e in audit.errors}
+
+
+def test_ass_captions_null_fade_and_variables_override_plus_square_disc_sweep(
+    tmp_path: Path,
+) -> None:
+    from vedit.mastering.ass_captions import is_ass_fastpath_overlay, write_ass_overlays_file
+
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    cap_chip = OverlayCompositionOp(
+        overlay_id="cap_chip",
+        kind="caption_rail",
+        template_id="caption_rail",
+        timeline_start_s=0.0,
+        timeline_duration_s=1.0,
+        transparent=True,
+        safe_band="lower_third",
+        props={"text": "Base", "caption_style": "plain"},
+        variables={"caption_style": "chip"},
+    )
+    assert is_ass_fastpath_overlay(cap_chip) is False
+
+    cap_null = OverlayCompositionOp(
+        overlay_id="cap_null",
+        kind="caption_rail",
+        template_id="caption_rail",
+        timeline_start_s=0.0,
+        timeline_duration_s=1.0,
+        transparent=True,
+        safe_band="lower_third",
+        props={
+            "text": "Hello",
+            "caption_style": "plain",
+            "caption_transition_ms": None,
+            "caption_fade_in_ms": None,
+            "caption_fade_out_ms": 0,
+        },
+        variables={"text": "World", "caption_fade_in_ms": None},
+    )
+    ass_path = write_ass_overlays_file([cap_null], target, tmp_path / "null_fade.ass")
+    ass_text = ass_path.read_text(encoding="utf-8")
+    assert "World" in ass_text
+    assert "\\fad(120,0)" in ass_text
+
+    # 1:1 square deliverable must reach full black at the middle frame of disc_sweep
+    sq_frames = _disc_sweep_frames("color=c=white", "108x108", (15, 15))
+    black_frac = sum(1 for v in sq_frames[0] if v < 128) / (108 * 108)
+    assert black_frac == pytest.approx(1.0, abs=0.005)

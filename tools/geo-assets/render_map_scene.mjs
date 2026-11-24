@@ -18,6 +18,8 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -191,8 +193,10 @@ ${DRAW_MATH_SRC}
           "fog-ground-blend": 0.35
         }` : ""}
       },
-      center: [0, 0],
-      zoom: 2,
+      center: ${JSON.stringify(mapOpts.initial_camera?.center || [0, 0])},
+      zoom: ${Number(mapOpts.initial_camera?.zoom ?? 2)},
+      bearing: ${Number(mapOpts.initial_camera?.bearing ?? 0)},
+      pitch: ${Number(mapOpts.initial_camera?.pitch ?? 0)},
       minZoom: 0.5,
       maxZoom: 18,
       maxPitch: 75,
@@ -312,13 +316,19 @@ ${DRAW_MATH_SRC}
     function traceGeom(targetCtx, geom) {
       if (!geom) return;
       if (Array.isArray(geom)) {
-        for (const item of geom) traceGeom(targetCtx, item.geometry || item);
+        for (const item of geom) traceGeom(targetCtx, item?.geometry || item);
         return;
       }
-      if (geom.type === "Polygon") {
-        for (const r of geom.coordinates) traceRing(targetCtx, r);
+      if (geom.type === "Feature" || (!geom.type && geom.geometry)) {
+        traceGeom(targetCtx, geom.geometry);
+      } else if (geom.type === "FeatureCollection") {
+        traceGeom(targetCtx, geom.features);
+      } else if (geom.type === "GeometryCollection") {
+        traceGeom(targetCtx, geom.geometries);
+      } else if (geom.type === "Polygon") {
+        for (const r of geom.coordinates || []) traceRing(targetCtx, r);
       } else if (geom.type === "MultiPolygon") {
-        for (const poly of geom.coordinates) {
+        for (const poly of geom.coordinates || []) {
           for (const r of poly) traceRing(targetCtx, r);
         }
       }
@@ -367,9 +377,12 @@ ${DRAW_MATH_SRC}
       };
       const visit = (g) => {
         if (!g) return;
-        if (Array.isArray(g)) { for (const it of g) visit(it.geometry || it); return; }
-        if (g.type === "Polygon") { for (const r of g.coordinates) visitRing(r); }
-        else if (g.type === "MultiPolygon") { for (const p of g.coordinates) for (const r of p) visitRing(r); }
+        if (Array.isArray(g)) { for (const it of g) visit(it?.geometry || it); return; }
+        if (g.type === "Feature" || (!g.type && g.geometry)) { visit(g.geometry); }
+        else if (g.type === "FeatureCollection") { visit(g.features); }
+        else if (g.type === "GeometryCollection") { visit(g.geometries); }
+        else if (g.type === "Polygon") { for (const r of g.coordinates || []) visitRing(r); }
+        else if (g.type === "MultiPolygon") { for (const p of g.coordinates || []) for (const r of p) visitRing(r); }
       };
       visit(geom);
       if (!Number.isFinite(minLng)) return null;
@@ -412,9 +425,12 @@ ${DRAW_MATH_SRC}
       const rings = [];
       const collect = (g) => {
         if (!g) return;
-        if (Array.isArray(g)) { for (const it of g) collect(it.geometry || it); return; }
-        if (g.type === "Polygon" && g.coordinates[0]) rings.push(g.coordinates[0]);
-        else if (g.type === "MultiPolygon") { for (const p of g.coordinates) if (p[0]) rings.push(p[0]); }
+        if (Array.isArray(g)) { for (const it of g) collect(it?.geometry || it); return; }
+        if (g.type === "Feature" || (!g.type && g.geometry)) { collect(g.geometry); }
+        else if (g.type === "FeatureCollection") { collect(g.features); }
+        else if (g.type === "GeometryCollection") { collect(g.geometries); }
+        else if (g.type === "Polygon" && g.coordinates?.[0]) rings.push(g.coordinates[0]);
+        else if (g.type === "MultiPolygon") { for (const p of g.coordinates || []) if (p[0]) rings.push(p[0]); }
       };
       collect(geom);
       for (const ring of rings) {
@@ -519,12 +535,12 @@ ${DRAW_MATH_SRC}
           Math.hypot(b.minX - cx, b.maxY - cy), Math.hypot(b.maxX - cx, b.maxY - cy), 1
         );
         // Feather of 10% of the front: the inner copies add alpha so the core reaches 1.
-        const radii = organicRevealRadii(p, R * 1.11, {
+        const radii = organicRevealRadii(p, R / 0.9, {
           points: 120,
           roughness: organic && organic.roughness != null ? organic.roughness : 0.22,
           seed: organic && organic.seed != null ? organic.seed : 1,
         });
-        const K = 6;
+        const K = 5;
         organicCtx.save();
         organicCtx.clearRect(0, 0, W, H);
         organicCtx.globalCompositeOperation = "lighter";
@@ -700,12 +716,32 @@ ${DRAW_MATH_SRC}
         // radius; remote parts (overseas regions, far islands) carry their own flag copy.
         const clusters = needOuter ? ringClusters(ringsPx, { viewport: { w: W, h: H } }) : [];
         const fillBounds = clusters.length ? clusters[0].bounds : null;
+        const visibleClusters = clusters.filter(
+          (c) => c.bounds.maxX > 0 && c.bounds.minX < W && c.bounds.maxY > 0 && c.bounds.minY < H
+        );
+        const revealTargetBounds = visibleClusters.length
+          ? visibleClusters.reduce(
+              (acc, c) => ({
+                minX: Math.min(acc.minX, c.bounds.minX),
+                minY: Math.min(acc.minY, c.bounds.minY),
+                maxX: Math.max(acc.maxX, c.bounds.maxX),
+                maxY: Math.max(acc.maxY, c.bounds.maxY),
+              }),
+              visibleClusters[0].bounds
+            )
+          : fillBounds;
         rimCtx.clearRect(0, 0, W, H);
         rimCtx.globalCompositeOperation = "source-over";
         if (flagImg && fillBounds) {
           for (const cluster of clusters) {
-            drawFlagCover(rimCtx, flagImg, cluster.bounds, flagRotateDeg, flagFit);
-            if (flagWave) applyClothShade(rimCtx, cluster.bounds, flagWave, time);
+            const cb = cluster.bounds;
+            rimCtx.save();
+            rimCtx.beginPath();
+            rimCtx.rect(cb.minX, cb.minY, cb.maxX - cb.minX, cb.maxY - cb.minY);
+            rimCtx.clip();
+            drawFlagCover(rimCtx, flagImg, cb, flagRotateDeg, flagFit);
+            if (flagWave) applyClothShade(rimCtx, cb, flagWave, time);
+            rimCtx.restore();
           }
           rimCtx.globalCompositeOperation = "destination-in";
           rimCtx.drawImage(maskCanvas, 0, 0);
@@ -716,7 +752,7 @@ ${DRAW_MATH_SRC}
           rimCtx.fillRect(0, 0, W, H);
         }
         if (fillRevealMode !== "fade") {
-          applyRevealMask(rimCtx, fillRevealMode, fillReveal, fillBounds, fillRevealOrigin ? map.project(fillRevealOrigin) : null, fillRevealOrganic);
+          applyRevealMask(rimCtx, fillRevealMode, fillReveal, revealTargetBounds, fillRevealOrigin ? map.project(fillRevealOrigin) : null, fillRevealOrganic);
         }
         const revealAlpha = fillRevealMode === "fade" ? clamp(fillReveal, 0, 1) : 1;
 
@@ -1699,7 +1735,7 @@ ${DRAW_MATH_SRC}
           const fillDrawS = layer.fill_draw_s ?? (traced ? 0.15 : 0);
           const fillReveal = fillDrawS > 0
             ? easeOutCubic(seg(t, fillStartS, fillStartS + fillDrawS))
-            : (t >= fillStartS - 1e-6 ? 1.0 : 0.0);
+            : (!traced && layer.fill_delay_s == null ? 1.0 : (t >= fillStartS - 0.001 ? 1.0 : 0.0));
           const flagCode = layer.flag_fill ? String(layer.flag_fill).toLowerCase() : null;
           const flagImg = flagCode ? (window.__imgCache[BASE_URL + "/flags/" + flagCode + ".svg"] || null) : null;
           const fillRevealMode = (flagCode ? layer.flag_reveal : null) || layer.fill_reveal_mode || "fade";
@@ -1733,7 +1769,19 @@ ${DRAW_MATH_SRC}
               }
             }
           }
-          if (layer.dissolve || traced || flagCode) {
+          if (
+            layer.dissolve ||
+            traced ||
+            flagCode ||
+            fillRevealMode !== "fade" ||
+            fillDrawS > 0 ||
+            layer.fill_delay_s != null ||
+            Boolean(layer.border_draw_s) ||
+            Boolean(layer.reveal_axis) ||
+            Boolean(layer.outline_only) ||
+            Boolean(layer.hatch) ||
+            (Array.isArray(layer.flashes) && layer.flashes.length > 0)
+          ) {
             drawDissolvedPolygon(geom, {
               traced,
               traceProgress,
@@ -1783,7 +1831,7 @@ ${DRAW_MATH_SRC}
           const drawS = layer.instant === true ? 0 : (layer.draw_duration_s ?? 0.9);
           const drawFrom = tStart + (layer.draw_delay_s ?? 0);
           const drawEase = layer.draw_ease === "linear" ? (x) => x : layer.draw_ease === "in_out" ? easeInOutCubic : easeOutCubic;
-          const prog = drawS > 0 ? drawEase(seg(t, drawFrom, drawFrom + drawS)) : 1;
+          const prog = drawS > 0 ? drawEase(seg(t, drawFrom, drawFrom + drawS)) : (t >= drawFrom - 0.001 ? 1 : 0);
           // Optional world-space width: doubles per zoom level above "width_ref_zoom" (coupling 1).
           const baseWidth = layer.width || 8;
           const widthPx = scaledWidth(
@@ -1792,7 +1840,7 @@ ${DRAW_MATH_SRC}
           );
           const dash = layer.dash ? layer.dash.map((d) => d * (widthPx / baseWidth)) : null;
           drawPartialRoute(coords, prog, {
-            color: layer.color || "#FDE047",
+            color: layer.color || layer.hex || "#FDE047",
             bloom: layer.bloom || "#F5C542",
             core: layer.core ?? "#FFFFFF",
             width: widthPx,
@@ -3093,7 +3141,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           console.warn(`  [${act.act_id}] warning: flag asset not found (${u.split("/").pop()}); layer falls back to its colour fill`);
         }
       }
-      // Sub-frame shutter accumulation is opt-in: reference shorts keep every frame crisp.
+      // Sub-frame shutter accumulation is opt-in so frames stay crisp by default.
       const enableShutter = act.optical_shutter_blur === true;
       // Radial zoom blur that peaks on the act's first and/or last frame (cut accents).
       const cutBlurIn = Number(act.cut_blur_in_s) || 0;
@@ -3168,12 +3216,15 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
  * for tiles, without drawing overlays or capturing frames. The tile server records every raster
  * tile it had to synthesise from an upscaled ancestor.
  */
-async function coverageAct(browser, baseUrl, vectorsJson, width, height, act) {
+async function coverageAct(browser, baseUrl, vectorsJson, width, height, fps, act) {
   const actKind = act.kind || act.mode || act.type || "map";
   if (actKind === "blueprint_paper") return;
-  const fps = 30;
   const samples = act.camera_samples || [];
-  const totalFrames = Math.max(1, samples.length || Math.round((act.duration_s || 1) * fps));
+  const totalFrames = Math.max(
+    1,
+    act.duration_s != null ? Math.round(act.duration_s * fps) : samples.length || Math.round(fps)
+  );
+  const initialCam = sampleCameraAt(samples, 0, 0);
   const page = await browser.newPage();
   try {
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
@@ -3185,6 +3236,7 @@ async function coverageAct(browser, baseUrl, vectorsJson, width, height, act) {
         terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
         dem_maxzoom: act.dem_maxzoom ?? 10,
         allow_world_void: Boolean(act.allow_world_void),
+        initial_camera: initialCam,
       }),
       { waitUntil: "load" }
     );
@@ -3203,12 +3255,23 @@ async function coverageAct(browser, baseUrl, vectorsJson, width, height, act) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  if (!args["scene-file"] || !args["out-dir"]) {
+  if (typeof args["scene-file"] !== "string" || typeof args["out-dir"] !== "string") {
     console.error("Usage: render_map_scene.mjs --scene-file <spec.json> --out-dir <dir> [--base-dir <dir>]");
     process.exit(1);
   }
+  if (args["coverage-out"] === true) {
+    throw new Error("--coverage-out requires a file path argument");
+  }
+  const coverageOnly = Boolean(args["coverage-only"]);
+  const coverageOut = typeof args["coverage-out"] === "string" ? resolve(args["coverage-out"]) : null;
+  if (coverageOnly && !coverageOut) {
+    throw new Error("--coverage-only requires --coverage-out <file>");
+  }
+  if (coverageOut) {
+    mkdirSync(dirname(coverageOut), { recursive: true });
+  }
   const sceneFile = resolve(args["scene-file"]);
-  const baseDir = resolve(args["base-dir"] || dirname(sceneFile));
+  const baseDir = resolve(typeof args["base-dir"] === "string" ? args["base-dir"] : dirname(sceneFile));
   const outDir = resolve(args["out-dir"]);
   mkdirSync(outDir, { recursive: true });
 
@@ -3243,12 +3306,6 @@ async function main() {
   }
   const vectorsJson = JSON.stringify(vectorsObj);
 
-  // `--coverage-out <file>` (optionally with `--coverage-only`) lists ancestor-served tiles
-  // (z <= 16) as {"tiles": [[z, x, y], ...], "by_route": {route: [[z, x, y], ...]}} instead of baking.
-  const coverageOut = typeof args["coverage-out"] === "string" ? resolve(args["coverage-out"]) : null;
-  if (args["coverage-only"] && !coverageOut) {
-    throw new Error("--coverage-only requires --coverage-out <file>");
-  }
   const server = await startTileServer(0, "127.0.0.1", { recordGaps: Boolean(coverageOut) });
   const url = `http://127.0.0.1:${server.address().port}`;
   const browser = await puppeteer.launch({
@@ -3258,8 +3315,8 @@ async function main() {
   });
   try {
     for (const act of spec.acts || []) {
-      if (coverageOut) {
-        await coverageAct(browser, url, vectorsJson, width, height, act);
+      if (coverageOnly) {
+        await coverageAct(browser, url, vectorsJson, width, height, fps, act);
       } else {
         await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir);
       }
@@ -3270,9 +3327,20 @@ async function main() {
   }
   if (coverageOut) {
     const report = coverageReport(server.tileGaps);
-    writeFileSync(coverageOut, JSON.stringify(report));
+    const tmpCov = `${coverageOut}.tmp`;
+    try {
+      writeFileSync(tmpCov, JSON.stringify(report));
+      renameSync(tmpCov, coverageOut);
+    } catch (err) {
+      try {
+        if (existsSync(tmpCov)) unlinkSync(tmpCov);
+      } catch {
+        // Ignore cleanup errors.
+      }
+      throw err;
+    }
     console.log(`Coverage pass complete: ${report.tiles.length} tiles served from an upscaled ancestor -> ${coverageOut}`);
-    return;
+    if (coverageOnly) return;
   }
   console.log("Declarative map scene bake complete.");
 }

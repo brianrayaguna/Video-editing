@@ -303,6 +303,26 @@ def extract_project_vectors(
     return result
 
 
+def _parse_tile_coord_row(row: Any, path: Path) -> tuple[int, int, int]:
+    if not (
+        isinstance(row, list)
+        and len(row) == 3
+        and all(isinstance(v, int) and not isinstance(v, bool) for v in row)
+    ):
+        raise ValueError(f"{path}: malformed tile row {row!r}; expected [z, x, y] integers")
+    z, x, y = row
+    if not (0 <= z <= 22 and 0 <= x < 2**z and 0 <= y < 2**z):
+        raise ValueError(f"{path}: tile {row!r} is outside the web-mercator grid")
+    return (z, x, y)
+
+
+def _extract_tile_list(data: Any, path: Path) -> set[tuple[int, int, int]]:
+    rows = data.get("tiles") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise ValueError(f"{path}: expected an object with a 'tiles' list")
+    return {_parse_tile_coord_row(row, path) for row in rows}
+
+
 def parse_tile_list(path: Path) -> set[tuple[int, int, int]]:
     """Read a coverage tile list `{"tiles": [[z, x, y], ...]}` into a set of tile coordinates.
 
@@ -310,22 +330,7 @@ def parse_tile_list(path: Path) -> set[tuple[int, int, int]]:
     outside the web-mercator grid (z 0-22).
     """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    rows = data.get("tiles") if isinstance(data, dict) else None
-    if not isinstance(rows, list):
-        raise ValueError(f"{path}: expected an object with a 'tiles' list")
-    tiles: set[tuple[int, int, int]] = set()
-    for row in rows:
-        if not (
-            isinstance(row, list)
-            and len(row) == 3
-            and all(isinstance(v, int) and not isinstance(v, bool) for v in row)
-        ):
-            raise ValueError(f"{path}: malformed tile row {row!r}; expected [z, x, y] integers")
-        z, x, y = row
-        if not (0 <= z <= 22 and 0 <= x < 2**z and 0 <= y < 2**z):
-            raise ValueError(f"{path}: tile {row!r} is outside the web-mercator grid")
-        tiles.add((z, x, y))
-    return tiles
+    return _extract_tile_list(data, path)
 
 
 _REGULAR_COVERAGE_ROUTES = ("tiles",)
@@ -338,10 +343,11 @@ def split_coverage_gaps(
     """Split a coverage report into (regular-route gaps, HQ-route gaps).
 
     Regular-route gaps are served from the graded Sentinel-2 set; HQ-route gaps from the
-    high-resolution set. A report without `by_route` treats every tile as an HQ-route gap.
+    high-resolution set. A report without `by_route` (or tiles not listed under known routes)
+    routes those tiles as HQ-route gaps.
     """
-    tiles = parse_tile_list(path)
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    tiles = _extract_tile_list(data, path)
     by_route = data.get("by_route")
     if not isinstance(by_route, dict):
         return set(), tiles
@@ -349,14 +355,30 @@ def split_coverage_gaps(
     def _rows(routes: tuple[str, ...]) -> set[tuple[int, int, int]]:
         out: set[tuple[int, int, int]] = set()
         for route in routes:
-            for row in by_route.get(route) or []:
-                coord = tuple(row) if isinstance(row, list) and len(row) == 3 else None
+            route_rows = by_route.get(route)
+            if route_rows is None:
+                continue
+            if not isinstance(route_rows, list):
+                raise ValueError(f"{path}: route {route!r} must be a list of [z, x, y] rows")
+            for row in route_rows:
+                coord = _parse_tile_coord_row(row, path)
                 if coord not in tiles:
                     raise ValueError(f"{path}: route {route!r} lists {row!r}, absent from 'tiles'")
-                out.add(coord)  # type: ignore[arg-type]
+                out.add(coord)
         return out
 
-    return _rows(_REGULAR_COVERAGE_ROUTES), _rows(_HQ_COVERAGE_ROUTES)
+    reg = _rows(_REGULAR_COVERAGE_ROUTES)
+    hq = _rows(_HQ_COVERAGE_ROUTES)
+    unrouted = tiles - reg - hq
+    if unrouted:
+        hq = hq | unrouted
+    return reg, hq
+
+
+def _has_image_magic(path: Path) -> bool:
+    with path.open("rb") as fh:
+        head = fh.read(8)
+    return head.startswith(b"\xff\xd8\xff") or head.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def _fetch_tile_set(
@@ -377,13 +399,14 @@ def _fetch_tile_set(
     hq_fetched_count = 0
     raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
     hq_dir = root / "assets" / "geo" / "tiles_hq"
-    s2_coords = sorted(c for c in coords if c[0] <= 12)
     if hq_aerial is True:
+        s2_coords = []
         hq_coords = sorted(coords)
     elif hq_aerial is False:
-        hq_coords = []
         s2_coords = sorted(coords)
+        hq_coords = []
     else:
+        s2_coords = sorted(c for c in coords if c[0] <= 12)
         hq_coords = sorted(c for c in coords if c[0] >= 13)
 
     def _fetch_url(dest: Path, url: str) -> bool:
@@ -418,6 +441,7 @@ def _fetch_tile_set(
                 and status not in _TILE_ABSENT_HTTP_CODES
                 and tmp.is_file()
                 and tmp.stat().st_size >= 64
+                and _has_image_magic(tmp)
             ):
                 tmp.replace(dest)
                 return True
@@ -480,12 +504,21 @@ def fill_coverage_gaps(
     fetch = fetch or _fetch_tile_set
     unfillable = {c for c in regular_gaps if c[0] > S2_CLOUDLESS_MAX_NATIVE_Z}
     regular_fetch = regular_gaps - unfillable
+    shared_s2 = {c for c in regular_fetch if c[0] <= 12}
+    hq_fetch = hq_gaps - shared_s2
+    hq_has_s2 = any(c[0] <= 12 for c in hq_fetch)
     missing: set[tuple[int, int, int]] = set()
     s2_count = hq_count = 0
     if regular_fetch:
-        s2_count, _ = fetch(root, regular_fetch, hq_aerial=False, grade_tiles=True, missing=missing)
-    if hq_gaps:
-        s2_more, hq_count = fetch(root, hq_gaps, hq_aerial=None, grade_tiles=True, missing=missing)
+        s2_count, _ = fetch(
+            root,
+            regular_fetch,
+            hq_aerial=False,
+            grade_tiles=not hq_has_s2,
+            missing=missing,
+        )
+    if hq_fetch:
+        s2_more, hq_count = fetch(root, hq_fetch, hq_aerial=None, grade_tiles=True, missing=missing)
         s2_count += s2_more
     return {
         "coverage_gaps": len(regular_gaps | hq_gaps),
@@ -547,22 +580,37 @@ def geo_prepare_cmd(
     fetched_count = 0
     hq_fetched_count = 0
     if bbox or tile_list:
-        coords: set[tuple[int, int, int]] = set()
+        bbox_coords: set[tuple[int, int, int]] = set()
         for spec in bbox or []:
             if ":" not in spec:
                 raise typer.BadParameter(f"Invalid --bbox {spec!r}; expected 'W,S,E,N:Z'.")
             box_part, z_part = spec.rsplit(":", 1)
             w, s, e, n = (float(v) for v in box_part.split(","))
             for z_token in z_part.split(","):
-                coords.update(_enum_bbox_tiles(w, s, e, n, int(z_token)))
+                bbox_coords.update(_enum_bbox_tiles(w, s, e, n, int(z_token)))
+        regular_tile_coords: set[tuple[int, int, int]] = set()
+        hq_tile_coords: set[tuple[int, int, int]] = set()
         if tile_list:
             try:
-                coords.update(parse_tile_list(tile_list))
+                if hq_aerial is None:
+                    regular_tile_coords, hq_tile_coords = split_coverage_gaps(tile_list)
+                else:
+                    hq_tile_coords = parse_tile_list(tile_list)
             except (OSError, ValueError) as exc:
                 raise typer.BadParameter(str(exc)) from exc
-        fetched_count, hq_fetched_count = _fetch_tile_set(
-            root, coords, hq_aerial=hq_aerial, grade_tiles=grade_tiles
-        )
+        regular_fetch = {c for c in regular_tile_coords if c[0] <= S2_CLOUDLESS_MAX_NATIVE_Z}
+        if regular_fetch:
+            s2_more, _ = _fetch_tile_set(
+                root, regular_fetch, hq_aerial=False, grade_tiles=grade_tiles
+            )
+            fetched_count += s2_more
+        merged_coords = bbox_coords | hq_tile_coords
+        if merged_coords:
+            s2_more, hq_more = _fetch_tile_set(
+                root, merged_coords, hq_aerial=hq_aerial, grade_tiles=grade_tiles
+            )
+            fetched_count += s2_more
+            hq_fetched_count += hq_more
 
     vectors = extract_project_vectors(
         repo_root=root,
@@ -674,8 +722,22 @@ def _separately_traced_parts(geom: Any) -> int:
     return 1
 
 
+def _as_finite_float(raw: Any) -> float | None:
+    if isinstance(raw, bool):
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return val if math.isfinite(val) else None
+
+
 def validate_map_scene(
-    spec: dict[str, Any], *, repo_root: Path | None = None, base_dir: Path | None = None
+    spec: dict[str, Any],
+    *,
+    repo_root: Path | None = None,
+    base_dir: Path | None = None,
+    check_hq_tiles: bool = True,
 ) -> dict[str, Any]:
     """Validate declarative map_scene.json against Geoverum craft and sharpness guardrails.
 
@@ -707,12 +769,11 @@ def validate_map_scene(
         ):
             if key not in act:
                 continue
-            try:
-                value = float(act[key])
-            except (TypeError, ValueError):
+            value = _as_finite_float(act[key])
+            if value is None:
                 errors.append(f"[{act_id}] {key} must be a number, got {act[key]!r}.")
                 continue
-            if not math.isfinite(value) or value < 0 or (upper is not None and value > upper):
+            if value < 0 or (upper is not None and value > upper):
                 bound = f"between 0 and {upper}" if upper is not None else "a finite value >= 0"
                 errors.append(f"[{act_id}] {key} must be {bound}, got {value}.")
                 continue
@@ -782,19 +843,31 @@ def validate_map_scene(
                 "which blur below ~2 km. Use tile_source 'hybrid' or 'realistic' and fetch "
                 "high-resolution tiles with `vedit geo prepare --hq`."
             )
-        if closeup_centers and hq_dir is not None:
+        if check_hq_tiles and closeup_centers and hq_dir is not None:
             for lng, lat, z in closeup_centers:
                 check_z = min(16, max(13, round(z)))
-                has_hq = False
+                found_z: int | None = None
                 for probe_z in range(check_z, 12, -1):
                     tx, ty = _deg2num(lat, lng, probe_z)
                     if (hq_dir / str(probe_z) / str(tx) / f"{ty}.jpg").is_file():
-                        has_hq = True
+                        found_z = probe_z
                         break
-                if has_hq and z >= 14.5:
-                    tx, ty = _deg2num(lat, lng, S2_CLOUDLESS_MAX_NATIVE_Z + 1)
-                    deep = hq_dir / str(S2_CLOUDLESS_MAX_NATIVE_Z + 1) / str(tx) / f"{ty}.jpg"
-                    if not deep.is_file():
+                has_hq = found_z is not None
+                if (
+                    has_hq
+                    and z >= 14.5
+                    and (found_z is None or found_z <= S2_CLOUDLESS_MAX_NATIVE_Z)
+                ):
+                    has_ortho = any(
+                        (
+                            hq_dir
+                            / str(oz)
+                            / str(_deg2num(lat, lng, oz)[0])
+                            / f"{_deg2num(lat, lng, oz)[1]}.jpg"
+                        ).is_file()
+                        for oz in range(S2_CLOUDLESS_MAX_NATIVE_Z + 1, NATIONAL_ORTHO_MAX_Z + 1)
+                    )
+                    if not has_ortho:
                         warnings.append(
                             f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} exceeds "
                             f"the ~10 m Sentinel-2 native zoom (z{S2_CLOUDLESS_MAX_NATIVE_Z}) "
@@ -836,18 +909,17 @@ def validate_map_scene(
             if str(layer.get("type") or "") != "polygon":
                 continue
             for key, allowed in _POLYGON_ENUM_KEYS.items():
-                if key in layer and layer[key] not in allowed:
-                    errors.append(
-                        f"[{act_id}] layer #{idx} {key}={layer[key]!r} is not one of "
-                        f"{sorted(str(v) for v in allowed)}."
-                    )
+                if key in layer:
+                    val = layer[key]
+                    if isinstance(val, bool) or val not in allowed:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} {key}={val!r} is not one of "
+                            f"{sorted(str(v) for v in allowed)}."
+                        )
             wave = layer.get("flag_wave")
             if wave is not None and not isinstance(wave, bool):
-                try:
-                    wave_f = float(wave)
-                except (TypeError, ValueError):
-                    wave_f = float("nan")
-                if not (0.0 <= wave_f <= 0.6):
+                wave_f = _as_finite_float(wave)
+                if wave_f is None or not (0.0 <= wave_f <= 0.6):
                     errors.append(
                         f"[{act_id}] layer #{idx} flag_wave must be true/false or a shading "
                         f"amplitude between 0 and 0.6, got {wave!r}."
@@ -855,11 +927,8 @@ def validate_map_scene(
             for key, (lo, hi) in _POLYGON_NUMERIC_KEYS.items():
                 if key not in layer:
                     continue
-                try:
-                    val = float(layer[key])
-                except (TypeError, ValueError):
-                    val = float("nan")
-                if not math.isfinite(val) or val < lo or (hi is not None and val > hi):
+                val = _as_finite_float(layer[key])
+                if val is None or val < lo or (hi is not None and val > hi):
                     bound = f"between {lo:g} and {hi:g}" if hi is not None else f">= {lo:g}"
                     errors.append(
                         f"[{act_id}] layer #{idx} {key} must be a number {bound}, "
@@ -879,19 +948,45 @@ def validate_map_scene(
                         f"assets/geo/flags/{code_s}.svg; the bake would fall back to the "
                         "colour fill."
                     )
-            trace_s = float(layer.get("border_trace_s") or 0.0)
-            if trace_s > 0:
-                start_s = float(layer.get("start_s", 0.0))
-                trace_end = start_s + float(layer.get("border_trace_delay_s") or 0.0) + trace_s
-                visible_end = float(layer.get("end_s", dur))
-                if dur > 0:
-                    visible_end = min(visible_end, dur)
-                if trace_end > visible_end + 1e-6:
-                    warnings.append(
-                        f"[{act_id}] layer #{idx} border_trace ends at {trace_end:.2f}s, after "
-                        f"the layer/act ends at {visible_end:.2f}s; the outline never closes "
-                        "on screen."
+            trace_s = 0.0
+            if "border_trace_s" in layer and layer["border_trace_s"] is not None:
+                parsed_trace = _as_finite_float(layer["border_trace_s"])
+                if parsed_trace is None or parsed_trace < 0:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} border_trace_s must be a number >= 0, "
+                        f"got {layer['border_trace_s']!r}."
                     )
+                else:
+                    trace_s = parsed_trace
+            delay_s = 0.0
+            if "border_trace_delay_s" in layer and layer["border_trace_delay_s"] is not None:
+                parsed_delay = _as_finite_float(layer["border_trace_delay_s"])
+                if parsed_delay is None or parsed_delay < 0:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} border_trace_delay_s must be a number >= 0, "
+                        f"got {layer['border_trace_delay_s']!r}."
+                    )
+                else:
+                    delay_s = parsed_delay
+            if trace_s > 0:
+                raw_start = 0.0 if layer.get("start_s") is None else layer.get("start_s")
+                raw_end = dur if layer.get("end_s") is None else layer.get("end_s")
+                start_s = _as_finite_float(raw_start)
+                visible_end = _as_finite_float(raw_end)
+                if start_s is None or visible_end is None:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} start_s/end_s must be finite numbers."
+                    )
+                else:
+                    trace_end = start_s + delay_s + trace_s
+                    if dur > 0:
+                        visible_end = min(visible_end, dur)
+                    if trace_end > visible_end + 1e-6:
+                        warnings.append(
+                            f"[{act_id}] layer #{idx} border_trace ends at {trace_end:.2f}s, "
+                            f"after the layer/act ends at {visible_end:.2f}s; the outline never "
+                            "closes on screen."
+                        )
                 parts = _separately_traced_parts(_resolve_geom_ref(vectors, layer.get("geom_ref")))
                 if parts > 1:
                     warnings.append(
@@ -1378,7 +1473,12 @@ def geo_bake_scene_cmd(
     scene_path = scene_file.expanduser().resolve()
     spec = json.loads(scene_path.read_text(encoding="utf-8"))
     if not skip_validate:
-        report = validate_map_scene(spec, repo_root=root, base_dir=scene_path.parent)
+        report = validate_map_scene(
+            spec,
+            repo_root=root,
+            base_dir=scene_path.parent,
+            check_hq_tiles=not fill_tiles,
+        )
         if not report["ok"]:
             typer.echo(json.dumps(report, indent=2), err=True)
             raise typer.Exit(code=1)
@@ -1435,6 +1535,13 @@ def geo_bake_scene_cmd(
             finally:
                 coverage_path.unlink(missing_ok=True)
             typer.echo(json.dumps(fill_coverage_gaps(root, regular_gaps, hq_gaps)))
+            if not skip_validate:
+                post_report = validate_map_scene(
+                    spec, repo_root=root, base_dir=scene_path.parent, check_hq_tiles=True
+                )
+                if not post_report["ok"]:
+                    typer.echo(json.dumps(post_report, indent=2), err=True)
+                    raise typer.Exit(code=1)
         proc = subprocess.run(
             [
                 node_bin,

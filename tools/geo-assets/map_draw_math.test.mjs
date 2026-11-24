@@ -92,6 +92,9 @@ test("explicitly closed rings and per-ring start indices", () => {
 test("degenerate rings are skipped", () => {
   const paths = perimeterPartialPaths([[{ x: 1, y: 1 }], SQUARE], 0.5, { heads: 1 });
   assert.equal(paths.length, 1);
+  const zeroLen = [{ x: 5, y: 5 }, { x: 5, y: 5 }, { x: 5, y: 5 }];
+  assert.deepEqual(perimeterPartialPaths([zeroLen], 0.5, { heads: 1 }), []);
+  assert.deepEqual(perimeterPartialPaths([zeroLen], 1.0, { heads: 2 }), []);
 });
 
 test("signedArea is positive for clockwise rings in screen space (y down)", () => {
@@ -109,10 +112,16 @@ test("coverRect is the smallest centred rect of the aspect covering the bounds",
   assert.ok(close(tall.h, 100));
   assert.ok(close(tall.w, 200));
   assert.ok(close(tall.x + tall.w / 2, 5));
+  const inf = coverRect({ minX: 0, minY: 0, maxX: 100, maxY: 50 }, Number.POSITIVE_INFINITY);
+  assert.ok(Number.isFinite(inf.w) && Number.isFinite(inf.h) && Number.isFinite(inf.x));
 });
 
 test("scaledWidth doubles per zoom level and clamps", () => {
   assert.equal(scaledWidth(4, 13, null), 4);
+  assert.equal(scaledWidth(4, 13, ""), 4);
+  assert.equal(scaledWidth(4, 13, false), 4);
+  assert.equal(scaledWidth(4, 13, 10, Number.NaN), 4);
+  assert.equal(scaledWidth(4, Number.NaN, 10), 4);
   assert.equal(scaledWidth(4, 11, 10), 8);
   assert.equal(scaledWidth(4, 12, 10), 16);
   assert.equal(scaledWidth(4, 20, 10), 24);
@@ -124,6 +133,8 @@ test("scaledWidth doubles per zoom level and clamps", () => {
 test("module is dependency-free so it can be inlined into the page", () => {
   const src = readFileSync(new URL("./map_draw_math.mjs", import.meta.url), "utf8");
   assert.ok(!/^\s*import\s/m.test(src));
+  assert.ok(!/<\/script/i.test(src));
+  assert.doesNotThrow(() => new Function(src.replace(/^export\s+/gm, "")));
 });
 
 test("wipeFrontEdge names the travel direction of the reveal", () => {
@@ -166,6 +177,10 @@ test("cutBlurAmount is off without windows and clamps hostile input", () => {
   assert.equal(cutBlurAmount(0, 90, 30, 0.4, 0.4, -1), 0);
   assert.equal(cutBlurAmount(0, 90, 30, Number.NaN, Number.NaN, 0.12), 0);
   assert.equal(cutBlurAmount(0, 90, 30, 0.4, 0.4, Number.NaN), 0);
+  assert.equal(cutBlurAmount(-12, 90, 30, 0.4, 0, 0.12), 0);
+  assert.equal(cutBlurAmount(100, 90, 30, 0, 0.4, 0.12), 0);
+  assert.equal(cutBlurAmount(Number.NaN, 90, 30, 0.4, 0.4, 0.12), 0);
+  assert.equal(cutBlurAmount(0, Number.NaN, 30, 0.4, 0.4, 0.12), 0);
 });
 
 test("clothWaveStops shades within the amplitude and scrolls with time", () => {
@@ -279,4 +294,8 @@ test("polygonRings separates exterior rings from hole rings across geometry shap
   assert.deepEqual(polygonRings(degenerate), { outer: [outer], inner: [] });
   assert.deepEqual(polygonRings(null), { outer: [], inner: [] });
   assert.deepEqual(polygonRings({ type: "LineString", coordinates: outer }), { outer: [], inner: [] });
+  const wrapped = [{ name: "France", geometry: poly }];
+  assert.deepEqual(polygonRings(wrapped), { outer: [outer], inner: [hole] });
+  const geomColl = { type: "GeometryCollection", geometries: [poly, { type: "Polygon", coordinates: [island] }] };
+  assert.deepEqual(polygonRings(geomColl), { outer: [outer, island], inner: [hole] });
 });

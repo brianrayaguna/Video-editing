@@ -46,7 +46,7 @@ Brand palettes, typography families, and cartographic label rules belong in the 
 - Entrances start from `scale(0.92)`–`scale(0.96)` with opacity, or use `clip-path` mask reveals and SVG `stroke-dashoffset` draw-ons—never `scale(0)` and never uniform `power2.out` fade-and-slide-up on every element.
 - Pointer-led callouts set `transform-origin` at the pointer tip / anchor and draw leader lines outward from the coordinate dot.
 - Enter with long-tail ease-out (`expo.out` / `power4.out`, `180–360ms`). Camera morphs use ease-in-out (`700–1350ms`). Exits are `40–50%` shorter than entrances using `power3.in` and simultaneous within a group. Landed titles hold dead still with zero idle drift or breathing loops.
-- Caption phrase switches are 1-frame hard cuts (`<= 33ms` @ `30 fps`), never bouncy slides.
+- Caption phrase switches use opacity-only transitions (configurable fade-in and fade-out or hard cut), never bouncy slides.
 
 ### Choreography roles (one lead per beat)
 

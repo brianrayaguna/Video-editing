@@ -15,13 +15,22 @@ from vedit.models import EditPlan, OverlayCompositionOp, PlatformTarget
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
+def _merge_overlay_props(ov: OverlayCompositionOp | None) -> dict[str, Any]:
+    if ov is None:
+        return {}
+    return {
+        **(ov.props or {}),
+        **{k: v for k, v in (ov.variables or {}).items() if v is not None},
+    }
+
+
 def is_ass_fastpath_overlay(ov: OverlayCompositionOp) -> bool:
     """Return True when an overlay can render natively via FFmpeg libass without Chromium."""
     props = ov.props or {}
     if props.get("custom_html") or props.get("custom_css") or props.get("custom_timeline_js"):
         return False
 
-    merged: dict[str, Any] = {**(ov.variables or {}), **props}
+    merged = _merge_overlay_props(ov)
     if ov.kind == "caption_rail":
         style = str(merged.get("caption_style") or "plain").lower()
         return style == "plain"
@@ -184,7 +193,7 @@ def write_ass_overlays_file(
     credit_margin_l = round(width * sz.left_pct)
 
     first_cap = next((o for o in overlays if o.kind == "caption_rail"), None)
-    cap_merged = {**(first_cap.variables or {}), **(first_cap.props or {})} if first_cap else {}
+    cap_merged = _merge_overlay_props(first_cap)
     cap_font = _primary_font_name(
         cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Space Grotesk"
     )
@@ -201,14 +210,14 @@ def write_ass_overlays_file(
     outline_color = _hex_to_ass_color("#03161F", 0.88)
 
     wm_ov = next((o for o in overlays if o.template_id == "broadcast_bug"), None)
-    wm_merged = {**(wm_ov.variables or {}), **(wm_ov.props or {})} if wm_ov else {}
+    wm_merged = _merge_overlay_props(wm_ov)
     wm_font = _primary_font_name(wm_merged.get("font_family"), cap_font)
     wm_opacity = float(wm_merged.get("opacity", 0.72))
     wm_color = _hex_to_ass_color(str(wm_merged.get("fg_color") or "#F4F1EA"), wm_opacity)
     wm_shadow = _hex_to_ass_color("#000000", 0.65)
 
     credit_ov = next((o for o in overlays if o.template_id == "source_credit"), None)
-    cr_merged = {**(credit_ov.variables or {}), **(credit_ov.props or {})} if credit_ov else {}
+    cr_merged = _merge_overlay_props(credit_ov)
     cr_opacity = float(cr_merged.get("opacity", 0.62))
     cr_color = _hex_to_ass_color(str(cr_merged.get("fg_color") or "#F4F1EA"), cr_opacity)
 
@@ -275,7 +284,7 @@ def write_ass_overlays_file(
     ]
 
     for ov in sorted(overlays, key=lambda item: item.timeline_start_s):
-        merged = {**(ov.variables or {}), **(ov.props or {})}
+        merged = _merge_overlay_props(ov)
         start_ts = _format_ass_time(ov.timeline_start_s)
         end_ts = _format_ass_time(ov.timeline_start_s + ov.timeline_duration_s)
 
@@ -302,9 +311,12 @@ def write_ass_overlays_file(
             style_name = "CaptionCenter"
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
-        trans_ms = max(0, min(200, int(merged.get("caption_transition_ms", 120))))
-        fade_in_ms = max(0, min(200, int(merged.get("caption_fade_in_ms", trans_ms))))
-        fade_out_ms = max(0, min(200, int(merged.get("caption_fade_out_ms", trans_ms))))
+        raw_trans = merged.get("caption_transition_ms")
+        trans_ms = max(0, min(200, int(120 if raw_trans is None else raw_trans)))
+        raw_in = merged.get("caption_fade_in_ms")
+        raw_out = merged.get("caption_fade_out_ms")
+        fade_in_ms = max(0, min(200, int(trans_ms if raw_in is None else raw_in)))
+        fade_out_ms = max(0, min(200, int(trans_ms if raw_out is None else raw_out)))
         fade = (
             f"\\fad({fade_in_ms},{fade_out_ms})" if (fade_in_ms or fade_out_ms) else ""
         )

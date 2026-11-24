@@ -897,7 +897,7 @@ def build_cinema_camera_track(
             b_k = float(row.get("bearing", 0.0))
             p_k = float(row.get("pitch", 0.0))
             r_k = float(row.get("roll", 0.0))
-            curve_k = str(row.get("curve", "auto"))
+            curve_k = str(row.get("curve") or "auto")
             rho_k = float(row.get("rho", 1.42))
             orbit_t = row.get("orbit_target")
             orbit_r = float(row.get("orbit_radius_deg", 0.0))
@@ -954,7 +954,15 @@ def build_cinema_camera_track(
     raw_r: list[float] = []
 
     m = len(parsed)
-    rest_idx = [i for i, k in enumerate(parsed) if i in (0, m - 1) or not k["through"]]
+    cut_boundary = {
+        idx
+        for idx in range(m)
+        if (idx > 0 and parsed[idx]["t"] - parsed[idx - 1]["t"] <= 1e-9)
+        or (idx + 1 < m and parsed[idx + 1]["t"] - parsed[idx]["t"] <= 1e-9)
+    }
+    rest_idx = [
+        i for i, k in enumerate(parsed) if i in (0, m - 1) or i in cut_boundary or not k["through"]
+    ]
     runs = [
         (r0, r1)
         for r0, r1 in zip(rest_idx, rest_idx[1:], strict=False)
@@ -977,13 +985,13 @@ def build_cinema_camera_track(
         orbit_t = None
         orbit_r = 0.0
         run = None
-        if m > 1 and parsed[0]["t"] < t < parsed[-1]["t"]:
+        if m > 1 and parsed[0]["t"] <= t < parsed[-1]["t"]:
             for r0, r1 in runs:
                 if parsed[r0]["t"] <= t < parsed[r1]["t"]:
                     run = (r0, r1)
                     break
         if run is None:
-            k = parsed[0] if (m == 1 or t <= parsed[0]["t"]) else parsed[-1]
+            k = parsed[0] if (m == 1 or t < parsed[0]["t"]) else parsed[-1]
             mx, my, z, b, p, r = k["mx"], k["my"], k["z"], k["b"], k["p"], k["r"]
             orbit_t = k["orbit_target"]
             orbit_r = k["orbit_radius_deg"]
@@ -1051,13 +1059,31 @@ def build_cinema_camera_track(
         raw_p.append(p)
         raw_r.append(r)
 
+    cut_times = [
+        parsed[i]["t"] for i in range(1, m) if parsed[i]["t"] - parsed[i - 1]["t"] <= 1e-9
+    ]
+    cut_frames = {
+        f for f in range(1, total) if any((f - 1) / fps < ct <= f / fps for ct in cut_times)
+    }
+
+    def _smooth_across_spans(vals: list[float], sig: float) -> list[float]:
+        if not cut_frames or sig <= 0.25:
+            return _zero_phase_smooth(vals, sig)
+        cuts_sorted = sorted(cut_frames)
+        bounds = [0, *cuts_sorted, total]
+        out: list[float] = []
+        for a, b in zip(bounds, bounds[1:], strict=False):
+            if b > a:
+                out.extend(_zero_phase_smooth(vals[a:b], sig))
+        return out
+
     sigma = smooth_s * fps
-    sm_mx = _zero_phase_smooth(raw_mx, sigma)
-    sm_my = _zero_phase_smooth(raw_my, sigma)
-    sm_z = _zero_phase_smooth(raw_z, sigma)
-    sm_b = _zero_phase_smooth(raw_b, sigma * 1.15)
-    sm_p = _zero_phase_smooth(raw_p, sigma * 1.15)
-    sm_r = _zero_phase_smooth(raw_r, sigma * 1.2)
+    sm_mx = _smooth_across_spans(raw_mx, sigma)
+    sm_my = _smooth_across_spans(raw_my, sigma)
+    sm_z = _smooth_across_spans(raw_z, sigma)
+    sm_b = _smooth_across_spans(raw_b, sigma * 1.15)
+    sm_p = _smooth_across_spans(raw_p, sigma * 1.15)
+    sm_r = _smooth_across_spans(raw_r, sigma * 1.2)
 
     # Optional organic stabilized-rig micro-drift (tapered to 0 at endpoints)
     drift_cfg = (
@@ -1071,7 +1097,7 @@ def build_cinema_camera_track(
         amp_pan_px = float(drift_cfg.get("amp_pan_px", 4.5))
         for f in range(total):
             t = f / fps
-            env = math.sin(math.pi * (f / max(1, total - 1))) ** 0.5
+            env = max(0.0, math.sin(math.pi * (f / max(1, total - 1)))) ** 0.5
             sm_b[f] += env * amp_b * math.sin(2.0 * math.pi * freq * t + 0.4)
             sm_p[f] += env * amp_p * math.sin(2.0 * math.pi * freq * 0.73 * t + 1.7)
             sm_r[f] += env * amp_r * math.cos(2.0 * math.pi * freq * 0.58 * t + 0.9)
@@ -1085,7 +1111,7 @@ def build_cinema_camera_track(
         t = f / fps
         lng, lat = _inv_mercator_norm(sm_mx[f], sm_my[f])
         shutter = 1
-        if auto_shutter and f > 0:
+        if auto_shutter and f > 0 and f not in cut_frames:
             world_px = TILE_SIZE * (2.0 ** sm_z[f])
             d_pan_px = math.hypot(sm_mx[f] - sm_mx[f - 1], sm_my[f] - sm_my[f - 1]) * world_px
             d_zoom_px = abs(sm_z[f] - sm_z[f - 1]) * 380.0

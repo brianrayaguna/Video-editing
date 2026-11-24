@@ -6,12 +6,15 @@
  * a directory whose name needs URL escaping (spaces, non-ASCII) still runs `main()`.
  */
 import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export function isMainModule(metaUrl, argv1 = process.argv[1]) {
   if (!argv1) return false;
   try {
-    return pathToFileURL(realpathSync(argv1)).href === metaUrl;
+    return (
+      pathToFileURL(realpathSync(argv1)).href ===
+      pathToFileURL(realpathSync(fileURLToPath(metaUrl))).href
+    );
   } catch {
     return false;
   }

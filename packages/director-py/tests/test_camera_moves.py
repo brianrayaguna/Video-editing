@@ -522,3 +522,53 @@ def test_auto_shutter_adaptive() -> None:
     assert max(s["shutter_samples"] for s in samples) <= 16
     off = build_cinema_camera_track(kfs, duration_s=2.0, fps=30.0)
     assert {s["shutter_samples"] for s in off} == {1}
+
+
+def test_cuts_with_through_keyframes_start_cuts_auto_shutter_and_none_curve() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    cut_after_through = build_cinema_camera_track(
+        [
+            {"t": 0.0, "center": [0.0, 0.0], "zoom": 3.0},
+            {"t": 1.0, "center": [0.0, 0.0], "zoom": 5.0, "through": True},
+            {"t": 1.0, "center": [20.0, 10.0], "zoom": 8.0},
+            {"t": 2.0, "center": [20.0, 10.0], "zoom": 9.0},
+        ],
+        duration_s=2.0,
+        fps=10.0,
+        auto_shutter=True,
+    )
+    assert cut_after_through[5]["zoom"] == pytest.approx(4.0, abs=0.05)
+    assert cut_after_through[10]["shutter_samples"] == 1
+
+    cut_at_start = build_cinema_camera_track(
+        [
+            {"t": 0.0, "center": [0.0, 0.0], "zoom": 3.0},
+            {"t": 0.0, "center": [10.0, 10.0], "zoom": 7.0},
+            {"t": 1.0, "center": [20.0, 20.0], "zoom": 9.0},
+        ],
+        duration_s=1.0,
+        fps=10.0,
+    )
+    assert cut_at_start[0]["zoom"] == pytest.approx(7.0, abs=1e-3)
+
+    cut_only = build_cinema_camera_track(
+        [
+            {"t": 1.0, "center": [0.0, 0.0], "zoom": 3.0},
+            {"t": 1.0, "center": [10.0, 10.0], "zoom": 7.0},
+        ],
+        duration_s=2.0,
+        fps=10.0,
+    )
+    assert cut_only[9]["zoom"] == pytest.approx(3.0)
+    assert cut_only[10]["zoom"] == pytest.approx(7.0)
+
+    none_curve = build_cinema_camera_track(
+        [
+            {"t": 0.0, "center": [-74.0, 40.7], "zoom": 10.0, "curve": "hyperbolic_fly"},
+            {"t": 1.0, "center": [139.7, 35.7], "zoom": 10.0, "curve": None},
+        ],
+        duration_s=1.0,
+        fps=10.0,
+    )
+    assert min(s["zoom"] for s in none_curve) < 6.0

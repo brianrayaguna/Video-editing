@@ -265,6 +265,7 @@ function buildTextGlowCss(glowColorRaw: unknown, glowStrengthRaw: unknown): {
 interface CatalogTemplateMatch {
   compositionPath: string;
   defaults: Record<string, unknown>;
+  variableTypes: Record<string, string>;
 }
 
 const brandCatalogCache = new Map<string, Map<string, CatalogTemplateMatch> | null>();
@@ -289,21 +290,24 @@ function resolveBrandTemplateEntry(
         templates?: Array<{
           template_id?: string;
           composition_path?: string;
-          variables?: Array<{ id?: string; default?: unknown }>;
+          variables?: Array<{ id?: string; type?: string; default?: unknown }>;
         }>;
       };
       table = new Map<string, CatalogTemplateMatch>();
       for (const entry of parsed.templates ?? []) {
         if (!entry.template_id || !entry.composition_path) continue;
         const defaults: Record<string, unknown> = {};
+        const variableTypes: Record<string, string> = {};
         for (const v of entry.variables ?? []) {
-          if (v.id && v.default !== undefined) {
-            defaults[v.id] = v.default;
+          if (v.id) {
+            if (v.type) variableTypes[v.id] = v.type;
+            if (v.default !== undefined) defaults[v.id] = v.default;
           }
         }
         table.set(entry.template_id, {
           compositionPath: entry.composition_path,
           defaults,
+          variableTypes,
         });
       }
       brandCatalogCache.set(cacheKey, table);
@@ -401,7 +405,7 @@ function computeBandPositionCss(
   const leftPct = Math.round(Math.max(safeZone.left_pct, 0.06) * 1000) / 10;
   const rightPct = Math.round(Math.max(safeZone.right_pct, 0.06) * 1000) / 10;
   // Symmetric horizontal padding guarantees true horizontal centering (x = 50%)
-  // while respecting asymmetric platform UI safe margins (e.g., Shorts right rail).
+  // while respecting asymmetric platform UI safe margins (e.g., vertical platform right UI rail).
   const symX = computeSymmetricMarginPct(safeZone);
 
   if (safeBand === "fullscreen") {
@@ -459,7 +463,7 @@ function assignTrackLane(
 }
 
 function renderCaptionHtml(text: string, highlightRaw: unknown, accentColor: string): string {
-  const safe = escapeHtml(text);
+  const safe = escapeHtml(text).replace(/\r?\n/g, "<br>");
   if (typeof highlightRaw !== "string" || !highlightRaw.trim()) {
     return safe;
   }
@@ -468,9 +472,9 @@ function renderCaptionHtml(text: string, highlightRaw: unknown, accentColor: str
   if (idx === -1) {
     return safe;
   }
-  const before = escapeHtml(text.slice(0, idx));
-  const match = escapeHtml(text.slice(idx, idx + needle.length));
-  const after = escapeHtml(text.slice(idx + needle.length));
+  const before = escapeHtml(text.slice(0, idx)).replace(/\r?\n/g, "<br>");
+  const match = escapeHtml(text.slice(idx, idx + needle.length)).replace(/\r?\n/g, "<br>");
+  const after = escapeHtml(text.slice(idx + needle.length)).replace(/\r?\n/g, "<br>");
   return `${before}<span class="vedit-caption-accent" style="color: ${accentColor};">${match}</span>${after}`;
 }
 
@@ -480,16 +484,17 @@ function buildOverlayMarkup(
   extraFamilies: readonly string[]
 ): string {
   if (typeof ov.props.custom_html === "string" && ov.props.custom_html.trim()) {
-    const font = resolveFontFamily(ov.props.font_family, extraFamilies);
+    const font = escapeHtml(escapeCssString(resolveFontFamily(ov.props.font_family, extraFamilies)));
     return `<div id="${innerId}" class="vedit-custom-layer" style="width: 100%; height: 100%; font-family: '${font}', sans-serif;">
         ${ov.props.custom_html}
       </div>`;
   }
 
-  const bodyFont = resolveFontFamily(ov.props.font_family, extraFamilies);
-  const displayFont = resolveFontFamily(
-    ov.props.display_family ?? ov.props.font_family,
-    extraFamilies
+  const bodyFont = escapeHtml(
+    escapeCssString(resolveFontFamily(ov.props.caption_font_family ?? ov.props.font_family, extraFamilies))
+  );
+  const displayFont = escapeHtml(
+    escapeCssString(resolveFontFamily(ov.props.display_family ?? ov.props.font_family, extraFamilies))
   );
   const headline = typeof ov.props.headline === "string"
     ? ov.props.headline
@@ -574,8 +579,12 @@ function buildOverlayCompositionHtml(
         : Math.min(0.26, duration * 0.25)
     ).toFixed(3)
   );
-  const exitDur = Number((isCaption ? Math.min(captionFadeOutMs / 1000, 0.033) : Math.max(0.11, enterDur * 0.48)).toFixed(3));
-  const exitAt = Number(Math.max(0.05, duration - exitDur).toFixed(3));
+  const exitDur = Number(
+    (isCaption ? Math.min(captionFadeOutMs / 1000, duration * 0.2) : Math.max(0.11, enterDur * 0.48)).toFixed(3)
+  );
+  const exitAt = Number(
+    (isCaption ? Math.max(enterDur, duration - exitDur) : Math.max(0.05, duration - exitDur)).toFixed(3)
+  );
   const posCss = hasCustomHtml
     ? "inset: 0;"
     : computeBandPositionCss(band, safeZone, width, height, ov.props.box);
@@ -727,7 +736,8 @@ function renderParameterizedTemplate(
   width: number,
   height: number,
   safeZone: SafeZoneMargins,
-  extraFamilies: readonly string[]
+  extraFamilies: readonly string[],
+  variableTypes: Record<string, string> = {}
 ): string {
   const isPortrait = height > width;
   const scaleFactor = Math.min(width, height) / 1080;
@@ -735,10 +745,11 @@ function renderParameterizedTemplate(
   const fg = resolveCssHex(ov.props.fg_color, "#F8FAFC");
   const bg = resolveCssHex(ov.props.bg_color, "#0F172A");
   const accent = resolveCssHex(ov.props.accent_color, "#38BDF8");
-  const bodyFont = resolveFontFamily(ov.props.font_family, extraFamilies);
-  const displayFont = resolveFontFamily(
-    ov.props.display_family ?? ov.props.font_family,
-    extraFamilies
+  const bodyFont = escapeCssString(
+    resolveFontFamily(ov.props.caption_font_family ?? ov.props.font_family, extraFamilies)
+  );
+  const displayFont = escapeCssString(
+    resolveFontFamily(ov.props.display_family ?? ov.props.font_family, extraFamilies)
   );
   const captionFade = captionFadeMs(ov.props);
   const captionTransitionS = Number(Math.min(captionFade.inMs / 1000, duration * 0.2).toFixed(3));
@@ -750,7 +761,7 @@ function renderParameterizedTemplate(
   const enterS = Number(Math.min(entranceMs / 1000, duration * 0.45).toFixed(3));
   const exitS = Number(Math.min(Math.max(0.12, enterS * 0.48), duration * 0.25).toFixed(3));
   const exitAtS = Number(Math.max(0.05, duration - exitS).toFixed(3));
-  const captionExitAtS = Number(Math.max(0.02, duration - captionFadeOutS).toFixed(3));
+  const captionExitAtS = Number(Math.max(captionTransitionS, duration - captionFadeOutS).toFixed(3));
   const easingFeel =
     typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "smooth_editorial";
   const easeName =
@@ -763,8 +774,21 @@ function renderParameterizedTemplate(
           : "expo.out";
 
   const symXPct = computeSymmetricMarginPct(safeZone);
-  const captionBottomPct = computeCaptionBottomPct(safeZone, width, height);
-  const captionFontPx = computeProportionalCaptionFontPx(width, height);
+  const rawBottomPct = ov.props.caption_bottom_pct;
+  const hasBottomOverride = typeof rawBottomPct === "number" && Number.isFinite(rawBottomPct);
+  const captionBottomPct = hasBottomOverride
+    ? Math.max(0, Math.min(90, Number(rawBottomPct.toFixed(1))))
+    : computeCaptionBottomPct(safeZone, width, height);
+  const rawFontPx = ov.props.caption_font_px;
+  const captionFontPx =
+    typeof rawFontPx === "number" && Number.isFinite(rawFontPx)
+      ? Math.max(16, Math.min(160, Math.round(rawFontPx)))
+      : computeProportionalCaptionFontPx(width, height);
+  const safeBand: SafeBand = ov.safe_band ?? "lower_third";
+  const bandPositionCss =
+    safeBand === "lower_third" && hasBottomOverride && !ov.props.box
+      ? `bottom: ${captionBottomPct}%; left: ${symXPct}%; right: ${symXPct}%; display: flex; justify-content: center; align-items: flex-end;`
+      : computeBandPositionCss(safeBand, safeZone, width, height, ov.props.box);
   const watermarkFontPx = Math.round(18 * scaleFactor);
   const watermarkTopPct = isPortrait ? 16.0 : 7.5;
   const watermarkRightPct = isPortrait ? 5.5 : 5.0;
@@ -797,6 +821,7 @@ function renderParameterizedTemplate(
     SYM_X_PCT: String(symXPct),
     CAPTION_BOTTOM_PCT: String(captionBottomPct),
     CAPTION_FONT_PX: String(captionFontPx),
+    BAND_POSITION_CSS: bandPositionCss,
     WATERMARK_FONT_PX: String(watermarkFontPx),
     WATERMARK_TOP_PCT: String(watermarkTopPct),
     WATERMARK_RIGHT_PCT: String(watermarkRightPct),
@@ -827,11 +852,21 @@ function renderParameterizedTemplate(
 
   for (const [key, val] of Object.entries(ov.props)) {
     if (val === undefined || val === null) continue;
+    const expectedType = variableTypes[key];
+    if (expectedType === "number") {
+      const n = typeof val === "number" ? val : Number(String(val).trim());
+      if (typeof val === "boolean" || String(val).trim() === "" || !Number.isFinite(n)) {
+        throw new Error(`Overlay ${ov.overlay_id} variable '${key}' expects a finite number, got ${JSON.stringify(val)}`);
+      }
+      const upper = key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+      tokens[`VAR_${upper}`] = String(n);
+      continue;
+    }
     const upper = key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
     if (typeof val === "string") {
       tokens[`VAR_${upper}`] = /^#[0-9A-Fa-f]{6}$/.test(val.trim())
         ? val.trim().toUpperCase()
-        : escapeHtml(val);
+        : escapeHtml(val).replace(/\\/g, "\\\\").replace(/\r?\n/g, " ");
     } else if (typeof val === "number") {
       if (Number.isFinite(val)) {
         tokens[`VAR_${upper}`] = String(val);
@@ -1125,7 +1160,8 @@ export function compileEditPlanToHyperframes(
         plan.width,
         plan.height,
         safeZone,
-        extraFontFamilies
+        extraFontFamilies,
+        catalogMatch?.variableTypes ?? {}
       );
       fs.writeFileSync(
         scenePath,

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { compileEditPlanToHyperframes } from "./compiler.js";
+import { captionFadeMs, compileEditPlanToHyperframes } from "./compiler.js";
 import type { EditPlan, PlatformTarget } from "./contracts.js";
 import { buildDistributedConfig, clampChunkFrameBudget } from "./distributed.js";
 import { lintHyperframesProjectDir } from "./lint.js";
@@ -1480,7 +1480,7 @@ test("sanitizeId preserves leading digits and disambiguates colliding overlay ID
   assert.equal(lintResult.ok, true);
 });
 
-test("geoverum template fixes preserve clip scope, canvas viewBox, decibel unit, and non-zero entrance scale", async () => {
+test("geoverum templates preserve clip scope, canvas viewBox, decibel unit, and non-zero entrance scale", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-template-regressions-"));
   const compiled = compileEditPlanToHyperframes(
     makeSamplePlan({
@@ -1570,4 +1570,112 @@ test("geoverum template fixes preserve clip scope, canvas viewBox, decibel unit,
   const lintResult = await lintHyperframesProjectDir(tmpDir);
   assert.equal(lintResult.totalErrors, 0);
   assert.equal(lintResult.ok, true);
+});
+
+test("caption fade timings, safe_band placement, multiline breaks, font escaping, and numeric variable validation", async () => {
+  assert.deepEqual(captionFadeMs({}), { inMs: 33, outMs: 33 });
+  assert.deepEqual(captionFadeMs({ caption_transition_ms: 140 }), { inMs: 140, outMs: 140 });
+  assert.deepEqual(captionFadeMs({ caption_transition_ms: 140, caption_fade_in_ms: 130, caption_fade_out_ms: 0 }), {
+    inMs: 130,
+    outMs: 0,
+  });
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-caption-parity-"));
+  compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      assets: [
+        {
+          asset_id: "font_escaped",
+          sha256: "4".repeat(64),
+          kind: "font",
+          path: "/nonexistent/Custom\\Font-Regular.ttf",
+        },
+      ],
+      overlay_compositions: [
+        {
+          overlay_id: "cap_upper",
+          kind: "caption_rail",
+          template_id: "caption_rail",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 1.5,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {
+            text: "Line one\nLine two",
+            caption_fade_in_ms: 130,
+            caption_fade_out_ms: 100,
+            caption_font_px: 52,
+          },
+        },
+        {
+          overlay_id: "cap_fallback",
+          kind: "caption_rail",
+          timeline_start_s: 2.0,
+          timeline_duration_s: 1.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: {
+            text: "Fallback\nCaption",
+            caption_fade_in_ms: 120,
+            caption_fade_out_ms: 100,
+            font_family: "Custom\\Font",
+          },
+        },
+        {
+          overlay_id: "cap_short",
+          kind: "caption_rail",
+          timeline_start_s: 3.5,
+          timeline_duration_s: 0.06,
+          transparent: true,
+          safe_band: "lower_third",
+          props: {
+            text: "Short",
+            caption_fade_in_ms: 200,
+            caption_fade_out_ms: 200,
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const upperHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_upper.html"), "utf8");
+  assert.match(upperHtml, /top:\s*10%/);
+  assert.match(upperHtml, /font-size:\s*52px/);
+  assert.match(upperHtml, /Line one<br>Line two/);
+  assert.match(upperHtml, /const fadeOutS = Number\(0\.1\)/);
+
+  const fallbackHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_fallback.html"), "utf8");
+  assert.match(fallbackHtml, /duration:\s*0\.1,\s*ease:\s*"none"\s*\},\s*0\.9\)/);
+  assert.match(fallbackHtml, /Fallback<br>Caption/);
+  assert.match(fallbackHtml, /Custom\\\\Font/);
+
+  const shortHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_short.html"), "utf8");
+  assert.match(shortHtml, /duration:\s*0\.012,\s*ease:\s*"none"\s*\},\s*0\.048\)/);
+
+  assert.throws(
+    () =>
+      compileEditPlanToHyperframes(
+        makeSamplePlan({
+          brand_id: "geoverum",
+          overlay_compositions: [
+            {
+              overlay_id: "bad_num",
+              kind: "lower_third",
+              template_id: "broadcast_bug",
+              timeline_start_s: 0.0,
+              timeline_duration_s: 1.0,
+              transparent: true,
+              safe_band: "upper_safe",
+              props: { text: "geoverum", opacity: "1);alert(1" },
+            },
+          ],
+        }),
+        fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-bad-num-")),
+        { copyAssets: false }
+      ),
+    /expects a finite number/
+  );
 });

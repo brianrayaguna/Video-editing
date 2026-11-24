@@ -8,7 +8,7 @@
       "overlay_kind": "caption_rail",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Plain true-centered 2-4 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). 1-frame hard cut (33ms), proportional sizing.",
+      "description": "Plain true-centered 2-4 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). Configurable opacity fade-in and hard-cut or brief fade-out, proportional sizing.",
       "safe_band": "lower_third",
       "variables": [
         { "id": "text", "type": "string", "label": "Caption phrase (2-4 words)" },

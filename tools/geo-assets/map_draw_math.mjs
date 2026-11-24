@@ -76,6 +76,8 @@ export function perimeterPartialPaths(rings, progress, opts = {}) {
     const startRaw = Math.round(Number(pickOption(opts.startIndex, ri, 0)) || 0);
     const start = ((startRaw % n) + n) % n;
     if (p >= 1) {
+      const total = ringLength(ring);
+      if (!(total > 0)) return;
       const closed = [];
       for (let k = 0; k <= n; k++) {
         const q = ring[(start + k) % n];
@@ -129,7 +131,7 @@ export function signedArea(ring) {
 export function coverRect(bounds, aspect) {
   const bw = Math.max(1e-9, bounds.maxX - bounds.minX);
   const bh = Math.max(1e-9, bounds.maxY - bounds.minY);
-  const a = aspect > 0 ? aspect : 1;
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   let w;
   let h;
   if (bw / bh > a) {
@@ -150,8 +152,17 @@ export function coverRect(bounds, aspect) {
  * width stays constant on screen.
  */
 export function scaledWidth(widthPx, zoom, refZoom = null, coupling = 1, minScale = 0.4, maxScale = 6) {
-  if (refZoom === null || refZoom === undefined || !Number.isFinite(Number(refZoom))) return widthPx;
+  if (
+    refZoom === null ||
+    refZoom === undefined ||
+    refZoom === "" ||
+    typeof refZoom === "boolean" ||
+    !Number.isFinite(Number(refZoom))
+  ) {
+    return widthPx;
+  }
   const scale = 2 ** ((Number(zoom) - Number(refZoom)) * Number(coupling ?? 1));
+  if (!Number.isFinite(scale)) return widthPx;
   return widthPx * Math.max(minScale, Math.min(maxScale, scale));
 }
 
@@ -178,16 +189,18 @@ export function wipeFrontEdge(mode, progress, bounds, featherFrac = 0.08) {
 // Returns the extra zoom fraction of the outermost blur copy, clamped to [0, 0.4].
 export function cutBlurAmount(frame, totalFrames, fps, inS, outS, strength) {
   const s = Math.max(0, Math.min(0.4, Number(strength)));
-  if (!Number.isFinite(s) || s <= 0) return 0;
+  const total = Number(totalFrames);
+  if (!Number.isFinite(s) || s <= 0 || !Number.isFinite(total) || total <= 0) return 0;
   const rate = Math.max(1, Number(fps) || 1);
   const side = (dist, windowS) => {
+    if (!Number.isFinite(dist) || dist < 0) return 0;
     const w = Number(windowS) * rate;
     if (!Number.isFinite(w) || w <= 0) return 0;
     const x = dist / w;
     return x >= 1 ? 0 : s * (1 - x) * (1 - x);
   };
-  const last = Math.max(0, Number(totalFrames) - 1);
-  return Math.max(side(frame, inS), side(last - frame, outS));
+  const last = Math.max(0, total - 1);
+  return Math.max(side(Number(frame), inS), side(last - Number(frame), outS));
 }
 
 // Cloth shading for a waving flag: gradient stops along the wave axis, each with a
@@ -329,8 +342,9 @@ export function polygonRings(geom) {
       for (const item of g) collect(item);
       return;
     }
-    if (g.type === "Feature") collect(g.geometry);
+    if (g.type === "Feature" || (!g.type && g.geometry)) collect(g.geometry);
     else if (g.type === "FeatureCollection") collect(g.features);
+    else if (g.type === "GeometryCollection") collect(g.geometries);
     else if (g.type === "Polygon") addPolygon(g.coordinates);
     else if (g.type === "MultiPolygon") for (const poly of g.coordinates || []) addPolygon(poly);
   };

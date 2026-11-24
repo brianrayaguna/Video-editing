@@ -461,7 +461,7 @@
     {
       "trigger_id": "border_line_single_head_draw",
       "condition": "narration.names_the_border_between_two_filled_territories",
-      "action": "scene.route(border polyline ordered north to south, hex='#FDFD09', width=8, draw_duration_s=0.85-1.5, draw_ease='in_out', width_ref_zoom=<act zoom>, width_coupling=0.6) layered above both fills; a maritime continuation is dashed with round caps",
+      "action": "scene.route(border polyline ordered north to south, color='#FDFD09', width=8, draw_duration_s=0.85-1.5, draw_ease='in_out', width_ref_zoom=<act zoom>, width_coupling=0.6) layered above both fills; a maritime continuation is dashed with round caps",
       "weight": 0.72,
       "rationale": "A shared border is one line, so it draws with one head along the true polyline on top of both fills; width that follows the zoom with an exponent below 1 keeps the line legible through dives."
     },

@@ -15,12 +15,7 @@
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
-      bottom: {{CAPTION_BOTTOM_PCT}}%;
-      left: {{SYM_X_PCT}}%;
-      right: {{SYM_X_PCT}}%;
-      display: flex;
-      justify-content: center;
-      align-items: flex-end;
+      {{BAND_POSITION_CSS}}
       pointer-events: none;
     }
     #{{SCENE_ID}}-inner {
@@ -39,6 +34,12 @@
       background: {{BG_RGBA_78}};
       border-radius: 4px;
       padding: 8px 20px;
+      text-shadow: none;
+    }
+    #{{SCENE_ID}}-inner.style-bar {
+      width: 100%;
+      background: {{BG_RGBA_78}};
+      padding: 10px 24px;
       text-shadow: none;
     }
   </style>

@@ -25,13 +25,15 @@ import math
 import re
 import shutil
 import tarfile
-import tempfile
+import time
 import unicodedata
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape as xml_escape
+from xml.sax.saxutils import quoteattr
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GEO_ROOT = REPO_ROOT / "assets" / "geo"
@@ -100,24 +102,38 @@ NE_LAYERS: dict[str, list[str]] = {
 
 LICENSES = {
     "natural_earth": "Public Domain (Natural Earth). Attribution: Made with Natural Earth.",
+    "pb2002": "ODC-By 1.0 (Peter Bird PB2002 tectonic plates).",
+    "gem_active_faults": "CC BY-SA 4.0 (GEM Global Active Faults Database).",
     "lucide": "ISC License (Lucide Contributors).",
+    "material_symbols": "Apache-2.0 License (Material Symbols).",
     "flags": "MIT License (flag-icons contributors).",
 }
 
 
-def _download(url: str, dest: Path, min_bytes: int = 64) -> str:
+def _download(url: str, dest: Path, min_bytes: int = 64, *, validate_json: bool = False) -> str:
     if dest.is_file() and dest.stat().st_size >= min_bytes:
         return "cached"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=120) as resp, tmp.open("wb") as fh:
-        shutil.copyfileobj(resp, fh)
-    if tmp.stat().st_size < min_bytes:
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError(f"download too small: {url}")
-    tmp.replace(dest)
-    return "downloaded"
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=120) as resp, tmp.open("wb") as fh:
+                shutil.copyfileobj(resp, fh)
+            if tmp.stat().st_size < min_bytes:
+                raise RuntimeError(f"download too small: {url}")
+            if validate_json:
+                json.loads(tmp.read_text(encoding="utf-8"))
+            tmp.replace(dest)
+            return "downloaded"
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            tmp.unlink(missing_ok=True)
+            if attempt < 2:
+                time.sleep(0.5 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def fetch_natural_earth_layers() -> dict[str, list[str]]:
@@ -127,42 +143,57 @@ def fetch_natural_earth_layers() -> dict[str, list[str]]:
         group, name = job
         dest = RAW_VECTOR_DIR / f"{name}.geojson"
         try:
-            return group, name, _download(f"{NE_BASE}/{name}.geojson", dest, min_bytes=512)
+            return group, name, _download(
+                f"{NE_BASE}/{name}.geojson", dest, min_bytes=512, validate_json=True
+            )
         except Exception as exc:  # noqa: BLE001
             return group, name, f"failed: {exc}"
 
     installed: dict[str, list[str]] = {group: [] for group in NE_LAYERS}
+    failed: list[str] = []
     with ThreadPoolExecutor(max_workers=6) as pool:
         for group, name, status in pool.map(_one, jobs):
             print(f"  [vector] {name}: {status}")
-            if not status.startswith("failed"):
+            if status.startswith("failed"):
+                failed.append(f"{name}: {status}")
+            else:
                 installed[group].append(f"raw/vector/{name}.geojson")
+    if failed:
+        raise RuntimeError(f"Failed downloading Natural Earth layers: {'; '.join(failed)}")
     return installed
 
 
 def fetch_lucide_icons() -> int:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tgz = Path(tmp_dir) / "lucide.tgz"
-        _download(LUCIDE_TARBALL, tgz, min_bytes=10_000)
-        count = 0
-        with tarfile.open(tgz, "r:gz") as tar:
-            for member in tar.getmembers():
-                name = member.name
-                if not (member.isfile() and re.fullmatch(r"package/icons/[a-z0-9-]+\.svg", name)):
-                    continue
-                dest = ICONS_DIR / Path(name).name
-                if dest.is_file():
-                    count += 1
-                    continue
-                src = tar.extractfile(member)
-                if src is None:
-                    continue
-                data = src.read()
-                if b"<svg" not in data[:512]:
-                    continue
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(data)
+    tgz = GEO_ROOT / "raw" / f"lucide-static-{LUCIDE_VERSION}.tgz"
+    _download(LUCIDE_TARBALL, tgz, min_bytes=10_000)
+    count = 0
+    max_icon_bytes = 256_000
+    with tarfile.open(tgz, "r:gz") as tar:
+        for member in tar.getmembers():
+            name = member.name
+            if not (member.isfile() and re.fullmatch(r"package/icons/[a-z0-9-]+\.svg", name)):
+                continue
+            if member.size > max_icon_bytes:
+                continue
+            dest = ICONS_DIR / Path(name).name
+            if dest.is_file():
                 count += 1
+                continue
+            src = tar.extractfile(member)
+            if src is None:
+                continue
+            data = src.read(max_icon_bytes + 1)
+            if len(data) > max_icon_bytes or b"<svg" not in data[:512]:
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(dest.name + ".part")
+            try:
+                tmp.write_bytes(data)
+                tmp.replace(dest)
+            except Exception:
+                tmp.unlink(missing_ok=True)
+                raise
+            count += 1
     return count
 
 
@@ -196,10 +227,53 @@ def _unwrap_antimeridian(polys: list[list[list[list[float]]]]) -> list[list[list
     lons = [pt[0] for poly in polys for ring in poly for pt in ring]
     if not lons or max(lons) - min(lons) <= 180:
         return polys
+    for poly in polys:
+        for ring in poly:
+            for i in range(len(ring) - 1):
+                lon1, lon2 = ring[i][0], ring[i + 1][0]
+                if abs(lon2 - lon1) < 180 and ((lon1 < 0 < lon2) or (lon2 < 0 < lon1)):
+                    return polys
+    wrapped_lons = [lon + 360 if lon < 0 else lon for lon in lons]
+    if max(wrapped_lons) - min(wrapped_lons) >= max(lons) - min(lons):
+        return polys
     return [
-        [[[lon + 360 if lon < 0 else lon, lat] for lon, lat in ring] for ring in poly]
+        [[[pt[0] + 360 if pt[0] < 0 else pt[0], pt[1]] for pt in ring] for ring in poly]
         for poly in polys
     ]
+
+
+def _encode_svg_rings(
+    polys: list[list[list[list[float]]]],
+    *,
+    kx: float,
+    scale: float,
+    off_x: float,
+    off_y: float,
+    tolerance: float,
+    drop_small: bool,
+) -> list[str]:
+    parts: list[str] = []
+    for poly in polys:
+        for ring in poly:
+            proj = [(pt[0] * kx * scale + off_x, -pt[1] * scale + off_y) for pt in ring]
+            if len(proj) < 4:
+                continue
+            if drop_small:
+                rx = [p[0] for p in proj]
+                ry = [p[1] for p in proj]
+                if max(rx) - min(rx) < tolerance * 2 and max(ry) - min(ry) < tolerance * 2:
+                    continue
+            kept = [proj[0]]
+            for x, y in proj[1:-1]:
+                lx, ly = kept[-1]
+                if abs(x - lx) >= tolerance or abs(y - ly) >= tolerance:
+                    kept.append((x, y))
+            if len(kept) < 3:
+                if drop_small:
+                    continue
+                kept = proj[:-1]
+            parts.append("M" + "L".join(f"{x:.1f} {y:.1f}" for x, y in kept) + "Z")
+    return parts
 
 
 def polygons_to_svg(
@@ -212,7 +286,7 @@ def polygons_to_svg(
 ) -> str | None:
     """Project lon/lat polygons (cos-latitude equirectangular) into a recolorable SVG."""
     polys = _unwrap_antimeridian(polys)
-    pts = [pt for poly in polys for ring in poly for pt in ring]
+    pts = [(pt[0], pt[1]) for poly in polys for ring in poly for pt in ring]
     if not pts:
         return None
     lat0 = math.radians((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2)
@@ -228,28 +302,32 @@ def polygons_to_svg(
     off_y = size_px * pad_ratio - min_y * scale
     tolerance = 0.6
 
-    parts: list[str] = []
-    for poly in polys:
-        for ring in poly:
-            proj = [(lon * kx * scale + off_x, -lat * scale + off_y) for lon, lat in ring]
-            if len(proj) < 4:
-                continue
-            rx = [p[0] for p in proj]
-            ry = [p[1] for p in proj]
-            if max(rx) - min(rx) < tolerance * 2 and max(ry) - min(ry) < tolerance * 2:
-                continue
-            kept = [proj[0]]
-            for x, y in proj[1:-1]:
-                lx, ly = kept[-1]
-                if abs(x - lx) >= tolerance or abs(y - ly) >= tolerance:
-                    kept.append((x, y))
-            if len(kept) < 3:
-                continue
-            parts.append("M" + "L".join(f"{x:.1f} {y:.1f}" for x, y in kept) + "Z")
+    parts = _encode_svg_rings(
+        polys,
+        kx=kx,
+        scale=scale,
+        off_x=off_x,
+        off_y=off_y,
+        tolerance=tolerance,
+        drop_small=True,
+    )
+    if not parts:
+        parts = _encode_svg_rings(
+            polys,
+            kx=kx,
+            scale=scale,
+            off_x=off_x,
+            off_y=off_y,
+            tolerance=0.1,
+            drop_small=False,
+        )
     if not parts:
         return None
-    data_attrs = "".join(f' data-{k}="{v}"' for k, v in (meta or {}).items())
-    safe_title = title.replace("&", "&amp;").replace("<", "&lt;")
+    data_attrs = "".join(
+        f" data-{re.sub(r'[^a-z0-9_-]', '', k.lower())}={quoteattr(str(v))}"
+        for k, v in (meta or {}).items()
+    )
+    safe_title = xml_escape(title)
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}"'
         f' width="{width:.0f}" height="{height:.0f}"{data_attrs}>'
@@ -266,6 +344,33 @@ def _iso2(props: dict[str, Any]) -> str | None:
     return None
 
 
+def _geometry_area_score(geometry: dict[str, Any] | None) -> float:
+    area = 0.0
+    for poly in _polygons(geometry):
+        if not poly:
+            continue
+        ring = poly[0]
+        if len(ring) < 3:
+            continue
+        ring_area = 0.0
+        for i in range(len(ring)):
+            x1, y1 = ring[i][0], ring[i][1]
+            x2, y2 = ring[(i + 1) % len(ring)][0], ring[(i + 1) % len(ring)][1]
+            ring_area += x1 * y2 - x2 * y1
+        area += abs(ring_area) / 2.0
+    return area
+
+
+def _country_feature_rank(feature: dict[str, Any]) -> tuple[int, float, float]:
+    props = feature.get("properties") or {}
+    is_sovereign = 1 if props.get("TYPE") in {"Sovereign country", "Country"} else 0
+    try:
+        pop = float(props.get("POP_EST") or 0.0)
+    except (TypeError, ValueError):
+        pop = 0.0
+    return (is_sovereign, pop, _geometry_area_score(feature.get("geometry")))
+
+
 def build_country_svgs() -> int:
     src = RAW_VECTOR_DIR / "ne_10m_admin_0_countries.geojson"
     if not src.is_file():
@@ -273,15 +378,21 @@ def build_country_svgs() -> int:
         return 0
     out_dir = SVG_DIR / "countries"
     out_dir.mkdir(parents=True, exist_ok=True)
-    count = 0
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for feature in json.loads(src.read_text(encoding="utf-8"))["features"]:
         props = feature.get("properties") or {}
         code = _iso2(props)
         if not code:
             continue
+        grouped.setdefault(code, []).append(feature)
+
+    count = 0
+    for code, features in grouped.items():
+        primary = max(features, key=_country_feature_rank)
+        props = primary.get("properties") or {}
         name = str(props.get("NAME_EN") or props.get("NAME") or code)
         svg = polygons_to_svg(
-            _polygons(feature.get("geometry")),
+            _polygons(primary.get("geometry")),
             title=name,
             meta={"iso2": code, "name": _slug(name)},
         )
@@ -295,24 +406,58 @@ def build_subdivision_svgs(iso2_codes: list[str]) -> dict[str, int]:
     src = RAW_VECTOR_DIR / "ne_10m_admin_1_states_provinces.geojson"
     if not src.is_file() or not iso2_codes:
         return {}
-    wanted = {c.lower() for c in iso2_codes}
-    counts: dict[str, int] = {}
+    wanted = {c.lower() for c in iso2_codes if re.fullmatch(r"[a-z]{2}", c.lower())}
+    if not wanted:
+        return {}
+
+    by_country: dict[str, list[dict[str, Any]]] = {}
     for feature in json.loads(src.read_text(encoding="utf-8"))["features"]:
         props = feature.get("properties") or {}
         code = str(props.get("iso_a2") or "").lower()
-        if code not in wanted:
-            continue
-        name = str(props.get("name_en") or props.get("name") or "unnamed")
-        svg = polygons_to_svg(
-            _polygons(feature.get("geometry")),
-            title=name,
-            meta={"iso2": code, "name": _slug(name)},
-        )
-        if svg:
-            out = SVG_DIR / "subdivisions" / code / f"{_slug(name)}.svg"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(svg, encoding="utf-8")
-            counts[code] = counts.get(code, 0) + 1
+        if code in wanted and re.fullmatch(r"[a-z]{2}", code):
+            by_country.setdefault(code, []).append(feature)
+
+    counts: dict[str, int] = {}
+    for code, features in by_country.items():
+        base_slugs = [
+            _slug(str((f.get("properties") or {}).get("name_en") or (f.get("properties") or {}).get("name") or "unnamed"))
+            for f in features
+        ]
+        slug_freq: dict[str, int] = {}
+        for s in base_slugs:
+            slug_freq[s] = slug_freq.get(s, 0) + 1
+
+        used_slugs: set[str] = set()
+        for feature, base_slug in zip(features, base_slugs, strict=True):
+            props = feature.get("properties") or {}
+            name = str(props.get("name_en") or props.get("name") or "unnamed")
+            slug = base_slug
+            if slug_freq[base_slug] > 1:
+                alt_name = str(props.get("name") or "")
+                alt_slug = _slug(alt_name) if alt_name else ""
+                if alt_slug and alt_slug != base_slug and alt_slug not in used_slugs:
+                    slug = alt_slug
+                else:
+                    qualifier = _slug(str(props.get("type_en") or props.get("iso_3166_2") or ""))
+                    if qualifier and qualifier != "unnamed":
+                        slug = f"{base_slug}_{qualifier}"
+            if slug in used_slugs:
+                n = 2
+                while f"{slug}_{n}" in used_slugs:
+                    n += 1
+                slug = f"{slug}_{n}"
+            used_slugs.add(slug)
+
+            svg = polygons_to_svg(
+                _polygons(feature.get("geometry")),
+                title=name,
+                meta={"iso2": code, "name": slug},
+            )
+            if svg:
+                out = SVG_DIR / "subdivisions" / code / f"{slug}.svg"
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(svg, encoding="utf-8")
+                counts[code] = counts.get(code, 0) + 1
     return counts
 
 
@@ -321,22 +466,27 @@ def build_world_svg() -> bool:
     if not src.is_file():
         return False
     width, height, tol = 3600.0, 1800.0, 0.8
-    paths: list[str] = []
+    segs_by_code: dict[str, list[str]] = {}
     for feature in json.loads(src.read_text(encoding="utf-8"))["features"]:
         props = feature.get("properties") or {}
         code = _iso2(props) or _slug(str(props.get("ADM0_A3") or "xx"))
-        segs: list[str] = []
+        segs = segs_by_code.setdefault(code, [])
         for poly in _polygons(feature.get("geometry")):
             for ring in poly:
-                proj = [((lon + 180) * 10, (90 - lat) * 10) for lon, lat in ring]
+                proj = [((pt[0] + 180) * 10, (90 - pt[1]) * 10) for pt in ring]
+                if len(proj) < 4:
+                    continue
                 kept = [proj[0]]
                 for x, y in proj[1:-1]:
                     if abs(x - kept[-1][0]) >= tol or abs(y - kept[-1][1]) >= tol:
                         kept.append((x, y))
                 if len(kept) >= 3:
                     segs.append("M" + "L".join(f"{x:.1f} {y:.1f}" for x, y in kept) + "Z")
-        if segs:
-            paths.append(f'<path id="{code}" fill-rule="evenodd" d="{"".join(segs)}"/>')
+    paths = [
+        f'<path id={quoteattr(code)} fill-rule="evenodd" d="{"".join(segs)}"/>'
+        for code, segs in segs_by_code.items()
+        if segs
+    ]
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}"'
         f' width="{width:.0f}" height="{height:.0f}"><title>World countries</title>'
@@ -352,7 +502,30 @@ def _dir_stats(path: Path, pattern: str = "*") -> dict[str, int]:
     return {"files": len(files), "bytes": sum(p.stat().st_size for p in files)}
 
 
+def _subdivision_counts_on_disk() -> dict[str, int]:
+    sub_root = SVG_DIR / "subdivisions"
+    if not sub_root.is_dir():
+        return {}
+    return {
+        d.name: len(list(d.glob("*.svg")))
+        for d in sorted(sub_root.iterdir())
+        if d.is_dir() and re.fullmatch(r"[a-z]{2}", d.name)
+    }
+
+
 def write_catalog(vector_groups: dict[str, list[str]], subdivisions: dict[str, int]) -> None:
+    on_disk_subdivisions = _subdivision_counts_on_disk()
+    merged_subdivisions = {**on_disk_subdivisions, **subdivisions} if on_disk_subdivisions else subdivisions
+    curated_dir = GEO_ROOT / "vector"
+    curated = (
+        sorted(
+            f"vector/{p.name}"
+            for p in curated_dir.glob("*")
+            if p.is_file() and not p.name.startswith(".")
+        )
+        if curated_dir.is_dir()
+        else []
+    )
     catalog = {
         "schema_version": "1.0",
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -372,16 +545,20 @@ def write_catalog(vector_groups: dict[str, list[str]], subdivisions: dict[str, i
                 )
                 + sorted(f"raw/vector/{p.name}" for p in RAW_VECTOR_DIR.glob("*.json")),
                 "groups": vector_groups,
-                "curated": sorted(f"vector/{p.name}" for p in (GEO_ROOT / "vector").glob("*")),
-                "license": LICENSES["natural_earth"],
+                "curated": curated,
+                "licenses": {
+                    "ne_*": LICENSES["natural_earth"],
+                    "PB2002_*": LICENSES["pb2002"],
+                    "gem_active_faults_*": LICENSES["gem_active_faults"],
+                },
             },
             "svg": {
                 "countries": {"path": "svg/countries/<iso2>.svg", **_dir_stats(SVG_DIR / "countries")},
                 "subdivisions": {
                     "path": "svg/subdivisions/<iso2>/<slug>.svg",
-                    "per_country": subdivisions,
+                    "per_country": merged_subdivisions,
                 },
-                "world": "svg/world.svg",
+                "world": "svg/world.svg" if (SVG_DIR / "world.svg").is_file() else None,
                 "styling": "Single path with fill=currentColor; recolor via CSS color.",
                 "license": LICENSES["natural_earth"],
             },
@@ -393,13 +570,23 @@ def write_catalog(vector_groups: dict[str, list[str]], subdivisions: dict[str, i
             "icons": {
                 "path": "icons/<name>.svg",
                 **_dir_stats(ICONS_DIR, "*.svg"),
-                "license": LICENSES["lucide"],
+                "licenses": {
+                    "lucide": LICENSES["lucide"],
+                    "material_symbols": LICENSES["material_symbols"],
+                },
             },
             "fonts": {"path": "fonts/", **_dir_stats(GEO_ROOT / "fonts")},
             "textures": {"path": "textures/", **_dir_stats(GEO_ROOT / "textures")},
         },
     }
-    CATALOG_PATH.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+    CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CATALOG_PATH.with_name(CATALOG_PATH.name + ".part")
+    try:
+        tmp.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(CATALOG_PATH)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def main() -> None:

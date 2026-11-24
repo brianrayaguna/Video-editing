@@ -446,7 +446,7 @@ def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
 # RGB so black is 0 on every plane. xfade progress P runs from 1 to 0. The expression
 # is written without st()/ld() registers: xfade evaluates it from several slice threads
 # that share one register set.
-_DISC_R = "(0.69*max(W,H))"
+_DISC_R = "(max(0.69*max(W,H),1.20*hypot(W/2,H/2)))"
 _DISC_CX = f"(P*W+(2.65*P-1.25)*{_DISC_R})"
 _DISC_SWEEP_EXPR = (
     f"if(gt(X,{_DISC_CX}),B,A)"
