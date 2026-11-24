@@ -8,6 +8,7 @@ from typing import Annotated, Any
 
 import typer
 
+from vedit.director.brand_memory import export_recent_episodes, load_brand_memory
 from vedit.director.critique import apply_surgical_fixes, build_critique_packet, gate_review
 from vedit.director.exemplar_retrieval import (
     load_editorial_playbook,
@@ -164,6 +165,10 @@ def storyboard_auto_cmd(
         Path | None,
         typer.Option("--playbook-file", help="Optional editorial_playbook.json for retrieval."),
     ] = None,
+    memory_file: Annotated[
+        Path | None,
+        typer.Option("--memory-file", help="Optional external brand_memory.json."),
+    ] = None,
 ) -> None:
     """Direct automatically from narration, then layer optional director input on top.
 
@@ -172,6 +177,11 @@ def storyboard_auto_cmd(
     """
     idioms = _idioms(brand, idioms_file)
     sb = scaffold_storyboard(_read(transcript_file), idioms, project_id=project_id, pacing=pacing)
+    memory = load_brand_memory(memory_file) if memory_file is not None else None
+    if memory is not None:
+        recent = export_recent_episodes(memory)
+        if recent:
+            sb["recent_episodes"] = recent
     if director_file is not None:
         sb = apply_director_storyboard(sb, _read(director_file))
     if reference:
@@ -181,7 +191,7 @@ def storyboard_auto_cmd(
         pb_path = playbook_file.expanduser() if playbook_file else playbook_path(str(brand_id))
         ctx = None
         if pb_path.is_file():
-            ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path))
+            ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path), memory=memory)
         decision_port = build_default_registry().resolve("decision")
         sb = enrich_storyboard_semantically(
             sb,

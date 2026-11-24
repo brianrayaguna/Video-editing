@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/brand_memory.schema.json",
+  "title": "BrandMemory",
+  "description": "External per-brand episodic memory storing recent episodes, high-scoring winning beats, and deduplicated failure patterns under VEDIT_PROJECTS_ROOT/<brand_id>/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "brand_id",
+    "updated_at",
+    "recent_episodes",
+    "winning_beats",
+    "failure_patterns"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "brand_id": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "minLength": 1 },
+    "recent_episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["project_id", "recorded_at", "story_shape"],
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "recorded_at": { "type": "string", "minLength": 1 },
+          "story_shape": { "type": "string", "minLength": 1 },
+          "hook_mechanism": { "type": "string" },
+          "ending_type": { "type": "string" },
+          "signature_image": { "type": "string" },
+          "rubric_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "winning_beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "beat_id",
+          "function",
+          "device",
+          "clause",
+          "story_need",
+          "rubric_score"
+        ],
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "beat_id": { "type": "string", "minLength": 1 },
+          "function": { "type": "string", "minLength": 1 },
+          "device": { "type": "string", "minLength": 1 },
+          "treatment": { "type": "string" },
+          "clause": { "type": "string" },
+          "story_need": { "type": "string" },
+          "rubric_score": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "failure_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pattern_id",
+          "kind",
+          "description",
+          "occurrences",
+          "last_project_id",
+          "project_ids"
+        ],
+        "properties": {
+          "pattern_id": { "type": "string", "minLength": 1 },
+          "device": { "type": "string" },
+          "kind": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "occurrences": { "type": "integer", "minimum": 1 },
+          "last_project_id": { "type": "string", "minLength": 1 },
+          "project_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

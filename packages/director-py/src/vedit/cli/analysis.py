@@ -42,6 +42,8 @@ breakdown_app = typer.Typer(
 brand_app = typer.Typer(
     help="Synthesize brand policy/playbook, validate brand trees, query exemplars."
 )
+memory_app = typer.Typer(help="Inspect and record external per-brand episodic memory.")
+brand_app.add_typer(memory_app, name="memory")
 
 
 @probe_app.command("hash")
@@ -546,6 +548,81 @@ def brand_calibrate_idioms_cmd(
                 "changes": result["changes"],
                 "skipped": len(result["skipped"]),
                 "follow_up": result["follow_up"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+
+@memory_app.command("show")
+def brand_memory_show_cmd(
+    brand_id: Annotated[str, typer.Option("--brand-id", help="Target brand identifier.")],
+    projects_root: Annotated[
+        Path | None,
+        typer.Option("--projects-root", help="External VEDIT_PROJECTS_ROOT override."),
+    ] = None,
+) -> None:
+    """Display the external brand_memory.json for a brand (or empty summary if absent)."""
+    from vedit.director.brand_memory import (
+        empty_brand_memory,
+        load_brand_memory,
+        resolve_brand_memory_path,
+    )
+
+    mem_path = resolve_brand_memory_path(brand_id, projects_root=projects_root)
+    memory = load_brand_memory(mem_path) if mem_path.is_file() else empty_brand_memory(brand_id)
+    typer.echo(json.dumps({"path": str(mem_path), "memory": memory}, indent=2, ensure_ascii=False))
+
+
+@memory_app.command("record")
+def brand_memory_record_cmd(
+    brand_id: Annotated[str, typer.Option("--brand-id", help="Target brand identifier.")],
+    storyboard_file: Annotated[
+        Path, typer.Option("--storyboard", help="Completed Storyboard JSON.")
+    ],
+    critique_packet_file: Annotated[
+        Path | None, typer.Option("--packet", help="Optional CritiquePacket JSON.")
+    ] = None,
+    gate_result_file: Annotated[
+        Path | None, typer.Option("--gate-result", help="Optional gate_review output JSON.")
+    ] = None,
+    projects_root: Annotated[
+        Path | None,
+        typer.Option("--projects-root", help="External VEDIT_PROJECTS_ROOT override."),
+    ] = None,
+) -> None:
+    """Record an episode outcome into external VEDIT_PROJECTS_ROOT/<brand_id>/brand_memory.json."""
+    from vedit.director.brand_memory import (
+        empty_brand_memory,
+        load_brand_memory,
+        record_episode_outcome,
+        resolve_brand_memory_path,
+        save_brand_memory,
+    )
+
+    mem_path = resolve_brand_memory_path(brand_id, projects_root=projects_root)
+    memory = load_brand_memory(mem_path) if mem_path.is_file() else empty_brand_memory(brand_id)
+    sb = json.loads(storyboard_file.expanduser().read_text(encoding="utf-8"))
+    packet = (
+        json.loads(critique_packet_file.expanduser().read_text(encoding="utf-8"))
+        if critique_packet_file is not None
+        else None
+    )
+    gate = (
+        json.loads(gate_result_file.expanduser().read_text(encoding="utf-8"))
+        if gate_result_file is not None
+        else None
+    )
+    updated = record_episode_outcome(memory, sb, critique_packet=packet, gate_result=gate)
+    saved = save_brand_memory(mem_path, updated)
+    typer.echo(
+        json.dumps(
+            {
+                "path": str(saved),
+                "recent_episodes": len(updated["recent_episodes"]),
+                "winning_beats": len(updated["winning_beats"]),
+                "failure_patterns": len(updated["failure_patterns"]),
             },
             indent=2,
             ensure_ascii=False,
