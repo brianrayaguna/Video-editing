@@ -243,7 +243,9 @@ Within one film, each kind of jump keeps its own device so transitions read as g
 | Weather or atmosphere | Wash dissolve |
 | Hook flip | Colour-flash cut |
 | Surface swap at equal scale | White bar wipe (≈0.25 s) |
+| Macro scale or map-mode jump | Feathered dark directional wipe (`feathered_dark_wipe`, 3–5 frames at 30 fps, default right-to-left) with captions kept above |
 | Basemap register swap at equal framing | Feathered black-disc sweep (`disc_sweep`, 6 frames), match-framed, captions unmasked |
+| Archive or treaty reveal | Upright `0°` parchment unfold (`page_unfold`, ≈0.35–0.47 s) |
 | Flat map ↔ globe | Continue the zoom through a radial blur peaking on the cut frame (`cut_blur_out_s` / `cut_blur_in_s`) |
 | Map level → character level | Lens or iris dissolve |
 | Abstract → real place | Whip-zoom into a real aerial with the same overlay |
@@ -278,7 +280,7 @@ Colours are cast per story, not fixed per role across all films.
 
 Camera moves follow the same sync table: a regime change (wide → regional → close) is one eased move that arrives with the place name, and between beats the camera keeps a slow drift rather than stopping dead. Each move arrives at its framing with zero velocity; a dive that ends on a cut keeps accelerating into the cut frame, and map frames stay sharp at every speed. Measured or hand-keyed camera tracks are denoised before baking (`CRAFT.md` *Core motion*); a visible back-and-forth wobble reads as an error, never as energy.
 
-Pacing follows story pressure: fastest at the hook and the escalation, a near-still hold only on a structural promise ("three main reasons"), a palate-cleanser clean frame before a new "why". A visual must never contradict a spoken number.
+Pacing follows story pressure: fastest at the hook and the escalation, a near-still hold only on a structural promise ("three main reasons") or complex cutaway gauge reading, a palate-cleanser clean frame before a new "why". Maintain strict numeric parity between spoken narration and on-screen callouts (using paired metric/imperial units where helpful), keep all callouts and scale rulers inside safe frame margins (`8%–92%` horizontal, `>= 12%` top clearance), and preserve dark-halo caption legibility whenever pale terrain or snow passes through the caption band.
 
 ---
 

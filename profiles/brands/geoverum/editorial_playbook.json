@@ -485,6 +485,34 @@
       "action": "outgoing act: destination camera key placed after duration_s so the dive is still accelerating at the cut, cut_blur_out_s=0.3-0.45; incoming act: cut_blur_in_s=0.3-0.45, opening already framed on the same place in the other projection; clip.transition_in='hard_cut'",
       "weight": 0.68,
       "rationale": "Continuing the zoom across the cut hides the projection change inside motion the viewer is already following."
+    },
+    {
+      "trigger_id": "chevron_flow_corridor_overlay",
+      "condition": "narration.describes_prevailing_wind_jet_stream_or_air_corridor",
+      "action": "overlay(template_id='chevron_flow_band', direction='ne'|'east'|'west', chevron_count=5, corridor_label='<CORRIDOR>', speed_label='<DUAL_OR_SINGLE_SPEED>') paired with dashed route arcs along the real flow axis",
+      "weight": 0.78,
+      "rationale": "Staggered directional chevrons communicate sustained atmospheric speed and flow direction without blocking terrain geography."
+    },
+    {
+      "trigger_id": "cutaway_altitude_or_depth_gauge",
+      "condition": "narration.states_plateau_elevation_flight_ceiling_or_depth_threshold",
+      "action": "overlay(template_id='cutaway_height_gauge', title='<THRESHOLD>', reading_value='<PRIMARY_UNIT>', secondary_value='<PAIRED_UNIT>', side='right'|'left') keeping primary and secondary numerals aligned with spoken figures",
+      "weight": 0.82,
+      "rationale": "A graduated vertical gauge with paired units anchors invisible height or depth limits immediately at phone scale."
+    },
+    {
+      "trigger_id": "feathered_dark_rtl_wipe",
+      "condition": "edit.bridges_disjoint_map_scales_or_data_views",
+      "action": "overlay(template_id='soft_curtain_transition', mode='feathered_dark_wipe', direction='auto') spanning 3-5 frames at 30 fps while caption_rail stays above the curtain layer",
+      "weight": 0.76,
+      "rationale": "A fast feathered alpha sweep covers large scale or visual-mode changes smoothly while preserving continuous caption readability."
+    },
+    {
+      "trigger_id": "parchment_page_unfold_reveal",
+      "condition": "narration.pivots_to_historical_treaty_era_or_colonial_plan",
+      "action": "overlay(template_id='historical_parchment_plate', variant='page_unfold', year='<ERA_OR_YEAR>', title='<ARCHIVAL_HEADING>', tilt_deg=0)",
+      "weight": 0.74,
+      "rationale": "An upright unfolding parchment folio signals a shift into historical evidence without losing typographic alignment."
     }
   ],
   "exemplar_bank": [
@@ -570,6 +598,9 @@
         "duration_s": 8.7,
         "cuts_per_min_ref": 6.4,
         "sfx_count_ref": 27,
+        "entrance_ms_median": 233,
+        "caption_cadence_s": 0.85,
+        "motion_active_ratio": 0.942,
         "easing_feel": "smooth_editorial"
       },
       "notes": "Flat-vector 2D soil and root cross-section explaining prairie erosion, followed by a vertical dashed storm-height ruler and a tilted vintage parchment map plate."
@@ -586,6 +617,9 @@
         "duration_s": 16.5,
         "cuts_per_min_ref": 11.9,
         "bpm_ref": 90.7,
+        "entrance_ms_median": 300,
+        "caption_cadence_s": 0.72,
+        "motion_active_ratio": 0.698,
         "easing_feel": "smooth_editorial"
       },
       "notes": "Blueprint world dive lifting a crimson country silhouette onto Europe with perpendicular stacked dual-unit dimension brackets."
@@ -601,10 +635,12 @@
         "shot_index": 1,
         "duration_s": 32.3,
         "cuts_per_min_ref": 4.0,
-        "motion_active_ratio": 1.0,
+        "entrance_ms_median": 167,
+        "caption_cadence_s": 0.78,
+        "motion_active_ratio": 0.942,
         "easing_feel": "smooth_editorial"
       },
-      "notes": "Dark air-traffic radar capture with red avoidance oval transitioning to a 3D mountain altitude ladder (33,000 ft / 14,800 ft / 10,000 ft); strip vendor basemap attribution chrome."
+      "notes": "Dark air-traffic radar map with red avoidance oval transitioning to a 3D mountain altitude ladder (33,000 ft / 14,800 ft / 10,000 ft); strip external basemap attribution chrome."
     },
     {
       "exemplar_id": "ref_time_zones_utc_columns",
@@ -619,6 +655,9 @@
         "cuts_per_min_ref": 5.0,
         "bpm_ref": 132.5,
         "sfx_aligned_ref": 14,
+        "entrance_ms_median": 450,
+        "caption_cadence_s": 0.8,
+        "motion_active_ratio": 0.875,
         "easing_feel": "smooth_editorial"
       },
       "notes": "Crimson terrain-preserving country fill with bold multiply title wiping into five translucent vertical cobalt time-zone columns with amber UTC offsets."
@@ -635,7 +674,9 @@
         "duration_s": 14.9,
         "cuts_per_min_ref": 7.0,
         "sfx_aligned_ref": 15,
-        "motion_active_ratio": 1.0,
+        "entrance_ms_median": 300,
+        "caption_cadence_s": 0.76,
+        "motion_active_ratio": 0.95,
         "easing_feel": "smooth_editorial"
       },
       "notes": "Translucent directional jet-stream chevrons comparing eastbound and westbound dashed flight arcs with duration callouts, exiting via soft dark iris wipe."
@@ -1600,6 +1641,66 @@
         "glow_fade_frames": 14
       },
       "notes": "A white line redraws the border from the top of the frame over the old dashed line; a red glow switches on exactly when the head enters the islet and fades after the zig-zag closes, so the glow marks the zone of interest rather than the whole line."
+    },
+    {
+      "exemplar_id": "ref_atlantic_feathered_wipe",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "broll_bridge",
+      "start_s": 17.8,
+      "end_s": 18.4,
+      "hyperframes_pattern": "feathered_dark_rtl_wipe_between_map_registers",
+      "measured_metrics": {
+        "wipe_frames": 4,
+        "duration_ms": 133,
+        "direction": "rtl",
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "A rapid 4-frame right-to-left feathered alpha curtain bridges the transition between shaded-relief satellite geography and clean graphic tracks while captions remain pinned unmasked above."
+    },
+    {
+      "exemplar_id": "ref_shelterbelt_parchment_unfold",
+      "source_video_id": "ref_shelterbelt",
+      "role": "setup",
+      "start_s": 54.0,
+      "end_s": 57.2,
+      "hyperframes_pattern": "upright_parchment_page_unfold_historical_plan",
+      "measured_metrics": {
+        "unfold_frames": 14,
+        "unfold_ms": 467,
+        "tilt_deg": 0,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Historical conservation corridor plan enters on warm sepia parchment via a top-anchored perspective unfold at 0-degree framing, giving archival context without angled HUD chrome."
+    },
+    {
+      "exemplar_id": "ref_atlantic_chevron_corridor",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "proof",
+      "start_s": 21.0,
+      "end_s": 26.4,
+      "hyperframes_pattern": "staggered_chevron_flow_band_over_corridor",
+      "measured_metrics": {
+        "entrance_ms_median": 300,
+        "chevron_stagger_ms": 55,
+        "motion_active_ratio": 0.95,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Luminous directional chevron sequence sweeps along a dashed air-corridor guide to turn invisible tailwind mechanics into immediate foreground direction."
+    },
+    {
+      "exemplar_id": "ref_tibetan_cutaway_altitude_gauge",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "data_callout",
+      "start_s": 22.5,
+      "end_s": 28.0,
+      "hyperframes_pattern": "graduated_vertical_altitude_gauge_dual_units",
+      "measured_metrics": {
+        "entrance_ms_median": 167,
+        "fill_grow_ms": 320,
+        "motion_active_ratio": 0.942,
+        "easing_feel": "smooth_editorial"
+      },
+      "notes": "Vertical graduated ruler animates upward inside safe right margins displaying paired metric and imperial plateau ceilings synchronized with spoken elevation limits."
     }
   ]
 }

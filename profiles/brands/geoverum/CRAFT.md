@@ -172,27 +172,34 @@ Route-driven films (story shape *Journey chain* in [`DIRECTING.md`](DIRECTING.md
 - **Obstacle → fill pairing**: each obstacle on the route gets one distinct territory treatment (glowing jungle-green region, edge-grown ice mask, flat national red fill, cyan water body with glow, hatched red/green neighbour pair for "can't go through X or Y"), so no two consecutive obstacles share a colour or texture.
 - **Recap globe**: totals are spoken over the whole route on a globe filling `80–90%` of the frame width, with the totals stacked top-centre as solid saturated blue chips with yellow heavy text (`~60 px`). The globe then flies down into the flat map for the remaining leg.
 - **Future path**: the not-yet-walked remainder is a dashed white line (`4–6 px`, `10/10` dash) from the current position to a yellow destination label carrying the year.
-- **Journey captions**: dense chronological narration over a busy satellite route reads better with a larger plain caption than the default rail: `60–66 px` medium-weight geometric sans, white at `~0.9` opacity with a soft `2 px / 6 px blur` shadow, bottom edge at `~27%` of frame height. The caption band (`y ≈ 66–76%`) stays free of route heads and callouts.
+- **Journey captions**: dense chronological narration over a busy satellite route reads better with a larger plain caption than the default rail: `60–66 px` medium-weight geometric sans, white at `~0.9` opacity paired with a crisp two-layer dark halo (`0 2px 10px rgba(0, 0, 0, 0.88), 0 0 4px rgba(0, 0, 0, 0.92)`) so captions hold `>= 4.5:1` contrast even over bright snow, clouds, desert, or sunlit ocean, bottom edge at `~27%` of frame height. The caption band (`y ≈ 66–76%`) stays free of route heads and callouts.
 
 ### Visual hierarchy
 
-Every journey frame has one reading order, enforced by size, contrast, and layer order (top to bottom):
+Every frame has one reading order, enforced by size, contrast, safe margins, and numeric accuracy:
 
 1. **Route head and the leg being drawn**: the only element allowed to move continuously; highest saturation in frame.
 2. **Travelling avatar or event icon** at the head: the human subject of the current clause.
-3. **Duration numeral or count** on the measured leg: the largest type in frame while present.
+3. **Duration numeral or measurement gauge** on the measured zone: the largest type in frame while present. Spoken figures must never disagree with on-screen callouts (enforce numeric parity and paired dual-unit labels where appropriate).
 4. **Place labels and territory fills**: lower contrast than the route; fills sit under the route, never over it.
-5. **Caption rail**: screen-fixed, neutral white, never competing in colour with the route yellow.
+5. **Caption rail**: screen-fixed, neutral white with a clean dark halo, never competing in colour with the route yellow.
 
-At most **three transient callouts** (avatar, icon cluster, bubble, numeral) are on screen at once; a new one entering on a stressed word retires the oldest within `0.3 s` (one in, one out). Callouts that belong to a finished leg exit before the camera leaves that leg.
+At most **three transient callouts** (avatar, icon cluster, bubble, numeral, gauge) are on screen at once; a new one entering on a stressed word retires the oldest within `0.3 s` (one in, one out). Callouts that belong to a finished leg exit before the camera leaves that leg.
 
-### Layout relative to the route head
+### Layout relative to the route head & safe zones
 
 - Callouts **trail the head**: place them `200–320 px` from the head on the side the route came from (opposite the direction of travel) and slightly above it, so the next `1 s` of route stays visible.
 - Keep a `~120 px` clear radius around the head; a callout never overlaps the head or the segment drawn in the next second.
+- Keep callout centers inside broadcast safe zones (`8%–92%` horizontal, `12%–88%` vertical) with scale rulers placed center- or bottom-safe (`y >= 12%`) rather than crowded into upper corner margins.
 - Numerals sit on the midpoint of the leg they measure, offset `~30–40 px` perpendicular to the line and rotated with it (within the `|angle| <= 12°` rule).
 - Speech bubbles point their tail at the speaker and stay inside the upper `60%` of the frame; dashed connector arrows (`~20 px` width, `2:1` dash) link a callout to a remote place instead of moving the callout there.
 - Horizontal side margins of `>= 60 px` for every callout; nothing crosses into the caption band.
+
+### Directional corridors, vertical gauges & parchment transitions
+
+- **Wind and atmospheric corridors (`chevron_flow_band`)**: Use staggered animated directional chevrons along a dashed streamline to visualize jet streams, prevailing winds, or corridor deflection over shaded relief maps.
+- **Elevation, altitude & geological depth gauges (`cutaway_height_gauge`)**: Pair vertical graduated tick rails inside right/left safe margins (`8%–92%` x) with animated column fills and dual-unit readouts (metric + imperial) locked to narration clauses.
+- **Feathered dark sweeps & archival page unfolds**: Use a `3–5` frame feathered dark curtain wipe (`soft_curtain_transition`, `mode: "feathered_dark_wipe"`, default right-to-left) to bridge macro-scale or projection jumps without masking captions, and use an upright `0°` parchment unfold (`historical_parchment_plate`, `variant: "page_unfold"`) when entering archival map history.
 
 ---
 
