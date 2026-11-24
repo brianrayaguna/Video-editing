@@ -411,3 +411,21 @@ def test_geoverum_two_documentary_formats_and_brand_tree_integrity(tmp_path) -> 
     )
     with pytest.raises(ValueError, match="unresolved policy token_ref"):
         validate_brand_tree(broken_dir, repo_root=root)
+
+
+def test_contracts_validate_includes_critique_packet_and_brand_memory() -> None:
+    from typer.testing import CliRunner
+
+    from vedit.cli import app
+    from vedit.contracts import list_contract_schemas
+
+    names = set(list_contract_schemas())
+    assert "critique_packet.schema.json" in names
+    assert "brand_memory.schema.json" in names
+
+    res = CliRunner().invoke(app, ["contracts", "validate", "--json"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["ok"] is True
+    assert "critique_packet.schema.json" in payload["schemas"]
+    assert "brand_memory.schema.json" in payload["schemas"]

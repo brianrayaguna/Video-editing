@@ -41,6 +41,15 @@ def load_schema(schema_filename: str, repo_root: Path | None = None) -> dict[str
     return schema
 
 
+def list_contract_schemas(repo_root: Path | None = None) -> list[str]:
+    """Discover and validate all Draft 2020-12 schema files under `contracts/*.schema.json`."""
+    root = repo_root or find_repo_root()
+    names = [p.name for p in sorted((root / "contracts").glob("*.schema.json"))]
+    for name in names:
+        load_schema(name, repo_root=root)
+    return names
+
+
 def validate_against_contract(
     payload: dict[str, Any],
     schema_filename: str,

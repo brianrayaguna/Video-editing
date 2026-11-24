@@ -11,11 +11,27 @@ from typing import Any, Literal
 from vedit.compiler.hf_bridge import compile_edit_plan
 from vedit.contracts import (
     find_repo_root,
+    list_contract_schemas,
     load_brand_template_catalog,
     load_platform_targets,
-    load_schema,
     validate_all_brand_trees,
 )
+from vedit.director.brand_memory import (
+    empty_brand_memory,
+    load_brand_memory,
+    record_episode_outcome,
+    resolve_brand_memory_path,
+    save_brand_memory,
+)
+from vedit.director.critique import apply_surgical_fixes
+from vedit.director.exemplar_retrieval import (
+    load_editorial_playbook,
+    playbook_path,
+    retrieve_directing_context,
+)
+from vedit.director.script_readiness import audit_script_readiness
+from vedit.director.semantic_director import DirectingTier, critique_storyboard_prerender
+from vedit.director.storyboard import idioms_path, load_directing_idioms
 from vedit.director.verifier import verify_edit_plan
 from vedit.interop.otio_bridge import export_edit_plan_to_otio
 from vedit.mastering.qc_audit import audit_mastered_deliverable
@@ -84,9 +100,7 @@ def create_mcp_server() -> Any:
     def contracts_validate() -> dict[str, Any]:
         """Validate all JSON Schemas, platform mastering presets, and brand trees."""
         root = find_repo_root()
-        schemas = [p.name for p in sorted((root / "contracts").glob("*.schema.json"))]
-        for name in schemas:
-            load_schema(name, repo_root=root)
+        schemas = list_contract_schemas(repo_root=root)
         platforms = load_platform_targets(repo_root=root)
         brands = validate_all_brand_trees(repo_root=root)
         return {
@@ -259,6 +273,116 @@ def create_mcp_server() -> Any:
             remote_fn=remote_fn,
         )
         return json.loads(json.dumps(summary, default=str))
+
+    @mcp.tool()
+    def storyboard_readiness(
+        transcript_file: str,
+        brand_id: str,
+        pacing: str = "default",
+    ) -> dict[str, Any]:
+        """Audit transcript visualizability and breath-pause readiness before VO lock."""
+        tr = json.loads(Path(transcript_file).expanduser().read_text(encoding="utf-8"))
+        idioms = load_directing_idioms(idioms_path(brand_id))
+        return audit_script_readiness(tr, idioms, pacing=pacing).to_dict()
+
+    @mcp.tool()
+    def storyboard_context(
+        storyboard_file: str,
+        brand_id: str,
+        memory_file: str | None = None,
+    ) -> dict[str, Any]:
+        """Retrieve advisory playbook triggers, exemplars, and optional brand memory hints."""
+        sb = json.loads(Path(storyboard_file).expanduser().read_text(encoding="utf-8"))
+        playbook = load_editorial_playbook(playbook_path(brand_id))
+        memory = load_brand_memory(Path(memory_file)) if memory_file else None
+        return retrieve_directing_context(sb, playbook, memory=memory).to_dict()
+
+    @mcp.tool()
+    def storyboard_gate_prerender(
+        storyboard_file: str,
+        brand_id: str,
+        tier: DirectingTier = "standard",
+        min_score: float = 75.0,
+    ) -> dict[str, Any]:
+        """Run Gate 1 pre-render deterministic critique on a storyboard."""
+        sb = json.loads(Path(storyboard_file).expanduser().read_text(encoding="utf-8"))
+        idioms = load_directing_idioms(idioms_path(brand_id))
+        pb_file = playbook_path(brand_id)
+        ctx = (
+            retrieve_directing_context(sb, load_editorial_playbook(pb_file))
+            if pb_file.is_file()
+            else None
+        )
+        return critique_storyboard_prerender(
+            sb,
+            idioms,
+            context=ctx,
+            tier=tier,
+            min_score=min_score,
+        ).to_dict()
+
+    @mcp.tool()
+    def critique_apply_fixes(
+        storyboard_file: str,
+        packet_file: str,
+        out_file: str,
+        brand_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Apply typed surgical fixes from a critique packet onto unfrozen storyboard beats."""
+        sb = json.loads(Path(storyboard_file).expanduser().read_text(encoding="utf-8"))
+        packet = json.loads(Path(packet_file).expanduser().read_text(encoding="utf-8"))
+        resolved_brand = brand_id or str(sb.get("brand_id") or "")
+        if not resolved_brand:
+            raise ValueError("Pass brand_id or include brand_id in the storyboard.")
+        idioms = load_directing_idioms(idioms_path(resolved_brand))
+        result = apply_surgical_fixes(sb, packet, idioms)
+        out_path = Path(out_file).expanduser().resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(result["storyboard"], indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "out_file": str(out_path),
+            "applied": result["applied"],
+            "deferred": result["deferred"],
+            "skipped_frozen": result["skipped_frozen"],
+            "rolled_back": result["rolled_back"],
+        }
+
+    @mcp.tool()
+    def brand_memory_record(
+        brand_id: str,
+        storyboard_file: str,
+        critique_packet_file: str | None = None,
+        gate_result_file: str | None = None,
+        projects_root: str | None = None,
+    ) -> dict[str, Any]:
+        """Record an episode outcome into external VEDIT_PROJECTS_ROOT/<brand_id>/ memory."""
+        mem_path = resolve_brand_memory_path(
+            brand_id,
+            projects_root=Path(projects_root) if projects_root else None,
+        )
+        memory = load_brand_memory(mem_path) if mem_path.is_file() else empty_brand_memory(brand_id)
+        sb = json.loads(Path(storyboard_file).expanduser().read_text(encoding="utf-8"))
+        packet = (
+            json.loads(Path(critique_packet_file).expanduser().read_text(encoding="utf-8"))
+            if critique_packet_file
+            else None
+        )
+        gate = (
+            json.loads(Path(gate_result_file).expanduser().read_text(encoding="utf-8"))
+            if gate_result_file
+            else None
+        )
+        updated = record_episode_outcome(memory, sb, critique_packet=packet, gate_result=gate)
+        saved = save_brand_memory(mem_path, updated)
+        return {
+            "path": str(saved),
+            "recent_episodes": len(updated["recent_episodes"]),
+            "winning_beats": len(updated["winning_beats"]),
+            "failure_patterns": len(updated["failure_patterns"]),
+        }
 
     return mcp
 

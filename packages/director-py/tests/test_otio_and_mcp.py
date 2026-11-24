@@ -216,5 +216,150 @@ def test_fastmcp_server_registers_thin_control_plane_tools() -> None:
         "audit_deliverable",
         "export_otio",
         "cloud_render",
+        "storyboard_readiness",
+        "storyboard_context",
+        "storyboard_gate_prerender",
+        "critique_apply_fixes",
+        "brand_memory_record",
     }
     assert expected.issubset(tool_names)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("fastmcp") is None,
+    reason="Optional fastmcp extra not installed.",
+)
+def test_fastmcp_new_directing_tools_and_memory_isolation(tmp_path: Path) -> None:
+    import json
+
+    from vedit.contracts import find_repo_root
+
+    server = create_mcp_server()
+    tools_by_name = {t.name: t for t in asyncio.run(server.list_tools())}
+
+    sb_path = tmp_path / "sb.json"
+    sb_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "project_id": "mcp_demo",
+                "brand_id": "geoverum",
+                "duration_s": 4.0,
+                "directing_source": "auto",
+                "pacing": "dense",
+                "story": {"shape": "journey_chain"},
+                "overrides": {},
+                "beats": [
+                    {
+                        "beat_id": "b1",
+                        "start_s": 0.0,
+                        "end_s": 2.0,
+                        "clause": "In 1998 Chile counted 27 crossings.",
+                        "function": "hook",
+                        "story_need": "show year and numeral",
+                        "device": "numeral",
+                        "sync_word": "27",
+                        "sync_word_s": 0.5,
+                    },
+                    {
+                        "beat_id": "b2",
+                        "start_s": 2.0,
+                        "end_s": 4.0,
+                        "clause": "Then walked north to Alaska.",
+                        "function": "outro",
+                        "story_need": "draw closing route",
+                        "device": "route_draw",
+                        "sync_word": "Alaska",
+                        "sync_word_s": 2.5,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="external workspace isolation"):
+        tools_by_name["brand_memory_record"].fn(
+            brand_id="geoverum",
+            storyboard_file=str(sb_path),
+            projects_root=str(find_repo_root()),
+        )
+
+    ext_root = tmp_path / "projects_root"
+    res = tools_by_name["brand_memory_record"].fn(
+        brand_id="geoverum",
+        storyboard_file=str(sb_path),
+        projects_root=str(ext_root),
+    )
+    assert res["recent_episodes"] == 1
+    assert Path(res["path"]).is_file()
+
+    tr_path = tmp_path / "tr.json"
+    tr_path.write_text(
+        json.dumps(
+            {
+                "source_hash": "mcp1234",
+                "provider": "test",
+                "language": "en",
+                "duration_s": 4.0,
+                "text": "In 1998 Chile counted 27 crossings.",
+                "words": [
+                    {"text": "In", "start_s": 0.0, "end_s": 0.3},
+                    {"text": "1998", "start_s": 0.35, "end_s": 0.8},
+                    {"text": "Chile", "start_s": 0.85, "end_s": 1.3},
+                    {"text": "counted", "start_s": 1.35, "end_s": 1.8},
+                    {"text": "27", "start_s": 1.85, "end_s": 2.3},
+                    {"text": "crossings.", "start_s": 2.35, "end_s": 2.9},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    readiness = tools_by_name["storyboard_readiness"].fn(
+        transcript_file=str(tr_path),
+        brand_id="geoverum",
+    )
+    assert readiness["ready"] is True
+
+    ctx = tools_by_name["storyboard_context"].fn(
+        storyboard_file=str(sb_path),
+        brand_id="geoverum",
+        memory_file=res["path"],
+    )
+    assert ctx["brand_id"] == "geoverum"
+
+    gate = tools_by_name["storyboard_gate_prerender"].fn(
+        storyboard_file=str(sb_path),
+        brand_id="geoverum",
+        min_score=70.0,
+    )
+    assert gate["passed"] is True
+
+    packet_path = tmp_path / "packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "iteration": 1,
+                "max_iterations": 3,
+                "frozen_beat_ids": [],
+                "deterministic": {},
+                "sheets": [],
+                "review": {
+                    "instructions": "score",
+                    "scores": {},
+                    "fixes": [{"beat_id": "b1", "kind": "timing"}],
+                    "rubric": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fixed_out = tmp_path / "fixed_sb.json"
+    applied = tools_by_name["critique_apply_fixes"].fn(
+        storyboard_file=str(sb_path),
+        packet_file=str(packet_path),
+        out_file=str(fixed_out),
+    )
+    assert fixed_out.is_file()
+    assert len(applied["applied"]) == 1
