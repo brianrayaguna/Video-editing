@@ -9,6 +9,11 @@ from typing import Annotated, Any
 import typer
 
 from vedit.director.critique import build_critique_packet, gate_review
+from vedit.director.exemplar_retrieval import (
+    load_editorial_playbook,
+    playbook_path,
+    retrieve_directing_context,
+)
 from vedit.director.journey import compile_journey
 from vedit.director.script_readiness import audit_script_readiness
 from vedit.director.storyboard import (
@@ -81,6 +86,44 @@ def storyboard_readiness_cmd(
     typer.echo(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
     if strict and not report.ready:
         raise typer.Exit(code=1)
+
+
+@storyboard_app.command("context")
+def storyboard_context_cmd(
+    storyboard_file: Annotated[Path, typer.Argument(help="Storyboard JSON.")],
+    brand: BrandOpt = None,
+    playbook_file: Annotated[
+        Path | None, typer.Option("--playbook-file", help="Explicit editorial_playbook.json.")
+    ] = None,
+    memory_file: Annotated[
+        Path | None, typer.Option("--memory-file", help="Optional external brand_memory.json.")
+    ] = None,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, help="Hints per beat.")] = 2,
+    top_k_triggers: Annotated[
+        int, typer.Option("--top-k-triggers", min=1, help="Global triggers to return.")
+    ] = 5,
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Sidecar directing context JSON to write.")
+    ] = None,
+) -> None:
+    """Retrieve advisory playbook exemplars, triggers, and memory warnings for a storyboard."""
+    sb = _read(storyboard_file)
+    brand_id = brand or sb.get("brand_id")
+    if not brand_id and playbook_file is None:
+        raise typer.BadParameter("Pass --brand or --playbook-file.")
+    pb_path = playbook_file.expanduser() if playbook_file else playbook_path(str(brand_id))
+    playbook = load_editorial_playbook(pb_path)
+    memory = _read(memory_file) if memory_file is not None else None
+    ctx = retrieve_directing_context(
+        sb,
+        playbook,
+        memory=memory,
+        top_k_per_beat=top_k,
+        top_k_triggers=top_k_triggers,
+    ).to_dict()
+    if out is not None:
+        _write(out, ctx)
+    typer.echo(json.dumps(ctx, indent=2, ensure_ascii=False))
 
 
 @storyboard_app.command("auto")
