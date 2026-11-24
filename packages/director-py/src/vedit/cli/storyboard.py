@@ -10,6 +10,7 @@ import typer
 
 from vedit.director.critique import build_critique_packet, gate_review
 from vedit.director.journey import compile_journey
+from vedit.director.script_readiness import audit_script_readiness
 from vedit.director.storyboard import (
     apply_director_storyboard,
     check_storyboard,
@@ -54,6 +55,32 @@ BrandOpt = Annotated[
 IdiomsOpt = Annotated[
     Path | None, typer.Option("--idioms-file", help="Explicit directing idioms JSON.")
 ]
+
+
+@storyboard_app.command("readiness")
+def storyboard_readiness_cmd(
+    transcript_file: Annotated[Path, typer.Argument(help="NormalizedTranscript JSON.")],
+    brand: BrandOpt = None,
+    idioms_file: IdiomsOpt = None,
+    pacing: Annotated[str, typer.Option(help="calm, default, or dense.")] = "default",
+    max_dry_streak: Annotated[
+        int, typer.Option("--max-dry-streak", min=2, help="Max consecutive fallback clauses.")
+    ] = 3,
+    strict: Annotated[
+        bool, typer.Option("--strict", help="Exit with code 1 when script is not ready.")
+    ] = False,
+) -> None:
+    """Audit a transcript for visualizability and breath-pause readiness before VO lock."""
+    idioms = _idioms(brand, idioms_file)
+    report = audit_script_readiness(
+        _read(transcript_file),
+        idioms,
+        pacing=pacing,
+        max_dry_streak=max_dry_streak,
+    )
+    typer.echo(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+    if strict and not report.ready:
+        raise typer.Exit(code=1)
 
 
 @storyboard_app.command("auto")
