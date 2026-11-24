@@ -628,3 +628,93 @@ def brand_memory_record_cmd(
             ensure_ascii=False,
         )
     )
+
+
+@brand_app.command("invert-reference")
+def brand_invert_reference_cmd(
+    transcript_file: Annotated[Path, typer.Argument(help="NormalizedTranscript JSON.")],
+    project_id: Annotated[str, typer.Option("--project-id", help="Reference topic id.")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Draft reference storyboard JSON path.")],
+    brand: Annotated[
+        str | None, typer.Option("--brand", help="Brand id (loads its directing idioms).")
+    ] = None,
+    idioms_file: Annotated[
+        Path | None, typer.Option("--idioms-file", help="Explicit directing_idioms.json path.")
+    ] = None,
+    review_queue_out: Annotated[
+        Path | None,
+        typer.Option("--review-queue-out", help="Optional exception review queue JSON path."),
+    ] = None,
+    breakdown_file: Annotated[
+        Path | None, typer.Option("--breakdown-file", help="Optional VideoBreakdownResult JSON.")
+    ] = None,
+    probe_file: Annotated[
+        Path | None, typer.Option("--probe-file", help="Optional MediaProbeResult JSON.")
+    ] = None,
+    camera_track: Annotated[
+        Path | None, typer.Option("--camera-track", help="Optional [t,lng,lat,zoom,bearing] JSON.")
+    ] = None,
+) -> None:
+    """Draft a reference storyboard from telemetry and emit an exception review queue."""
+    from vedit.analyzers.reference_inversion import draft_reference_storyboard
+    from vedit.director.storyboard import idioms_path, load_directing_idioms
+
+    if idioms_file is not None:
+        idioms = load_directing_idioms(idioms_file.expanduser())
+    elif brand:
+        idioms = load_directing_idioms(idioms_path(brand))
+    else:
+        raise typer.BadParameter("Pass --brand or --idioms-file.")
+
+    tr = json.loads(transcript_file.expanduser().read_text(encoding="utf-8"))
+    bd = (
+        json.loads(breakdown_file.expanduser().read_text(encoding="utf-8"))
+        if breakdown_file is not None
+        else None
+    )
+    pr = (
+        json.loads(probe_file.expanduser().read_text(encoding="utf-8"))
+        if probe_file is not None
+        else None
+    )
+    cam = (
+        json.loads(camera_track.expanduser().read_text(encoding="utf-8"))
+        if camera_track is not None
+        else None
+    )
+    result = draft_reference_storyboard(
+        tr,
+        idioms,
+        project_id=project_id,
+        breakdown=bd,
+        probe=pr,
+        camera_track=cam,
+    )
+    out.expanduser().parent.mkdir(parents=True, exist_ok=True)
+    out.expanduser().write_text(
+        json.dumps(result.storyboard, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    if review_queue_out is not None:
+        q_payload = {
+            "project_id": project_id,
+            "stats": result.stats,
+            "exception_review_beats": result.exception_review_beats,
+            "beat_audits": [a.to_dict() for a in result.beat_audits],
+        }
+        review_queue_out.expanduser().parent.mkdir(parents=True, exist_ok=True)
+        review_queue_out.expanduser().write_text(
+            json.dumps(q_payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    typer.echo(
+        json.dumps(
+            {
+                "out": str(out),
+                "review_queue_out": str(review_queue_out) if review_queue_out else None,
+                "stats": result.stats,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
