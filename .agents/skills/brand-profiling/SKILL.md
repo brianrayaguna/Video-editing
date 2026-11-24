@@ -84,17 +84,21 @@ packages/director-py/.venv/bin/vedit breakdown apply-review \
 Telemetry measures cuts, colour and loudness; it cannot measure *directing*. Capture that by annotating each reference in the engine's own storyboard format so its measurements can calibrate the executable idioms.
 
 1. Transcribe the reference narration through the configured cloud `TranscriptionPort` (`vedit transcribe`) into `$CAL_DIR/transcript_<stem>.json`. When no speech track can be separated, build word timings from the on-screen captions read in Stage 2 and note this in the annotation's `overrides.notes`.
-2. Start the annotation from the automatic director:
+2. Draft the reference storyboard automatically by snapping beat onsets to corroborated breakdown, probe, and camera-regime telemetry via `vedit brand invert-reference`:
 
 ```bash
-packages/director-py/.venv/bin/vedit storyboard auto "$CAL_DIR/transcript_<stem>.json" \
-  -o "$CAL_DIR/ref_storyboard_<stem>.json" --project-id <ref_topic> --brand <brand_id> \
-  --pacing dense --reference
+packages/director-py/.venv/bin/vedit brand invert-reference "$CAL_DIR/transcript_<stem>.json" \
+  --brand <brand_id> --project-id <ref_topic> \
+  --breakdown-file "$CAL_DIR/bd_<stem>/video_breakdown.json" \
+  --probe-file "$CAL_DIR/probe_<stem>.json" \
+  [--camera-track "$CAL_DIR/camera_<stem>.json"] \
+  -o "$CAL_DIR/ref_storyboard_<stem>.json" \
+  --review-queue-out "$CAL_DIR/review_queue_<stem>.json"
 packages/director-py/.venv/bin/vedit critique packet -o "$CAL_DIR/ref_sheets_<stem>/packet.json" \
   --storyboard "$CAL_DIR/ref_storyboard_<stem>.json" --video <ref.mp4> --brand <brand_id>
 ```
 
-3. Inspect the grid-anchored sheets (columns A–F, rows 1–10 on a `1080x1920` frame: one column = `180 px`, one row = `192 px`; scale proportionally for other canvases) and rewrite every beat to what the reference actually shows:
+3. Inspect the grid-anchored sheets (columns A–F, rows 1–10 on a `1080x1920` frame: one column = `180 px`, one row = `192 px`; scale proportionally for other canvases) and prioritize verifying and correcting the flagged `exception_review_beats` in `review_queue_<stem>.json` (plus any devices, treatments, or callouts the automated inversion could not confirm):
    - `start_s`: the frame where the visual event begins (step through frames around the sync word; do not keep the automatic onset).
    - `device` and `treatment`: the on-screen answer, using existing device names where they fit; a new device name is reported by calibration as unclassified.
    - `function`, `story_need`: why the reference shows it.
