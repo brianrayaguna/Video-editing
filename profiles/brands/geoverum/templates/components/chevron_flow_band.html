@@ -1,0 +1,167 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{VAR_FG_COLOR|#F4F1EA}};
+      --vedit-accent: {{VAR_ACCENT_COLOR|#F5C542}};
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-band {
+      position: absolute;
+      left: 12%;
+      right: 12%;
+      top: 38%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      transform-origin: center center;
+      pointer-events: none;
+    }
+    .gv-cfb-label {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(34px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9), 0 0 5px rgba(0, 0, 0, 0.95);
+      text-align: center;
+    }
+    .gv-cfb-speed {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(24px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: var(--vedit-accent);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
+      text-align: center;
+    }
+    #{{SCENE_ID}}-track {
+      position: relative;
+      width: 100%;
+      max-width: calc(760px * {{SCALE_FACTOR}});
+      height: calc(78px * {{SCALE_FACTOR}});
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+    }
+    #{{SCENE_ID}}-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-band">
+        <div id="{{SCENE_ID}}-label" class="gv-cfb-label" data-var-text="corridor_label">{{VAR_CORRIDOR_LABEL|JET STREAM}}</div>
+        <div id="{{SCENE_ID}}-track">
+          <svg id="{{SCENE_ID}}-svg" viewBox="0 0 600 80" xmlns="http://www.w3.org/2000/svg">
+            <line id="{{SCENE_ID}}-guide" x1="20" y1="40" x2="580" y2="40" stroke="{{VAR_ACCENT_COLOR|#F5C542}}" stroke-opacity="0.32" stroke-width="4" stroke-dasharray="10 10" stroke-linecap="round" />
+            <g id="{{SCENE_ID}}-chevrons"></g>
+          </svg>
+        </div>
+        <div id="{{SCENE_ID}}-speed" class="gv-cfb-speed" data-var-text="speed_label">{{VAR_SPEED_LABEL|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const NS = "http://www.w3.org/2000/svg";
+      const accent = ("{{VAR_ACCENT_COLOR|#F5C542}}").trim() || "#F5C542";
+      const dir = ("{{VAR_DIRECTION|east}}").trim().toLowerCase();
+      const count = Math.max(3, Math.min(8, Math.round(Number({{VAR_CHEVRON_COUNT|5}})) || 5));
+
+      const angleMap = {
+        east: 0,
+        ne: -28,
+        se: 28,
+        south: 90,
+        north: -90,
+        west: 180,
+        nw: -152,
+        sw: 152,
+      };
+      const rot = dir in angleMap ? angleMap[dir] : 0;
+
+      const labelEl = document.getElementById("{{SCENE_ID}}-label");
+      const speedEl = document.getElementById("{{SCENE_ID}}-speed");
+      if (labelEl && !labelEl.textContent.trim()) labelEl.classList.add("gv-empty");
+      if (speedEl && !speedEl.textContent.trim()) speedEl.classList.add("gv-empty");
+
+      const trackEl = document.getElementById("{{SCENE_ID}}-track");
+      if (trackEl) trackEl.style.transform = "rotate(" + rot + "deg)";
+
+      const host = document.getElementById("{{SCENE_ID}}-chevrons");
+      const nodes = [];
+      const spacing = 500 / Math.max(1, count - 1);
+      for (let i = 0; i < count; i += 1) {
+        const cx = 50 + i * spacing;
+        const poly = document.createElementNS(NS, "polyline");
+        poly.setAttribute("points", (cx - 18) + ",18 " + (cx + 10) + ",40 " + (cx - 18) + ",62");
+        poly.setAttribute("fill", "none");
+        poly.setAttribute("stroke", accent);
+        poly.setAttribute("stroke-width", "9");
+        poly.setAttribute("stroke-linecap", "round");
+        poly.setAttribute("stroke-linejoin", "round");
+        host.appendChild(poly);
+        nodes.push(poly);
+      }
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.16), dur * 0.3);
+      const exitS = Math.min(Math.max(enterS * 0.55, 0.14), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.12, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-guide",
+        { scaleX: 0, transformOrigin: "left center", opacity: 0 },
+        { scaleX: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+        0
+      );
+      tl.fromTo(
+        ["#{{SCENE_ID}}-label", "#{{SCENE_ID}}-speed"],
+        { y: 10 * Number({{SCALE_FACTOR}}), opacity: 0 },
+        { y: 0, opacity: 1, duration: enterS, ease: "expo.out" },
+        0.04
+      );
+      nodes.forEach((node, idx) => {
+        const t0 = idx * 0.055;
+        tl.fromTo(
+          node,
+          { x: -16, opacity: 0 },
+          { x: 0, opacity: 0.95, duration: Math.min(0.24, enterS), ease: "power2.out" },
+          t0
+        );
+        const shiftEnd = Math.max(t0 + 0.24, exitAt);
+        if (shiftEnd > t0 + 0.26) {
+          tl.to(
+            node,
+            { x: 26, duration: shiftEnd - (t0 + 0.22), ease: "none" },
+            t0 + 0.22
+          );
+        }
+      });
+      tl.to("#{{SCENE_ID}}-band", { opacity: 0, duration: exitS, ease: "power2.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

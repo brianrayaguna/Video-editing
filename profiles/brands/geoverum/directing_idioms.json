@@ -155,6 +155,33 @@
         "lookback": 3
       },
       "rationale": "Consecutive episodes never share both hook mechanism and ending type, and never reuse a signature image."
+    },
+    {
+      "idiom_id": "numeric_parity",
+      "severity": "error",
+      "weight": 1.0,
+      "params": {
+        "ignore_years": true,
+        "rel_tolerance": 0.02
+      },
+      "rationale": "Spoken numeric measurements must match on-screen callout numerals, allowing paired dual-unit displays."
+    },
+    {
+      "idiom_id": "callout_safe_margins",
+      "severity": "error",
+      "weight": 0.9,
+      "params": {
+        "frame_px": [
+          1080,
+          1920
+        ],
+        "min_x_pct": 0.08,
+        "max_x_pct": 0.92,
+        "min_y_pct": 0.12,
+        "max_y_pct": 0.88,
+        "scale_ruler_min_top_pct": 0.12
+      },
+      "rationale": "Callouts and measurement rulers remain inside broadcast safe margins and avoid clipping near top or side frame edges."
     }
   ],
   "device_classes": {
@@ -169,7 +196,8 @@
         "avatar_pop",
         "prohibition_badge",
         "weather_overlay",
-        "swarm_flow"
+        "swarm_flow",
+        "chevron_flow_band"
       ],
       "lead_s": [
         0.0,
@@ -183,7 +211,8 @@
         "portal_title",
         "measurement_line",
         "era_marker",
-        "duration_numeral"
+        "duration_numeral",
+        "cutaway_gauge"
       ],
       "lead_s": [
         0.3,
@@ -486,6 +515,25 @@
       },
       "min_duration_s": 1.2,
       "max_duration_s": 3.0
+    },
+    "chevron_flow_band": {
+      "surface": "overlay",
+      "template_id": "chevron_flow_band",
+      "variables": {
+        "corridor_label": "$clause"
+      },
+      "min_duration_s": 1.0,
+      "max_duration_s": 3.5
+    },
+    "cutaway_gauge": {
+      "surface": "overlay",
+      "template_id": "cutaway_height_gauge",
+      "variables": {
+        "reading_value": "$number",
+        "title": "$clause"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.6
     }
   },
   "auto_director": {
@@ -636,6 +684,79 @@
         "device": "mood_dip",
         "function": "hinge",
         "need": "open the curiosity loop before the answer"
+      },
+      {
+        "match": "corridor_flow",
+        "words": [
+          "jet stream",
+          "wind",
+          "airspace",
+          "corridor",
+          "trade wind",
+          "stream",
+          "angin",
+          "koridor",
+          "arus"
+        ],
+        "device": "chevron_flow_band",
+        "function": "proof",
+        "need": "visualise directional wind or traffic flow along its spatial corridor"
+      },
+      {
+        "match": "altitude_gauge",
+        "words": [
+          "altitude",
+          "elevation",
+          "plateau",
+          "sea level",
+          "depth",
+          "stratosphere",
+          "permafrost",
+          "soil",
+          "ketinggian",
+          "dataran tinggi",
+          "kedalaman"
+        ],
+        "device": "cutaway_gauge",
+        "function": "data_callout",
+        "need": "show vertical elevation, depth, or geological strata on a graduated gauge"
+      },
+      {
+        "match": "scale_dimension",
+        "words": [
+          "miles",
+          "kilometers",
+          "stretch",
+          "wide",
+          "narrow",
+          "width",
+          "length",
+          "span",
+          "jarak",
+          "lebar",
+          "panjang"
+        ],
+        "device": "measurement_line",
+        "function": "scale_compare",
+        "need": "measure real-world extent or width directly across the map frame"
+      },
+      {
+        "match": "historical_era",
+        "words": [
+          "era",
+          "century",
+          "ancient",
+          "empire",
+          "dynasty",
+          "medieval",
+          "colonial",
+          "abad",
+          "kerajaan",
+          "zaman"
+        ],
+        "device": "era_marker",
+        "function": "setup",
+        "need": "anchor the historical era with documentary archival framing"
       },
       {
         "match": "weather",
@@ -790,6 +911,7 @@
       "fail_signs": [
         "place named but not visible",
         "number spoken but not shown",
+        "spoken figure disagrees with on-screen unit label",
         "visual from the previous clause still dominant"
       ]
     },
@@ -800,6 +922,7 @@
       "fail_signs": [
         "overlap in grid cells shared with captions",
         "callout covering the head",
+        "scale ruler crowded against top edge",
         "text cut at the frame edge"
       ]
     },
@@ -840,6 +963,7 @@
       "weight": 0.6,
       "fail_signs": [
         "boxed captions",
+        "low-contrast caption shadow over bright snow or ocean",
         "glow on everything",
         "generic interface chrome"
       ]

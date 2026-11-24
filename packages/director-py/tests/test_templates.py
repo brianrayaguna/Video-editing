@@ -92,9 +92,11 @@ def test_geoverum_catalog_editorial_templates_resolve_and_validate() -> None:
         )
     )
     ids = {t.template_id for t in catalog.templates}
-    assert len(catalog.templates) == 30
+    assert len(catalog.templates) == 32
     expected_new = {
         "coordinate_pin_callout",
+        "chevron_flow_band",
+        "cutaway_height_gauge",
         "dual_unit_distance_bracket",
         "blueprint_tabletop_frame",
         "split_wipe_divider",

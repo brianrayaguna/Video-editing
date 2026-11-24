@@ -1679,3 +1679,147 @@ test("caption fade timings, safe_band placement, multiline breaks, font escaping
     /expects a finite number/
   );
 });
+
+test("chevron_flow_band, cutaway_height_gauge, feathered_dark_wipe, page_unfold, and caption dark halo compile and lint cleanly", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-30fps-cal-"));
+  const plan = makeSamplePlan({
+    brand_id: "geoverum",
+    assets: [
+      {
+        asset_id: "src_1",
+        sha256: "a".repeat(64),
+        kind: "video",
+        path: "/nonexistent/sample.mp4",
+        duration_s: 8.0,
+        has_audio: true,
+      },
+      {
+        asset_id: "font_sg",
+        sha256: "1".repeat(64),
+        kind: "font",
+        path: "/nonexistent/SpaceGrotesk-Variable.ttf",
+      },
+      {
+        asset_id: "font_ab",
+        sha256: "2".repeat(64),
+        kind: "font",
+        path: "/nonexistent/ArchivoBlack-Regular.ttf",
+      },
+    ],
+    overlay_compositions: [
+      {
+        overlay_id: "flow_band_1",
+        kind: "kinetic_callout",
+        template_id: "chevron_flow_band",
+        timeline_start_s: 0.2,
+        timeline_duration_s: 2.2,
+        transparent: true,
+        safe_band: "center_safe",
+        props: {
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+        },
+        variables: {
+          corridor_label: "NORTH ATLANTIC JET",
+          speed_label: "320 KM/H",
+          direction: "ne",
+          chevron_count: 6,
+        },
+      },
+      {
+        overlay_id: "gauge_1",
+        kind: "kinetic_callout",
+        template_id: "cutaway_height_gauge",
+        timeline_start_s: 2.4,
+        timeline_duration_s: 2.4,
+        transparent: true,
+        safe_band: "center_safe",
+        props: {
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+        },
+        variables: {
+          title: "PLATEAU ELEVATION",
+          reading_value: "4,500 m",
+          secondary_value: "14,760 ft",
+          fill_pct: 72,
+          side: "right",
+        },
+      },
+      {
+        overlay_id: "wipe_1",
+        kind: "full_scene",
+        template_id: "soft_curtain_transition",
+        timeline_start_s: 4.8,
+        timeline_duration_s: 0.6,
+        transparent: true,
+        safe_band: "center_safe",
+        props: {
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+        },
+        variables: {
+          mode: "feathered_dark_wipe",
+          direction: "auto",
+        },
+      },
+      {
+        overlay_id: "parch_1",
+        kind: "full_scene",
+        template_id: "historical_parchment_plate",
+        timeline_start_s: 5.4,
+        timeline_duration_s: 1.8,
+        transparent: false,
+        safe_band: "center_safe",
+        props: {
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+        },
+        variables: {
+          variant: "page_unfold",
+          year: "1776",
+          title: "CHARTER FOLIO",
+          excerpt: "Boundary treaty record",
+        },
+      },
+      {
+        overlay_id: "cap_halo",
+        kind: "caption_rail",
+        template_id: "caption_rail",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 1.8,
+        transparent: true,
+        safe_band: "lower_third",
+        props: {
+          text: "Over bright terrain",
+          font_family: "Space Grotesk",
+        },
+      },
+    ],
+  });
+
+  compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+
+  for (const id of ["flow_band_1", "gauge_1", "wipe_1", "parch_1", "cap_halo"]) {
+    const html = fs.readFileSync(path.join(tmpDir, "compositions", `${id}.html`), "utf8");
+    assert.ok(!/\{\{[^}]+\}\}/.test(html), `${id}.html contains unresolved token placeholders`);
+    assert.ok(!html.includes("}}"), `${id}.html contains leftover double-brace residue`);
+  }
+
+  const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_halo.html"), "utf8");
+  assert.match(capHtml, /0 2px 10px rgba\(0, 0, 0, 0\.88\)/);
+
+  const wipeHtml = fs.readFileSync(path.join(tmpDir, "compositions", "wipe_1.html"), "utf8");
+  assert.match(wipeHtml, /feathered_dark_wipe/);
+
+  const parchHtml = fs.readFileSync(path.join(tmpDir, "compositions", "parch_1.html"), "utf8");
+  assert.match(parchHtml, /isPageUnfold/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});

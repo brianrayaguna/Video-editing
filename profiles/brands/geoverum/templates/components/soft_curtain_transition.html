@@ -77,7 +77,10 @@
     (function () {
       const mode = ("{{VAR_MODE|curtain_sweep}}").trim().toLowerCase();
       const isIris = mode === "spyglass_iris";
-      const dir = ("{{VAR_DIRECTION|ltr}}").trim().toLowerCase() === "rtl" ? -1 : 1;
+      const isFeatheredWipe = mode === "feathered_dark_wipe";
+      const rawDir = ("{{VAR_DIRECTION|auto}}").trim().toLowerCase();
+      const resolvedDir = rawDir === "auto" ? (isFeatheredWipe ? "rtl" : "ltr") : rawDir;
+      const dir = resolvedDir === "rtl" ? -1 : 1;
       const cxPct = Math.max(20, Math.min(80, Number("{{VAR_CENTER_X_PCT|50}}") || 50));
       const cyPct = Math.max(20, Math.min(75, Number("{{VAR_CENTER_Y_PCT|46}}") || 46));
 
@@ -124,12 +127,17 @@
           closeAt
         );
       } else {
-        const startX = -85 * dir;
-        const endX = 85 * dir;
+        const startX = -100 * dir;
+        const endX = 100 * dir;
+        const sweepDur = isFeatheredWipe ? Math.max(0.28, Math.min(dur, 0.45)) : dur;
+        if (isFeatheredWipe && curtainEl) {
+          curtainEl.style.background =
+            "linear-gradient(90deg, rgba(8,10,16,0) 0%, rgba(8,10,16,0.58) 18%, rgba(8,10,16,0.96) 50%, rgba(8,10,16,0.58) 82%, rgba(8,10,16,0) 100%)";
+        }
         tl.fromTo(
           "#{{SCENE_ID}}-curtain",
-          { xPercent: startX },
-          { xPercent: endX, duration: dur, ease: "power2.inOut" },
+          { xPercent: isFeatheredWipe ? startX : -85 * dir },
+          { xPercent: isFeatheredWipe ? endX : 85 * dir, duration: sweepDur, ease: "power2.inOut" },
           0
         );
       }

@@ -1,0 +1,194 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      --vedit-ink: {{VAR_FG_COLOR|#F4F1EA}};
+      --vedit-accent: {{VAR_ACCENT_COLOR|#F5C542}};
+      --vedit-muted: {{VAR_MUTED_COLOR|#9CA3AF}};
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-wrap {
+      position: absolute;
+      top: 18%;
+      height: 52%;
+      right: 10%;
+      display: flex;
+      align-items: stretch;
+      gap: calc(18px * {{SCALE_FACTOR}});
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-wrap.gv-left {
+      right: auto;
+      left: 10%;
+      flex-direction: row-reverse;
+    }
+    .gv-cg-readout {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-end;
+      text-align: right;
+      gap: calc(6px * {{SCALE_FACTOR}});
+      max-width: calc(380px * {{SCALE_FACTOR}});
+    }
+    #{{SCENE_ID}}-wrap.gv-left .gv-cg-readout {
+      align-items: flex-start;
+      text-align: left;
+    }
+    .gv-cg-title {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(22px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--vedit-ink);
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
+    }
+    .gv-cg-primary {
+      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-size: calc(54px * {{SCALE_FACTOR}});
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+      color: var(--vedit-accent);
+      text-shadow: 0 3px 16px rgba(0, 0, 0, 0.92), 0 0 6px rgba(0, 0, 0, 0.95);
+    }
+    .gv-cg-secondary {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(26px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: var(--vedit-ink);
+      opacity: 0.9;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
+    }
+    .gv-cg-rail {
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      gap: calc(10px * {{SCALE_FACTOR}});
+    }
+    .gv-cg-axis {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(18px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      color: var(--vedit-muted);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.92);
+      padding: calc(4px * {{SCALE_FACTOR}}) 0;
+    }
+    #{{SCENE_ID}}-wrap.gv-left .gv-cg-axis {
+      align-items: flex-start;
+    }
+    .gv-cg-column {
+      position: relative;
+      width: calc(14px * {{SCALE_FACTOR}});
+      height: 100%;
+      background: rgba(244, 241, 234, 0.22);
+      border-radius: calc(7px * {{SCALE_FACTOR}});
+      overflow: hidden;
+    }
+    #{{SCENE_ID}}-fill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 100%;
+      background: linear-gradient(180deg, var(--vedit-accent) 0%, #FFFFFF 100%);
+      transform-origin: bottom center;
+    }
+    .gv-cg-ticks {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .gv-cg-tick {
+      width: calc(22px * {{SCALE_FACTOR}});
+      height: calc(2px * {{SCALE_FACTOR}});
+      background: rgba(244, 241, 234, 0.7);
+      margin-left: calc(-4px * {{SCALE_FACTOR}});
+    }
+    .gv-empty {
+      display: none !important;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" {{MOTION_BLUR_ATTR}}>
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-wrap">
+        <div class="gv-cg-readout">
+          <div id="{{SCENE_ID}}-title" class="gv-cg-title" data-var-text="title">{{VAR_TITLE|CRUISING ALTITUDE}}</div>
+          <div id="{{SCENE_ID}}-primary" class="gv-cg-primary" data-var-text="reading_value">{{VAR_READING_VALUE|4,500 m}}</div>
+          <div id="{{SCENE_ID}}-secondary" class="gv-cg-secondary" data-var-text="secondary_value">{{VAR_SECONDARY_VALUE|14,760 ft}}</div>
+        </div>
+        <div class="gv-cg-rail">
+          <div class="gv-cg-axis">
+            <span id="{{SCENE_ID}}-top-lbl" data-var-text="axis_top_label">{{VAR_AXIS_TOP_LABEL|40,000 ft}}</span>
+            <span id="{{SCENE_ID}}-bot-lbl" data-var-text="axis_bottom_label">{{VAR_AXIS_BOTTOM_LABEL|0 m}}</span>
+          </div>
+          <div class="gv-cg-column">
+            <div id="{{SCENE_ID}}-fill"></div>
+            <div class="gv-cg-ticks">
+              <div class="gv-cg-tick"></div>
+              <div class="gv-cg-tick"></div>
+              <div class="gv-cg-tick"></div>
+              <div class="gv-cg-tick"></div>
+              <div class="gv-cg-tick"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const side = ("{{VAR_SIDE|right}}").trim().toLowerCase();
+      const fillPct = Math.max(10, Math.min(95, Number({{VAR_FILL_PCT|68}}) || 68));
+      const wrapEl = document.getElementById("{{SCENE_ID}}-wrap");
+      if (wrapEl && side === "left") {
+        wrapEl.classList.add("gv-left");
+      }
+
+      ["{{SCENE_ID}}-title", "{{SCENE_ID}}-secondary", "{{SCENE_ID}}-top-lbl", "{{SCENE_ID}}-bot-lbl"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && !el.textContent.trim()) el.classList.add("gv-empty");
+      });
+
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.18), dur * 0.32);
+      const exitS = Math.min(Math.max(enterS * 0.5, 0.14), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.14, dur - exitS);
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-wrap",
+        { opacity: 0, x: (side === "left" ? -18 : 18) * Number({{SCALE_FACTOR}}) },
+        { opacity: 1, x: 0, duration: enterS * 0.85, ease: "expo.out" },
+        0
+      );
+      tl.fromTo(
+        "#{{SCENE_ID}}-fill",
+        { scaleY: 0 },
+        { scaleY: fillPct / 100, duration: Math.max(0.28, enterS * 1.15), ease: "expo.out" },
+        0.05
+      );
+      tl.to("#{{SCENE_ID}}-wrap", { opacity: 0, duration: exitS, ease: "power2.in" }, exitAt);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

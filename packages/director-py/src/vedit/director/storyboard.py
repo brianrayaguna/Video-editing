@@ -259,7 +259,79 @@ def _check(
             sig = story.get("signature_image")
             if sig and ep.get("signature_image") == sig:
                 add(f"signature image repeats episode {ep.get('project_id', '?')!r}")
+    elif iid == "numeric_parity":
+        ignore_years = bool(p.get("ignore_years", True))
+        rel_tol = float(p.get("rel_tolerance", 0.02))
+        for b in beats:
+            callouts = b.get("callouts") or []
+            if not callouts:
+                continue
+            skip_yr = ignore_years and b.get("device") != "era_marker"
+            clause_nums = _extract_numeric_values(str(b.get("clause", "")), skip_years=skip_yr)
+            if not clause_nums:
+                continue
+            callout_nums: list[float] = []
+            for c in callouts:
+                text = str(c.get("text") or "")
+                if text:
+                    callout_nums.extend(_extract_numeric_values(text, skip_years=skip_yr))
+            if not callout_nums:
+                continue
+            missing = [
+                cn
+                for cn in clause_nums
+                if not any(abs(cn - vn) <= max(1e-6, abs(cn) * rel_tol) for vn in callout_nums)
+            ]
+            if missing:
+                add(
+                    f"spoken number {missing[0]:g} does not match callout values {callout_nums}",
+                    b,
+                )
+    elif iid == "callout_safe_margins":
+        frame_w, frame_h = p.get("frame_px", [1080, 1920])
+        min_x = float(p.get("min_x_pct", 0.08))
+        max_x = float(p.get("max_x_pct", 0.92))
+        min_y = float(p.get("min_y_pct", 0.12))
+        max_y = float(p.get("max_y_pct", 0.88))
+        ruler_min_top = float(p.get("scale_ruler_min_top_pct", 0.12))
+        for b in beats:
+            is_ruler_beat = b.get("device") in ("measurement_line", "scale_ruler")
+            for c in b.get("callouts") or []:
+                xy = c.get("xy")
+                if not isinstance(xy, (list, tuple)) or len(xy) != 2:
+                    continue
+                x_pct = float(xy[0]) / float(frame_w)
+                y_pct = float(xy[1]) / float(frame_h)
+                if x_pct < min_x or x_pct > max_x:
+                    add(
+                        f"callout x={xy[0]:.0f}px ({x_pct:.0%}) violates safe margin [{min_x:.0%}, {max_x:.0%}]",
+                        b,
+                    )
+                    break
+                min_required_y = ruler_min_top if is_ruler_beat else min_y
+                if y_pct < min_required_y or y_pct > max_y:
+                    add(
+                        f"callout y={xy[1]:.0f}px ({y_pct:.0%}) violates safe margin [{min_required_y:.0%}, {max_y:.0%}]",
+                        b,
+                    )
+                    break
     return issues
+
+
+def _extract_numeric_values(text: str, *, skip_years: bool = False) -> list[float]:
+    values: list[float] = []
+    for m in re.finditer(r"\b\d+(?:,\d{3})*(?:\.\d+)?\b", text):
+        tok = m.group(0)
+        if (
+            skip_years
+            and "," not in tok
+            and "." not in tok
+            and tok.isdigit()
+            and 1500 <= int(tok) <= 2099
+        ):
+            continue
+        values.append(float(tok.replace(",", "")))
+    return values
 
 
 def check_storyboard(storyboard: dict[str, Any], idioms: dict[str, Any]) -> StoryboardReport:

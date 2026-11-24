@@ -318,3 +318,87 @@ def test_storyboard_cli_roundtrip(tmp_path) -> None:
     )
     assert res.exit_code == 0, res.output
     assert fixed_sb.is_file()
+
+
+def test_numeric_parity_flags_mismatched_callout_and_accepts_dual_unit_match(idioms: dict) -> None:
+    sb = copy.deepcopy(_journey())
+    sb["beats"][0]["clause"] = "Chile stretches 4,200 kilometers north to south."
+    sb["beats"][0]["device"] = "numeral"
+    sb["beats"][0]["callouts"] = [
+        {"kind": "numeral", "text": "2,700 km", "xy": [540, 800]}
+    ]
+    issues = check_storyboard(sb, idioms).issues
+    assert any(i.idiom_id == "numeric_parity" and i.beat_id == "b1" for i in issues)
+
+    sb["beats"][0]["callouts"][0]["text"] = "4,200 km / 2,610 mi"
+    issues_after = check_storyboard(sb, idioms).issues
+    assert not any(i.idiom_id == "numeric_parity" for i in issues_after)
+
+    sb["beats"][0]["clause"] = "The plateau averages 4,500 meters high."
+    sb["beats"][0]["callouts"][0]["text"] = "4,500 m / 14,760 ft"
+    issues_dual = check_storyboard(sb, idioms).issues
+    assert not any(i.idiom_id == "numeric_parity" for i in issues_dual)
+
+
+def test_callout_safe_margins_flags_clipped_edges_and_top_ruler(idioms: dict) -> None:
+    sb = copy.deepcopy(_journey())
+    sb["beats"][1]["callouts"] = [
+        {"kind": "label", "text": "WEST", "xy": [50, 900]}
+    ]
+    issues = check_storyboard(sb, idioms).issues
+    assert any(i.idiom_id == "callout_safe_margins" and i.beat_id == "b2" for i in issues)
+
+    sb2 = copy.deepcopy(_journey())
+    sb2["beats"][1]["device"] = "measurement_line"
+    sb2["beats"][1]["callouts"] = [
+        {"kind": "label", "text": "500 KM", "xy": [540, 110]}
+    ]
+    issues_ruler = check_storyboard(sb2, idioms).issues
+    assert any(
+        i.idiom_id == "callout_safe_margins" and i.beat_id == "b2" for i in issues_ruler
+    )
+
+    sb3 = copy.deepcopy(_journey())
+    sb3["beats"][1]["device"] = "measurement_line"
+    sb3["beats"][1]["callouts"] = [
+        {"kind": "label", "text": "500 KM", "xy": [540, 1280]}
+    ]
+    issues_clean = check_storyboard(sb3, idioms).issues
+    assert not any(i.idiom_id == "callout_safe_margins" for i in issues_clean)
+
+
+def test_auto_director_routes_wind_and_altitude_clauses_to_new_devices(idioms: dict) -> None:
+    def _tr(text: str) -> dict:
+        words, t = [], 0.0
+        for tok in text.split():
+            words.append({"text": tok, "start_s": round(t, 3), "end_s": round(t + 0.25, 3)})
+            t += 0.3
+        return {
+            "source_hash": "synth1",
+            "provider": "test",
+            "language": "en",
+            "duration_s": round(t, 3),
+            "text": text,
+            "words": words,
+        }
+
+    sb_wind = scaffold_storyboard(
+        _tr("The jet stream pushes winter flights east"), idioms, project_id="wind"
+    )
+    assert sb_wind["beats"][0]["device"] == "chevron_flow_band"
+
+    sb_alt = scaffold_storyboard(
+        _tr("The high plateau elevation blocks planes"), idioms, project_id="alt"
+    )
+    assert sb_alt["beats"][0]["device"] == "cutaway_gauge"
+
+    sb_dim = scaffold_storyboard(
+        _tr("The narrow coastline stretches miles long"), idioms, project_id="dim"
+    )
+    assert sb_dim["beats"][0]["device"] == "measurement_line"
+
+    sb_era = scaffold_storyboard(
+        _tr("During the ancient Roman empire era"), idioms, project_id="era"
+    )
+    assert sb_era["beats"][0]["device"] == "era_marker"
+

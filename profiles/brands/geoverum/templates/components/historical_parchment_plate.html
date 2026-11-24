@@ -260,6 +260,7 @@
       let activeSel = "#{{SCENE_ID}}-era";
       let bgSel = "#{{SCENE_ID}}-wash";
       const isTimeline = variant === "timeline_bar";
+      const isPageUnfold = variant === "page_unfold";
 
       if (isTimeline) {
         if (bgEl) bgEl.classList.add("gv-empty");
@@ -268,7 +269,7 @@
         if (parchEl) parchEl.classList.add("gv-empty");
         if (sheetEl) sheetEl.classList.add("gv-empty");
         activeSel = "#{{SCENE_ID}}-timeline";
-      } else if (variant === "parchment_canvas") {
+      } else if (variant === "parchment_canvas" || isPageUnfold) {
         if (washEl) washEl.classList.add("gv-empty");
         if (eraEl) eraEl.classList.add("gv-empty");
         if (sheetEl) sheetEl.classList.add("gv-empty");
@@ -303,6 +304,15 @@
         tl.fromTo("#{{SCENE_ID}}-tl-fill", { scaleX: 0 }, { scaleX: 1, duration: Math.max(0.6, exitAt - 0.15), ease: "none" }, 0.08);
         tl.fromTo("#{{SCENE_ID}}-compass", { opacity: 0, rotation: -12 }, { opacity: 0.58, rotation: 0, duration: enterS * 1.2, ease: "expo.out" }, 0.08);
         tl.to([activeSel, "#{{SCENE_ID}}-compass"], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
+      } else if (isPageUnfold) {
+        tl.fromTo(bgSel, { opacity: 0 }, { opacity: 1, duration: enterS * 0.75, ease: "power2.out" }, 0);
+        tl.fromTo(
+          activeSel,
+          { y: 18 * Number({{SCALE_FACTOR}}), scaleY: 0.16, rotation: tiltDeg, transformOrigin: "50% 0%", opacity: 0 },
+          { y: 0, scaleY: 1, rotation: tiltDeg, opacity: 1, duration: Math.max(0.35, enterS), ease: "expo.out" },
+          0.03
+        );
+        tl.to([activeSel, bgSel], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
       } else {
         tl.fromTo(bgSel, { opacity: 0 }, { opacity: 1, duration: enterS * 0.8, ease: "power2.out" }, 0);
         tl.fromTo(

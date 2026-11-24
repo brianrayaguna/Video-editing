@@ -292,7 +292,7 @@
         {
           "id": "variant",
           "type": "enum",
-          "enum_values": ["era_stamp", "parchment_canvas", "archival_sheet", "timeline_bar"],
+          "enum_values": ["era_stamp", "parchment_canvas", "archival_sheet", "timeline_bar", "page_unfold"],
           "default": "era_stamp"
         },
         { "id": "year", "type": "string", "default": "1803" },
@@ -492,14 +492,14 @@
         {
           "id": "mode",
           "type": "enum",
-          "enum_values": ["curtain_sweep", "spyglass_iris"],
+          "enum_values": ["curtain_sweep", "spyglass_iris", "feathered_dark_wipe"],
           "default": "curtain_sweep"
         },
         {
           "id": "direction",
           "type": "enum",
-          "enum_values": ["ltr", "rtl"],
-          "default": "ltr"
+          "enum_values": ["auto", "ltr", "rtl"],
+          "default": "auto"
         },
         { "id": "center_x_pct", "type": "number", "min": 20, "max": 80, "default": 50 },
         { "id": "center_y_pct", "type": "number", "min": 20, "max": 75, "default": 46 },
@@ -634,6 +634,49 @@
         { "id": "stamp_color", "type": "color", "default": "#991B1B" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+      ]
+    },
+    {
+      "template_id": "chevron_flow_band",
+      "composition_path": "profiles/brands/geoverum/templates/components/chevron_flow_band.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Directional multi-chevron corridor flow overlay over maps or clouds with staggered motion pulse and pill-less high-contrast typography.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "corridor_label", "type": "string", "default": "JET STREAM" },
+        { "id": "speed_label", "type": "string", "default": "" },
+        {
+          "id": "direction",
+          "type": "enum",
+          "enum_values": ["east", "west", "north", "south", "ne", "se", "nw", "sw"],
+          "default": "east"
+        },
+        { "id": "chevron_count", "type": "number", "min": 3, "max": 8, "default": 5 },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+      ]
+    },
+    {
+      "template_id": "cutaway_height_gauge",
+      "composition_path": "profiles/brands/geoverum/templates/components/cutaway_height_gauge.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["9:16", "16:9"],
+      "render_mode": "parameterized_html",
+      "description": "Graduated vertical altitude, depth, or geological strata cutaway gauge with paired dual-unit readouts inside broadcast safe zones.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "title", "type": "string", "default": "CRUISING ALTITUDE" },
+        { "id": "reading_value", "type": "string", "default": "4,500 m" },
+        { "id": "secondary_value", "type": "string", "default": "14,760 ft" },
+        { "id": "axis_top_label", "type": "string", "default": "40,000 ft" },
+        { "id": "axis_bottom_label", "type": "string", "default": "0 m" },
+        { "id": "fill_pct", "type": "number", "min": 10, "max": 95, "default": 68 },
+        { "id": "side", "type": "enum", "enum_values": ["right", "left"], "default": "right" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
+        { "id": "muted_color", "type": "color", "token_ref": "palette_roles.muted_ink", "default": "#9CA3AF" }
       ]
     }
   ]
