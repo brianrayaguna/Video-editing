@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 import typer
 
-from vedit.director.critique import build_critique_packet, gate_review
+from vedit.director.critique import apply_surgical_fixes, build_critique_packet, gate_review
 from vedit.director.exemplar_retrieval import (
     load_editorial_playbook,
     playbook_path,
@@ -325,12 +325,31 @@ def critique_packet_cmd(
     ] = None,
     brand: BrandOpt = None,
     idioms_file: IdiomsOpt = None,
+    audio_events: Annotated[
+        Path | None, typer.Option("--audio-events", help="JSON list of audio event timestamps (s).")
+    ] = None,
+    motion_energy: Annotated[
+        Path | None,
+        typer.Option("--motion-energy", help="JSON list of [t_s, energy] pairs."),
+    ] = None,
+    previous_packet: Annotated[
+        Path | None,
+        typer.Option("--previous-packet", help="Prior critique packet for frozen beats."),
+    ] = None,
+    iteration: Annotated[int, typer.Option("--iteration", min=1)] = 1,
+    max_iterations: Annotated[int, typer.Option("--max-iterations", min=1)] = 3,
 ) -> None:
     """Run deterministic checks, render grid contact sheets, and emit the rubric review form."""
     sb = _read(storyboard_file) if storyboard_file else None
     idioms = _idioms(brand, idioms_file, sb)
     if video is not None and sheets_dir is None:
         sheets_dir = out.expanduser().parent / "critique_sheets"
+    raw_energy = _read(motion_energy) if motion_energy else None
+    energy_series = (
+        [(float(pair[0]), float(pair[1])) for pair in raw_energy]
+        if raw_energy is not None
+        else None
+    )
     packet = build_critique_packet(
         idioms=idioms,
         storyboard=sb,
@@ -338,6 +357,11 @@ def critique_packet_cmd(
         cuts=list(cut or []),
         video=video.expanduser() if video else None,
         sheets_dir=sheets_dir.expanduser() if sheets_dir else None,
+        audio_events_s=_read(audio_events) if audio_events else None,
+        motion_energy_series=energy_series,
+        previous_packet=_read(previous_packet) if previous_packet else None,
+        iteration=iteration,
+        max_iterations=max_iterations,
     )
     _write(out, packet)
     typer.echo(
@@ -346,8 +370,40 @@ def critique_packet_cmd(
                 "out": str(out),
                 "sheets": [s["path"] for s in packet["sheets"]],
                 "deterministic": packet["deterministic"],
+                "frozen_beat_ids": packet["frozen_beat_ids"],
+                "iteration": packet["iteration"],
+                "max_iterations": packet["max_iterations"],
             },
             indent=2,
+        )
+    )
+
+
+@critique_app.command("apply-fixes")
+def critique_apply_fixes_cmd(
+    storyboard_file: Annotated[Path, typer.Argument(help="Storyboard JSON to repair.")],
+    packet_file: Annotated[Path, typer.Argument(help="Critique packet with `review.fixes`.")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Repaired storyboard JSON path.")],
+    brand: BrandOpt = None,
+    idioms_file: IdiomsOpt = None,
+) -> None:
+    """Apply typed surgical critique fixes onto unfrozen beats with regression rollback."""
+    sb = _read(storyboard_file)
+    packet = _read(packet_file)
+    idioms = _idioms(brand, idioms_file, sb)
+    result = apply_surgical_fixes(sb, packet, idioms)
+    _write(out, result["storyboard"])
+    typer.echo(
+        json.dumps(
+            {
+                "out": str(out),
+                "applied": result["applied"],
+                "deferred": result["deferred"],
+                "skipped_frozen": result["skipped_frozen"],
+                "rolled_back": result["rolled_back"],
+            },
+            indent=2,
+            ensure_ascii=False,
         )
     )
 

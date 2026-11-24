@@ -13,6 +13,7 @@ The loop runs after a low-resolution preview (or the final master) exists:
 
 from __future__ import annotations
 
+import copy
 import math
 import shutil
 import subprocess
@@ -21,7 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from vedit.director.camera_moves import camera_jitter_report
-from vedit.director.storyboard import check_storyboard
+from vedit.director.storyboard import (
+    _device_lead_window,
+    check_storyboard,
+    validate_storyboard_contract,
+)
+from vedit.director.temporal_audit import audit_temporal_sync
 
 GRID_COLS = "ABCDEF"
 GRID_ROWS = 10
@@ -157,6 +163,35 @@ def beat_samples(storyboard: dict[str, Any], max_samples: int = 48) -> list[tupl
     return [picks[int(i * step)] for i in range(max_samples)]
 
 
+def _beat_issue_ids(packet: dict[str, Any]) -> set[str]:
+    det_sb = (packet.get("deterministic") or {}).get("storyboard") or {}
+    issue_beats = {
+        str(issue["beat_id"])
+        for issue in (det_sb.get("issues") or [])
+        if issue.get("beat_id")
+    }
+    fix_beats = {
+        str(fix["beat_id"])
+        for fix in ((packet.get("review") or {}).get("fixes") or [])
+        if isinstance(fix, dict) and fix.get("beat_id")
+    }
+    return issue_beats | fix_beats
+
+
+def _compute_next_frozen_beats(packet: dict[str, Any]) -> list[str]:
+    existing = [str(bid) for bid in (packet.get("frozen_beat_ids") or [])]
+    det_sb = (packet.get("deterministic") or {}).get("storyboard") or {}
+    all_beats = [str(bid) for bid in (det_sb.get("beat_ids") or [])]
+    dirty = _beat_issue_ids(packet)
+    ordered = list(existing)
+    seen = set(ordered)
+    for bid in all_beats:
+        if bid not in dirty and bid not in seen:
+            ordered.append(bid)
+            seen.add(bid)
+    return ordered
+
+
 def build_critique_packet(
     *,
     idioms: dict[str, Any],
@@ -166,11 +201,41 @@ def build_critique_packet(
     video: Path | None = None,
     sheets_dir: Path | None = None,
     every_s: float = 1.0,
+    audio_events_s: list[float] | None = None,
+    motion_energy_series: list[tuple[float, float]] | None = None,
+    previous_packet: dict[str, Any] | None = None,
+    iteration: int = 1,
+    max_iterations: int = 3,
 ) -> dict[str, Any]:
     """Collect deterministic results, contact sheets and an empty rubric review form."""
-    packet: dict[str, Any] = {"deterministic": {}, "sheets": [], "review": {}}
+    frozen_beat_ids: list[str] = []
+    if previous_packet is not None:
+        frozen_beat_ids = _compute_next_frozen_beats(previous_packet)
+
+    packet: dict[str, Any] = {
+        "schema_version": "1.0",
+        "iteration": int(iteration),
+        "max_iterations": int(max_iterations),
+        "frozen_beat_ids": frozen_beat_ids,
+        "deterministic": {},
+        "sheets": [],
+        "review": {},
+    }
     if storyboard is not None:
-        packet["deterministic"]["storyboard"] = check_storyboard(storyboard, idioms).to_dict()
+        sb_dict = check_storyboard(storyboard, idioms).to_dict()
+        sb_dict["beat_ids"] = [str(b["beat_id"]) for b in storyboard.get("beats") or []]
+        packet["deterministic"]["storyboard"] = sb_dict
+        if (
+            audio_events_s is not None
+            or cuts is not None
+            or motion_energy_series is not None
+        ):
+            packet["deterministic"]["temporal"] = audit_temporal_sync(
+                storyboard,
+                audio_events_s=audio_events_s,
+                cuts_s=cuts,
+                motion_energy_series=motion_energy_series,
+            ).to_dict()
     if camera_track:
         shake = camera_jitter_report(camera_track, cuts=cuts or [])
         shake.pop("flagged", None)
@@ -203,8 +268,207 @@ def build_critique_packet(
     return packet
 
 
+def _caption_band_params(idioms: dict[str, Any]) -> tuple[float, float, float]:
+    for idiom in idioms.get("idioms") or []:
+        if idiom.get("idiom_id") == "caption_band_clear":
+            p = idiom.get("params") or {}
+            band = p.get("band_y_pct") or [0.66, 0.76]
+            frame = p.get("frame_px") or [1080, 1920]
+            return float(band[0]), float(band[1]), float(frame[1])
+    return 0.66, 0.76, 1920.0
+
+
+def _known_devices(idioms: dict[str, Any]) -> set[str]:
+    return {
+        str(dev)
+        for cls in (idioms.get("device_classes") or {}).values()
+        for dev in (cls.get("devices") or [])
+    }
+
+
+def _apply_one_fix(
+    beat: dict[str, Any],
+    fix: dict[str, Any],
+    idioms: dict[str, Any],
+    *,
+    banned_devices: set[str],
+    known_devices: set[str],
+) -> bool:
+    kind = str(fix.get("kind") or "")
+    params = fix.get("params") if isinstance(fix.get("params"), dict) else {}
+
+    if kind == "timing":
+        explicit_start = fix.get("start_s", params.get("start_s"))
+        explicit_end = fix.get("end_s", params.get("end_s"))
+        if explicit_start is not None:
+            beat["start_s"] = round(max(0.0, float(explicit_start)), 3)
+        elif "sync_word_s" in beat:
+            lead_info = _device_lead_window(idioms, beat["device"])
+            if lead_info is not None:
+                lo, hi = float(lead_info[1][0]), float(lead_info[1][1])
+                mid = (lo + hi) / 2.0
+                beat["start_s"] = round(max(0.0, float(beat["sync_word_s"]) - mid), 3)
+        if explicit_end is not None:
+            beat["end_s"] = round(max(float(explicit_end), float(beat["start_s"]) + 0.25), 3)
+        else:
+            beat["end_s"] = round(max(float(beat["end_s"]), float(beat["start_s"]) + 0.25), 3)
+        return True
+
+    if kind == "layout":
+        y0_pct, y1_pct, frame_h = _caption_band_params(idioms)
+        band_top = y0_pct * frame_h
+        band_bottom = y1_pct * frame_h
+        explicit_xy = fix.get("xy", params.get("xy"))
+        explicit_size = fix.get("size_px", params.get("size_px"))
+        callouts = beat.get("callouts") or []
+        if not callouts:
+            return False
+        for callout in callouts:
+            if explicit_size is not None:
+                callout["size_px"] = float(explicit_size)
+            if explicit_xy is not None:
+                callout["xy"] = [float(explicit_xy[0]), float(explicit_xy[1])]
+            elif "xy" in callout:
+                half = float(callout.get("size_px", 0.0)) / 2.0
+                cy = float(callout["xy"][1])
+                if cy + half > band_top and cy - half < band_bottom:
+                    callout["xy"] = [
+                        float(callout["xy"][0]),
+                        round(max(half + 20.0, band_top - half - 20.0), 1),
+                    ]
+        return True
+
+    if kind == "device":
+        new_dev = str(fix.get("device") or params.get("device") or "").strip()
+        if not new_dev or new_dev in banned_devices or new_dev not in known_devices:
+            return False
+        beat["device"] = new_dev
+        new_treat = fix.get("treatment", params.get("treatment"))
+        if isinstance(new_treat, str) and new_treat.strip():
+            beat["treatment"] = new_treat.strip()
+        new_need = fix.get("story_need", params.get("story_need"))
+        if isinstance(new_need, str) and len(new_need.strip()) >= 3:
+            beat["story_need"] = new_need.strip()
+        if "sync_word_s" in beat:
+            lead_info = _device_lead_window(idioms, new_dev)
+            if lead_info is not None:
+                lo, hi = float(lead_info[1][0]), float(lead_info[1][1])
+                beat["start_s"] = round(max(0.0, float(beat["sync_word_s"]) - (lo + hi) / 2.0), 3)
+                beat["end_s"] = round(max(float(beat["end_s"]), float(beat["start_s"]) + 0.25), 3)
+        return True
+
+    if kind == "camera":
+        regime = fix.get("regime", params.get("regime"))
+        move_start_s = fix.get("move_start_s", params.get("move_start_s"))
+        cam = dict(beat.get("camera") or {})
+        if regime is not None:
+            cam["regime"] = str(regime)
+        if move_start_s is not None:
+            cam["move_start_s"] = round(max(0.0, float(move_start_s)), 3)
+        if cam:
+            beat["camera"] = cam
+            return True
+        return False
+
+    return False
+
+
+def apply_surgical_fixes(
+    storyboard: dict[str, Any],
+    packet: dict[str, Any],
+    idioms: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply typed review fixes to unfrozen beats, rolling back any regression."""
+    working = copy.deepcopy(storyboard)
+    overrides = working.get("overrides") or {}
+    frozen = {str(b) for b in (packet.get("frozen_beat_ids") or [])} | {
+        str(b) for b in (overrides.get("locked_beat_ids") or [])
+    }
+    banned_devices = {str(d) for d in (overrides.get("banned_devices") or [])}
+    known_devices = _known_devices(idioms)
+
+    applied: list[dict[str, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    skipped_frozen: list[str] = []
+    rolled_back: list[dict[str, Any]] = []
+
+    raw_fixes = ((packet.get("review") or {}).get("fixes")) or []
+    for raw_fix in raw_fixes:
+        if not isinstance(raw_fix, dict):
+            deferred.append({"fix": raw_fix, "reason": "untyped_string_fix"})
+            continue
+        beat_id = str(raw_fix.get("beat_id") or "")
+        kind = str(raw_fix.get("kind") or "")
+        if not beat_id or not kind:
+            deferred.append({"fix": raw_fix, "reason": "missing_beat_id_or_kind"})
+            continue
+        if beat_id in frozen:
+            if beat_id not in skipped_frozen:
+                skipped_frozen.append(beat_id)
+            continue
+        if kind in ("audio_sync", "script"):
+            deferred.append({"fix": raw_fix, "reason": f"requires_{kind}_intervention"})
+            continue
+
+        before_report = check_storyboard(working, idioms).to_dict()
+        candidate = copy.deepcopy(working)
+        target_beat = next(
+            (b for b in candidate.get("beats") or [] if b.get("beat_id") == beat_id),
+            None,
+        )
+        if target_beat is None:
+            deferred.append({"fix": raw_fix, "reason": "unknown_beat_id"})
+            continue
+
+        mutated = _apply_one_fix(
+            target_beat,
+            raw_fix,
+            idioms,
+            banned_devices=banned_devices,
+            known_devices=known_devices,
+        )
+        if not mutated:
+            deferred.append({"fix": raw_fix, "reason": "no_applicable_mutation"})
+            continue
+
+        contract_errs = validate_storyboard_contract(candidate)
+        if contract_errs:
+            rolled_back.append(
+                {"fix": raw_fix, "reason": f"contract_violation: {contract_errs[0]}"}
+            )
+            continue
+
+        after_report = check_storyboard(candidate, idioms).to_dict()
+        if (
+            after_report["error_count"] > before_report["error_count"]
+            or after_report["score"] < before_report["score"]
+        ):
+            rolled_back.append(
+                {
+                    "fix": raw_fix,
+                    "reason": (
+                        f"regression (errors {before_report['error_count']}->"
+                        f"{after_report['error_count']}, score {before_report['score']}->"
+                        f"{after_report['score']})"
+                    ),
+                }
+            )
+            continue
+
+        working = candidate
+        applied.append(copy.deepcopy(raw_fix))
+
+    return {
+        "storyboard": working,
+        "applied": applied,
+        "deferred": deferred,
+        "skipped_frozen": skipped_frozen,
+        "rolled_back": rolled_back,
+    }
+
+
 def gate_review(packet: dict[str, Any], *, threshold: float = 0.8) -> dict[str, Any]:
-    """Weighted rubric score plus deterministic results → single pass/fail with reasons."""
+    """Weighted rubric score plus deterministic results -> single pass/fail with reasons."""
     rubric = {c["criterion_id"]: c for c in packet["review"]["rubric"]}
     scores = packet["review"]["scores"]
     missing = [cid for cid in rubric if scores.get(cid) is None]
@@ -245,11 +509,22 @@ def gate_review(packet: dict[str, Any], *, threshold: float = 0.8) -> dict[str, 
         reasons.append("storyboard has idiom errors")
     if det.get("camera") and not det["camera"]["passed"]:
         reasons.append("camera exceeds the shake budget")
+    if det.get("temporal") and not det["temporal"]["passed"]:
+        reasons.append("temporal audio-visual sync failed")
+
+    iteration = int(packet.get("iteration", 1))
+    max_iterations = int(packet.get("max_iterations", 3))
+    iteration_budget_exhausted = iteration > max_iterations
+    if iteration_budget_exhausted and reasons:
+        reasons.append(f"iteration budget exhausted ({iteration} > {max_iterations})")
+
     return {
         "passed": not reasons,
         "rubric_score": round(weighted, 3),
         "reasons": reasons,
         "fixes": packet["review"].get("fixes", []),
+        "next_frozen_beat_ids": _compute_next_frozen_beats(packet),
+        "iteration_budget_exhausted": iteration_budget_exhausted,
     }
 
 

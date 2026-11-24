@@ -306,3 +306,15 @@ def test_storyboard_cli_roundtrip(tmp_path) -> None:
     assert res.exit_code == 0, res.output
     res = runner.invoke(app, ["critique", "gate", str(packet)])
     assert res.exit_code == 1
+
+    # Typed surgical fix apply-fixes CLI roundtrip.
+    loaded_packet = json.loads(packet.read_text(encoding="utf-8"))
+    loaded_packet["review"]["fixes"] = [{"beat_id": "b2", "kind": "timing"}]
+    packet.write_text(json.dumps(loaded_packet), encoding="utf-8")
+    fixed_sb = tmp_path / "fixed_sb.json"
+    res = runner.invoke(
+        app,
+        ["critique", "apply-fixes", str(jr), str(packet), "-o", str(fixed_sb)],
+    )
+    assert res.exit_code == 0, res.output
+    assert fixed_sb.is_file()

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vedit.local/contracts/critique_packet.schema.json",
+  "title": "CritiquePacket",
+  "description": "Gate 2 critique packet combining deterministic storyboard, camera, and temporal sync checks with frozen beat tracking, iteration bounds, grid contact sheets, and typed surgical fixes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "iteration",
+    "max_iterations",
+    "frozen_beat_ids",
+    "deterministic",
+    "sheets",
+    "review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "frozen_beat_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "deterministic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storyboard": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "camera": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "temporal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "passed",
+            "sfx_matched_ratio",
+            "median_av_offset_ms",
+            "dead_motion_windows",
+            "split_cut_offsets_s",
+            "issues"
+          ],
+          "properties": {
+            "passed": { "type": "boolean" },
+            "sfx_matched_ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "median_av_offset_ms": { "type": ["number", "null"], "minimum": 0 },
+            "dead_motion_windows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["start_s", "end_s", "duration_s"],
+                "properties": {
+                  "start_s": { "type": "number", "minimum": 0 },
+                  "end_s": { "type": "number", "minimum": 0 },
+                  "duration_s": { "type": "number", "minimum": 0 }
+                }
+              }
+            },
+            "split_cut_offsets_s": {
+              "type": "array",
+              "items": { "type": "number" }
+            },
+            "issues": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "frames"],
+        "properties": {
+          "path": { "type": "string" },
+          "frames": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["t", "label"],
+              "properties": {
+                "t": { "type": "number", "minimum": 0 },
+                "label": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "grid_legend": {
+      "type": "string"
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instructions", "scores", "fixes", "rubric"],
+      "properties": {
+        "instructions": { "type": "string" },
+        "scores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "fixes": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "$ref": "#/$defs/typed_fix" }
+            ]
+          }
+        },
+        "rubric": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "typed_fix": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["beat_id", "kind"],
+      "properties": {
+        "beat_id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["timing", "layout", "device", "camera", "audio_sync", "script"]
+        },
+        "action": { "type": "string" },
+        "message": { "type": "string" },
+        "params": { "type": "object" },
+        "start_s": { "type": "number", "minimum": 0 },
+        "end_s": { "type": "number", "minimum": 0 },
+        "device": { "type": "string", "minLength": 1 },
+        "treatment": { "type": "string" },
+        "story_need": { "type": "string" },
+        "xy": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "size_px": { "type": "number", "exclusiveMinimum": 0 },
+        "regime": { "enum": ["globe", "wide", "regional", "close", "hold"] },
+        "move_start_s": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
