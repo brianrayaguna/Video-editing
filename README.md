@@ -1,74 +1,139 @@
-# vedit — Brand-Adaptive Video Directing & Mastering Engine
+# vedit: Brand-Adaptive Video Directing & Mastering Engine
 
-**vedit** is a modular, provider-agnostic video directing and mastering engine that combines deterministic media analysis (`Rust` + `FFmpeg`), calibrated omnimodal decision models, HTML/GSAP motion rendering (`HyperFrames`), and deterministic `FFmpeg` delivery mastering—with **optional** serverless cloud rendering via `Modal`.
+**vedit** is a modular, provider-agnostic video directing and mastering engine that combines deterministic media analysis (`Rust` and `FFmpeg`), calibrated omnimodal decisioning, procedural HTML/GSAP motion rendering (`HyperFrames`), and deterministic `FFmpeg` delivery mastering, with optional serverless cloud rendering via `Modal`.
 
 It is designed for automated pipelines and AI directing clients to edit real footage and procedural motion graphics in the visual style of an analyzed brand, without generative video synthesis.
 
-## Architecture Overview
+## Core Capabilities
+
+- **Deterministic Media Telemetry:** Single-pass media probing extracts content-addressed SHA-256 hashes, shot cut boundaries, integrated loudness, silence intervals, Sobel sharpness, BT.709 luminance bands, and CIELAB color palettes.
+- **Decoupled Brand Profiling:** Forensic reference breakdown and spatial analysis synthesize runtime brand policies, executable directing idioms, advisory editorial playbooks, parameterized templates, and external per-brand episodic memory independent of core engine code.
+- **Dual-Gate Directing & Critique Loop:** Transcript readiness audits, typed storyboards, pre-render idiom gating, grid-anchored visual contact sheets, and surgical beat-level fixes enforce visual and editorial standards before final delivery.
+- **Procedural Motion & Geospatial Tooling:** A TypeScript compilation bridge translates `EditPlan` manifests into `HyperFrames` compositions, paired with open-licensed tile grading, offline XYZ serving, declarative `MapLibre` scene baking, bottom-band caption generation, and ducked documentary audio mixing.
+- **Hybrid Local/Cloud Execution & QC Mastering:** The local host acts as a thin control plane while heavy speech denoising, reframing, and distributed rendering can offload to `Modal`, concluding with `OpenTimelineIO` export, two-pass EBU R128 mastering, and automated deliverable audits.
+
+## Repository Structure
 
 | Package / Directory | Runtime | Responsibility |
 | :--- | :--- | :--- |
-| [`packages/media-probe-rs`](packages/media-probe-rs) | Rust (`vedit-probe`) | Single-pass `ffprobe` + `ffmpeg` pipe for SHA-256 CAS hashing, `scdet` shot cuts, `ebur128` loudness, `silencedetect`, Sobel sharpness, BT.709 band luminance, and CIELAB palette clustering. |
-| [`packages/director-py`](packages/director-py) | Python 3.12 (`vedit`, `vedit-mcp`) | Capability ports (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`), YAML-configured provider registry, schema validation, external project workspace lifecycle (`vedit project`), durable job checkpoints, brand profiling (`brand_analyzer`), planning/verification (`director`), HyperFrames compilation, `FFmpeg` mastering, visual/technical QC audit, OpenTimelineIO export, FastMCP server, and CLI. |
-| [`packages/hf-compiler-ts`](packages/hf-compiler-ts) | Node >= 22 / TypeScript | Contracts and compilation bridge targeting pinned `@hyperframes/core` and `@hyperframes/producer` (`0.9.68`). |
-| [`packages/cloud-modal`](packages/cloud-modal) | Python / Modal (Optional) | Serverless worker images and entrypoints for offloading headless Chromium / HyperFrames `BeginFrame` renders, DeepFilterNet speech denoising, and deterministic cloud reframing to Modal. |
-| [`contracts`](contracts) | JSON Schema (Draft 2020-12) | Shared cross-runtime contracts (`brand_style_policy`, `directing_idioms`, `editorial_playbook`, `brand_template`, `edit_plan`, `media_probe`, `platform_target`, `project_manifest`, `spatial_forensics`, `storyboard`, `transcript`, `video_breakdown`). |
-| [`profiles/platforms`](profiles/platforms) | JSON | Delivery mastering presets for YouTube (`16:9` 1080p/4K), Shorts, Reels, and TikTok (`9:16` 1080p). |
-| [`profiles/brands/<brand_id>`](profiles/brands) | JSON / Markdown | Brand runtime policies, executable directing idioms, optional advisory playbooks, parameterized brand templates, and craft/directing docs (decoupled from core engine code). See [`profiles/README.md`](profiles/README.md). |
-| [`tools/geo-assets`](tools/geo-assets) | Python / Node.js | Deterministic open-licensed geospatial asset fetcher, SHA-256 manifest verifier (`assets/geo/MANIFEST.json`), build-time tile grader, offline XYZ tile server, and MapLibre basemap/scene bakers. |
-| [`tools/rea-video`](tools/rea-video) | Python 3.12 (Isolated) | Isolated local forensic video breakdown toolchain (`rea-video[ocr]`) powering `VideoBreakdownPort` for high-accuracy brand profiling without polluting core or cloud dependencies. |
+| [`packages/media-probe-rs`](packages/media-probe-rs) | Rust (`vedit-probe`) | Single-pass `ffprobe` and `ffmpeg` pipe for SHA-256 CAS hashing, `scdet` shot cuts, `ebur128` loudness, `silencedetect`, Sobel sharpness, BT.709 band luminance, and CIELAB palette clustering. |
+| [`packages/director-py`](packages/director-py) | Python `>=3.12,<3.14` (`vedit`, `vedit-mcp`) | Capability ports (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`), YAML-configured provider registry, schema validation, external project workspace lifecycle (`vedit project`), durable job checkpoints, brand profiling, planning and verification, `HyperFrames` compilation, `FFmpeg` mastering, visual/technical QC audit, `OpenTimelineIO` export, FastMCP server, and CLI. |
+| [`packages/hf-compiler-ts`](packages/hf-compiler-ts) | Node.js `>=22` / TypeScript | Contracts and compilation bridge targeting pinned `@hyperframes/core`, `@hyperframes/lint`, and `@hyperframes/producer` (`0.9.68`). |
+| [`packages/cloud-modal`](packages/cloud-modal) | Python / Modal (Optional) | Serverless worker images and entrypoints for offloading headless Chromium / `HyperFrames` `BeginFrame` renders, `DeepFilterNet` speech denoising, and deterministic cloud reframing to `Modal`. |
+| [`contracts`](contracts) | JSON Schema (Draft 2020-12) | Shared cross-runtime contracts (`brand_memory`, `brand_style_policy`, `brand_template`, `critique_packet`, `directing_idioms`, `edit_plan`, `editorial_playbook`, `media_probe`, `platform_target`, `project_manifest`, `spatial_forensics`, `storyboard`, `transcript`, `video_breakdown`). |
+| [`profiles/platforms`](profiles/platforms) | JSON | Delivery mastering presets for landscape (`16:9` 1080p and 4K) and vertical (`9:16` 1080p) targets, inspectable via `vedit platforms list`. |
+| [`profiles/brands`](profiles/brands) | JSON / Markdown | Brand runtime policies, executable directing idioms, optional advisory playbooks, parameterized brand templates, and craft/directing guides decoupled from core engine code. See [`profiles/README.md`](profiles/README.md). |
+| [`tools/geo-assets`](tools/geo-assets) | Python / Node.js | Deterministic open-licensed geospatial asset fetcher, SHA-256 manifest verifier (`assets/geo/MANIFEST.json`), build-time tile grader, offline XYZ tile server, and `MapLibre` basemap/scene bakers. |
+| [`tools/rea-video`](tools/rea-video) | Python 3.12 (Isolated) | Isolated local forensic video breakdown toolchain powering `VideoBreakdownPort` for brand profiling without polluting core or cloud dependencies. |
 | [`tools/spatial-forensics`](tools/spatial-forensics) | Python 3.12 (Isolated) | Isolated local spatial, grid, hierarchy, typography, and motion forensics analyzer producing `spatial_forensics.json` and visual blueprints (`vedit breakdown structure`). |
-| External Projects (`VEDIT_PROJECTS_ROOT`) | Outside Engine Git Repo | Self-contained active editing projects managed by `vedit project init|status|validate`. See [`docs/PROJECT_WORKSPACE.md`](docs/PROJECT_WORKSPACE.md). |
+| External Projects (`VEDIT_PROJECTS_ROOT`) | Outside Engine Git Repo | Self-contained active editing projects managed via `vedit project init`, `status`, and `validate`. See [`docs/PROJECT_WORKSPACE.md`](docs/PROJECT_WORKSPACE.md). |
 
-For detailed pipeline invariants, visual craft standards, cloud workflows, and external workspace rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`DESIGN.md`](DESIGN.md), [`docs/PROJECT_WORKSPACE.md`](docs/PROJECT_WORKSPACE.md), [`docs/CLOUD_WORKFLOW.md`](docs/CLOUD_WORKFLOW.md), and [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## Execution Modes
 
-## Execution & Rendering Modes
+- **Local Deterministic Mode:** Compile motion projects with `vedit compile`, assemble hybrid deliverables locally with `vedit master`, export NLE timelines with `vedit export-otio`, and verify stream, loudness, and visual compliance with `vedit audit`.
+- **Cloud Offload Mode (Optional):** Keep the local host as a thin control plane while offloading speech-to-text and decisioning through configured capability ports (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`), neural speech denoising and reframing (`vedit clean-audio --provider modal_cloud`, `vedit reframe --provider modal_cloud`), and distributed `HyperFrames` rendering with EBU R128 mastering (`vedit cloud render`). See [`docs/CLOUD_WORKFLOW.md`](docs/CLOUD_WORKFLOW.md).
 
-The local host operates cleanly as a thin control plane while heavy compute runs in the cloud:
+## CLI & MCP Reference
 
-- **Cloud Offload (`Modal` & Cloud APIs — Recommended for Constrained Hosts):** Run cloud STT (`xai` / `veed`), cloud neural speech denoising and reframing (`vedit clean-audio --provider modal_cloud`, `vedit reframe --provider modal_cloud`), cloud background matting (`veed`), and distributed HyperFrames rendering + EBU R128 mastering (`vedit cloud render`). Runbook: [`docs/CLOUD_WORKFLOW.md`](docs/CLOUD_WORKFLOW.md).
-- **Local Deterministic Mode:** Compile motion projects with `vedit compile`, assemble hybrid deliverables locally with `vedit master`, export NLE timelines with `vedit export-otio`, and verify stream/loudness/visual compliance with `vedit audit`.
+All CLI commands are exposed through `vedit` (installed at `packages/director-py/.venv/bin/vedit`, with command modules in `packages/director-py/src/vedit/cli/`) and optionally over MCP via `vedit-mcp`.
 
-## End-to-End Pipeline & CLI Reference
+### External Project Workspace
 
-All CLI commands are exposed through `vedit` (installed in `packages/director-py/.venv/bin/vedit`; command modules live in `packages/director-py/src/vedit/cli/`) and optionally over MCP via `vedit-mcp`:
+| Command | Purpose |
+| :--- | :--- |
+| `vedit project init` | Scaffold a self-contained project directory outside the engine repository under `VEDIT_PROJECTS_ROOT`. |
+| `vedit project status` | Inspect project manifest state, staged inputs, checkpoints, and render artifacts. |
+| `vedit project validate` | Validate project structure, manifest schemas, and asset path containment. |
 
-- **External Project Workspace**
-  - `vedit project init` / `vedit project status` / `vedit project validate` — Scaffold, inspect, and validate self-contained projects outside the engine repository under `VEDIT_PROJECTS_ROOT`.
-- **Media Analysis & Brand Profiling**
-  - `vedit probe hash` / `vedit probe analyze` — Compute content-addressed hashes and extract deterministic visual/audio telemetry.
-  - `vedit breakdown survey` / `vedit breakdown analyze` / `vedit breakdown structure` / `vedit breakdown review` / `vedit breakdown apply-review` / `vedit breakdown import` — Run forensic shot/transition/audio/OCR/spatial breakdown, emit layered `VIDEO.md` + `video_breakdown.json` + `spatial_forensics.json`, and fuse multimodal visual reviews.
-  - `vedit brand analyze` / `vedit brand calibrate-idioms` / `vedit brand exemplars` / `vedit brand validate` — Synthesize runtime policy + advisory playbook, calibrate executable directing idioms from annotated storyboards, query playbook exemplars, and validate brand trees.
-- **Directing, Storyboarding, Geo & Media Operations**
-  - `vedit transcribe` — Generate word-level transcripts via the configured `TranscriptionPort`.
-  - `vedit decide` — Run omnimodal edit decisioning against probe telemetry, transcripts, and brand policy.
-  - `vedit storyboard auto` / `vedit storyboard check` / `vedit storyboard journey` — Build typed storyboards, validate directing idioms, and compile journey tracks.
-  - `vedit critique packet` / `vedit critique gate` — Render grid-anchored visual contact sheets and enforce deterministic + rubric review gates.
-  - `vedit camera list` / `vedit camera expand` — List camera move presets and expand camera plans into frame tracks.
-  - `vedit geo prepare` / `vedit geo validate-scene` / `vedit geo build-captions` / `vedit geo mix-audio` / `vedit geo bake-scene` / `vedit geo camera-track` — Prepare offline/HQ map assets, validate scene specs, build bottom-band captions, mix documentary audio, bake MapLibre scenes, and denoise measured camera tracks.
-  - `vedit director plan` / `vedit director verify` — Generate and validate structured `EditPlan` manifests.
-  - `vedit search-audio` / `vedit clean-audio` — Query licensed audio catalogs and denoise speech stems (cloud `modal_cloud` DeepFilterNet or local `ffmpeg`).
-  - `vedit reframe` / `vedit remove-background` — Apply aspect-ratio reframing (`modal_cloud` or `ffmpeg`) and cloud background matting (`veed`).
-  - `vedit trim` / `vedit remove-silence` / `vedit restore-footage` — Local FFmpeg preprocessing: lossless or frame-accurate clip trims, voiceover pause removal (run before `transcribe`), and stabilization/denoise/deinterlace for raw footage.
-- **Compilation, Rendering, Interop & Mastering**
-  - `vedit compile` — Compile an `EditPlan` (resolving project-relative assets) into a HyperFrames project bundle.
-  - `vedit export-otio` — Export an `EditPlan` into an OpenTimelineIO `.otio` timeline for external NLE review.
-  - `vedit cloud render` — Submit a verified `EditPlan` to Modal for remote distributed rendering, hybrid mastering, and QC.
-  - `vedit master` — Assemble final deliverables against a target platform preset (`youtube_16x9_1080p`, `youtube_16x9_4k`, `shorts_9x16_1080p`, `reels_9x16_1080p`, `tiktok_9x16_1080p`) with two-pass `ebur128` loudnorm.
-  - `vedit audit` — Verify output streams, frame rate, resolution, loudness compliance, black/freeze visual anomalies, and optional VMAF.
-- **System & Registry Inspection**
-  - `vedit contracts validate` — Validate JSON Schemas, platform mastering profiles, and brand trees.
-  - `vedit doctor` — Check local toolchain readiness (`ffmpeg`, `ffprobe`, `vedit-probe`, Node, isolated tool venvs).
-  - `vedit platforms list` — List available delivery presets.
-  - `vedit providers list` / `vedit providers auth` — Inspect configured capability providers and credential status.
+### Media Analysis & Brand Profiling
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit probe hash` | Compute content-addressed SHA-256 hashes for media files. |
+| `vedit probe analyze` | Extract deterministic visual and audio telemetry (`media_probe.json`). |
+| `vedit breakdown survey` | Run one step of the visual-first contact-sheet survey pass. |
+| `vedit breakdown analyze` | Run forensic shot, transition, audio, and OCR breakdown (`VIDEO.md` and `video_breakdown.json`). |
+| `vedit breakdown structure` | Extract latent grid, visual hierarchy, typography/WCAG, motion easing, and SoM blueprints (`spatial_forensics.json`). |
+| `vedit breakdown review` | Prepare `review_tasks.json` and `review_answers.json` for visual verification. |
+| `vedit breakdown apply-review` | Fuse visual review answers back into breakdown outputs. |
+| `vedit breakdown import` | Normalize an existing forensic breakdown directory into `VideoBreakdownResult` JSON. |
+| `vedit brand analyze` | Synthesize runtime `BrandStylePolicy` and advisory `EditorialPlaybook` from probes and breakdowns. |
+| `vedit brand calibrate-idioms` | Measure annotated reference storyboards and propose or apply directing idiom parameters. |
+| `vedit brand invert-reference` | Draft a reference storyboard from telemetry and emit an exception review queue. |
+| `vedit brand exemplars` | Query matching exemplars from an `EditorialPlaybook` `exemplar_bank`. |
+| `vedit brand memory` | Inspect and record external per-brand episodic memory. |
+| `vedit brand validate` | Validate a specific brand tree or all trees under `profiles/brands/`. |
+
+### Directing, Storyboarding & Visual Critique
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit transcribe` | Generate word-level transcripts via the configured `TranscriptionPort`. |
+| `vedit decide` | Evaluate calibrated edit decisions against probe telemetry, transcripts, and brand policy via `DecisionPort`. |
+| `vedit storyboard readiness` | Audit a transcript for visualizability and breath-pause readiness prior to voiceover lock. |
+| `vedit storyboard context` | Retrieve advisory playbook exemplars, triggers, and brand memory warnings for a storyboard. |
+| `vedit storyboard auto` | Build a typed storyboard from narration and optionally layer director instructions on top. |
+| `vedit storyboard gate-prerender` | Run pre-render deterministic and optional semantic storyboard critique. |
+| `vedit storyboard check` | Validate a storyboard against the brand's executable directing idioms. |
+| `vedit storyboard journey` | Compile route head, camera, route width, and callout positions from a journey storyboard. |
+| `vedit critique packet` | Run deterministic checks, render grid-anchored contact sheets, and emit the rubric review form. |
+| `vedit critique apply-fixes` | Apply typed surgical critique fixes onto unfrozen beats with regression rollback. |
+| `vedit critique gate` | Decide pass/fail from a completed critique packet and report remaining issues. |
+| `vedit director plan` | Generate structured `EditPlan` manifests. |
+| `vedit director verify` | Validate `EditPlan` specifications against contracts and brand constraints. |
+
+### Geospatial & Camera Tooling
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit camera list` | List reusable map camera move presets for basemap bakes. |
+| `vedit camera expand` | Expand camera move plans into smooth per-frame camera tracks. |
+| `vedit geo prepare` | Fetch project AOI satellite tiles (without dirtying `MANIFEST.json`) and extract GeoJSON vectors. |
+| `vedit geo validate-scene` | Validate `map_scene.json` against brand craft, sharpness, and clutter guardrails. |
+| `vedit geo build-captions` | Generate locked boxless bottom-band ASS subtitles. |
+| `vedit geo mix-audio` | Mix voiceover, ducked documentary background music, and scene-synced kinetic SFX to `-14.0 LUFS`. |
+| `vedit geo bake-scene` | Expand smooth camera plans and bake declarative world-space map scenes via `MapLibre`. |
+| `vedit geo camera-track` | Measure camera shake in a measured track and optionally write a denoised copy. |
+
+### Media Operations & Preprocessing
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit search-audio` | Search licensed music or SFX catalogs via `AudioCatalogPort`. |
+| `vedit clean-audio` | Denoise spoken audio stems via `MediaOpsPort` (cloud `DeepFilterNet` or local `FFmpeg`). |
+| `vedit reframe` | Apply target aspect-ratio reframing via `MediaOpsPort` (`modal_cloud` or `ffmpeg`). |
+| `vedit remove-background` | Apply cloud background matting via `MediaOpsPort`. |
+| `vedit trim` | Trim clips locally (lossless stream copy by default or frame-accurate). |
+| `vedit remove-silence` | Cut long pauses from a voiceover locally prior to `vedit transcribe`. |
+| `vedit restore-footage` | Stabilize, denoise, and optionally deinterlace raw footage locally with `FFmpeg`. |
+
+### Compilation, Rendering, Interop & Mastering
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit compile` | Compile an `EditPlan` (resolving project-relative assets) into a `HyperFrames` project bundle and run static checks. |
+| `vedit export-otio` | Export an `EditPlan` into an `OpenTimelineIO` (`.otio`) timeline for external NLE review. |
+| `vedit cloud render` | Submit a verified `EditPlan` to `Modal` for distributed rendering, hybrid mastering, and QC. |
+| `vedit master` | Assemble hybrid cuts, composite overlays, and master deliverables against a platform preset with two-pass `-14.0 LUFS` loudnorm. |
+| `vedit audit` | Verify output streams, frame rate, resolution, EBU R128 loudness compliance, black/freeze anomalies, and optional VMAF. |
+
+### System & Registry Inspection
+
+| Command | Purpose |
+| :--- | :--- |
+| `vedit doctor` | Verify local toolchain readiness (`ffmpeg`, `ffprobe`, `vedit-probe`, Node.js, isolated tool venvs, and providers). |
+| `vedit contracts validate` | Validate JSON Schemas, platform mastering presets, and brand trees. |
+| `vedit platforms list` | List available delivery mastering targets. |
+| `vedit providers list` | Inspect configured capability providers and active bindings. |
+| `vedit providers auth` | Inspect credential and authentication readiness for configured providers. |
 
 ## Prerequisites
 
-- **FFmpeg & FFprobe** (tested with FFmpeg 9.x; `scdet`, `blackdetect`, `silencedetect`, and `ebur128` filters enabled)
-- **Rust & Cargo** (`rustc >= 1.85`, Edition 2024)
-- **Python 3.12** managed via `uv`
-- **Node.js >= 22** and `npm`
-- **Modal CLI** *(optional, only required for `vedit cloud render`)*
+- **FFmpeg & FFprobe:** Tested with FFmpeg 9.x (`scdet`, `blackdetect`, `silencedetect`, and `ebur128` filters enabled).
+- **Rust & Cargo:** `rustc >= 1.85` (Edition 2024).
+- **Python:** `>=3.12,<3.14` managed via `uv`.
+- **Node.js & npm:** Node.js `>=22`.
+- **Modal CLI (Optional):** Required only for `vedit cloud render` and `modal_cloud` media operations.
 
 ## Quickstart
 
@@ -87,6 +152,8 @@ uv venv --python 3.12
 uv sync --extra dev
 ```
 
+Include optional extras as needed: `--extra mcp` for the `vedit-mcp` FastMCP server and `--extra interop` for `OpenTimelineIO` export.
+
 ### 3. Install & Test the TypeScript HyperFrames Bridge
 
 ```bash
@@ -99,7 +166,7 @@ npm run typecheck && npm run build && npm test
 
 Copy `config/providers.example.yaml` to `config/providers.yaml` and export the referenced environment variables (never commit credentials or tokens).
 
-If you plan to use optional Modal cloud rendering, authenticate your Modal profile (`modal token set`) and ensure `packages/director-py` is synced with the Modal dependency.
+If using optional `Modal` cloud rendering, authenticate your `Modal` profile (`modal token set`) and ensure `packages/director-py` is synced with the `modal` dependency.
 
 ## Verification
 
@@ -112,6 +179,9 @@ Run the full verification suite across all runtimes from the repository root:
 # TypeScript compiler bridge typecheck, build, and tests
 (cd packages/hf-compiler-ts && npm run typecheck && npm run build && npm test)
 
+# Geo tile server unit tests
+node --test tools/geo-assets/serve_tiles.test.mjs
+
 # Python linting, unit/integration tests, and contract validation
 packages/director-py/.venv/bin/ruff check packages/director-py packages/cloud-modal
 packages/director-py/.venv/bin/pytest -v packages/director-py/tests
@@ -119,3 +189,17 @@ packages/director-py/.venv/bin/vedit contracts validate --json
 packages/director-py/.venv/bin/vedit platforms list
 packages/director-py/.venv/bin/vedit providers list --json
 ```
+
+## Documentation
+
+| Document | Scope |
+| :--- | :--- |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, capability ports, and pipeline invariants. |
+| [`DESIGN.md`](DESIGN.md) | Engine-wide composition, motion, and repository boundary rules. |
+| [`docs/PROJECT_WORKSPACE.md`](docs/PROJECT_WORKSPACE.md) | External project directory contract (`VEDIT_PROJECTS_ROOT`). |
+| [`docs/CLOUD_WORKFLOW.md`](docs/CLOUD_WORKFLOW.md) | End-to-end `EditPlan`, compilation, `Modal` render, and audit workflow. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Architecture milestones and planned capabilities. |
+| [`profiles/README.md`](profiles/README.md) | Separation between platform mastering targets and brand profiles. |
+| [`tools/geo-assets/README.md`](tools/geo-assets/README.md) | Offline geospatial tile grading and `MapLibre` basemap capture contract. |
+| [`tools/rea-video/README.md`](tools/rea-video/README.md) | Isolated forensic video breakdown toolchain setup and usage. |
+| [`tools/spatial-forensics/README.md`](tools/spatial-forensics/README.md) | Isolated spatial, typography, and motion forensics analyzer setup. |
