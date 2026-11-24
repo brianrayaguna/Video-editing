@@ -16,6 +16,11 @@ from vedit.director.exemplar_retrieval import (
 )
 from vedit.director.journey import compile_journey
 from vedit.director.script_readiness import audit_script_readiness
+from vedit.director.semantic_director import (
+    DirectingTier,
+    critique_storyboard_prerender,
+    enrich_storyboard_semantically,
+)
 from vedit.director.storyboard import (
     apply_director_storyboard,
     check_storyboard,
@@ -23,6 +28,7 @@ from vedit.director.storyboard import (
     load_directing_idioms,
     scaffold_storyboard,
 )
+from vedit.providers.registry import build_default_registry
 
 storyboard_app = typer.Typer(
     help="Typed storyboards: auto-direct from a transcript, merge director input, check idioms."
@@ -146,6 +152,18 @@ def storyboard_auto_cmd(
             "--director-file", help="Partial director storyboard merged over the automatic one."
         ),
     ] = None,
+    tier: Annotated[
+        DirectingTier,
+        typer.Option("--tier", help="Directing tier: draft, standard, or flagship."),
+    ] = "draft",
+    use_decision: Annotated[
+        bool,
+        typer.Option("--use-decision", help="Enable DecisionPort semantic enrichment."),
+    ] = False,
+    playbook_file: Annotated[
+        Path | None,
+        typer.Option("--playbook-file", help="Optional editorial_playbook.json for retrieval."),
+    ] = None,
 ) -> None:
     """Direct automatically from narration, then layer optional director input on top.
 
@@ -158,6 +176,20 @@ def storyboard_auto_cmd(
         sb = apply_director_storyboard(sb, _read(director_file))
     if reference:
         sb["directing_source"] = "reference"
+    elif tier != "draft" and use_decision:
+        brand_id = brand or idioms.get("brand_id")
+        pb_path = playbook_file.expanduser() if playbook_file else playbook_path(str(brand_id))
+        ctx = None
+        if pb_path.is_file():
+            ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path))
+        decision_port = build_default_registry().resolve("decision")
+        sb = enrich_storyboard_semantically(
+            sb,
+            idioms,
+            decision_port=decision_port,
+            context=ctx,
+            tier=tier,
+        ).storyboard
     _write(out, sb)
     report = check_storyboard(sb, idioms).to_dict()
     typer.echo(
@@ -166,12 +198,55 @@ def storyboard_auto_cmd(
                 "out": str(out),
                 "beats": len(sb["beats"]),
                 "shape": sb["story"]["shape"],
+                "tier": tier,
                 "score": report["score"],
                 "passed": report["passed"],
             },
             indent=2,
         )
     )
+
+
+@storyboard_app.command("gate-prerender")
+def storyboard_gate_prerender_cmd(
+    storyboard_file: Annotated[Path, typer.Argument(help="Storyboard JSON.")],
+    brand: BrandOpt = None,
+    idioms_file: IdiomsOpt = None,
+    tier: Annotated[
+        DirectingTier, typer.Option("--tier", help="Critique tier: draft, standard, or flagship.")
+    ] = "standard",
+    min_score: Annotated[float, typer.Option("--min-score", help="Fail below score.")] = 75.0,
+    use_decision: Annotated[
+        bool, typer.Option("--use-decision", help="Enable DecisionPort semantic gate scoring.")
+    ] = False,
+    candidates_file: Annotated[
+        Path | None,
+        typer.Option("--candidates-file", help="Optional JSON array of candidate hook dicts."),
+    ] = None,
+) -> None:
+    """Run Gate 1 pre-render deterministic and optional semantic storyboard critique."""
+    sb = _read(storyboard_file)
+    idioms = _idioms(brand, idioms_file, sb)
+    brand_id = brand or sb.get("brand_id")
+    ctx = None
+    if brand_id:
+        pb_path = playbook_path(str(brand_id))
+        if pb_path.is_file():
+            ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path))
+    decision_port = build_default_registry().resolve("decision") if use_decision else None
+    candidates = _read(candidates_file) if candidates_file is not None else None
+    result = critique_storyboard_prerender(
+        sb,
+        idioms,
+        decision_port=decision_port,
+        context=ctx,
+        tier=tier,
+        candidate_hooks=candidates,
+        min_score=min_score,
+    ).to_dict()
+    typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    if not result["passed"]:
+        raise typer.Exit(code=1)
 
 
 @storyboard_app.command("check")
