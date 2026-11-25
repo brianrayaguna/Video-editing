@@ -25,6 +25,7 @@ from vedit.director.semantic_director import (
 from vedit.director.storyboard import (
     apply_director_storyboard,
     check_storyboard,
+    export_shot_list,
     idioms_path,
     load_directing_idioms,
     scaffold_storyboard,
@@ -283,6 +284,20 @@ def storyboard_check_cmd(
     typer.echo(json.dumps(report, indent=2, ensure_ascii=False))
     if not report["passed"] or report["score"] < min_score:
         raise typer.Exit(code=1)
+
+
+@storyboard_app.command("shot-list")
+def storyboard_shot_list_cmd(
+    storyboard_file: Annotated[Path, typer.Argument(help="Storyboard JSON.")],
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Optional shot list JSON path.")
+    ] = None,
+) -> None:
+    """Export a structured production shot list from storyboard beats, shots, and blocking."""
+    shot_list = export_shot_list(_read(storyboard_file))
+    if out is not None:
+        _write(out, shot_list)
+    typer.echo(json.dumps(shot_list, indent=2, ensure_ascii=False))
 
 
 @storyboard_app.command("journey")

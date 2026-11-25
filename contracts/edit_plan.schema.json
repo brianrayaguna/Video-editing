@@ -41,7 +41,7 @@
         "properties": {
           "asset_id": { "type": "string" },
           "sha256": { "type": "string", "minLength": 16, "maxLength": 64, "pattern": "^[0-9a-fA-F]{16,64}$" },
-          "kind": { "type": "string", "enum": ["video", "audio_speech", "audio_bgm", "audio_sfx", "image", "font"] },
+          "kind": { "type": "string", "enum": ["video", "audio_speech", "audio_bgm", "audio_sfx", "audio_ambience", "image", "font"] },
           "path": { "type": "string" },
           "duration_s": { "type": "number", "minimum": 0 },
           "has_audio": { "type": "boolean" }
@@ -69,6 +69,37 @@
           "reframed_to_target": { "type": "boolean", "default": true },
           "scale": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
           "transition_in": { "type": ["string", "null"] },
+          "j_cut_lead_s": { "type": ["number", "null"], "minimum": 0, "maximum": 4.0 },
+          "l_cut_trail_s": { "type": ["number", "null"], "minimum": 0, "maximum": 4.0 },
+          "shot_scale": { "type": ["string", "null"], "enum": ["ews", "ws", "ms", "mcu", "cu", "ecu", null] },
+          "camera_angle": { "type": ["string", "null"], "enum": ["eye_level", "low_angle", "high_angle", "birds_eye", "dutch", null] },
+          "motion_direction": { "type": ["string", "null"], "enum": ["static", "left_to_right", "right_to_left", "push_in", "pull_out", "up", "down", null] },
+          "focal_length_mm": { "type": ["number", "null"], "minimum": 12, "maximum": 600 },
+          "lighting_key": { "type": ["string", "null"], "enum": ["high_key", "normal_key", "low_key", "chiaroscuro", null] },
+          "color_correction": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "exposure_ev": { "type": "number", "minimum": -2.0, "maximum": 2.0 },
+              "contrast": { "type": "number", "minimum": 0.5, "maximum": 1.8 },
+              "saturation": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+              "temperature": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+              "tint": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+              "gamma": { "type": "number", "minimum": 0.5, "maximum": 2.0 },
+              "lift": { "type": ["number", "null"], "minimum": -0.5, "maximum": 0.5 },
+              "gain": { "type": ["number", "null"], "minimum": -0.5, "maximum": 0.5 }
+            }
+          },
+          "color_grade": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "preset": { "type": ["string", "null"], "enum": ["neutral", "catastrophe_warm", "dread_dim_vignette", "anomaly_desat", "archival_sepia", "cool_investigative", null] },
+              "lut_path": { "type": ["string", "null"] },
+              "vignette_strength": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+              "intensity": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+            }
+          },
           "subject_safe_boxes": {
             "type": "array",
             "items": {
@@ -100,6 +131,12 @@
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "transparent": { "type": "boolean" },
           "safe_band": { "type": "string", "enum": ["lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"] },
+          "blend_mode": { "type": ["string", "null"], "enum": ["normal", "screen", "multiply", "overlay", "lighten", null] },
+          "matte_mode": { "type": ["string", "null"], "enum": ["none", "alpha_matte", "luma_matte", "inverted_alpha", null] },
+          "parent_overlay_id": { "type": ["string", "null"] },
+          "motion_register": { "type": ["string", "null"], "enum": ["documentary", "wry", "comic", null] },
+          "anticipation_ms": { "type": ["integer", "null"], "minimum": 0, "maximum": 250 },
+          "overlap_stagger_ms": { "type": ["integer", "null"], "minimum": 0, "maximum": 250 },
           "template_id": { "type": "string", "minLength": 1 },
           "variables": { "type": "object" },
           "track_keyframes": {
@@ -117,7 +154,9 @@
                 "rotation_deg": { "type": "number" },
                 "rotateX_deg": { "type": "number", "minimum": -75, "maximum": 75 },
                 "perspective_px": { "type": "number", "exclusiveMinimum": 0 },
-                "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+                "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+                "curve": { "type": ["string", "null"], "enum": ["linear", "arc_up", "arc_down", "ease_out", "ease_in_out", null] },
+                "arc_height_px": { "type": ["number", "null"], "minimum": -400, "maximum": 400 }
               }
             }
           },
@@ -134,14 +173,26 @@
         "properties": {
           "track_id": { "type": "string" },
           "asset_id": { "type": "string" },
-          "audio_group": { "type": "string", "enum": ["voiceover", "music", "sfx", "program_mix"] },
+          "audio_group": { "type": "string", "enum": ["voiceover", "music", "sfx", "ambience", "room_tone", "program_mix"] },
           "timeline_start_s": { "type": "number", "minimum": 0 },
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "source_start_s": { "type": "number", "minimum": 0 },
           "gain_db": { "type": "number", "minimum": -60, "maximum": 24 },
           "carve_against_group": { "type": ["string", "null"] },
           "carve_strength": { "type": "number", "minimum": 0, "maximum": 1 },
-          "cleaned_speech_stem": { "type": "boolean" }
+          "cleaned_speech_stem": { "type": "boolean" },
+          "diegetic": { "type": ["boolean", "null"] },
+          "layer_role": { "type": ["string", "null"], "enum": ["sub", "body", "detail", "tail", "riser", "drone", "pulse", "stinger", "hit", null] },
+          "pan": { "type": ["number", "null"], "minimum": -1.0, "maximum": 1.0 },
+          "reverb_preset": { "type": ["string", "null"], "enum": ["dry", "close", "medium", "wide", null] },
+          "fade_in_s": { "type": ["number", "null"], "minimum": 0 },
+          "fade_out_s": { "type": ["number", "null"], "minimum": 0 },
+          "highpass_hz": { "type": ["number", "null"], "minimum": 20, "maximum": 2000 },
+          "lowpass_hz": { "type": ["number", "null"], "minimum": 80, "maximum": 20000 },
+          "split_edit_role": { "type": ["string", "null"], "enum": ["j_cut", "l_cut", null] },
+          "split_edit_offset_s": { "type": ["number", "null"], "minimum": -5.0, "maximum": 5.0 },
+          "haas_delay_ms": { "type": ["number", "null"], "minimum": 0, "maximum": 25.0 },
+          "reverb_pan": { "type": ["number", "null"], "minimum": -1.0, "maximum": 1.0 }
         }
       }
     },

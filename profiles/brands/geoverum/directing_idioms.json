@@ -182,6 +182,61 @@
         "scale_ruler_min_top_pct": 0.12
       },
       "rationale": "Callouts and measurement rulers remain inside broadcast safe margins and avoid clipping near top or side frame edges."
+    },
+    {
+      "idiom_id": "curiosity_loops_closed",
+      "severity": "error",
+      "weight": 0.85,
+      "params": {
+        "min_deferred_span_s": 15.0
+      },
+      "rationale": "Every opened curiosity loop in story.curiosity_loops must pay off after its opening beat, with at least one loop sustaining tension past the hook."
+    },
+    {
+      "idiom_id": "tension_arc_dynamic",
+      "severity": "warning",
+      "weight": 0.7,
+      "params": {
+        "min_range": 0.25
+      },
+      "rationale": "Beat tension levels must span an expressive dynamic range rather than remaining flat."
+    },
+    {
+      "idiom_id": "shot_direction_continuity",
+      "severity": "warning",
+      "weight": 0.55,
+      "params": {},
+      "rationale": "Consecutive shots with directional motion should avoid unmotivated horizontal direction reversals across a cut."
+    },
+    {
+      "idiom_id": "split_edit_bounds",
+      "severity": "error",
+      "weight": 0.6,
+      "params": {
+        "max_offset_s": 2.5
+      },
+      "rationale": "J-cut and L-cut split edits must stay within safe timing handles and never pre-lap before timeline zero."
+    },
+    {
+      "idiom_id": "narrative_framework_structure",
+      "severity": "warning",
+      "weight": 0.55,
+      "params": {},
+      "rationale": "Explicit narrative frameworks (three_act, story_circle, frame_narrative) should preserve structural proportions and ordered beat progression."
+    },
+    {
+      "idiom_id": "subtext_and_arc_coherence",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {},
+      "rationale": "Character arcs must register a genuine state shift and subtext notes must convey implied meaning beyond literal line restatement."
+    },
+    {
+      "idiom_id": "blocking_axis_continuity",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": {},
+      "rationale": "Spatial blocking maintains consistent screen-axis side across cuts without abrupt unmotivated 180-degree flips."
     }
   ],
   "device_classes": {
@@ -923,19 +978,9 @@
   },
   "critique_rubric": [
     {
-      "criterion_id": "single_reading_order",
-      "question": "In each frame, is there exactly one dominant element (route head or the beat's focal device), with labels and captions clearly secondary?",
-      "weight": 0.9,
-      "fail_signs": [
-        "two equally loud callouts",
-        "labels brighter than the route",
-        "caption colour competing with the focal colour"
-      ]
-    },
-    {
       "criterion_id": "narration_visual_match",
-      "question": "Does what is on screen at each timestamp show what the caption at that timestamp is saying (place, number, obstacle)?",
-      "weight": 0.9,
+      "question": "Does what is on screen at each timestamp perform the emotional truth and show what the narration at that timestamp is saying (place, number, obstacle)?",
+      "weight": 1.0,
       "fail_signs": [
         "place named but not visible",
         "number spoken but not shown",
@@ -944,30 +989,37 @@
       ]
     },
     {
-      "criterion_id": "layout_tidiness",
-      "question": "Are callouts clear of the caption band, clear of the route head and the next second of route, inside side margins, and not overlapping each other?",
-      "weight": 0.8,
+      "criterion_id": "variety_and_escalation",
+      "question": "Do consecutive obstacles or reasons escalate in emotional and visual intensity, with the strongest moment getting the richest surface?",
+      "weight": 0.9,
       "fail_signs": [
-        "overlap in grid cells shared with captions",
-        "callout covering the head",
-        "scale ruler crowded against top edge",
-        "text cut at the frame edge"
+        "same fill colour twice in a row",
+        "climax visually flatter than setup"
       ]
     },
     {
-      "criterion_id": "scale_legibility",
-      "question": "Are route stroke, avatars, icons and numerals large enough to read on a phone (route never a hairline, markers not tiny)?",
-      "weight": 0.7,
+      "criterion_id": "single_reading_order",
+      "question": "In each frame, is there exactly one dominant element (route head or the beat's focal device), with labels and captions clearly secondary?",
+      "weight": 0.85,
       "fail_signs": [
-        "route thinner than 4 px",
-        "icons under 100 px",
-        "numerals smaller than captions"
+        "two equally loud callouts",
+        "labels brighter than the route",
+        "caption colour competing with the focal colour"
+      ]
+    },
+    {
+      "criterion_id": "eye_trace_continuity",
+      "question": "Across consecutive cuts and beats, does the viewer's eye focus carry smoothly from one focal point to the next without jarring diagonal jumps unless motivated by a reveal?",
+      "weight": 0.75,
+      "fail_signs": [
+        "focal point teleports across opposite frame corners on rapid cuts",
+        "unmotivated horizontal screen-direction reversal"
       ]
     },
     {
       "criterion_id": "camera_smoothness",
       "question": "Across consecutive sheet frames, does the camera move in one purposeful direction per beat without wobble, arrive at each framing without a velocity corner, keep map frames sharp at every speed, and keep the subject in the middle 60 % of the frame?",
-      "weight": 0.8,
+      "weight": 0.7,
       "fail_signs": [
         "subject drifting to the edge",
         "back-and-forth framing between adjacent frames",
@@ -979,18 +1031,30 @@
       ]
     },
     {
-      "criterion_id": "variety_and_escalation",
-      "question": "Do consecutive obstacles or reasons use visibly different treatments, with the strongest moment getting the richest surface?",
+      "criterion_id": "layout_tidiness",
+      "question": "Are callouts clear of the caption band, clear of the route head and the next second of route, inside side margins, and not overlapping each other?",
+      "weight": 0.65,
+      "fail_signs": [
+        "overlap in grid cells shared with captions",
+        "callout covering the head",
+        "scale ruler crowded against top edge",
+        "text cut at the frame edge"
+      ]
+    },
+    {
+      "criterion_id": "scale_legibility",
+      "question": "Are route stroke, avatars, icons and numerals large enough to read on a phone (route never a hairline, markers not tiny)?",
       "weight": 0.6,
       "fail_signs": [
-        "same fill colour twice in a row",
-        "climax visually flatter than setup"
+        "route thinner than 4 px",
+        "icons under 100 px",
+        "numerals smaller than captions"
       ]
     },
     {
       "criterion_id": "brand_finish",
       "question": "Are colours, typography and chrome consistent with the brand craft (plain captions, no pills or HUD boxes, saturated focal colour on a calm basemap)?",
-      "weight": 0.6,
+      "weight": 0.55,
       "fail_signs": [
         "boxed captions",
         "low-contrast caption shadow over bright snow or ocean",
@@ -1001,7 +1065,7 @@
     {
       "criterion_id": "territory_reveal",
       "question": "When a territory or border is introduced, does its outline draw on along the real perimeter before the fill or flag appears, with the finished outline matching the static rim? Score 1 when the film introduces no territory.",
-      "weight": 0.6,
+      "weight": 0.55,
       "fail_signs": [
         "outline appearing whole in one frame",
         "fill or flag visible before the outline closes",

@@ -24,6 +24,22 @@ from vedit.director.camera_moves import (
     expand_move_plan,
     smooth_scene_keys,
 )
+from vedit.mastering.ffmpeg_master import _is_finite_loudnorm_val, _parse_loudnorm_json
+from vedit.mastering.sound_design import (
+    LOUDNESS_PROFILES,
+    build_psychoacoustic_bgm_chain,
+    pan_to_ffmpeg_filter,
+    plan_narrative_audio_cues,
+    synthesize_ambience_layers,
+    synthesize_four_layer_impact,
+    synthesize_granular_pad,
+    synthesize_narrative_bgm,
+    synthesize_room_tone_bed,
+    synthesize_shepard_riser,
+    synthesize_stinger,
+    synthesize_tension_drone,
+    synthesize_whoosh,
+)
 
 geo_app = typer.Typer(
     help="Prepare offline AOI satellite tiles/GeoJSON vectors and bake declarative map scenes."
@@ -1622,14 +1638,65 @@ def geo_mix_audio_cmd(
     bgm_gain_db: Annotated[
         float, typer.Option("--bgm-gain-db", help="Base BGM attenuation before sidechain ducking.")
     ] = -16.0,
+    storyboard_file: Annotated[
+        Path | None,
+        typer.Option("--storyboard-file", help="Optional storyboard JSON for adaptive cues."),
+    ] = None,
+    loudness_profile: Annotated[
+        str,
+        typer.Option(
+            "--loudness-profile",
+            help=(
+                "Target loudness profile: streaming_web, podcast_video, broadcast_ebu_r128, "
+                "broadcast_atsc_a85, cinema_streaming_dialogue, cinema_trailer."
+            ),
+        ),
+    ] = "streaming_web",
+    narrative_fx: Annotated[
+        bool,
+        typer.Option(
+            "--narrative-fx/--no-narrative-fx",
+            help=(
+                "Layer Shepard risers, tension drones, impacts, stingers, whooshes, "
+                "and silence drop-outs."
+            ),
+        ),
+    ] = True,
+    room_tone: Annotated[
+        bool,
+        typer.Option(
+            "--room-tone/--no-room-tone",
+            help="Layer a subtle continuous room-tone floor under speech breaks.",
+        ),
+    ] = True,
+    room_tone_db: Annotated[
+        float,
+        typer.Option("--room-tone-db", help="Level of synthesized room-tone floor in dBFS."),
+    ] = -48.0,
 ) -> None:
-    """Mix voiceover + ducked documentary BGM + scene-synced kinetic SFX to -14 LUFS."""
+    """Mix voiceover + ducked documentary BGM + scene-synced kinetic SFX with two-pass loudnorm."""
     root = find_repo_root()
     sfx_dir = root / "assets" / "audio" / "sfx"
     spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
+    sb_data = (
+        json.loads(storyboard_file.expanduser().resolve().read_text(encoding="utf-8"))
+        if storyboard_file is not None
+        else None
+    )
     vo_path = voice_file.expanduser().resolve()
     out_path = out_file.expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lp_key = loudness_profile.strip().lower()
+    if lp_key not in LOUDNESS_PROFILES:
+        raise typer.BadParameter(
+            f"Unknown --loudness-profile {loudness_profile!r}; "
+            f"expected one of: {', '.join(sorted(LOUDNESS_PROFILES))}"
+        )
+    prof = LOUDNESS_PROFILES[lp_key]
+    target_i = prof.target_lufs
+    target_tp = round(min(prof.max_true_peak_dbtp - 0.15, -1.05), 2)
+    target_lra = prof.target_lra
 
     # Probe exact voiceover duration
     dur_proc = subprocess.run(
@@ -1649,19 +1716,139 @@ def geo_mix_audio_cmd(
     )
     duration_s = float(dur_proc.stdout.strip())
 
-    tmp_bgm: Path | None = None
-    try:
+    cues = (
+        plan_narrative_audio_cues(spec, storyboard=sb_data)
+        if narrative_fx
+        else {
+            "risers": [],
+            "drones": [],
+            "impacts": [],
+            "stingers": [],
+            "whooshes": [],
+            "ambience": [],
+            "silence_dropouts": [],
+            "section_timeline": [],
+            "cue_clustering_warnings": [],
+        }
+    )
+
+    with tempfile.TemporaryDirectory(prefix="vedit_geo_mix_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
         if bgm_file is not None:
             bgm_path = bgm_file.expanduser().resolve()
         else:
-            tmp_bgm = out_path.with_suffix(".bgm_bed.wav")
-            bgm_path = synthesize_documentary_bgm(duration_s + 0.5, tmp_bgm)
+            bgm_path = tmp_path / "narrative_bgm.wav"
+            synthesize_narrative_bgm(
+                duration_s + 0.5,
+                bgm_path,
+                section_timeline=cues["section_timeline"] or None,
+                silence_dropouts=cues["silence_dropouts"] or None,
+            )
 
         events = [
             ev
             for ev in derive_sfx_events_from_scene(spec)
             if ev["t_s"] < duration_s - 0.15 and (sfx_dir / ev["sfx"]).is_file()
         ]
+        extra_fx: list[dict[str, Any]] = []
+        for idx, r_ev in enumerate(cues["risers"]):
+            if r_ev["start_s"] + r_ev["duration_s"] <= duration_s:
+                r_wav = tmp_path / f"riser_{idx}.wav"
+                synthesize_shepard_riser(r_ev["duration_s"], r_wav)
+                extra_fx.append(
+                    {
+                        "t_s": r_ev["start_s"],
+                        "path": r_wav,
+                        "gain_db": r_ev["gain_db"],
+                        "pan": 0.0,
+                    }
+                )
+        for idx, d_ev in enumerate(cues["drones"]):
+            if d_ev["start_s"] < duration_s - 0.2:
+                d_wav = tmp_path / f"drone_{idx}.wav"
+                d_len = min(d_ev["duration_s"], duration_s - d_ev["start_s"])
+                if d_ev.get("texture") == "granular":
+                    synthesize_granular_pad(d_len, d_wav)
+                else:
+                    synthesize_tension_drone(d_len, d_wav)
+                extra_fx.append(
+                    {
+                        "t_s": d_ev["start_s"],
+                        "path": d_wav,
+                        "gain_db": d_ev["gain_db"],
+                        "pan": 0.0,
+                    }
+                )
+        for idx, a_ev in enumerate(cues.get("ambience") or []):
+            if a_ev["start_s"] < duration_s - 0.2:
+                a_wav = tmp_path / f"amb_{idx}.wav"
+                a_len = min(a_ev["duration_s"], duration_s - a_ev["start_s"])
+                synthesize_ambience_layers(a_len, a_wav, level_db=-24.0)
+                extra_fx.append(
+                    {
+                        "t_s": a_ev["start_s"],
+                        "path": a_wav,
+                        "gain_db": a_ev.get("gain_db", -20.0),
+                        "pan": float(a_ev.get("pan") or 0.0),
+                    }
+                )
+        for idx, imp_ev in enumerate(cues.get("impacts") or []):
+            if imp_ev["start_s"] < duration_s - 0.2:
+                i_wav = tmp_path / f"impact_{idx}.wav"
+                synthesize_four_layer_impact(
+                    i_wav,
+                    character=str(imp_ev.get("character") or "verdict"),  # type: ignore[arg-type]
+                )
+                extra_fx.append(
+                    {
+                        "t_s": imp_ev["start_s"],
+                        "path": i_wav,
+                        "gain_db": imp_ev.get("gain_db", -13.0),
+                        "pan": float(imp_ev.get("pan") or 0.0),
+                    }
+                )
+        for idx, st_ev in enumerate(cues.get("stingers") or []):
+            if st_ev["start_s"] < duration_s - 0.2:
+                st_wav = tmp_path / f"stinger_{idx}.wav"
+                synthesize_stinger(
+                    st_wav,
+                    style=str(st_ev.get("style") or "reveal"),  # type: ignore[arg-type]
+                )
+                extra_fx.append(
+                    {
+                        "t_s": st_ev["start_s"],
+                        "path": st_wav,
+                        "gain_db": st_ev.get("gain_db", -15.5),
+                        "pan": 0.0,
+                    }
+                )
+        for idx, wh_ev in enumerate(cues.get("whooshes") or []):
+            if wh_ev["start_s"] < duration_s - 0.15:
+                w_wav = tmp_path / f"whoosh_{idx}.wav"
+                synthesize_whoosh(
+                    float(wh_ev.get("duration_s") or 0.4),
+                    w_wav,
+                    direction=str(wh_ev.get("direction") or "in"),  # type: ignore[arg-type]
+                )
+                extra_fx.append(
+                    {
+                        "t_s": wh_ev["start_s"],
+                        "path": w_wav,
+                        "gain_db": wh_ev.get("gain_db", -15.0),
+                        "pan": 0.0,
+                    }
+                )
+        if room_tone:
+            room_wav = tmp_path / "room_tone.wav"
+            synthesize_room_tone_bed(duration_s, room_wav, level_db=room_tone_db)
+            extra_fx.append(
+                {
+                    "t_s": 0.0,
+                    "path": room_wav,
+                    "gain_db": 0.0,
+                    "pan": 0.0,
+                }
+            )
 
         cmd: list[str] = [
             "ffmpeg",
@@ -1673,26 +1860,35 @@ def geo_mix_audio_cmd(
             "-i",
             str(bgm_path),
         ]
-        for ev in events:
-            cmd.extend(["-i", str(sfx_dir / ev["sfx"])])
+        all_sfx = [
+            {"t_s": ev["t_s"], "path": sfx_dir / ev["sfx"], "gain_db": ev["gain_db"], "pan": 0.0}
+            for ev in events
+        ] + extra_fx
+        for ev in all_sfx:
+            cmd.extend(["-i", str(ev["path"])])
 
         chains = [
-            "[0:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[vo_dry][vo_sc_raw]",
+            "[0:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=75,asplit=2[vo_dry][vo_sc_raw]",
             f"[vo_sc_raw]apad,atrim=0:{duration_s:.3f}[vo_sc]",
             f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{duration_s:.3f},"
-            f"volume={bgm_gain_db:.1f}dB,equalizer=f=2200:t=o:w=1.2:g=-4.5[bgm_eq]",
-            "[bgm_eq][vo_sc]sidechaincompress=threshold=0.025:ratio=6:attack=20:release=260:makeup=1[bgm_bus]",
+            f"volume={bgm_gain_db:.1f}dB[bgm_raw]",
+            build_psychoacoustic_bgm_chain("[bgm_raw]", "[vo_sc]", "[bgm_bus]", carve_strength=0.9),
         ]
         mix_inputs = ["[vo_dry]", "[bgm_bus]"]
-        if events:
+        if all_sfx:
             sfx_tags: list[str] = []
-            for idx, ev in enumerate(events):
+            for idx, ev in enumerate(all_sfx):
                 inp = idx + 2
                 ms = round(ev["t_s"] * 1000)
                 tag = f"[s{idx}]"
+                pan_part = (
+                    f",{pan_to_ffmpeg_filter(float(ev['pan']))}"
+                    if abs(float(ev.get("pan") or 0.0)) > 0.01
+                    else ""
+                )
                 chains.append(
-                    f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo,"
-                    f"volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
+                    f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo"
+                    f"{pan_part},volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
                 )
                 sfx_tags.append(tag)
             if len(sfx_tags) == 1:
@@ -1705,14 +1901,15 @@ def geo_mix_audio_cmd(
 
         chains.append(
             f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:normalize=0,"
-            "loudnorm=I=-14.0:TP=-1.5:LRA=7,alimiter=limit=-1.0dB:level=disabled[out_a]"
+            f"apad,atrim=0:{duration_s:.3f}[mixed_a]"
         )
+        pre_wav = tmp_path / "pre_norm.wav"
         cmd.extend(
             [
                 "-filter_complex",
                 ";".join(chains),
                 "-map",
-                "[out_a]",
+                "[mixed_a]",
                 "-t",
                 f"{duration_s:.3f}",
                 "-ar",
@@ -1720,8 +1917,8 @@ def geo_mix_audio_cmd(
                 "-ac",
                 "2",
                 "-c:a",
-                "pcm_s16le",
-                str(out_path),
+                "pcm_f32le",
+                str(pre_wav),
             ]
         )
         proc = subprocess.run(
@@ -1737,9 +1934,80 @@ def geo_mix_audio_cmd(
             raise RuntimeError(
                 f"ffmpeg mix-audio failed (exit {proc.returncode}): " + " | ".join(err_tail)
             )
-    finally:
-        if tmp_bgm is not None:
-            tmp_bgm.unlink(missing_ok=True)
+
+        # Two-pass linear loudnorm (Pass 1 measure -> Pass 2 linear scale + limiter).
+        pass1 = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                "-i",
+                str(pre_wav),
+                "-af",
+                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        meas = _parse_loudnorm_json(pass1.stderr) if pass1.returncode == 0 else None
+        can_two_pass = meas is not None and all(
+            _is_finite_loudnorm_val(v)
+            for v in (
+                meas.input_i,
+                meas.input_tp,
+                meas.input_lra,
+                meas.input_thresh,
+                meas.target_offset,
+            )
+        )
+        lim_db = prof.max_true_peak_dbtp
+        af_pass2 = (
+            (
+                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:"
+                f"measured_I={meas.input_i}:measured_TP={meas.input_tp}:"
+                f"measured_LRA={meas.input_lra}:measured_thresh={meas.input_thresh}:"
+                f"offset={meas.target_offset}:linear=true:print_format=summary,"
+                f"alimiter=limit={lim_db:.1f}dB:level=disabled"
+            )
+            if can_two_pass and meas is not None
+            else (
+                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra},"
+                f"alimiter=limit={lim_db:.1f}dB:level=disabled"
+            )
+        )
+        pass2 = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                "-i",
+                str(pre_wav),
+                "-af",
+                af_pass2,
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-c:a",
+                "pcm_s16le",
+                str(out_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        if pass2.returncode != 0:
+            err_tail = (pass2.stderr or "").strip().splitlines()[-12:]
+            raise RuntimeError(
+                f"ffmpeg mix-audio loudnorm pass 2 failed (exit {pass2.returncode}): "
+                + " | ".join(err_tail)
+            )
 
     typer.echo(
         json.dumps(
@@ -1748,7 +2016,17 @@ def geo_mix_audio_cmd(
                 "out_file": str(out_path),
                 "duration_s": round(duration_s, 3),
                 "sfx_count": len(events),
-                "bgm_source": str(bgm_file) if bgm_file else "synthesized_ambient_bed",
+                "riser_count": len(cues["risers"]),
+                "drone_count": len(cues["drones"]),
+                "impact_count": len(cues.get("impacts") or []),
+                "stinger_count": len(cues.get("stingers") or []),
+                "whoosh_count": len(cues.get("whooshes") or []),
+                "silence_dropouts": len(cues["silence_dropouts"]),
+                "room_tone_enabled": room_tone,
+                "cue_clustering_warnings": cues.get("cue_clustering_warnings") or [],
+                "two_pass_loudnorm": can_two_pass,
+                "loudness_profile": lp_key,
+                "bgm_source": str(bgm_file) if bgm_file else "synthesized_narrative_bed",
             },
             indent=2,
         )

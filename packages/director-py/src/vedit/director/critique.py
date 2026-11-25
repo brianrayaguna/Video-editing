@@ -21,6 +21,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from vedit.analyzers.editorial_forensics import (
+    analyze_cross_cut_continuity,
+    compute_multimodal_tension_curve,
+)
 from vedit.director.camera_moves import camera_jitter_report
 from vedit.director.storyboard import (
     _device_lead_window,
@@ -244,6 +248,21 @@ def build_critique_packet(
         shake["zoom_flips_per_30s"] = round(shake["zoom_reversals"] * 30.0 / span_s, 2)
         shake["passed"] = shake["pan_flips_per_15s"] <= 1.0 and shake["zoom_flips_per_30s"] <= 1.0
         packet["deterministic"]["camera"] = shake
+    if video is not None and cuts:
+        cont = analyze_cross_cut_continuity(video, [float(c) for c in cuts]).to_dict()
+        packet["deterministic"]["editorial_continuity"] = cont
+    if storyboard is not None or (video is not None and cuts):
+        est_dur = (
+            float(storyboard.get("duration_s") or 0.0)
+            if storyboard is not None
+            else (_duration(video) if video is not None else 0.0)
+        )
+        if est_dur > 0.0:
+            packet["deterministic"]["tension_curve"] = compute_multimodal_tension_curve(
+                est_dur,
+                storyboard=storyboard,
+                cuts_s=[float(c) for c in (cuts or [])],
+            ).to_dict()
     if video is not None and sheets_dir is not None:
         if storyboard is not None:
             samples = beat_samples(storyboard)

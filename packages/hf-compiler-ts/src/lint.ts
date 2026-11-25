@@ -75,6 +75,22 @@ export function lintPlanPerformance(plan: EditPlan): PerformanceFinding[] {
     if (ov.variables) {
       scanValueForCssBlur(ov.variables, `overlay[${ov.overlay_id}].variables`, findings);
     }
+    if (
+      ov.timeline_duration_s < 0.45 &&
+      (ov.kind === "caption_rail" || ov.kind === "kinetic_callout" || ov.kind === "data_card")
+    ) {
+      const txtRaw = String(
+        ov.props.text ?? ov.props.headline ?? (ov.variables?.text ?? ov.variables?.headline ?? "")
+      ).trim();
+      const words = txtRaw ? txtRaw.split(/\s+/).length : 0;
+      if (words > 3) {
+        findings.push({
+          code: "KINETIC_LEGIBILITY_DURATION",
+          message: `Text overlay displays ${words} words for ${ov.timeline_duration_s.toFixed(2)}s (< 0.45s); may be unreadable in motion.`,
+          location: `overlay[${ov.overlay_id}]`,
+        });
+      }
+    }
   }
   return findings;
 }
@@ -129,11 +145,13 @@ export async function lintHyperframesProjectDir(
     }
   }
 
-  const totalErrors = projectLint.totalErrors + perfFindings.length;
+  const fatalPerf = perfFindings.filter((f) => f.code !== "KINETIC_LEGIBILITY_DURATION");
+  const warnPerfCount = perfFindings.length - fatalPerf.length;
+  const totalErrors = projectLint.totalErrors + fatalPerf.length;
   return {
     ok: totalErrors === 0,
     totalErrors,
-    totalWarnings: projectLint.totalWarnings,
+    totalWarnings: projectLint.totalWarnings + warnPerfCount,
     performanceViolations: perfFindings,
     hyperframesFindings: flattened,
   };

@@ -29,9 +29,28 @@ from vedit.metrics import NormRect, intervals_overlap, resolve_overlay_rect
 from vedit.models import (
     BrandStylePolicy,
     BrandTemplateCatalog,
+    ColorGradeSpec,
     OverlayCompositionOp,
     SafeZoneMargins,
+    VideoClipOp,
 )
+
+COLOR_MOOD_TO_GRADE_PRESET: dict[str, str] = {
+    "neutral": "neutral",
+    "catastrophe_warm": "catastrophe_warm",
+    "dread_dim_vignette": "dread_dim_vignette",
+    "anomaly_desat": "anomaly_desat",
+    "archival_sepia": "archival_sepia",
+    "cool_investigative": "cool_investigative",
+}
+
+_SHOT_LIGHTING_TO_KEY: dict[str, str] = {
+    "natural": "normal_key",
+    "high_key": "high_key",
+    "low_key": "low_key",
+    "silhouette": "low_key",
+    "chiaroscuro": "chiaroscuro",
+}
 
 _NUM = re.compile(r"\d[\d.,]*%?")
 _YEAR = re.compile(r"\b(1[5-9]\d\d|20\d\d)\b")
@@ -144,6 +163,11 @@ def storyboard_overlays(
         box = _anchor_box(bound, safe_zone, variables=variables)
         if box is not None:
             props["box"] = box
+        reg_raw = str(beat.get("register") or "").strip().lower()
+        motion_reg = reg_raw if reg_raw in {"documentary", "wry", "comic"} else None
+        bmode_raw = str(beat.get("blend_mode") or "").strip().lower()
+        allowed_blends = {"normal", "screen", "multiply", "overlay", "lighten"}
+        blend_mode = bmode_raw if bmode_raw in allowed_blends else None
         overlays.append(
             OverlayCompositionOp(
                 overlay_id=f"sb_{beat['beat_id']}",
@@ -152,6 +176,8 @@ def storyboard_overlays(
                 timeline_duration_s=round(dur, 3),
                 transparent=kind not in _FULLSCREEN_KINDS or kind == "title_scene",
                 safe_band=band,
+                blend_mode=blend_mode,  # type: ignore[arg-type]
+                motion_register=motion_reg,  # type: ignore[arg-type]
                 template_id=entry.template_id,
                 variables=variables,
                 props=props,
@@ -279,3 +305,53 @@ def check_realization_catalog(idioms: dict[str, Any], catalog: BrandTemplateCata
     if idioms.get("device_realization") and missing:
         errors.append(f"devices without a realisation: {missing}")
     return errors
+
+
+def apply_storyboard_to_clips(
+    clips: list[VideoClipOp],
+    storyboard: dict[str, Any],
+) -> list[VideoClipOp]:
+    """Propagate beat `shot`, `split_edit`, and `color_mood` metadata onto `VideoClipOp`s."""
+    beats = sorted(storyboard.get("beats") or [], key=lambda b: float(b.get("start_s", 0.0)))
+    if not beats:
+        return clips
+
+    updated: list[VideoClipOp] = []
+    for idx, clip in enumerate(clips):
+        mid = clip.timeline_start_s + clip.timeline_duration_s * 0.5
+        beat = next(
+            (b for b in beats if float(b.get("start_s", 0.0)) <= mid <= float(b.get("end_s", 0.0))),
+            None,
+        )
+        if beat is None:
+            beat = min(beats, key=lambda b: abs(float(b.get("start_s", 0.0)) - mid))
+
+        patch: dict[str, Any] = {}
+        shot = beat.get("shot") or {}
+        if isinstance(shot, dict):
+            if clip.shot_scale is None and shot.get("scale"):
+                patch["shot_scale"] = shot["scale"]
+            if clip.camera_angle is None and shot.get("angle"):
+                patch["camera_angle"] = shot["angle"]
+            if clip.motion_direction is None and shot.get("motion_direction"):
+                patch["motion_direction"] = shot["motion_direction"]
+            mapped_light = _SHOT_LIGHTING_TO_KEY.get(str(shot.get("lighting") or ""))
+            if clip.lighting_key is None and mapped_light:
+                patch["lighting_key"] = mapped_light
+
+        se = beat.get("split_edit")
+        if isinstance(se, dict):
+            off = float(se.get("offset_s", 0.0))
+            kind = str(se.get("kind") or "")
+            if kind == "j_cut" and idx > 0 and clip.j_cut_lead_s is None:
+                patch["j_cut_lead_s"] = round(min(off, clip.timeline_start_s), 3)
+            elif kind == "l_cut" and clip.l_cut_trail_s is None:
+                patch["l_cut_trail_s"] = round(min(4.0, max(0.0, off)), 3)
+
+        cmood = str(beat.get("color_mood") or "").strip().lower()
+        preset = COLOR_MOOD_TO_GRADE_PRESET.get(cmood)
+        if preset and preset != "neutral" and clip.color_grade is None:
+            patch["color_grade"] = ColorGradeSpec(preset=preset, intensity=0.8)  # type: ignore[arg-type]
+
+        updated.append(clip.model_copy(update=patch) if patch else clip)
+    return updated

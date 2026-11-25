@@ -19,7 +19,19 @@ from vedit.mastering.ass_captions import (
     partition_overlays_for_hybrid,
     write_ass_overlays_file,
 )
-from vedit.models import AudioTrackOp, EditPlan, PlatformTarget
+from vedit.mastering.sound_design import (
+    build_layer_band_filter,
+    build_psychoacoustic_bgm_chain,
+    resolve_loudness_profile,
+)
+from vedit.models import (
+    AudioTrackOp,
+    ColorCorrectionSpec,
+    ColorGradeSpec,
+    EditPlan,
+    PlatformTarget,
+    VideoClipOp,
+)
 
 _LOUDNORM_JSON_RE = re.compile(r"\{[^{}]*\"input_i\"[^{}]*\}", re.S)
 
@@ -92,26 +104,105 @@ def _build_track_chain(
         f"atrim=start={track.source_start_s:.4f}:duration={track.timeline_duration_s:.4f}",
         "asetpts=PTS-STARTPTS",
         "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
-        f"volume={track.gain_db:.2f}dB",
     ]
+    if track.audio_group == "voiceover" and track.highpass_hz is None:
+        parts.append("highpass=f=75")
+    parts.extend(build_layer_band_filter(track))
+    parts.append(f"volume={track.gain_db:.2f}dB")
     if delay_ms > 0:
         parts.append(f"adelay={delay_ms}|{delay_ms}")
     return f"[{input_index}:a]{','.join(parts)}[{label}]"
 
 
+def _derive_split_edit_audio_tracks(
+    plan: EditPlan,
+    assets_by_id: dict[str, Path],
+) -> list[AudioTrackOp]:
+    """Derive J-cut/L-cut audio pre-lap and post-lap tracks from clip split-edit metadata."""
+    assets_meta = {a.asset_id: a for a in plan.assets}
+    derived: list[AudioTrackOp] = []
+    for clip in sorted(plan.video_tracks, key=lambda c: c.timeline_start_s):
+        j_lead = float(clip.j_cut_lead_s or 0.0)
+        l_trail = float(clip.l_cut_trail_s or 0.0)
+        if j_lead <= 0.01 and l_trail <= 0.01:
+            continue
+        asset_ref = assets_meta.get(clip.asset_id)
+        src_path = assets_by_id.get(clip.asset_id)
+        if (
+            asset_ref is None
+            or not asset_ref.has_audio
+            or src_path is None
+            or not src_path.is_file()
+        ):
+            continue
+        clip_end = clip.timeline_start_s + clip.timeline_duration_s
+        covered_by_track = any(
+            t.asset_id == clip.asset_id
+            and (
+                t.split_edit_role in ("j_cut", "l_cut")
+                or (
+                    t.timeline_start_s <= clip.timeline_start_s + 0.05
+                    and (t.timeline_start_s + t.timeline_duration_s) >= clip_end - 0.05
+                )
+            )
+            for t in plan.audio_tracks
+        )
+        if covered_by_track:
+            continue
+
+        # Clamp lead/trail against timeline and source media boundaries.
+        max_lead = min(j_lead, clip.timeline_start_s, clip.source_start_s)
+        max_end = plan.duration_s
+        if asset_ref.duration_s is not None:
+            clip_src_end = clip.source_start_s + clip.timeline_duration_s
+            avail_after = max(0.0, asset_ref.duration_s - clip_src_end)
+            l_trail = min(l_trail, avail_after)
+        tl_start = round(max(0.0, clip.timeline_start_s - max_lead), 4)
+        src_start = round(max(0.0, clip.source_start_s - max_lead), 4)
+        tl_end = round(min(max_end, clip.timeline_start_s + clip.timeline_duration_s + l_trail), 4)
+        dur = round(tl_end - tl_start, 4)
+        if dur <= 0.05:
+            continue
+        role_tag: Literal["j_cut", "l_cut"] = "j_cut" if max_lead >= l_trail else "l_cut"
+        derived.append(
+            AudioTrackOp(
+                track_id=f"split_{clip.clip_id}",
+                asset_id=clip.asset_id,
+                audio_group="voiceover" if clip.role == "a_roll" else "ambience",
+                timeline_start_s=tl_start,
+                timeline_duration_s=dur,
+                source_start_s=src_start,
+                gain_db=0.0 if clip.role == "a_roll" else -8.0,
+                carve_against_group="voiceover" if clip.role != "a_roll" else None,
+                carve_strength=0.45 if clip.role != "a_roll" else 0.0,
+                fade_in_s=round(min(0.25, max(0.04, max_lead * 0.6)), 3),
+                fade_out_s=round(min(0.25, max(0.04, l_trail * 0.6)), 3),
+                split_edit_role=role_tag,
+                split_edit_offset_s=round(-max_lead if role_tag == "j_cut" else l_trail, 3),
+            )
+        )
+    return derived
+
+
 def _build_audio_mix_graph(
     plan: EditPlan,
     assets_by_id: dict[str, Path],
+    *,
+    speech_wpm: float | None = None,
 ) -> tuple[list[str], str, str]:
     """Build FFmpeg inputs and filter_complex producing `[mixed_a]` at 48 kHz stereo."""
     input_args: list[str] = []
     chains: list[str] = []
     vo_labels: list[str] = []
     bgm_labels: list[str] = []
+    amb_labels: list[str] = []
+    room_labels: list[str] = []
     sfx_labels: list[str] = []
     carve_strength: float | None = None
+    amb_carve_strength: float | None = None
 
-    for idx, track in enumerate(plan.audio_tracks):
+    effective_tracks = list(plan.audio_tracks) + _derive_split_edit_audio_tracks(plan, assets_by_id)
+    for idx, track in enumerate(effective_tracks):
         src_path = assets_by_id.get(track.asset_id)
         if src_path is None or not src_path.is_file():
             raise MasteringError(
@@ -130,12 +221,26 @@ def _build_audio_mix_graph(
                     if carve_strength is None
                     else max(carve_strength, track.carve_strength)
                 )
+        elif track.audio_group == "ambience":
+            amb_labels.append(f"[{label}]")
+            if track.carve_against_group == "voiceover":
+                amb_carve_strength = (
+                    track.carve_strength
+                    if amb_carve_strength is None
+                    else max(amb_carve_strength, track.carve_strength)
+                )
+        elif track.audio_group == "room_tone":
+            room_labels.append(f"[{label}]")
         else:
             sfx_labels.append(f"[{label}]")
 
     should_carve = bool(
         vo_labels and bgm_labels and carve_strength is not None and carve_strength > 0
     )
+    should_carve_amb = bool(
+        vo_labels and amb_labels and amb_carve_strength is not None and amb_carve_strength > 0
+    )
+    need_vo_sc = should_carve or should_carve_amb
     effective_carve = carve_strength if carve_strength is not None else 0.0
 
     mix_inputs: list[str] = []
@@ -146,11 +251,19 @@ def _build_audio_mix_graph(
             chains.append(
                 f"{''.join(vo_labels)}amix=inputs={len(vo_labels)}:duration=longest:normalize=0[vo_bus]"
             )
-        # Split VO into dry branch + padded sidechain trigger so BGM never cuts at VO EOF.
-        if should_carve:
+        # Split VO into dry branch + padded sidechain triggers so BGM/ambience never cut at VO EOF.
+        if should_carve and should_carve_amb:
+            chains.append(
+                f"[vo_bus]asplit=3[vo_mix][vo_sc_raw][vo_amb_raw];"
+                f"[vo_sc_raw]apad,atrim=0:{plan.duration_s:.4f}[vo_sc];"
+                f"[vo_amb_raw]apad,atrim=0:{plan.duration_s:.4f}[vo_sc_amb]"
+            )
+            mix_inputs.append("[vo_mix]")
+        elif need_vo_sc:
+            sc_lbl = "[vo_sc]" if should_carve else "[vo_sc_amb]"
             chains.append(
                 f"[vo_bus]asplit=2[vo_mix][vo_sc_raw];"
-                f"[vo_sc_raw]apad,atrim=0:{plan.duration_s:.4f}[vo_sc]"
+                f"[vo_sc_raw]apad,atrim=0:{plan.duration_s:.4f}{sc_lbl}"
             )
             mix_inputs.append("[vo_mix]")
         else:
@@ -164,16 +277,46 @@ def _build_audio_mix_graph(
                 f"{''.join(bgm_labels)}amix=inputs={len(bgm_labels)}:duration=longest:normalize=0[bgm_raw]"
             )
         if should_carve:
-            ratio = round(2.0 + effective_carve * 6.0, 2)
-            eq_cut = round(-2.5 * effective_carve, 2)
             chains.append(
-                f"[bgm_raw]equalizer=f=2200:t=o:w=1.2:g={eq_cut}[bgm_eq];"
-                f"[bgm_eq][vo_sc]sidechaincompress=threshold=0.025:ratio={ratio}"
-                ":attack=20:release=260:makeup=1[bgm_bus]"
+                build_psychoacoustic_bgm_chain(
+                    "[bgm_raw]",
+                    "[vo_sc]",
+                    "[bgm_bus]",
+                    carve_strength=effective_carve,
+                    speech_wpm=speech_wpm,
+                )
             )
         else:
             chains.append("[bgm_raw]acopy[bgm_bus]")
         mix_inputs.append("[bgm_bus]")
+
+    if amb_labels:
+        if len(amb_labels) == 1:
+            chains.append(f"{amb_labels[0]}acopy[amb_raw]")
+        else:
+            chains.append(
+                f"{''.join(amb_labels)}amix=inputs={len(amb_labels)}:duration=longest:normalize=0[amb_raw]"
+            )
+        if should_carve_amb and amb_carve_strength is not None:
+            amb_ratio = round(1.5 + amb_carve_strength * 2.5, 2)
+            amb_cut = round(-1.8 * amb_carve_strength, 2)
+            chains.append(
+                f"[amb_raw]equalizer=f=2400:t=o:w=1.2:g={amb_cut}[amb_eq];"
+                f"[amb_eq][vo_sc_amb]sidechaincompress=threshold=0.03:ratio={amb_ratio}"
+                ":attack=25:release=320:makeup=1[amb_bus]"
+            )
+        else:
+            chains.append("[amb_raw]acopy[amb_bus]")
+        mix_inputs.append("[amb_bus]")
+
+    if room_labels:
+        if len(room_labels) == 1:
+            mix_inputs.append(room_labels[0])
+        else:
+            chains.append(
+                f"{''.join(room_labels)}amix=inputs={len(room_labels)}:duration=longest:normalize=0[room_bus]"
+            )
+            mix_inputs.append("[room_bus]")
 
     if sfx_labels:
         if len(sfx_labels) == 1:
@@ -184,13 +327,15 @@ def _build_audio_mix_graph(
             )
             mix_inputs.append("[sfx_bus]")
 
-    if len(mix_inputs) == 1:
-        chains.append(f"{mix_inputs[0]}apad,atrim=0:{plan.duration_s:.4f}[mixed_a]")
-    else:
-        chains.append(
-            f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest:normalize=0,"
-            f"apad,atrim=0:{plan.duration_s:.4f}[mixed_a]"
-        )
+    # Anchor final mix onto a full-duration silent bed so delayed tracks keep exact 0..duration_s.
+    chains.append(
+        f"anullsrc=r=48000:cl=stereo,atrim=0:{plan.duration_s:.4f}[sil_bed]"
+    )
+    all_mix = ["[sil_bed]", *mix_inputs]
+    chains.append(
+        f"{''.join(all_mix)}amix=inputs={len(all_mix)}:duration=first:normalize=0,"
+        f"atrim=0:{plan.duration_s:.4f}[mixed_a]"
+    )
     return input_args, ";".join(chains), "[mixed_a]"
 
 
@@ -198,18 +343,25 @@ def master_audio_mix(
     plan: EditPlan,
     platform_target: PlatformTarget,
     output_audio_path: Path,
+    *,
+    loudness_profile: str | None = None,
+    speech_wpm: float | None = None,
 ) -> MasteredAudioResult:
-    """Mix voiceover, carved music, and SFX, then run two-pass FFmpeg `loudnorm`."""
-    if not plan.audio_tracks:
+    """Mix voiceover, carved music, ambience, room tone, and SFX, then run two-pass `loudnorm`."""
+    assets_by_id = {asset.asset_id: Path(asset.path) for asset in plan.assets}
+    has_split_audio = bool(_derive_split_edit_audio_tracks(plan, assets_by_id))
+    if not plan.audio_tracks and not has_split_audio:
         raise MasteringError("Cannot master audio: EditPlan has no audio_tracks.")
 
-    assets_by_id = {asset.asset_id: Path(asset.path) for asset in plan.assets}
-    input_args, graph, mixed_label = _build_audio_mix_graph(plan, assets_by_id)
+    input_args, graph, mixed_label = _build_audio_mix_graph(
+        plan, assets_by_id, speech_wpm=speech_wpm
+    )
     audio_spec = platform_target.audio
-    target_i = audio_spec.target_lufs
+    target_i, max_tp, target_lra, _tol = resolve_loudness_profile(
+        loudness_profile, platform_target
+    )
     # Leave a small 0.15 dBTP headroom guard for lossy AAC encoding overshoot.
-    target_tp = round(min(audio_spec.max_true_peak_dbtp - 0.15, -1.05), 2)
-    target_lra = audio_spec.target_lra
+    target_tp = round(min(max_tp - 0.15, -1.05), 2)
 
     with tempfile.TemporaryDirectory(prefix="vedit_audio_mix_") as tmp_dir:
         pre_wav = Path(tmp_dir) / "pre_norm.wav"
@@ -474,6 +626,224 @@ def _xfade_spec(transition: str | None) -> tuple[str, float, str] | None:
     return _XFADE_MAP.get((transition or "").lower().strip())
 
 
+def _build_color_correction_filters(cc: ColorCorrectionSpec) -> list[str]:
+    """Stage 1 technical normalization (exposure, contrast, saturation, white balance)."""
+    filters: list[str] = []
+    # Map exposure_ev [-2..2] gently into eq brightness [-0.35..0.35] and gamma compensation.
+    brightness = max(-0.4, min(0.4, cc.exposure_ev * 0.14))
+    if (
+        abs(brightness) > 1e-4
+        or abs(cc.contrast - 1.0) > 1e-4
+        or abs(cc.saturation - 1.0) > 1e-4
+        or abs(cc.gamma - 1.0) > 1e-4
+    ):
+        filters.append(
+            f"eq=brightness={brightness:.3f}:contrast={cc.contrast:.3f}:"
+            f"saturation={cc.saturation:.3f}:gamma={cc.gamma:.3f}"
+        )
+    has_wb = abs(cc.temperature) > 1e-4 or abs(cc.tint) > 1e-4
+    has_lg = (
+        (cc.lift is not None and abs(cc.lift) > 1e-4)
+        or (cc.gain is not None and abs(cc.gain) > 1e-4)
+    )
+    if has_wb or has_lg:
+        lv = max(-0.5, min(0.5, float(cc.lift or 0.0)))
+        gv = max(-0.5, min(0.5, float(cc.gain or 0.0)))
+        wb_r = max(-0.4, min(0.4, cc.temperature * 0.18))
+        wb_b = max(-0.4, min(0.4, -cc.temperature * 0.18))
+        wb_g = max(-0.4, min(0.4, -cc.tint * 0.16))
+        rs = max(-0.5, min(0.5, lv + wb_r * 0.5))
+        gs = max(-0.5, min(0.5, lv + wb_g * 0.5))
+        bs = max(-0.5, min(0.5, lv + wb_b * 0.5))
+        rm = max(-0.5, min(0.5, wb_r))
+        gm = max(-0.5, min(0.5, wb_g))
+        bm = max(-0.5, min(0.5, wb_b))
+        filters.append(
+            f"colorbalance=rs={rs:.3f}:gs={gs:.3f}:bs={bs:.3f}:"
+            f"rm={rm:.3f}:gm={gm:.3f}:bm={bm:.3f}:"
+            f"rh={gv:.3f}:gh={gv:.3f}:bh={gv:.3f}"
+        )
+    return filters
+
+
+def _build_color_grade_filters(cg: ColorGradeSpec) -> list[str]:
+    """Stage 2 creative/emotional color grading applied strictly after correction."""
+    filters: list[str] = []
+    intensity = max(0.0, min(1.0, float(cg.intensity)))
+    preset = cg.preset or "neutral"
+    if intensity > 1e-4:
+        if preset == "catastrophe_warm":
+            rs = round(0.14 * intensity, 3)
+            bs = round(-0.16 * intensity, 3)
+            sat = round(1.0 - 0.18 * intensity, 3)
+            filters.append(f"colorbalance=rs={rs}:bs={bs}:rm={rs * 0.7:.3f}:bm={bs * 0.7:.3f}")
+            filters.append(f"eq=saturation={sat}:contrast={1.0 + 0.08 * intensity:.3f}")
+        elif preset == "dread_dim_vignette":
+            bri = round(-0.08 * intensity, 3)
+            sat = round(1.0 - 0.35 * intensity, 3)
+            con = round(1.0 + 0.12 * intensity, 3)
+            filters.append(f"eq=brightness={bri}:saturation={sat}:contrast={con}")
+            if cg.vignette_strength is None:
+                filters.append(f"vignette=angle={0.45 + 0.35 * intensity:.3f}")
+        elif preset == "anomaly_desat":
+            sat = round(max(0.05, 1.0 - 0.78 * intensity), 3)
+            filters.append(f"eq=saturation={sat}:contrast={1.0 + 0.14 * intensity:.3f}")
+        elif preset == "archival_sepia":
+            rs = round(0.18 * intensity, 3)
+            gs = round(0.05 * intensity, 3)
+            bs = round(-0.22 * intensity, 3)
+            sat = round(max(0.25, 1.0 - 0.55 * intensity), 3)
+            filters.append(f"eq=saturation={sat}:contrast={1.0 - 0.06 * intensity:.3f}")
+            filters.append(f"colorbalance=rs={rs}:gs={gs}:bs={bs}")
+        elif preset == "cool_investigative":
+            rs = round(-0.08 * intensity, 3)
+            bs = round(0.12 * intensity, 3)
+            filters.append(f"colorbalance=rs={rs}:bs={bs}")
+            filters.append(f"eq=contrast={1.0 + 0.08 * intensity:.3f}")
+
+    if cg.lut_path:
+        lut_p = Path(cg.lut_path).expanduser().resolve()
+        if not lut_p.is_file():
+            raise MasteringError(f"Missing 3D LUT file: {cg.lut_path}")
+        escaped_lut = escape_ffmpeg_filter_path(lut_p)
+        filters.append(f"lut3d=file='{escaped_lut}'")
+
+    if cg.vignette_strength is not None and cg.vignette_strength > 0.01:
+        angle = round(0.25 + min(1.0, cg.vignette_strength) * 0.65, 3)
+        filters.append(f"vignette=angle={angle}")
+
+    return filters
+
+
+def compute_shot_match_correction(
+    source_luma: float,
+    target_luma: float,
+    *,
+    source_ab: tuple[float, float] | None = None,
+    target_ab: tuple[float, float] | None = None,
+) -> ColorCorrectionSpec:
+    """Compute bounded Stage 1 exposure/white-balance correction to match B-roll to spine."""
+    luma_diff = (target_luma - source_luma) / 128.0
+    exposure_ev = round(max(-1.5, min(1.5, luma_diff * 1.15)), 3)
+    temp = 0.0
+    tint = 0.0
+    if source_ab is not None and target_ab is not None:
+        da = target_ab[0] - source_ab[0]
+        db = target_ab[1] - source_ab[1]
+        temp = round(max(-0.8, min(0.8, db / 64.0)), 3)
+        tint = round(max(-0.8, min(0.8, da / 64.0)), 3)
+    return ColorCorrectionSpec(exposure_ev=exposure_ev, temperature=temp, tint=tint)
+
+
+def resolve_segment_blend_modes(
+    plan: EditPlan,
+    overlay_segments: list[tuple[float, float, Path]],
+) -> list[str | None]:
+    """Map each sparse overlay window to its strongest non-normal overlay `blend_mode`."""
+    modes: list[str | None] = []
+    for seg_start, seg_end, _ in overlay_segments:
+        found: str | None = None
+        for ov in plan.overlay_compositions:
+            ov_start = float(ov.timeline_start_s)
+            ov_end = ov_start + float(ov.timeline_duration_s)
+            if (
+                ov_start < seg_end
+                and ov_end > seg_start
+                and ov.blend_mode
+                and ov.blend_mode != "normal"
+            ):
+                found = ov.blend_mode
+                break
+        modes.append(found)
+    return modes
+
+
+def _probe_clip_luma_ab(
+    media_path: Path,
+    t_s: float,
+) -> tuple[float, tuple[float, float]] | None:
+    """Sample mean BT.601 luma and approximate Lab a*/b* from a frame at `t_s`."""
+    w, h = 64, 36
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            f"{max(0.0, float(t_s)):.3f}",
+            "-i",
+            str(media_path),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"scale={w}:{h}",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    expected = w * h * 3
+    if proc.returncode != 0 or len(proc.stdout) < expected:
+        return None
+    raw = proc.stdout[:expected]
+    n_px = w * h
+    sum_y = 0.0
+    sum_rg = 0.0
+    sum_by = 0.0
+    for idx in range(0, expected, 3):
+        r, g, b = raw[idx], raw[idx + 1], raw[idx + 2]
+        sum_y += 0.299 * r + 0.587 * g + 0.114 * b
+        sum_rg += (r - g) * 0.5
+        sum_by += (0.5 * (r + g) - b) * 0.5
+    return (round(sum_y / n_px, 2), (round(sum_rg / n_px, 2), round(sum_by / n_px, 2)))
+
+
+def auto_shot_match_plan(
+    plan: EditPlan,
+    assets_by_id: dict[str, Path],
+) -> EditPlan:
+    """Populate Stage-1 `color_correction` on B-roll/secondary clips to match the opening spine."""
+    ordered = sorted(plan.video_tracks, key=lambda c: c.timeline_start_s)
+    if len(ordered) < 2:
+        return plan
+    spine = ordered[0]
+    spine_path = assets_by_id.get(spine.asset_id)
+    if spine_path is None or not spine_path.is_file():
+        return plan
+    ref = _probe_clip_luma_ab(spine_path, spine.source_start_s + spine.timeline_duration_s * 0.5)
+    if ref is None:
+        return plan
+    target_luma, target_ab = ref
+
+    updated_clips: list[VideoClipOp] = []
+    changed = False
+    for clip in plan.video_tracks:
+        if clip.asset_id != spine.asset_id and clip.color_correction is None:
+            cpath = assets_by_id.get(clip.asset_id)
+            if cpath is not None and cpath.is_file():
+                sample = _probe_clip_luma_ab(
+                    cpath, clip.source_start_s + clip.timeline_duration_s * 0.5
+                )
+                if sample is not None:
+                    src_luma, src_ab = sample
+                    cc = compute_shot_match_correction(
+                        src_luma,
+                        target_luma,
+                        source_ab=src_ab,
+                        target_ab=target_ab,
+                    )
+                    clip = clip.model_copy(update={"color_correction": cc})
+                    changed = True
+        updated_clips.append(clip)
+    return plan.model_copy(update={"video_tracks": updated_clips}) if changed else plan
+
+
 def assemble_hybrid_deliverable(
     plan: EditPlan,
     platform_target: PlatformTarget,
@@ -481,18 +851,25 @@ def assemble_hybrid_deliverable(
     *,
     overlay_video_path: Path | None = None,
     overlay_segments: list[tuple[float, float, Path]] | None = None,
+    overlay_blend_modes: list[str | None] | None = None,
     mastered_audio_path: Path | None = None,
     captions_ass_path: Path | None = None,
     fonts_dir: Path | None = None,
     use_ass_fastpath: bool = True,
     encode_preset: Literal["ultrafast", "veryfast", "fast", "medium", "slow"] = "fast",
     use_hardware_encoder: bool = False,
+    loudness_profile: str | None = None,
+    auto_shot_match: bool = False,
 ) -> HybridDeliverableResult:
     """Assemble base cuts, optional transparent overlay, native libass text, and mastered audio."""
     if not plan.video_tracks:
         raise MasteringError("EditPlan requires at least one video clip in video_tracks.")
 
     assets_by_id = {asset.asset_id: Path(asset.path) for asset in plan.assets}
+    if auto_shot_match:
+        plan = auto_shot_match_plan(plan, assets_by_id)
+    if overlay_segments and overlay_blend_modes is None:
+        overlay_blend_modes = resolve_segment_blend_modes(plan, overlay_segments)
     width = platform_target.width
     height = platform_target.height
     fps = platform_target.fps
@@ -532,6 +909,10 @@ def assemble_hybrid_deliverable(
             "setsar=1",
             "format=yuv420p",
         ]
+        if clip.color_correction is not None:
+            vf_parts.extend(_build_color_correction_filters(clip.color_correction))
+        if clip.color_grade is not None:
+            vf_parts.extend(_build_color_grade_filters(clip.color_grade))
         trans = (clip.transition_in or "hard_cut").lower().strip()
         if (
             idx == 0
@@ -618,13 +999,37 @@ def assemble_hybrid_deliverable(
         input_args.extend(["-i", str(seg_path)])
         ov_lbl = f"v_seg_{seg_k}"
         comp_lbl = f"v_scomp_{seg_k}"
-        chains.append(
-            f"[{seg_idx}:v]fps={fps},scale={width}:{height},"
-            f"setpts=PTS-STARTPTS+{seg_start:.4f}/TB[{ov_lbl}];"
-            f"{final_v_label}[{ov_lbl}]overlay=0:0:"
-            f"enable='between(t,{seg_start:.4f},{seg_end:.4f})':"
-            f"shortest=0:eof_action=pass,format=yuv420p[{comp_lbl}]"
+        bmode = (
+            overlay_blend_modes[seg_k]
+            if overlay_blend_modes and seg_k < len(overlay_blend_modes)
+            else None
         )
+        if bmode and bmode in ("screen", "multiply", "overlay", "lighten"):
+            base_rgba = f"v_b_rgba_{seg_k}"
+            blend_rgb = f"v_bl_rgb_{seg_k}"
+            blend_rgba = f"v_bl_rgba_{seg_k}"
+            chains.append(
+                f"{final_v_label}format=yuv420p,split[{base_rgba}_orig][{base_rgba}_prep];"
+                f"[{base_rgba}_prep]format=rgba[{base_rgba}];"
+                f"[{seg_idx}:v]fps={fps},scale={width}:{height},"
+                f"setpts=PTS-STARTPTS+{seg_start:.4f}/TB,format=rgba,"
+                f"split[{ov_lbl}_rgb][{ov_lbl}_a];"
+                f"[{ov_lbl}_a]alphaextract[{ov_lbl}_mask];"
+                f"[{base_rgba}][{ov_lbl}_rgb]blend=all_mode={bmode}:"
+                f"all_opacity=1:eof_action=pass[{blend_rgb}];"
+                f"[{blend_rgb}][{ov_lbl}_mask]alphamerge[{blend_rgba}];"
+                f"[{base_rgba}_orig][{blend_rgba}]overlay=0:0:"
+                f"enable='between(t,{seg_start:.4f},{seg_end:.4f})':"
+                f"shortest=0:eof_action=pass,format=yuv420p[{comp_lbl}]"
+            )
+        else:
+            chains.append(
+                f"[{seg_idx}:v]fps={fps},scale={width}:{height},"
+                f"setpts=PTS-STARTPTS+{seg_start:.4f}/TB[{ov_lbl}];"
+                f"{final_v_label}[{ov_lbl}]overlay=0:0:"
+                f"enable='between(t,{seg_start:.4f},{seg_end:.4f})':"
+                f"shortest=0:eof_action=pass,format=yuv420p[{comp_lbl}]"
+            )
         final_v_label = f"[{comp_lbl}]"
         used_overlay = True
 
@@ -684,9 +1089,15 @@ def assemble_hybrid_deliverable(
         final_v_label = "[v_tagged]"
 
         resolved_audio: Path | None = mastered_audio_path
-        if resolved_audio is None and plan.audio_tracks:
+        has_split_audio = bool(_derive_split_edit_audio_tracks(plan, assets_by_id))
+        if resolved_audio is None and (plan.audio_tracks or has_split_audio):
             resolved_audio = tmp_path / "master_audio.wav"
-            audio_result = master_audio_mix(plan, platform_target, resolved_audio)
+            audio_result = master_audio_mix(
+                plan,
+                platform_target,
+                resolved_audio,
+                loudness_profile=loudness_profile,
+            )
 
         map_args = ["-map", final_v_label]
         audio_encode_args: list[str] = ["-an"]
@@ -747,6 +1158,7 @@ def master_full_hf_deliverable(
     output_path: Path,
     *,
     encode_preset: Literal["ultrafast", "veryfast", "fast", "medium", "slow"] = "fast",
+    loudness_profile: str | None = None,
 ) -> HybridDeliverableResult:
     """Apply explicit color metadata tagging and two-pass EBU R128 mastering to a full_hf render."""
     if not hf_video_path.is_file():
@@ -760,9 +1172,16 @@ def master_full_hf_deliverable(
         map_args = ["-map", "[v_tagged]"]
         audio_encode_args: list[str] = ["-an"]
 
-        if plan.audio_tracks:
+        assets_by_id = {asset.asset_id: Path(asset.path) for asset in plan.assets}
+        has_split_audio = bool(_derive_split_edit_audio_tracks(plan, assets_by_id))
+        if plan.audio_tracks or has_split_audio:
             master_wav = tmp_path / "master_audio.wav"
-            audio_result = master_audio_mix(plan, platform_target, master_wav)
+            audio_result = master_audio_mix(
+                plan,
+                platform_target,
+                master_wav,
+                loudness_profile=loudness_profile,
+            )
             input_args.extend(["-i", str(master_wav)])
             map_args.extend(["-map", "1:a"])
             audio_encode_args = [

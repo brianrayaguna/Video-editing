@@ -244,6 +244,7 @@ def orchestrate_distributed_render(
     chunk_frames: int = 180,
     quality: Literal["draft", "standard", "high"] = "high",
     force_hf: bool = False,
+    loudness_profile: str | None = None,
 ) -> dict[str, Any]:
     """Coordinate compile -> Plan v2 -> chunk fan-out -> assemble -> hybrid master -> QC."""
     cas_volume.reload()
@@ -532,7 +533,7 @@ def orchestrate_distributed_render(
             "master",
             (
                 f"{edit_plan_json}:{quality}:{chunk_frames}:{encode_preset}:"
-                f"{use_ass_fastpath}:{overlay_cache_token}:{overlay_render_path}"
+                f"{use_ass_fastpath}:{loudness_profile}:{overlay_cache_token}:{overlay_render_path}"
             ),
         )
         if not (
@@ -554,6 +555,7 @@ def orchestrate_distributed_render(
                         target,
                         local_master,
                         encode_preset=encode_preset,
+                        loudness_profile=loudness_profile,
                     )
                 else:
                     assemble_hybrid_deliverable(
@@ -564,6 +566,7 @@ def orchestrate_distributed_render(
                         overlay_segments=overlay_segments or None,
                         use_ass_fastpath=use_ass_fastpath,
                         encode_preset=encode_preset,
+                        loudness_profile=loudness_profile,
                     )
                 final_deliverable.unlink(missing_ok=True)
                 shutil.move(str(local_master), str(final_deliverable))
@@ -574,16 +577,21 @@ def orchestrate_distributed_render(
                 )
                 meta["output_artifacts"] = [str(final_deliverable)]
 
+        has_split_audio = any(
+            (c.j_cut_lead_s or 0.0) > 0.01 or (c.l_cut_trail_s or 0.0) > 0.01
+            for c in plan.video_tracks
+        )
         with checkpoint.track_stage(
             "qc_audit",
-            _stage_key("qc", str(final_deliverable)),
+            _stage_key("qc", f"{final_deliverable}:{loudness_profile}"),
             state_path=checkpoint_path,
             provider="ffprobe_ebur128",
         ) as meta:
             qc = audit_mastered_deliverable(
                 final_deliverable,
                 target,
-                require_audio=bool(plan.audio_tracks),
+                require_audio=bool(plan.audio_tracks or has_split_audio),
+                loudness_profile=loudness_profile,
             )
             meta["output_artifacts"] = [str(final_deliverable)]
 
@@ -616,6 +624,7 @@ def submit_modal_render(
     chunk_frames: int = 180,
     quality: Literal["draft", "standard", "high"] = "high",
     force_hf: bool = False,
+    loudness_profile: str | None = None,
     remote_fn: Any | None = None,
 ) -> dict[str, Any]:
     """Upload local source assets to Modal CAS, run cloud render, and optionally download output."""
@@ -627,6 +636,7 @@ def submit_modal_render(
         chunk_frames=chunk_frames,
         quality=quality,
         force_hf=force_hf,
+        loudness_profile=loudness_profile,
     )
     if output_path is not None and "deliverable_subpath" in summary:
         downloaded = download_cas_file(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import array
 import json
 import math
 import re
@@ -10,10 +11,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from vedit.mastering.sound_design import resolve_loudness_profile
 from vedit.models import PlatformTarget
 
 _EBUR128_I_RE = re.compile(
     r"Integrated loudness:\s*\n\s*I:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*LUFS", re.I
+)
+_EBUR128_LRA_RE = re.compile(
+    r"Loudness range:\s*\n\s*LRA:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*LU", re.I
 )
 _EBUR128_TP_RE = re.compile(
     r"True peak:\s*\n\s*Peak:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*dBFS", re.I
@@ -311,6 +316,363 @@ def generate_diff_contact_sheet(
         return output_jpg if grid.returncode == 0 and output_jpg.is_file() else None
 
 
+def measure_mono_phase_correlation(media_path: Path) -> float | None:
+    """Measure stereo L/R Pearson correlation (`-1.0..+1.0`) to detect mono phase cancellation."""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(media_path),
+            "-vn",
+            "-ar",
+            "16000",
+            "-ac",
+            "2",
+            "-f",
+            "s16le",
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if proc.returncode != 0 or len(proc.stdout) < 8:
+        return None
+    pcm = array.array("h")
+    usable = len(proc.stdout) - (len(proc.stdout) % 4)
+    pcm.frombytes(proc.stdout[:usable])
+    n_frames = len(pcm) // 2
+    if n_frames < 16:
+        return None
+    sum_l2 = 0.0
+    sum_r2 = 0.0
+    sum_lr = 0.0
+    for idx in range(0, n_frames * 2, 2):
+        left = float(pcm[idx])
+        right = float(pcm[idx + 1])
+        sum_l2 += left * left
+        sum_r2 += right * right
+        sum_lr += left * right
+    denom = math.sqrt(sum_l2 * sum_r2)
+    if denom <= 1e-6:
+        return 1.0
+    return round(max(-1.0, min(1.0, sum_lr / denom)), 4)
+
+
+@dataclass(slots=True)
+class ProductionSoundReport:
+    """Pre-ingest field/voiceover production sound diagnostics."""
+
+    source_path: Path
+    duration_s: float
+    sample_rate: int
+    channels: int
+    peak_dbfs: float
+    speech_rms_dbfs: float
+    noise_floor_dbfs: float
+    estimated_snr_db: float
+    clipped_sample_ratio: float
+    rumble_ratio_below_80hz: float
+    plosive_burst_count: int
+    recommended_clean_strength: float
+    recommended_highpass_hz: int
+    warnings: list[QCIssue] = field(default_factory=list)
+    passed: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": str(self.source_path),
+            "duration_s": self.duration_s,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "peak_dbfs": self.peak_dbfs,
+            "speech_rms_dbfs": self.speech_rms_dbfs,
+            "noise_floor_dbfs": self.noise_floor_dbfs,
+            "estimated_snr_db": self.estimated_snr_db,
+            "clipped_sample_ratio": self.clipped_sample_ratio,
+            "rumble_ratio_below_80hz": self.rumble_ratio_below_80hz,
+            "plosive_burst_count": self.plosive_burst_count,
+            "recommended_clean_strength": self.recommended_clean_strength,
+            "recommended_highpass_hz": self.recommended_highpass_hz,
+            "warnings": [asdict(w) for w in self.warnings],
+            "passed": self.passed,
+        }
+
+
+def audit_production_sound(media_path: Path) -> ProductionSoundReport:
+    """Inspect raw field/VO audio for clipping, SNR, sub-80 Hz rumble, and plosive bursts."""
+    src = media_path.expanduser().resolve()
+    if not src.is_file():
+        raise FileNotFoundError(f"Audio/media file not found: {src}")
+
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(src),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    info = json.loads(probe.stdout) if probe.returncode == 0 and probe.stdout.strip() else {}
+    sr = 48000
+    ch = 1
+    dur = float((info.get("format") or {}).get("duration") or 0.0)
+    for st in info.get("streams") or []:
+        if st.get("codec_type") == "audio":
+            sr = int(st.get("sample_rate") or 48000)
+            ch = int(st.get("channels") or 1)
+            dur = float(st.get("duration") or dur or 0.0)
+            break
+
+    dec_ch = 2 if ch >= 2 else 1
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(src),
+            "-vn",
+            "-t",
+            "120",
+            "-ar",
+            "48000",
+            "-ac",
+            str(dec_ch),
+            "-f",
+            "s16le",
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if proc.returncode != 0 or len(proc.stdout) < 4:
+        raise RuntimeError(f"Could not decode audio stream from {src}")
+
+    pcm = array.array("h")
+    usable = len(proc.stdout) - (len(proc.stdout) % (2 * dec_ch))
+    pcm.frombytes(proc.stdout[:usable])
+    n_samples = len(pcm)
+    if dec_ch == 2:
+        mono_pcm = [
+            0.5 * (pcm[idx] + pcm[idx + 1]) for idx in range(0, n_samples - 1, 2)
+        ]
+    else:
+        mono_pcm = [float(s) for s in pcm]
+    n = len(mono_pcm)
+    if dur <= 0.0:
+        dur = round(n / 48000.0, 3)
+
+    peak = 0
+    clipped = 0
+    for s in pcm:
+        av = abs(s)
+        if av > peak:
+            peak = av
+        if av >= 32700:
+            clipped += 1
+    peak_dbfs = round(20.0 * math.log10(max(peak, 1) / 32768.0), 2)
+    clipped_ratio = round(clipped / max(1, n_samples), 6)
+
+    # 2nd-order low-pass at 80 Hz prevents 120-240 Hz speech from tripping rumble.
+    alpha_80 = (2.0 * math.pi * 80.0) / (48000.0 + 2.0 * math.pi * 80.0)
+    alpha_120 = (2.0 * math.pi * 120.0) / (48000.0 + 2.0 * math.pi * 120.0)
+    lp80_a = 0.0
+    lp80_b = 0.0
+    lp120_a = 0.0
+    lp120_b = 0.0
+    total_e = 0.0
+    rumble_e = 0.0
+    frame_n = 2400  # 50 ms @ 48 kHz
+    frame_rms_dbs: list[float] = []
+    sub_frame_rms_dbs: list[float] = []
+
+    idx = 0
+    while idx + frame_n <= n:
+        f_sq = 0.0
+        sub_sq = 0.0
+        for k in range(idx, idx + frame_n):
+            x = mono_pcm[k] / 32768.0
+            lp80_a = (1.0 - alpha_80) * lp80_a + alpha_80 * x
+            lp80_b = (1.0 - alpha_80) * lp80_b + alpha_80 * lp80_a
+            lp120_a = (1.0 - alpha_120) * lp120_a + alpha_120 * x
+            lp120_b = (1.0 - alpha_120) * lp120_b + alpha_120 * lp120_a
+            total_e += x * x
+            rumble_e += lp80_b * lp80_b
+            f_sq += x * x
+            sub_sq += lp120_b * lp120_b
+        rms = math.sqrt(f_sq / frame_n)
+        sub_rms = math.sqrt(sub_sq / frame_n)
+        frame_rms_dbs.append(20.0 * math.log10(max(rms, 1e-6)))
+        sub_frame_rms_dbs.append(20.0 * math.log10(max(sub_rms, 1e-6)))
+        idx += frame_n
+
+    if not frame_rms_dbs:
+        frame_rms_dbs = [peak_dbfs]
+        sub_frame_rms_dbs = [-60.0]
+
+    sorted_rms = sorted(frame_rms_dbs)
+    p05_idx = min(len(sorted_rms) - 1, max(0, int(0.05 * len(sorted_rms))))
+    p95_idx = min(len(sorted_rms) - 1, max(0, int(0.95 * len(sorted_rms))))
+    noise_floor_db = round(sorted_rms[p05_idx], 2)
+    speech_rms_db = round(sorted_rms[p95_idx], 2)
+    snr_db = round(max(0.0, speech_rms_db - noise_floor_db), 2)
+    rumble_ratio = round(min(1.0, rumble_e / max(total_e, 1e-9)), 4)
+    has_silence_floor = not (snr_db < 6.0 and noise_floor_db > -24.0)
+
+    sorted_sub = sorted(sub_frame_rms_dbs)
+    sub_med = sorted_sub[len(sorted_sub) // 2]
+    plosive_thresh = max(-24.0, sub_med + 12.0)
+    plosive_bursts = 0
+    in_burst = False
+    for val in sub_frame_rms_dbs:
+        if val > plosive_thresh:
+            if not in_burst:
+                plosive_bursts += 1
+                in_burst = True
+        else:
+            in_burst = False
+
+    warnings: list[QCIssue] = []
+    if clipped_ratio > 0.0005:
+        warnings.append(
+            QCIssue(
+                severity="warning",
+                code="CLIPPING_DETECTED",
+                message=(
+                    f"Digital clipping on {clipped_ratio:.4%} of samples "
+                    f"(peak {peak_dbfs:.1f} dBFS)."
+                ),
+            )
+        )
+    if snr_db < 18.0 and has_silence_floor:
+        warnings.append(
+            QCIssue(
+                severity="warning",
+                code="LOW_PRODUCTION_SNR",
+                message=(
+                    f"Estimated SNR is {snr_db:.1f} dB (noise floor {noise_floor_db:.1f} dBFS); "
+                    "increase noise reduction strength."
+                ),
+            )
+        )
+    if rumble_ratio > 0.28:
+        warnings.append(
+            QCIssue(
+                severity="warning",
+                code="WIND_RUMBLE_DETECTED",
+                message=(
+                    f"Sub-80 Hz energy ratio is {rumble_ratio:.2f} (> 0.28); "
+                    "apply steep high-pass filtering before dialogue cleanup."
+                ),
+            )
+        )
+    if plosive_bursts >= 3:
+        warnings.append(
+            QCIssue(
+                severity="warning",
+                code="PLOSIVES_DETECTED",
+                message=(
+                    f"Detected {plosive_bursts} low-frequency plosive bursts; "
+                    "raise high-pass cutoff above 100 Hz."
+                ),
+            )
+        )
+
+    rec_strength = 0.95 if snr_db < 18.0 else 0.78 if snr_db < 26.0 else 0.55
+    rec_hpf = (
+        120
+        if (plosive_bursts >= 3 or rumble_ratio > 0.35)
+        else (100 if rumble_ratio > 0.2 else 80)
+    )
+
+    return ProductionSoundReport(
+        source_path=src,
+        duration_s=round(dur, 3),
+        sample_rate=sr,
+        channels=ch,
+        peak_dbfs=peak_dbfs,
+        speech_rms_dbfs=speech_rms_db,
+        noise_floor_dbfs=noise_floor_db,
+        estimated_snr_db=snr_db,
+        clipped_sample_ratio=clipped_ratio,
+        rumble_ratio_below_80hz=rumble_ratio,
+        plosive_burst_count=plosive_bursts,
+        recommended_clean_strength=rec_strength,
+        recommended_highpass_hz=rec_hpf,
+        warnings=warnings,
+        passed=True,
+    )
+
+
+def measure_spectral_translation(media_path: Path) -> dict[str, float] | None:
+    """Measure sub-120 Hz vs speech-mid (500-4000 Hz) energy ratio for small-speaker translation."""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(media_path),
+            "-vn",
+            "-t",
+            "60",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-f",
+            "s16le",
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if proc.returncode != 0 or len(proc.stdout) < 32:
+        return None
+    pcm = array.array("h")
+    usable = len(proc.stdout) - (len(proc.stdout) % 2)
+    pcm.frombytes(proc.stdout[:usable])
+    if len(pcm) < 64:
+        return None
+
+    sr = 16000.0
+    a_low = (2.0 * math.pi * 120.0) / (sr + 2.0 * math.pi * 120.0)
+    a_m_lo = (2.0 * math.pi * 500.0) / (sr + 2.0 * math.pi * 500.0)
+    a_m_hi = (2.0 * math.pi * 4000.0) / (sr + 2.0 * math.pi * 4000.0)
+    lp120 = 0.0
+    lp500 = 0.0
+    lp4000 = 0.0
+    e_low = 0.0
+    e_mid = 0.0
+    for s in pcm:
+        x = s / 32768.0
+        lp120 = (1.0 - a_low) * lp120 + a_low * x
+        lp500 = (1.0 - a_m_lo) * lp500 + a_m_lo * x
+        lp4000 = (1.0 - a_m_hi) * lp4000 + a_m_hi * x
+        mid = lp4000 - lp500
+        e_low += lp120 * lp120
+        e_mid += mid * mid
+    if e_low < 1e-12 and e_mid < 1e-12:
+        return None
+    low_to_mid_db = round(10.0 * math.log10(max(e_low, 1e-12) / max(e_mid, 1e-12)), 2)
+    return {"low_to_mid_db": low_to_mid_db}
+
+
 def audit_mastered_deliverable(
     media_path: Path,
     platform_target: PlatformTarget,
@@ -319,6 +681,7 @@ def audit_mastered_deliverable(
     check_visual: bool = True,
     reference_path: Path | None = None,
     min_vmaf: float = 85.0,
+    loudness_profile: str | None = None,
 ) -> QCAuditReport:
     """Verify resolution, CFR frame rate, bt709 tags, AAC audio, loudness, and visual anomalies."""
     errors: list[QCIssue] = []
@@ -547,7 +910,27 @@ def audit_mastered_deliverable(
             check=False,
             timeout=300,
         )
+        target_lufs, max_tp_limit, target_lra, lufs_tol = resolve_loudness_profile(
+            loudness_profile, platform_target
+        )
+        metrics["loudness_profile"] = loudness_profile or "platform_default"
+        spec_trans = measure_spectral_translation(media_path)
+        if spec_trans is not None:
+            metrics["low_to_mid_db"] = spec_trans["low_to_mid_db"]
+            if spec_trans["low_to_mid_db"] > 12.0:
+                warnings.append(
+                    QCIssue(
+                        severity="warning",
+                        code="BASS_HEAVY_LOW_VOLUME_RISK",
+                        message=(
+                            f"Sub-120 Hz energy exceeds midrange by "
+                            f"{spec_trans['low_to_mid_db']:.1f} dB; "
+                            "bass detail may drop out on 58-65 dB SPL consumer playback."
+                        ),
+                    )
+                )
         i_match = _EBUR128_I_RE.search(ebur.stderr)
+        lra_match = _EBUR128_LRA_RE.search(ebur.stderr)
         tp_match = _EBUR128_TP_RE.search(ebur.stderr)
         if ebur.returncode != 0:
             errors.append(
@@ -576,16 +959,15 @@ def audit_mastered_deliverable(
                 )
             else:
                 metrics["integrated_lufs"] = lufs
-                diff = abs(lufs - platform_target.audio.target_lufs)
-                if diff > platform_target.audio.lufs_tolerance:
+                diff = abs(lufs - target_lufs)
+                if diff > lufs_tol:
                     errors.append(
                         QCIssue(
                             severity="error",
                             code="LOUDNESS_OUT_OF_TOLERANCE",
                             message=(
                                 f"Integrated loudness {lufs:.2f} LUFS misses target "
-                                f"{platform_target.audio.target_lufs:.1f} "
-                                f"+/- {platform_target.audio.lufs_tolerance:.1f} LUFS."
+                                f"{target_lufs:.1f} +/- {lufs_tol:.1f} LUFS."
                             ),
                         )
                     )
@@ -597,6 +979,38 @@ def audit_mastered_deliverable(
                     message="Could not parse integrated LUFS from ebur128 summary.",
                 )
             )
+
+        if ebur.returncode == 0 and lra_match:
+            lra_val = float(lra_match.group(1))
+            if math.isfinite(lra_val):
+                metrics["loudness_range_lu"] = round(lra_val, 2)
+                if lra_val > target_lra + 6.0:
+                    warnings.append(
+                        QCIssue(
+                            severity="warning",
+                            code="LRA_OUT_OF_RANGE",
+                            message=(
+                                f"Loudness range {lra_val:.2f} LU exceeds comfortable target "
+                                f"{target_lra:.1f} LU (+6 LU allowance) for mobile playback."
+                            ),
+                        )
+                    )
+
+        if ch == 2:
+            phase_corr = measure_mono_phase_correlation(media_path)
+            if phase_corr is not None:
+                metrics["mono_phase_correlation"] = phase_corr
+                if phase_corr < 0.15:
+                    warnings.append(
+                        QCIssue(
+                            severity="warning",
+                            code="LOW_MONO_PHASE_CORRELATION",
+                            message=(
+                                f"Stereo phase correlation {phase_corr:.2f} (< 0.15) risks "
+                                "phase cancellation when summed to mono."
+                            ),
+                        )
+                    )
 
         if a_stream is not None and v_stream is not None:
             v_dur = float(v_stream.get("duration") or 0.0)
@@ -615,14 +1029,14 @@ def audit_mastered_deliverable(
         if ebur.returncode == 0 and tp_match:
             tp = float(tp_match.group(1))
             metrics["true_peak_dbtp"] = tp if math.isfinite(tp) else None
-            if math.isfinite(tp) and tp > platform_target.audio.max_true_peak_dbtp:
+            if math.isfinite(tp) and tp > max_tp_limit:
                 errors.append(
                     QCIssue(
                         severity="error",
                         code="TRUE_PEAK_EXCEEDED",
                         message=(
                             f"True peak {tp:.2f} dBTP exceeds limit "
-                            f"{platform_target.audio.max_true_peak_dbtp:.2f} dBTP."
+                            f"{max_tp_limit:.2f} dBTP."
                         ),
                     )
                 )

@@ -302,6 +302,50 @@ def _check_assets_and_video_tracks(
                 )
             )
 
+        if clip.j_cut_lead_s is not None and clip.j_cut_lead_s > clip.timeline_start_s + 1e-6:
+            warnings.append(
+                VerificationIssue(
+                    severity="warning",
+                    code="SPLIT_EDIT_CLAMPED",
+                    target_id=clip.clip_id,
+                    message=(
+                        f"j_cut_lead_s={clip.j_cut_lead_s:.2f}s exceeds timeline_start_s="
+                        f"{clip.timeline_start_s:.2f}s and will be clamped."
+                    ),
+                )
+            )
+
+        if idx > 0:
+            prev_clip = ordered[idx - 1]
+            if (
+                prev_clip.motion_direction in ("left_to_right", "right_to_left")
+                and clip.motion_direction in ("left_to_right", "right_to_left")
+                and prev_clip.motion_direction != clip.motion_direction
+            ):
+                warnings.append(
+                    VerificationIssue(
+                        severity="warning",
+                        code="SCREEN_DIRECTION_REVERSAL",
+                        target_id=clip.clip_id,
+                        message=(
+                            f"2D motion direction flips from {prev_clip.motion_direction!r} "
+                            f"to {clip.motion_direction!r} across cut."
+                        ),
+                    )
+                )
+
+        if clip.color_grade and clip.color_grade.lut_path:
+            lut_p = Path(clip.color_grade.lut_path)
+            if not lut_p.is_file():
+                errors.append(
+                    VerificationIssue(
+                        severity="error",
+                        code="MISSING_LUT_FILE",
+                        target_id=clip.clip_id,
+                        message=f"Referenced 3D LUT file not found: {clip.color_grade.lut_path}",
+                    )
+                )
+
         if (
             not clip.subject_safe_boxes
             and clip.content_type not in _UNGROUNDED_CONTENT_TYPES

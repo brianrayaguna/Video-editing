@@ -114,6 +114,7 @@ def director_plan_cmd(
     decision_port = build_default_registry().resolve("decision") if use_decision else None
     extra_overlays = None
     storyboard_report: dict | None = None
+    storyboard_obj: dict | None = None
     if storyboard_file is not None:
         from vedit.director.storyboard import (
             check_storyboard,
@@ -122,9 +123,9 @@ def director_plan_cmd(
         )
         from vedit.director.storyboard_plan import storyboard_overlays
 
-        storyboard = json.loads(storyboard_file.read_text(encoding="utf-8"))
-        idioms = load_directing_idioms(idioms_file or idioms_path(storyboard["brand_id"]))
-        check = check_storyboard(storyboard, idioms).to_dict()
+        storyboard_obj = json.loads(storyboard_file.read_text(encoding="utf-8"))
+        idioms = load_directing_idioms(idioms_file or idioms_path(storyboard_obj["brand_id"]))
+        check = check_storyboard(storyboard_obj, idioms).to_dict()
         if not check["passed"] or check["score"] < min_storyboard_score:
             typer.echo(json.dumps({"storyboard_check": check}, indent=2), err=True)
             raise typer.BadParameter(
@@ -134,7 +135,7 @@ def director_plan_cmd(
         if catalog is None:
             raise typer.BadParameter("A brand template catalog is required with --storyboard-file.")
         extra_overlays, storyboard_report = storyboard_overlays(
-            storyboard,
+            storyboard_obj,
             idioms,
             catalog,
             policy,
@@ -154,6 +155,7 @@ def director_plan_cmd(
         render_strategy=render_strategy,
         template_catalog=catalog,
         extra_overlays=extra_overlays,
+        storyboard=storyboard_obj,
     )
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -436,6 +438,23 @@ def master_cmd(
             help="Burn plain captions and static text overlays via native FFmpeg libass.",
         ),
     ] = True,
+    loudness_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--loudness-profile",
+            help=(
+                "Optional loudness profile (streaming_web, podcast_video, broadcast_ebu_r128, "
+                "broadcast_atsc_a85, cinema_streaming_dialogue, cinema_trailer)."
+            ),
+        ),
+    ] = None,
+    auto_shot_match: Annotated[
+        bool,
+        typer.Option(
+            "--auto-shot-match/--no-auto-shot-match",
+            help="Auto-balance exposure & white-balance of secondary clips against opening spine.",
+        ),
+    ] = False,
 ) -> None:
     """Assemble hybrid cuts, composite overlays, and master two-pass `-14.0 LUFS` audio."""
     plan_path = plan_file.expanduser().resolve()
@@ -480,6 +499,8 @@ def master_cmd(
         use_ass_fastpath=ass_fastpath,
         encode_preset=preset,
         use_hardware_encoder=hw_encode,
+        loudness_profile=loudness_profile,
+        auto_shot_match=auto_shot_match,
     )
     typer.echo(json.dumps(asdict(res), indent=2, default=str))
 
@@ -540,6 +561,17 @@ def audit_cmd(
         Path | None,
         typer.Option("--out-file", "-o", help="Optional path to save audit JSON report."),
     ] = None,
+    loudness_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--loudness-profile",
+            help=(
+                "Optional loudness profile override (streaming_web, podcast_video, "
+                "broadcast_ebu_r128, broadcast_atsc_a85, cinema_streaming_dialogue, "
+                "cinema_trailer)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run deterministic ffprobe, EBU R128, and visual QC verification on a deliverable video."""
     platforms = load_platform_targets()
@@ -552,6 +584,7 @@ def audit_cmd(
         require_audio=require_audio,
         check_visual=check_visual,
         reference_path=reference,
+        loudness_profile=loudness_profile,
     )
     if diff_sheet is not None and reference is not None:
         sheet = generate_diff_contact_sheet(media_file, reference, diff_sheet)
@@ -602,6 +635,16 @@ def cloud_render_cmd(
             help="Allow submitting an EditPlan where verifier_passed is false.",
         ),
     ] = False,
+    loudness_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--loudness-profile",
+            help=(
+                "Optional loudness profile (streaming_web, podcast_video, broadcast_ebu_r128, "
+                "broadcast_atsc_a85, cinema_streaming_dialogue, cinema_trailer)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Stage local media on Modal CAS, run distributed render & mastering, and download MP4."""
     import modal
@@ -658,6 +701,7 @@ def cloud_render_cmd(
             chunk_frames=chunk_frames,
             quality=quality,
             force_hf=force_hf,
+            loudness_profile=loudness_profile,
             remote_fn=deployed_fn,
         )
     else:
@@ -669,6 +713,7 @@ def cloud_render_cmd(
                 chunk_frames=chunk_frames,
                 quality=quality,
                 force_hf=force_hf,
+                loudness_profile=loudness_profile,
             )
     typer.echo(json.dumps(summary, indent=2, default=str))
     qc_summary = summary.get("qc") if isinstance(summary, dict) else None

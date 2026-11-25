@@ -17,6 +17,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from vedit.analyzers.editorial_forensics import (
+    compute_multimodal_tension_curve,
+    detect_split_edits,
+)
 from vedit.contracts import validate_against_contract
 from vedit.metrics import (
     compute_quantiles,
@@ -296,9 +300,48 @@ def _compute_temporal_curve(samples: Sequence[ReferenceVideoSample]) -> list[Tem
     mean_cuts_per_min /= max(len(samples), 1)
     g_p25, g_p50, g_p75 = compute_quantiles(global_durations or [2.5])
     base_energy = min(max(mean_cuts_per_min / 36.0, 0.25), 0.95)
+
+    # Measure true J-cut / L-cut usage from cut vs speech-clause onset deltas.
+    measured_j_ratio: float | None = None
+    measured_l_ratio: float | None = None
+    j_ratios: list[float] = []
+    l_ratios: list[float] = []
+    for sample in samples:
+        if not (sample.transcript and sample.transcript.words):
+            continue
+        cuts = [
+            s.start_s
+            for s in (
+                sample.breakdown.shots
+                if sample.breakdown and sample.breakdown.shots
+                else sample.probe.shots
+            )
+            if s.start_s > 0.1
+        ]
+        if not cuts:
+            continue
+        words = [w for w in sample.transcript.words if not w.is_filler]
+        speech_iv: list[tuple[float, float]] = []
+        if words:
+            cs, pe = words[0].start_s, words[0].end_s
+            for w in words[1:]:
+                if w.start_s - pe >= 0.22:
+                    speech_iv.append((cs, pe))
+                    cs = w.start_s
+                pe = w.end_s
+            speech_iv.append((cs, pe))
+        se = detect_split_edits(cuts, speech_intervals_s=speech_iv)
+        j_ratios.append(se.j_cut_ratio)
+        l_ratios.append(se.l_cut_ratio)
+    if j_ratios:
+        measured_j_ratio = sum(j_ratios) / len(j_ratios)
+        measured_l_ratio = sum(l_ratios) / len(l_ratios)
+
     uses_j_cut = bool(
-        pause_cut_ratios and (sum(pause_cut_ratios) / len(pause_cut_ratios)) >= 0.45
+        (measured_j_ratio is not None and measured_j_ratio >= 0.25)
+        or (pause_cut_ratios and (sum(pause_cut_ratios) / len(pause_cut_ratios)) >= 0.45)
     )
+    uses_l_cut = bool(measured_l_ratio is not None and measured_l_ratio >= 0.25)
 
     curve: list[TemporalSectionPrior] = []
     for name, _, _, scale in _SECTION_BOUNDS:
@@ -322,8 +365,12 @@ def _compute_temporal_curve(samples: Sequence[ReferenceVideoSample]) -> list[Tem
             transitions = list(measured_tr)
             if uses_j_cut and "j_cut" not in transitions:
                 transitions.append("j_cut")
+            if uses_l_cut and "l_cut" not in transitions:
+                transitions.append("l_cut")
         else:
             transitions = ["hard_cut"] if p50 < 2.2 else ["hard_cut", "j_cut"]
+            if uses_l_cut and "l_cut" not in transitions:
+                transitions.append("l_cut")
             if name == "outro" and "clean_fade" not in transitions:
                 transitions.append("clean_fade")
 
@@ -631,6 +678,26 @@ def _build_exemplars(
     for sample in samples:
         probe = sample.probe
         kf_by_shot = _collect_keyframe_index(probe)
+        sample_cuts = [
+            s.start_s
+            for s in (
+                sample.breakdown.shots
+                if sample.breakdown and sample.breakdown.shots
+                else probe.shots
+            )
+            if s.start_s > 0.1
+        ]
+        raw_dur = (
+            sample.breakdown.duration_s
+            if sample.breakdown and sample.breakdown.duration_s > 0
+            else probe.container.duration_s
+        )
+        sample_dur = max(raw_dur, 0.5)
+        t_curve = compute_multimodal_tension_curve(
+            sample_dur,
+            transcript=sample.transcript.model_dump() if sample.transcript else None,
+            cuts_s=sample_cuts,
+        )
 
         if sample.breakdown is not None and sample.breakdown.shots:
             bd = sample.breakdown
@@ -667,6 +734,8 @@ def _build_exemplars(
                     "production_label": bshot.production_label,
                     "transition_in": bshot.transition_in,
                     "beat_synced": bd.editing.beat_synced_edit,
+                    "sample_pacing_variance": t_curve.pacing_variance,
+                    "sample_escalation_slope": t_curve.escalation_slope,
                 }
                 if bd.grade.look:
                     metrics["grade_look"] = bd.grade.look
@@ -731,6 +800,8 @@ def _build_exemplars(
                 "confidence": round(shot.confidence, 3),
                 "cuts_per_min_ref": round(probe.shot_stats.cuts_per_min, 2),
                 "easing_feel": easing_feel,
+                "sample_pacing_variance": t_curve.pacing_variance,
+                "sample_escalation_slope": t_curve.escalation_slope,
             }
             if kf is not None:
                 metrics["sharpness"] = round(kf.sharpness, 3)

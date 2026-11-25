@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal
 
+from vedit.analyzers.editorial_forensics import analyze_editorial_forensics
 from vedit.compiler.hf_bridge import compile_edit_plan
 from vedit.contracts import (
     find_repo_root,
@@ -34,7 +35,7 @@ from vedit.director.semantic_director import DirectingTier, critique_storyboard_
 from vedit.director.storyboard import idioms_path, load_directing_idioms
 from vedit.director.verifier import verify_edit_plan
 from vedit.interop.otio_bridge import export_edit_plan_to_otio
-from vedit.mastering.qc_audit import audit_mastered_deliverable
+from vedit.mastering.qc_audit import audit_mastered_deliverable, audit_production_sound
 from vedit.models import (
     BrandStylePolicy,
     BrandTemplateCatalog,
@@ -201,6 +202,7 @@ def create_mcp_server() -> Any:
         platform_id: str,
         require_audio: bool = True,
         check_visual: bool = True,
+        loudness_profile: str | None = None,
     ) -> dict[str, Any]:
         """Audit mastered deliverable stream metadata, EBU R128 loudness, and visual anomalies."""
         platforms = load_platform_targets()
@@ -212,8 +214,39 @@ def create_mcp_server() -> Any:
             platform_target,
             require_audio=require_audio,
             check_visual=check_visual,
+            loudness_profile=loudness_profile,
         )
         return report.to_dict()
+
+    @mcp.tool()
+    def inspect_production_audio(media_file: str) -> dict[str, Any]:
+        """Inspect raw speech/field audio for clipping, SNR, sub-80 Hz rumble, and plosives."""
+        return audit_production_sound(Path(media_file).expanduser().resolve()).to_dict()
+
+    @mcp.tool()
+    def analyze_editorial(
+        media_file: str,
+        cuts_s: list[float] | None = None,
+        transcript_file: str | None = None,
+        storyboard_file: str | None = None,
+    ) -> dict[str, Any]:
+        """Measure cross-cut eye-trace, color/luma shock, split edits, phase, and tension curve."""
+        tr = (
+            json.loads(Path(transcript_file).expanduser().read_text(encoding="utf-8"))
+            if transcript_file
+            else None
+        )
+        sb = (
+            json.loads(Path(storyboard_file).expanduser().read_text(encoding="utf-8"))
+            if storyboard_file
+            else None
+        )
+        return analyze_editorial_forensics(
+            Path(media_file).expanduser().resolve(),
+            cuts_s=cuts_s,
+            transcript=tr,
+            storyboard=sb,
+        ).to_dict()
 
     @mcp.tool()
     def export_otio(

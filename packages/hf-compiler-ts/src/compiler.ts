@@ -528,6 +528,70 @@ function buildOverlayMarkup(
     </div>`;
 }
 
+interface ResolvedMotionPhysics {
+  registerName: "documentary" | "wry" | "comic";
+  easeName: string;
+  enterScale: number;
+  anticipationS: number;
+  overlapStaggerS: number;
+  squashSettle: boolean;
+}
+
+function resolveMotionPhysics(ov: OverlayCompositionOp, duration: number): ResolvedMotionPhysics {
+  const regRaw =
+    ov.motion_register ??
+    (typeof ov.props.motion_register === "string" ? ov.props.motion_register : null);
+  const reg: "documentary" | "wry" | "comic" =
+    regRaw === "comic" || regRaw === "wry" || regRaw === "documentary"
+      ? regRaw
+      : "documentary";
+  const easingFeel =
+    typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "smooth_editorial";
+
+  let easeName =
+    easingFeel === "energetic_pop"
+      ? "back.out(1.4)"
+      : easingFeel === "minimal_static"
+        ? "none"
+        : "expo.out";
+  let enterScale = 0.94;
+  let defaultAnticMs = 0;
+  let squashSettle = false;
+
+  if (reg === "wry") {
+    easeName = easingFeel === "minimal_static" ? "none" : "power4.out";
+    enterScale = 0.96;
+    defaultAnticMs = 55;
+  } else if (reg === "comic") {
+    easeName = easingFeel === "minimal_static" ? "none" : "back.out(1.6)";
+    enterScale = 0.94;
+    defaultAnticMs = 75;
+    squashSettle = true;
+  }
+
+  const rawAnticMs =
+    typeof ov.anticipation_ms === "number" && Number.isFinite(ov.anticipation_ms)
+      ? ov.anticipation_ms
+      : typeof ov.props.anticipation_ms === "number" && Number.isFinite(ov.props.anticipation_ms)
+        ? Number(ov.props.anticipation_ms)
+        : defaultAnticMs;
+  const rawStaggerMs =
+    typeof ov.overlap_stagger_ms === "number" && Number.isFinite(ov.overlap_stagger_ms)
+      ? ov.overlap_stagger_ms
+      : typeof ov.props.overlap_stagger_ms === "number" && Number.isFinite(ov.props.overlap_stagger_ms)
+        ? Number(ov.props.overlap_stagger_ms)
+        : 45;
+
+  return {
+    registerName: reg,
+    easeName,
+    enterScale,
+    anticipationS: Number(Math.min(Math.max(0, rawAnticMs) / 1000, duration * 0.18).toFixed(3)),
+    overlapStaggerS: Number(Math.min(Math.max(0, rawStaggerMs) / 1000, duration * 0.12).toFixed(3)),
+    squashSettle,
+  };
+}
+
 function buildOverlayCompositionHtml(
   ov: OverlayCompositionOp,
   sceneId: string,
@@ -561,16 +625,8 @@ function buildOverlayCompositionHtml(
       ? Math.max(40, Math.min(2000, Number(ov.props.entrance_ms)))
       : null;
   const { inMs: captionTransitionMs, outMs: captionFadeOutMs } = captionFadeMs(ov.props);
-  const easingFeel =
-    typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "snappy_ease_out";
-  const easeName =
-    easingFeel === "smooth_editorial"
-      ? "expo.out"
-      : easingFeel === "energetic_pop"
-        ? "back.out(1.4)"
-        : easingFeel === "minimal_static"
-          ? "none"
-          : "expo.out";
+  const physics = resolveMotionPhysics(ov, duration);
+  const easeName = physics.easeName;
   const enterDur = Number(
     (isCaption
       ? Math.min(captionTransitionMs / 1000, duration * 0.2)
@@ -585,6 +641,25 @@ function buildOverlayCompositionHtml(
   const exitAt = Number(
     (isCaption ? Math.max(enterDur, duration - exitDur) : Math.max(0.05, duration - exitDur)).toFixed(3)
   );
+  const blendCss =
+    ov.blend_mode && ov.blend_mode !== "normal"
+      ? `mix-blend-mode: ${ov.blend_mode};`
+      : "";
+  const matteCss =
+    ov.matte_mode === "alpha_matte"
+      ? "mask-mode: alpha;"
+      : ov.matte_mode === "luma_matte"
+        ? "mask-mode: luminance;"
+        : ov.matte_mode === "inverted_alpha"
+          ? "mask-mode: alpha; mask-composite: exclude;"
+          : "";
+  const matteAttr =
+    ov.matte_mode && ov.matte_mode !== "none"
+      ? ` data-matte-mode="${escapeHtml(ov.matte_mode)}"`
+      : "";
+  const parentAttr = ov.parent_overlay_id
+    ? ` data-parent-overlay="${escapeHtml(ov.parent_overlay_id)}"`
+    : "";
   const posCss = hasCustomHtml
     ? "inset: 0;"
     : computeBandPositionCss(band, safeZone, width, height, ov.props.box);
@@ -595,6 +670,24 @@ function buildOverlayCompositionHtml(
   const customCss = typeof ov.props.custom_css === "string" ? ov.props.custom_css : "";
 
   const innerMarkup = buildOverlayMarkup(ov, innerId, extraFamilies);
+  const anticDipScale = Number(Math.max(0.92, physics.enterScale - 0.02).toFixed(3));
+  const anticPrep =
+    physics.anticipationS > 0.01
+      ? `tl.fromTo("#${innerId}", { opacity: 0.4, y: 18, scale: ${physics.enterScale} }, { opacity: 0.85, y: 22, scale: ${anticDipScale}, duration: ${physics.anticipationS}, ease: "power2.in" }, 0);\n    `
+      : "";
+  const anticOffset = physics.anticipationS > 0.01 ? physics.anticipationS : 0;
+  const enterStartScale = anticOffset > 0 ? anticDipScale : physics.enterScale;
+  const squashStart = anticOffset + enterDur;
+  const squashTweens = physics.squashSettle
+    ? `tl.to("#${innerId}", { scaleX: 1.03, scaleY: 0.97, duration: 0.06, ease: "power1.out" }, ${squashStart.toFixed(3)});\n    tl.to("#${innerId}", { scaleX: 1.0, scaleY: 1.0, duration: 0.12, ease: "power2.out" }, ${(squashStart + 0.06).toFixed(3)});\n    `
+    : "";
+  const overlapChildren =
+    physics.overlapStaggerS > 0.005
+      ? `var kids = document.querySelectorAll("#${innerId} .vedit-badge, #${innerId} .vedit-headline, #${innerId} .vedit-subtitle");
+    if (kids.length > 1) {
+      tl.fromTo(kids, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: ${Math.max(0.12, enterDur * 0.8).toFixed(3)}, stagger: ${physics.overlapStaggerS}, ease: "${easeName}" }, ${(anticOffset + 0.02).toFixed(3)});
+    }\n    `
+      : "";
   const timelineScript =
     typeof ov.props.custom_timeline_js === "string" && ov.props.custom_timeline_js.trim()
       ? ov.props.custom_timeline_js
@@ -624,13 +717,13 @@ function buildOverlayCompositionHtml(
     window.__timelines = window.__timelines || {};
     window.__timelines["${sceneId}"] = tl;`
           : `const tl = gsap.timeline({ paused: true });
-    tl.fromTo(
+    ${anticPrep}tl.fromTo(
       "#${innerId}",
-      { opacity: 0, y: 12 },
-      { opacity: 1, y: 0, duration: ${enterDur}, ease: "${easeName}" },
-      0
+      { opacity: ${anticOffset > 0 ? 0.85 : 0}, y: ${anticOffset > 0 ? 22 : 12}, scale: ${enterStartScale} },
+      { opacity: 1, y: 0, scale: 1, duration: ${enterDur}, ease: "${easeName}" },
+      ${anticOffset}
     );
-    tl.to("#${innerId}", { opacity: 0, y: -8, duration: ${exitDur}, ease: "power3.in" }, ${exitAt});
+    ${overlapChildren}${squashTweens}tl.to("#${innerId}", { opacity: 0, y: -8, duration: ${exitDur}, ease: "power3.in" }, ${exitAt});
     window.__timelines = window.__timelines || {};
     window.__timelines["${sceneId}"] = tl;`;
 
@@ -654,6 +747,8 @@ function buildOverlayCompositionHtml(
       --vedit-accent: ${accent};
       --vedit-text-glow: ${glowTextShadow};
       font-variant-numeric: tabular-nums;
+      ${blendCss}
+      ${matteCss}
     }
     #${clipId} {
       position: absolute;
@@ -716,7 +811,7 @@ function buildOverlayCompositionHtml(
     }
     ${customCss}
   </style>
-  <div id="root" data-composition-id="${sceneId}" data-width="${width}" data-height="${height}"${motionBlurAttr}>
+  <div id="root" data-composition-id="${sceneId}" data-width="${width}" data-height="${height}"${motionBlurAttr}${matteAttr}${parentAttr}>
     ${rootBgLayer}
     <div id="${clipId}" class="clip" data-start="0" data-duration="${duration}">
       ${innerMarkup}
@@ -806,6 +901,7 @@ function renderParameterizedTemplate(
     ov.props.glow_strength ?? "none"
   );
 
+  const physics = resolveMotionPhysics(ov, duration);
   const tokens: Record<string, string> = {
     SCENE_ID: sceneId,
     WIDTH: String(width),
@@ -833,7 +929,13 @@ function renderParameterizedTemplate(
     TEXT_GLOW_CSS: textGlowCss,
     BODY_FONT: bodyFont,
     DISPLAY_FONT: displayFont,
-    EASE_NAME: easeName,
+    EASE_NAME: physics.easeName,
+    MOTION_REGISTER: physics.registerName,
+    ANTICIPATION_S: String(physics.anticipationS),
+    OVERLAP_STAGGER_S: String(physics.overlapStaggerS),
+    BLEND_MODE: ov.blend_mode ?? "normal",
+    MATTE_MODE: ov.matte_mode ?? "none",
+    PARENT_OVERLAY_ID: ov.parent_overlay_id ?? "",
     ENTRANCE_S: String(enterS),
     EXIT_S: String(exitS),
     EXIT_AT_S: String(exitAtS),
@@ -980,6 +1082,15 @@ function injectOverlayTrackKeyframes(
       rotationX: kf.rotateX_deg ?? 0,
       perspective: kf.perspective_px ?? activePerspective,
       opacity: kf.opacity ?? 1,
+      curve: kf.curve ?? "linear",
+      arcHeightPx:
+        typeof kf.arc_height_px === "number" && Number.isFinite(kf.arc_height_px)
+          ? kf.arc_height_px
+          : kf.curve === "arc_up"
+            ? -48
+            : kf.curve === "arc_down"
+              ? 48
+              : 0,
     };
   });
   const originX = Number(((baseX / 100) * width).toFixed(1));
@@ -1012,21 +1123,50 @@ function injectOverlayTrackKeyframes(
         var prev = kfs[i - 1];
         var curr = kfs[i];
         var segDur = Math.max(0.001, curr.t - prev.t);
-        trackTl.to(target, {
-          x: curr.dx,
-          y: curr.dy,
-          scale: curr.scale,
-          rotation: curr.rotation,${
-            has3d
-              ? `
-          rotationX: curr.rotationX,
-          transformPerspective: curr.perspective || 1600,`
-              : ""
+        if (curr.curve === "arc_up" || curr.curve === "arc_down") {
+          var steps = 8;
+          var ctrlX = (prev.dx + curr.dx) * 0.5;
+          var ctrlY = (prev.dy + curr.dy) * 0.5 + curr.arcHeightPx;
+          for (var s = 1; s <= steps; s++) {
+            var u = s / steps;
+            var inv = 1 - u;
+            var bx = inv * inv * prev.dx + 2 * inv * u * ctrlX + u * u * curr.dx;
+            var by = inv * inv * prev.dy + 2 * inv * u * ctrlY + u * u * curr.dy;
+            var subDur = segDur / steps;
+            trackTl.to(target, {
+              x: Number(bx.toFixed(2)),
+              y: Number(by.toFixed(2)),
+              scale: prev.scale + (curr.scale - prev.scale) * u,
+              rotation: prev.rotation + (curr.rotation - prev.rotation) * u,${
+                has3d
+                  ? `
+              rotationX: prev.rotationX + (curr.rotationX - prev.rotationX) * u,
+              transformPerspective: curr.perspective || 1600,`
+                  : ""
+              }
+              opacity: prev.opacity + (curr.opacity - prev.opacity) * u,
+              duration: subDur,
+              ease: "none"
+            }, prev.t + (s - 1) * subDur);
           }
-          opacity: curr.opacity,
-          duration: segDur,
-          ease: "none"
-        }, prev.t);
+        } else {
+          var segEase = curr.curve === "ease_out" ? "power3.out" : curr.curve === "ease_in_out" ? "power2.inOut" : "none";
+          trackTl.to(target, {
+            x: curr.dx,
+            y: curr.dy,
+            scale: curr.scale,
+            rotation: curr.rotation,${
+              has3d
+                ? `
+            rotationX: curr.rotationX,
+            transformPerspective: curr.perspective || 1600,`
+                : ""
+            }
+            opacity: curr.opacity,
+            duration: segDur,
+            ease: segEase
+          }, prev.t);
+        }
       }
       window.__timelines = window.__timelines || {};
       var parentTl = window.__timelines[${JSON.stringify(sceneId)}];
@@ -1053,7 +1193,9 @@ export function compileEditPlanToHyperframes(
   options: CompileOptions = {}
 ): CompiledProjectResult {
   assertPlanStructure(plan);
-  const perfViolations = lintPlanPerformance(plan);
+  const perfViolations = lintPlanPerformance(plan).filter(
+    (v) => v.code !== "KINETIC_LEGIBILITY_DURATION"
+  );
   if (perfViolations.length > 0) {
     const first = perfViolations[0];
     throw new Error(`CSS performance gate failed (${first?.location}): ${first?.message}`);
@@ -1192,12 +1334,19 @@ export function compileEditPlanToHyperframes(
     const templateAttr = ov.template_id
       ? ` data-template-id="${escapeHtml(ov.template_id)}"`
       : "";
+    const hostParentAttr = ov.parent_overlay_id
+      ? ` data-parent-overlay="${escapeHtml(ov.parent_overlay_id)}"`
+      : "";
+    const hostMatteAttr =
+      ov.matte_mode && ov.matte_mode !== "none"
+        ? ` data-matte-mode="${escapeHtml(ov.matte_mode)}"`
+        : "";
     hostTags.push(
       `      <div id="${sceneId}" data-composition-id="${sceneId}" ` +
         `data-composition-src="compositions/${sceneId}.html" ` +
         `data-start="${start}" data-duration="${dur}" ` +
         `data-track-index="${lane}" data-track-kind="${trackKind}"` +
-        `${templateAttr} ` +
+        `${templateAttr}${hostParentAttr}${hostMatteAttr} ` +
         `data-width="${plan.width}" data-height="${plan.height}"></div>`
     );
   }

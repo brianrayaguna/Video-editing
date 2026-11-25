@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 import typer
 
 from vedit.cli._app import JsonOption, app
+from vedit.mastering.qc_audit import audit_production_sound
 from vedit.ports.audio_catalog import AudioKind, VocalPolicy
 from vedit.ports.decision import DecisionQuestion, ImageInput
 from vedit.ports.transcription import TranscriptionOptions
@@ -201,6 +202,10 @@ def remove_silence_cmd(
     padding: Annotated[
         float, typer.Option("--padding", help="Breath kept on each side of a cut, in seconds.")
     ] = 0.12,
+    room_tone_db: Annotated[
+        float | None,
+        typer.Option("--room-tone-db", help="Optional room-tone floor level in dBFS (e.g. -48)."),
+    ] = None,
 ) -> None:
     """Cut long pauses from a voiceover locally; run before `transcribe`."""
     result = FfmpegMediaOpsProvider().remove_silence(
@@ -209,8 +214,26 @@ def remove_silence_cmd(
         threshold_db=threshold_db,
         min_silence_s=min_silence,
         padding_s=padding,
+        room_tone_db=room_tone_db,
     )
     typer.echo(json.dumps(asdict(result), indent=2, default=str))
+
+
+@app.command("inspect-audio", rich_help_panel="Media & decisioning")
+def inspect_audio_cmd(
+    media_file: Annotated[Path, typer.Argument(help="Raw voiceover or field recording path.")],
+    out_file: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Optional JSON report path.")
+    ] = None,
+) -> None:
+    """Inspect production sound health (clipping, SNR, sub-80 Hz rumble, plosives)."""
+    report = audit_production_sound(media_file).to_dict()
+    payload = json.dumps(report, indent=2)
+    if out_file is not None:
+        out_p = out_file.expanduser().resolve()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(payload + "\n", encoding="utf-8")
+    typer.echo(payload)
 
 
 @app.command("restore-footage", rich_help_panel="Media & decisioning")

@@ -75,6 +75,51 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "narrative_framework": {
+          "type": "string",
+          "enum": ["short_shape", "three_act", "story_circle", "frame_narrative"]
+        },
+        "character_arc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["positive", "negative", "flat", "none"] },
+            "start_state": { "type": "string" },
+            "midpoint_shift": { "type": "string" },
+            "end_state": { "type": "string" }
+          }
+        },
+        "story_circle_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "you": { "type": "string" },
+            "need": { "type": "string" },
+            "go": { "type": "string" },
+            "search": { "type": "string" },
+            "find": { "type": "string" },
+            "take": { "type": "string" },
+            "return": { "type": "string" },
+            "change": { "type": "string" }
+          }
+        },
+        "curiosity_loops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["loop_id", "question", "opened_beat_id"],
+            "properties": {
+              "loop_id": { "type": "string", "minLength": 1 },
+              "question": { "type": "string", "minLength": 3 },
+              "withheld_element": { "type": "string" },
+              "opened_beat_id": { "type": "string", "minLength": 1 },
+              "promise_hinge_beat_id": { "type": "string" },
+              "payoff_beat_id": { "type": "string" }
+            }
+          }
         }
       }
     },
@@ -253,6 +298,70 @@
         },
         "transition_in": {
           "type": "string"
+        },
+        "tension_level": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "register": {
+          "type": "string",
+          "enum": ["documentary", "investigative", "wry", "comic"]
+        },
+        "subtext_note": {
+          "type": "string"
+        },
+        "blend_mode": {
+          "type": "string",
+          "enum": ["normal", "screen", "multiply", "overlay", "lighten"]
+        },
+        "blocking": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subject_zone": { "type": "string", "enum": ["left", "center", "right", "foreground", "background"] },
+            "camera_move": { "type": "string", "enum": ["static", "pan", "tilt", "dolly_in", "dolly_out", "truck", "orbit", "whip_pan"] },
+            "axis_side": { "type": "string", "enum": ["left", "right", "neutral"] }
+          }
+        },
+        "color_mood": {
+          "type": "string",
+          "enum": ["neutral", "catastrophe_warm", "dread_dim_vignette", "anomaly_desat", "archival_sepia", "cool_investigative"]
+        },
+        "sound_cue": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "function": {
+              "type": "string",
+              "enum": ["hit", "riser", "drone", "pulse", "stinger", "silence_dropout", "ambience"]
+            },
+            "diegetic": { "type": "boolean" },
+            "silence_dropout_ms": { "type": "number", "minimum": 0, "maximum": 800 },
+            "pan_x_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "reverb": { "type": "string", "enum": ["dry", "close", "medium", "wide"] }
+          }
+        },
+        "split_edit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "offset_s"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["j_cut", "l_cut"] },
+            "offset_s": { "type": "number", "minimum": 0, "maximum": 4.0 }
+          }
+        },
+        "shot": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scale": { "type": "string", "enum": ["ews", "ws", "ms", "mcu", "cu", "ecu"] },
+            "angle": { "type": "string", "enum": ["eye_level", "low_angle", "high_angle", "birds_eye", "dutch"] },
+            "movement": { "type": "string", "enum": ["static", "pan", "tilt", "dolly_in", "dolly_out", "truck", "orbit", "whip", "handheld"] },
+            "lighting": { "type": "string", "enum": ["natural", "high_key", "low_key", "silhouette", "chiaroscuro"] },
+            "motion_direction": { "type": "string", "enum": ["static", "left_to_right", "right_to_left", "push_in", "pull_out", "up", "down"] },
+            "look_room": { "type": "string", "enum": ["left", "center", "right"] }
+          }
         },
         "camera": {
           "type": "object",

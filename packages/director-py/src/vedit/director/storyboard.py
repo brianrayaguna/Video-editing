@@ -317,6 +317,172 @@ def _check(
                         b,
                     )
                     break
+    elif iid == "curiosity_loops_closed":
+        loops = (sb.get("story") or {}).get("curiosity_loops") or []
+        if loops:
+            beat_pos = {b["beat_id"]: (idx, b) for idx, b in enumerate(beats)}
+            min_deferred = min(
+                float(p.get("min_deferred_span_s", 15.0)),
+                max(3.0, float(sb.get("duration_s", 60.0)) * 0.30),
+            )
+            has_deferred = False
+            for lp in loops:
+                lid = lp.get("loop_id", "?")
+                open_id = lp.get("opened_beat_id")
+                payoff_id = lp.get("payoff_beat_id")
+                hinge_id = lp.get("promise_hinge_beat_id")
+                if open_id not in beat_pos:
+                    add(f"curiosity loop {lid!r} opens at unknown beat {open_id!r}")
+                    continue
+                if hinge_id and hinge_id not in beat_pos:
+                    add(f"curiosity loop {lid!r} promise hinge {hinge_id!r} does not exist")
+                if not payoff_id:
+                    add(f"curiosity loop {lid!r} has no payoff_beat_id", beat_pos[open_id][1])
+                    continue
+                if payoff_id not in beat_pos:
+                    add(f"curiosity loop {lid!r} payoff beat {payoff_id!r} does not exist")
+                    continue
+                oi, ob = beat_pos[open_id]
+                pi, pb = beat_pos[payoff_id]
+                if pi <= oi:
+                    add(f"curiosity loop {lid!r} pays off before or at its opening beat", pb)
+                    continue
+                span = float(pb["start_s"]) - float(ob["start_s"])
+                if span >= min_deferred:
+                    has_deferred = True
+            if not has_deferred and float(sb.get("duration_s", 0.0)) >= 12.0:
+                add(
+                    f"no curiosity loop outlives {min_deferred:.1f}s "
+                    "(open at least one deferred payoff loop)"
+                )
+    elif iid == "tension_arc_dynamic":
+        t_vals = [
+            float(b["tension_level"])
+            for b in beats
+            if b.get("tension_level") is not None
+        ]
+        if len(t_vals) >= 4:
+            min_range = float(p.get("min_range", 0.25))
+            if max(t_vals) - min(t_vals) < min_range - 1e-6:
+                add(
+                    f"tension_level range {max(t_vals) - min(t_vals):.2f} is below "
+                    f"minimum {min_range:.2f}; story arc reads flat"
+                )
+    elif iid == "shot_direction_continuity":
+        prev_dir: str | None = None
+        for b in beats:
+            cur_dir = (b.get("shot") or {}).get("motion_direction")
+            if cur_dir in ("left_to_right", "right_to_left") and prev_dir in (
+                "left_to_right",
+                "right_to_left",
+            ):
+                if cur_dir != prev_dir:
+                    add(
+                        f"horizontal motion flips from {prev_dir!r} to {cur_dir!r} "
+                        "without a neutral shot",
+                        b,
+                    )
+            if cur_dir:
+                prev_dir = cur_dir
+    elif iid == "split_edit_bounds":
+        max_off = float(p.get("max_offset_s", 2.5))
+        for b in beats:
+            se = b.get("split_edit")
+            if not isinstance(se, dict):
+                continue
+            off = float(se.get("offset_s", 0.0))
+            if off > max_off + 1e-6:
+                add(f"split_edit offset {off:.2f}s exceeds max {max_off:.2f}s", b)
+            elif se.get("kind") == "j_cut" and off > float(b["start_s"]) + 1e-6:
+                add(f"j_cut offset {off:.2f}s pre-laps before timeline t=0", b)
+    elif iid == "narrative_framework_structure":
+        story = sb.get("story") or {}
+        fw = str(story.get("narrative_framework") or "")
+        total_dur = max(float(sb.get("duration_s") or 0.0), 1e-6)
+        beat_idx_map = {b["beat_id"]: (idx, b) for idx, b in enumerate(beats)}
+        if fw == "story_circle":
+            sc_map = story.get("story_circle_map") or {}
+            if not isinstance(sc_map, dict) or not sc_map:
+                add("story_circle framework requires a populated story_circle_map")
+            else:
+                steps = ("you", "need", "go", "search", "find", "take", "return", "change")
+                present = [(st, sc_map[st]) for st in steps if st in sc_map]
+                if len(present) < 4:
+                    add(f"story_circle_map covers only {len(present)} of 8 steps (minimum 4)")
+                prev_pos = -1
+                for st, bid in present:
+                    if bid not in beat_idx_map:
+                        add(f"story_circle step {st!r} references unknown beat {bid!r}")
+                        continue
+                    pos = beat_idx_map[bid][0]
+                    if pos < prev_pos:
+                        add(
+                            f"story_circle step {st!r} occurs out of narrative order",
+                            beat_idx_map[bid][1],
+                        )
+                    prev_pos = pos
+        elif fw == "three_act" and len(beats) >= 6:
+            act1_beats = [b for b in beats if b.get("function") in ("hook", "setup")]
+            climax_beats = [b for b in beats if b.get("function") in ("climax", "outro")]
+            if act1_beats:
+                act1_end = max(float(b.get("end_s", 0.0)) for b in act1_beats) / total_dur
+                if act1_end < 0.08 or act1_end > 0.45:
+                    add(f"three_act setup finishes at {act1_end:.0%} (expected 8%-45%)")
+            if climax_beats:
+                climax_start = min(float(b.get("start_s", 0.0)) for b in climax_beats) / total_dur
+                if climax_start < 0.65:
+                    add(f"three_act climax starts early at {climax_start:.0%} (< 65%)")
+        elif fw == "frame_narrative" and len(beats) >= 4:
+            first, last = beats[0], beats[-1]
+            same_dev = first.get("device") == last.get("device")
+            same_reg = first.get("register") and first.get("register") == last.get("register")
+            toks_a = {
+                _clean(w).lower()
+                for w in str(first.get("clause") or "").split()
+                if len(_clean(w)) >= 4
+            }
+            toks_b = {
+                _clean(w).lower()
+                for w in str(last.get("clause") or "").split()
+                if len(_clean(w)) >= 4
+            }
+            if not (same_dev or same_reg or (toks_a & toks_b)):
+                add(
+                    "frame_narrative opening and closing beats share no recurring motif, "
+                    "register, or device",
+                    last,
+                )
+    elif iid == "subtext_and_arc_coherence":
+        arc = (sb.get("story") or {}).get("character_arc")
+        if isinstance(arc, dict) and arc.get("kind") not in (None, "none"):
+            start_s = str(arc.get("start_state") or "").strip()
+            end_s = str(arc.get("end_state") or "").strip()
+            if not start_s or not end_s:
+                add("character_arc must specify both start_state and end_state")
+            elif arc.get("kind") in ("positive", "negative") and start_s.lower() == end_s.lower():
+                add(
+                    f"character_arc ({arc['kind']}) shows no state shift "
+                    "between start_state and end_state"
+                )
+        for b in beats:
+            sub = str(b.get("subtext_note") or "").strip()
+            if sub and sub.lower() == str(b.get("clause") or "").strip().lower():
+                add(
+                    "subtext_note literally repeats the spoken clause rather than implied subtext",
+                    b,
+                )
+    elif iid == "blocking_axis_continuity":
+        prev_axis: str | None = None
+        for b in beats:
+            axis = (b.get("blocking") or {}).get("axis_side")
+            if axis in ("left", "right") and prev_axis in ("left", "right") and axis != prev_axis:
+                add(
+                    f"blocking axis_side flips from {prev_axis!r} to {axis!r} across cut "
+                    "without neutral beat",
+                    b,
+                )
+            if axis:
+                prev_axis = axis
     return issues
 
 
@@ -473,6 +639,20 @@ def detect_story_shape(text: str, auto: dict[str, Any]) -> str:
     return best if best and scores[best] > 0 else "free_form"
 
 
+_FUNCTION_TENSION: dict[str, float] = {
+    "hook": 0.72,
+    "setup": 0.40,
+    "proof": 0.52,
+    "data_callout": 0.56,
+    "broll_bridge": 0.48,
+    "obstacle": 0.68,
+    "hinge": 0.76,
+    "climax": 0.92,
+    "recap": 0.58,
+    "outro": 0.45,
+}
+
+
 def scaffold_storyboard(
     transcript: dict[str, Any],
     idioms: dict[str, Any],
@@ -534,15 +714,23 @@ def scaffold_storyboard(
         beats[0]["start_s"] = 0.0
         beats[0]["function"] = "hook"
         hook_until = auto["hook_window_s"]
+        setup_until = duration * 0.25 if duration >= 180.0 and len(beats) >= 6 else 0.0
+        outro_from = duration * (1.0 - auto["outro_fraction"])
         for b in beats[1:]:
             if b["start_s"] < hook_until and b["function"] == "proof":
                 b["function"] = "hook"
-        outro_from = duration * (1.0 - auto["outro_fraction"])
+            elif setup_until > 0.0 and b["end_s"] <= setup_until and b["function"] != "hook":
+                b["function"] = "setup"
         for b in beats:
             if b["start_s"] >= outro_from:
                 b["function"] = "outro"
         beats[-1]["function"] = "outro"
+        for b in beats:
+            b.setdefault("tension_level", _FUNCTION_TENSION.get(str(b["function"]), 0.5))
     text = transcript.get("text") or " ".join(w["text"] for w in words)
+    story_obj: dict[str, Any] = {"shape": detect_story_shape(text, auto)}
+    if duration >= 180.0 and len(beats) >= 6:
+        story_obj["narrative_framework"] = "three_act"
     return {
         "schema_version": "1.0",
         "project_id": project_id,
@@ -550,7 +738,7 @@ def scaffold_storyboard(
         "duration_s": round(duration, 3),
         "directing_source": "auto",
         "pacing": pacing,
-        "story": {"shape": detect_story_shape(text, auto)},
+        "story": story_obj,
         "overrides": {},
         "beats": beats,
     }
@@ -585,3 +773,47 @@ def apply_director_storyboard(auto_sb: dict[str, Any], directed: dict[str, Any])
             b["story_need"] = b["story_need"] or "keep the subject alive while the clause lands"
     out["directing_source"] = "mixed" if out["beats"] != directed.get("beats") else "user"
     return out
+
+
+def export_shot_list(storyboard: dict[str, Any]) -> dict[str, Any]:
+    """Generate a structured production shot list derived from storyboard beats."""
+    shots: list[dict[str, Any]] = []
+    ordered = sorted(
+        storyboard.get("beats") or [],
+        key=lambda x: float(x.get("start_s", 0.0)),
+    )
+    for idx, b in enumerate(ordered, start=1):
+        start_s = round(float(b.get("start_s", 0.0)), 3)
+        end_s = round(float(b.get("end_s", start_s + 0.5)), 3)
+        shot_meta = b.get("shot") or {}
+        blocking = b.get("blocking") or {}
+        shots.append(
+            {
+                "shot_number": idx,
+                "beat_id": b.get("beat_id"),
+                "start_s": start_s,
+                "end_s": end_s,
+                "duration_s": round(max(0.05, end_s - start_s), 3),
+                "function": b.get("function"),
+                "device": b.get("device"),
+                "register": b.get("register") or "documentary",
+                "shot_scale": shot_meta.get("scale"),
+                "camera_angle": shot_meta.get("angle"),
+                "motion_direction": shot_meta.get("motion_direction"),
+                "camera_move": blocking.get("camera_move") or shot_meta.get("movement"),
+                "subject_zone": blocking.get("subject_zone"),
+                "axis_side": blocking.get("axis_side"),
+                "color_mood": b.get("color_mood"),
+                "split_edit": b.get("split_edit"),
+                "sound_cue": b.get("sound_cue"),
+                "clause": b.get("clause"),
+            }
+        )
+    return {
+        "schema_version": "1.0",
+        "project_id": storyboard.get("project_id", ""),
+        "brand_id": storyboard.get("brand_id", ""),
+        "duration_s": storyboard.get("duration_s", 0.0),
+        "total_shots": len(shots),
+        "shots": shots,
+    }

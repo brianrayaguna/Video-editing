@@ -298,6 +298,65 @@ def breakdown_apply_review_cmd(
     typer.echo(json.dumps(result.model_dump(exclude_none=True), indent=2))
 
 
+@breakdown_app.command("editorial")
+def breakdown_editorial_cmd(
+    media_file: Annotated[
+        Path, typer.Argument(help="Video file to analyze for editorial continuity.")
+    ],
+    shots_from: Annotated[
+        Path | None,
+        typer.Option(
+            "--shots-from", help="Optional probe.json or video_breakdown.json supplying shot cuts."
+        ),
+    ] = None,
+    transcript_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--transcript", help="Optional NormalizedTranscript JSON for J/L-cut & WPM tension."
+        ),
+    ] = None,
+    storyboard_file: Annotated[
+        Path | None,
+        typer.Option("--storyboard", help="Optional Storyboard JSON for tension-curve comparison."),
+    ] = None,
+    out_file: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Optional JSON output path.")
+    ] = None,
+) -> None:
+    """Analyze cross-cut eye-trace, luma/Lab shock, J/L edits, mono phase, and tension."""
+    from vedit.analyzers.editorial_forensics import analyze_editorial_forensics
+
+    cuts_s: list[float] = []
+    if shots_from is not None:
+        sdata = json.loads(shots_from.expanduser().resolve().read_text(encoding="utf-8"))
+        for sh in sdata.get("shots") or []:
+            st = float(sh.get("start_s", 0.0))
+            if st > 0.05:
+                cuts_s.append(st)
+    tr = (
+        json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
+        if transcript_file is not None
+        else None
+    )
+    sb = (
+        json.loads(storyboard_file.expanduser().resolve().read_text(encoding="utf-8"))
+        if storyboard_file is not None
+        else None
+    )
+    report = analyze_editorial_forensics(
+        media_file,
+        cuts_s=cuts_s or None,
+        transcript=tr,
+        storyboard=sb,
+    ).to_dict()
+    payload = json.dumps(report, indent=2)
+    if out_file is not None:
+        out_p = out_file.expanduser().resolve()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(payload + "\n", encoding="utf-8")
+    typer.echo(payload)
+
+
 @breakdown_app.command("import")
 def breakdown_import_cmd(
     path: Annotated[

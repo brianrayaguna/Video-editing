@@ -314,10 +314,40 @@ class BoundingBox(StrictModel):
 class AssetRef(StrictModel):
     asset_id: str
     sha256: str = Field(min_length=16, max_length=64, pattern=_HEX_SHA_PATTERN)
-    kind: Literal["video", "audio_speech", "audio_bgm", "audio_sfx", "image", "font"]
+    kind: Literal[
+        "video", "audio_speech", "audio_bgm", "audio_sfx", "audio_ambience", "image", "font"
+    ]
     path: str
     duration_s: float | None = Field(default=None, ge=0.0)
     has_audio: bool = False
+
+
+class ColorCorrectionSpec(StrictModel):
+    exposure_ev: float = Field(default=0.0, ge=-2.0, le=2.0)
+    contrast: float = Field(default=1.0, ge=0.5, le=1.8)
+    saturation: float = Field(default=1.0, ge=0.0, le=2.0)
+    temperature: float = Field(default=0.0, ge=-1.0, le=1.0)
+    tint: float = Field(default=0.0, ge=-1.0, le=1.0)
+    gamma: float = Field(default=1.0, ge=0.5, le=2.0)
+    lift: float | None = Field(default=None, ge=-0.5, le=0.5)
+    gain: float | None = Field(default=None, ge=-0.5, le=0.5)
+
+
+class ColorGradeSpec(StrictModel):
+    preset: (
+        Literal[
+            "neutral",
+            "catastrophe_warm",
+            "dread_dim_vignette",
+            "anomaly_desat",
+            "archival_sepia",
+            "cool_investigative",
+        ]
+        | None
+    ) = None
+    lut_path: str | None = None
+    vignette_strength: float | None = Field(default=None, ge=0.0, le=1.0)
+    intensity: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class VideoClipOp(StrictModel):
@@ -332,6 +362,20 @@ class VideoClipOp(StrictModel):
     reframed_to_target: bool = True
     scale: float = Field(ge=0.1, le=4.0, default=1.0)
     transition_in: str | None = None
+    j_cut_lead_s: float | None = Field(default=None, ge=0.0, le=4.0)
+    l_cut_trail_s: float | None = Field(default=None, ge=0.0, le=4.0)
+    shot_scale: Literal["ews", "ws", "ms", "mcu", "cu", "ecu"] | None = None
+    camera_angle: Literal["eye_level", "low_angle", "high_angle", "birds_eye", "dutch"] | None = (
+        None
+    )
+    motion_direction: (
+        Literal["static", "left_to_right", "right_to_left", "push_in", "pull_out", "up", "down"]
+        | None
+    ) = None
+    focal_length_mm: float | None = Field(default=None, ge=12.0, le=600.0)
+    lighting_key: Literal["high_key", "normal_key", "low_key", "chiaroscuro"] | None = None
+    color_correction: ColorCorrectionSpec | None = None
+    color_grade: ColorGradeSpec | None = None
     subject_safe_boxes: list[BoundingBox] = Field(default_factory=list)
 
 
@@ -344,6 +388,8 @@ class OverlayTrackKeyframe(StrictModel):
     rotateX_deg: float | None = Field(default=None, ge=-75.0, le=75.0)
     perspective_px: float | None = Field(default=None, gt=0.0)
     opacity: float | None = Field(default=None, ge=0.0, le=1.0)
+    curve: Literal["linear", "arc_up", "arc_down", "ease_out", "ease_in_out"] | None = None
+    arc_height_px: float | None = Field(default=None, ge=-400.0, le=400.0)
 
 
 class OverlayCompositionOp(StrictModel):
@@ -357,6 +403,12 @@ class OverlayCompositionOp(StrictModel):
     safe_band: Literal[
         "lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"
     ] = "lower_third"
+    blend_mode: Literal["normal", "screen", "multiply", "overlay", "lighten"] | None = None
+    matte_mode: Literal["none", "alpha_matte", "luma_matte", "inverted_alpha"] | None = None
+    parent_overlay_id: str | None = None
+    motion_register: Literal["documentary", "wry", "comic"] | None = None
+    anticipation_ms: int | None = Field(default=None, ge=0, le=250)
+    overlap_stagger_ms: int | None = Field(default=None, ge=0, le=250)
     template_id: str | None = Field(default=None, min_length=1)
     variables: dict[str, Any] = Field(default_factory=dict)
     track_keyframes: list[OverlayTrackKeyframe] = Field(default_factory=list)
@@ -366,7 +418,9 @@ class OverlayCompositionOp(StrictModel):
 class AudioTrackOp(StrictModel):
     track_id: str
     asset_id: str
-    audio_group: Literal["voiceover", "music", "sfx", "program_mix"]
+    audio_group: Literal[
+        "voiceover", "music", "sfx", "ambience", "room_tone", "program_mix"
+    ]
     timeline_start_s: float = Field(ge=0.0)
     timeline_duration_s: float = Field(gt=0.0)
     source_start_s: float = Field(ge=0.0)
@@ -374,6 +428,21 @@ class AudioTrackOp(StrictModel):
     carve_against_group: str | None = None
     carve_strength: float = Field(ge=0.0, le=1.0, default=0.8)
     cleaned_speech_stem: bool = False
+    diegetic: bool | None = None
+    layer_role: (
+        Literal["sub", "body", "detail", "tail", "riser", "drone", "pulse", "stinger", "hit"]
+        | None
+    ) = None
+    pan: float | None = Field(default=None, ge=-1.0, le=1.0)
+    reverb_preset: Literal["dry", "close", "medium", "wide"] | None = None
+    fade_in_s: float | None = Field(default=None, ge=0.0)
+    fade_out_s: float | None = Field(default=None, ge=0.0)
+    highpass_hz: float | None = Field(default=None, ge=20.0, le=2000.0)
+    lowpass_hz: float | None = Field(default=None, ge=80.0, le=20000.0)
+    split_edit_role: Literal["j_cut", "l_cut"] | None = None
+    split_edit_offset_s: float | None = Field(default=None, ge=-5.0, le=5.0)
+    haas_delay_ms: float | None = Field(default=None, ge=0.0, le=25.0)
+    reverb_pan: float | None = Field(default=None, ge=-1.0, le=1.0)
 
 
 class EditPlan(StrictModel):
@@ -678,6 +747,14 @@ class SpatialHierarchySummary(StrictModel):
     safe_zone_violation_rate: float = Field(ge=0.0, le=1.0)
     face_present_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
     median_eye_line_y_norm: float | None = Field(default=None, ge=0.0, le=1.0)
+    mean_figure_ground_luma_delta: float | None = Field(default=None, ge=0.0, le=255.0)
+    dominant_shot_scale: (
+        Literal["ews", "ws", "ms", "mcu", "cu", "ecu", "graphic"] | None
+    ) = None
+    mean_rule_of_thirds_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    dominant_lighting_key: (
+        Literal["high_key", "normal_key", "low_key", "chiaroscuro"] | None
+    ) = None
 
 
 class SpatialMotionSummary(StrictModel):
@@ -722,6 +799,13 @@ class SpatialFrameAnalysis(StrictModel):
     whitespace_ratio: float = Field(ge=0.0, le=1.0)
     competing_signals: int = Field(default=0, ge=0)
     eye_line_y_norm: float | None = Field(default=None, ge=0.0, le=1.0)
+    shot_scale_est: Literal["ews", "ws", "ms", "mcu", "cu", "ecu", "graphic"] | None = None
+    headroom_pct: float | None = Field(default=None, ge=0.0, le=1.0)
+    figure_ground_luma_delta: float | None = Field(default=None, ge=0.0, le=255.0)
+    lighting_key: Literal["high_key", "normal_key", "low_key", "chiaroscuro"] | None = None
+    rule_of_thirds_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    symmetry_index: float | None = Field(default=None, ge=0.0, le=1.0)
+    warm_cool_balance: float | None = Field(default=None, ge=-1.0, le=1.0)
     grid_lines_x_norm: list[float] = Field(default_factory=list)
     grid_lines_y_norm: list[float] = Field(default_factory=list)
     safe_zone_violations: list[str] = Field(default_factory=list)

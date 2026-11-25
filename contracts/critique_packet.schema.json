@@ -45,6 +45,14 @@
           "type": "object",
           "additionalProperties": true
         },
+        "editorial_continuity": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "tension_curve": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "temporal": {
           "type": "object",
           "additionalProperties": false,

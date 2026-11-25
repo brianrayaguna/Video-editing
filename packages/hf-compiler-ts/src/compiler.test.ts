@@ -6,7 +6,7 @@ import test from "node:test";
 import { captionFadeMs, compileEditPlanToHyperframes } from "./compiler.js";
 import type { EditPlan, PlatformTarget } from "./contracts.js";
 import { buildDistributedConfig, clampChunkFrameBudget } from "./distributed.js";
-import { lintHyperframesProjectDir } from "./lint.js";
+import { lintHyperframesProjectDir, lintPlanPerformance } from "./lint.js";
 
 function makeSamplePlan(overrides: Partial<EditPlan> = {}): EditPlan {
   return {
@@ -1821,5 +1821,170 @@ test("chevron_flow_band, cutaway_height_gauge, feathered_dark_wipe, page_unfold,
     0,
     `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
   );
+  assert.equal(lintResult.ok, true);
+});
+
+test("register motion physics, anticipation, overlap stagger, blend_mode, and arc keyframes compile lint-clean", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-physics-"));
+  const plan = makeSamplePlan({
+    duration_s: 4.0,
+    overlay_compositions: [
+      {
+        overlay_id: "card_comic",
+        kind: "data_card",
+        timeline_start_s: 0.2,
+        timeline_duration_s: 2.2,
+        transparent: true,
+        safe_band: "upper_safe",
+        blend_mode: "screen",
+        motion_register: "comic",
+        anticipation_ms: 80,
+        overlap_stagger_ms: 50,
+        track_keyframes: [
+          { t_s: 0.0, x_pct: 30, y_pct: 30, scale: 0.94 },
+          { t_s: 1.0, x_pct: 65, y_pct: 25, scale: 1.0, curve: "arc_up", arc_height_px: -42 },
+          { t_s: 2.0, x_pct: 65, y_pct: 25, scale: 1.0, curve: "ease_out" },
+        ],
+        props: {
+          badge: "SCALE",
+          headline: "420 km",
+          subtitle: "True span",
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+          fg_color: "#F4F1EA",
+          bg_color: "#03161F",
+          accent_color: "#F5C542",
+        },
+      },
+      {
+        overlay_id: "card_wry",
+        kind: "kinetic_callout",
+        timeline_start_s: 2.5,
+        timeline_duration_s: 1.4,
+        transparent: true,
+        safe_band: "lower_third",
+        motion_register: "wry",
+        props: {
+          headline: "Actually 12 m",
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+          fg_color: "#F4F1EA",
+          bg_color: "#03161F",
+          accent_color: "#7CE0F9",
+        },
+      },
+    ],
+  });
+
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+  assert.equal(compiled.compositionFiles.length, 2);
+
+  const comicHtml = fs.readFileSync(path.join(tmpDir, "compositions", "card_comic.html"), "utf8");
+  assert.match(comicHtml, /mix-blend-mode: screen;/);
+  assert.match(comicHtml, /back\.out\(1\.6\)/);
+  assert.match(comicHtml, /scaleX: 1\.03/);
+  assert.match(comicHtml, /stagger: 0\.05/);
+  assert.match(comicHtml, /arc_up/);
+  const scaleMatches = [...comicHtml.matchAll(/scale:\s*([0-9.]+)/g)].map((m) => Number(m[1]));
+  assert.equal(scaleMatches.length > 0, true);
+  for (const sc of scaleMatches) {
+    assert.equal(sc >= 0.92, true, `Expected entrance/antic scale >= 0.92, got ${sc}`);
+  }
+  const squashMatch = comicHtml.match(/scaleX: 1\.03[\s\S]*?\},\s*([0-9.]+)\)/);
+  assert.notEqual(squashMatch, null);
+  assert.equal(Number(squashMatch![1]) >= 0.34, true, "Squash must start after anticOffset + enterDur");
+
+  const wryHtml = fs.readFileSync(path.join(tmpDir, "compositions", "card_wry.html"), "utf8");
+  assert.match(wryHtml, /power4\.out/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});
+
+test("matte_mode, parent_overlay_id, and short kinetic legibility warnings behave cleanly", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-matte-"));
+  const plan = makeSamplePlan({
+    duration_s: 3.0,
+    overlay_compositions: [
+      {
+        overlay_id: "parent_anchor",
+        kind: "kinetic_callout",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 2.0,
+        transparent: true,
+        safe_band: "center_safe",
+        matte_mode: "alpha_matte",
+        props: {
+          headline: "Strait Zone",
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+          fg_color: "#F4F1EA",
+          bg_color: "#03161F",
+          accent_color: "#F5C542",
+        },
+      },
+      {
+        overlay_id: "child_card",
+        kind: "data_card",
+        timeline_start_s: 0.2,
+        timeline_duration_s: 0.35,
+        transparent: true,
+        safe_band: "upper_safe",
+        matte_mode: "luma_matte",
+        parent_overlay_id: "parent_anchor",
+        props: {
+          headline: "Five long words flashed fast",
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+          fg_color: "#F4F1EA",
+          bg_color: "#03161F",
+          accent_color: "#F5C542",
+        },
+      },
+      {
+        overlay_id: "inverted_card",
+        kind: "kinetic_callout",
+        timeline_start_s: 0.8,
+        timeline_duration_s: 1.0,
+        transparent: true,
+        safe_band: "lower_third",
+        matte_mode: "inverted_alpha",
+        props: {
+          headline: "Inverted Mask",
+          font_family: "Space Grotesk",
+          display_family: "Archivo Black",
+          fg_color: "#F4F1EA",
+          bg_color: "#03161F",
+          accent_color: "#F5C542",
+        },
+      },
+    ],
+  });
+
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+  assert.equal(compiled.compositionFiles.length, 3);
+
+  const parentHtml = fs.readFileSync(path.join(tmpDir, "compositions", "parent_anchor.html"), "utf8");
+  assert.match(parentHtml, /mask-mode: alpha;/);
+  assert.match(parentHtml, /data-matte-mode="alpha_matte"/);
+
+  const childHtml = fs.readFileSync(path.join(tmpDir, "compositions", "child_card.html"), "utf8");
+  assert.match(childHtml, /mask-mode: luminance;/);
+  assert.match(childHtml, /data-parent-overlay="parent_anchor"/);
+
+  const invertedHtml = fs.readFileSync(path.join(tmpDir, "compositions", "inverted_card.html"), "utf8");
+  assert.match(invertedHtml, /mask-mode: alpha; mask-composite: exclude;/);
+  assert.match(invertedHtml, /data-matte-mode="inverted_alpha"/);
+
+  const perfViolations = lintPlanPerformance(plan);
+  assert.equal(perfViolations.some((v) => v.code === "KINETIC_LEGIBILITY_DURATION"), true);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.totalErrors, 0);
   assert.equal(lintResult.ok, true);
 });

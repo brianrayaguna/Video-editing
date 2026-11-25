@@ -318,6 +318,8 @@ class FfmpegMediaOpsProvider:
         threshold_db: float = -40.0,
         min_silence_s: float = 0.45,
         padding_s: float = 0.12,
+        crossfade_ms: int = 12,
+        room_tone_db: float | None = None,
     ) -> MediaOpResult:
         """Tighten a voiceover by cutting pauses longer than `min_silence_s`.
 
@@ -353,38 +355,83 @@ class FfmpegMediaOpsProvider:
             raise ProviderAPIError(
                 self.provider_name, None, "remove_silence found no audible segments to keep."
             )
-        # Sample-accurate segment cuts joined with 5 ms edge fades to suppress splice clicks.
-        fade_s = 0.005
+        # Sample-accurate cuts joined with short edge fades to suppress splice clicks.
+        fade_s = max(0.002, min(0.05, crossfade_ms / 1000.0))
+        kept_s = round(sum(b - a for a, b in keep), 3)
         graph_parts: list[str] = []
         for idx, (a, b) in enumerate(keep):
-            fade_out_start = max(0.0, (b - a) - fade_s)
+            seg_len = max(0.01, b - a)
+            eff_fade = min(fade_s, seg_len * 0.25)
+            fade_out_start = max(0.0, seg_len - eff_fade)
             graph_parts.append(
                 f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,"
-                f"afade=t=in:d={fade_s},afade=t=out:st={fade_out_start:.3f}:d={fade_s}[s{idx}]"
+                f"afade=t=in:d={eff_fade:.4f},afade=t=out:st={fade_out_start:.3f}:d={eff_fade:.4f}[s{idx}]"
             )
         joined = "".join(f"[s{idx}]" for idx in range(len(keep)))
-        graph_parts.append(f"{joined}concat=n={len(keep)}:v=0:a=1[out]")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        self._run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-y",
-                "-i",
-                str(speech_input),
-                "-filter_complex",
-                ";".join(graph_parts),
-                "-map",
-                "[out]",
-                "-ar",
-                "48000",
-                "-c:a",
-                "pcm_s16le",
-                str(output_path),
-            ],
-            "remove_silence",
-        )
-        kept_s = round(sum(b - a for a, b in keep), 3)
+        if room_tone_db is not None:
+            import tempfile
+
+            from vedit.mastering.sound_design import synthesize_room_tone_bed
+
+            with tempfile.TemporaryDirectory(prefix="vedit_room_tone_") as tmp_dir:
+                room_wav = synthesize_room_tone_bed(
+                    max(0.25, kept_s),
+                    Path(tmp_dir) / "room.wav",
+                    level_db=float(room_tone_db),
+                )
+                graph_parts.append(
+                    f"{joined}concat=n={len(keep)}:v=0:a=1,"
+                    "aresample=48000,aformat=channel_layouts=stereo[joined]"
+                )
+                graph_parts.append(
+                    f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{kept_s:.3f}[room];"
+                    "[joined][room]amix=inputs=2:duration=first:normalize=0[out]"
+                )
+                self._run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-y",
+                        "-i",
+                        str(speech_input),
+                        "-i",
+                        str(room_wav),
+                        "-filter_complex",
+                        ";".join(graph_parts),
+                        "-map",
+                        "[out]",
+                        "-ar",
+                        "48000",
+                        "-ac",
+                        "2",
+                        "-c:a",
+                        "pcm_s16le",
+                        str(output_path),
+                    ],
+                    "remove_silence",
+                )
+        else:
+            graph_parts.append(f"{joined}concat=n={len(keep)}:v=0:a=1[out]")
+            self._run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-y",
+                    "-i",
+                    str(speech_input),
+                    "-filter_complex",
+                    ";".join(graph_parts),
+                    "-map",
+                    "[out]",
+                    "-ar",
+                    "48000",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(output_path),
+                ],
+                "remove_silence",
+            )
         return MediaOpResult(
             provider=self.provider_name,
             operation="remove_silence",
@@ -393,6 +440,7 @@ class FfmpegMediaOpsProvider:
                 "source_duration_s": round(duration_s, 3),
                 "output_duration_s": kept_s,
                 "removed_s": round(duration_s - kept_s, 3),
+                "room_tone_db": room_tone_db,
                 "kept_segments": [[a, b] for a, b in keep],
             },
         )

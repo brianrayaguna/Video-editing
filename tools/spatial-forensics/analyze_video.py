@@ -835,6 +835,10 @@ def analyze_video(
     total_text_blocks = 0
     eye_lines: list[float] = []
     face_frames = 0
+    fg_bg_deltas: list[float] = []
+    shot_scales: list[str] = []
+    rot_scores: list[float] = []
+    lighting_keys: list[str] = []
 
     for f_idx, (t_mid, shot_idx, _st, _en) in enumerate(samples):
         cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, t_mid) * 1000.0)
@@ -1056,6 +1060,62 @@ def analyze_video(
         _assign_hierarchy_tiers(elements)
         competing = sum(1 for el in elements if el["hierarchy_tier"] == 1)
 
+        # Estimate shot scale, headroom, and figure-ground luminance separation.
+        fg_luma_delta: float | None = None
+        if subj_mask is not None and subj_mask.any() and (~subj_mask.astype(bool)).any():
+            gray_f = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            fg_m = float(gray_f[subj_mask > 0].mean())
+            bg_m = float(gray_f[subj_mask == 0].mean())
+            fg_luma_delta = round(abs(fg_m - bg_m), 2)
+            fg_bg_deltas.append(fg_luma_delta)
+
+        headroom_pct: float | None = None
+        shot_scale_est: str = "graphic"
+        if face_boxes:
+            tallest = max(face_boxes, key=lambda b: b[3] - b[1])
+            face_h_ratio = (tallest[3] - tallest[1]) / max(height, 1)
+            headroom_pct = round(max(0.0, min(1.0, tallest[1] / max(height, 1))), 4)
+            if face_h_ratio >= 0.45:
+                shot_scale_est = "ecu"
+            elif face_h_ratio >= 0.28:
+                shot_scale_est = "cu"
+            elif face_h_ratio >= 0.18:
+                shot_scale_est = "mcu"
+            elif face_h_ratio >= 0.10:
+                shot_scale_est = "ms"
+            else:
+                shot_scale_est = "ws"
+        elif subj_mask is not None and subj_mask.sum() > (width * height * 0.04):
+            shot_scale_est = "ws"
+        shot_scales.append(shot_scale_est)
+
+        # Computational cinematography frame cues (lighting key, thirds, symmetry, warm/cool).
+        gray_c = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        mean_y = float(gray_c.mean())
+        rms_c = float(gray_c.std())
+        dark_f = float((gray_c < 52.0).mean())
+        bright_f = float((gray_c > 195.0).mean())
+        if dark_f > 0.35 and bright_f > 0.12 and rms_c >= 58.0:
+            lighting_key = "chiaroscuro"
+        elif mean_y >= 158.0 and dark_f < 0.18:
+            lighting_key = "high_key"
+        elif mean_y <= 82.0:
+            lighting_key = "low_key"
+        else:
+            lighting_key = "normal_key"
+        lighting_keys.append(lighting_key)
+
+        thirds_pts = ((1.0 / 3.0, 1.0 / 3.0), (2.0 / 3.0, 1.0 / 3.0), (1.0 / 3.0, 2.0 / 3.0), (2.0 / 3.0, 2.0 / 3.0))
+        min_d = min(math.hypot(sal_centroid[0] - px, sal_centroid[1] - py) for px, py in thirds_pts)
+        rot_score = round(max(0.0, min(1.0, 1.0 - (min_d / 0.38))), 4)
+        rot_scores.append(rot_score)
+
+        flipped_y = cv2.flip(gray_c, 1)
+        sym_index = round(max(0.0, min(1.0, 1.0 - float(np.abs(gray_c - flipped_y).mean()) / 255.0)), 4)
+        b_ch = bgr[:, :, 0].astype(np.float32)
+        r_ch = bgr[:, :, 2].astype(np.float32)
+        wb_balance = round(max(-1.0, min(1.0, float(((r_ch - b_ch) / 255.0).mean()))), 4)
+
         bp_path = spatial_dir / f"frame_{f_idx:03d}_blueprint.jpg"
         frame_entry: dict[str, Any] = {
             "frame_index": f_idx,
@@ -1066,6 +1126,13 @@ def analyze_video(
             "whitespace_ratio": whitespace_ratio,
             "competing_signals": competing,
             "eye_line_y_norm": eye_line,
+            "shot_scale_est": shot_scale_est,
+            "headroom_pct": headroom_pct,
+            "figure_ground_luma_delta": fg_luma_delta,
+            "lighting_key": lighting_key,
+            "rule_of_thirds_score": rot_score,
+            "symmetry_index": sym_index,
+            "warm_cool_balance": wb_balance,
             "grid_lines_x_norm": _cluster_1d(frame_x_edges, eps=0.025),
             "grid_lines_y_norm": _cluster_1d(frame_y_edges, eps=0.025),
             "safe_zone_violations": violations,
@@ -1180,6 +1247,22 @@ def analyze_video(
                 "face_present_ratio": round(face_frames / n_frames, 4),
                 "median_eye_line_y_norm": (
                     round(float(statistics.median(eye_lines)), 4) if eye_lines else None
+                ),
+                "mean_figure_ground_luma_delta": (
+                    round(sum(fg_bg_deltas) / len(fg_bg_deltas), 2) if fg_bg_deltas else None
+                ),
+                "dominant_shot_scale": (
+                    min(set(shot_scales), key=lambda s: (-shot_scales.count(s), s))
+                    if shot_scales
+                    else None
+                ),
+                "mean_rule_of_thirds_score": (
+                    round(sum(rot_scores) / len(rot_scores), 4) if rot_scores else None
+                ),
+                "dominant_lighting_key": (
+                    min(set(lighting_keys), key=lambda k: (-lighting_keys.count(k), k))
+                    if lighting_keys
+                    else None
                 ),
             },
             "motion": {

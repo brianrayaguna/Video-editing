@@ -102,7 +102,11 @@
             },
             "safe_zone_violation_rate": { "type": "number", "minimum": 0, "maximum": 1 },
             "face_present_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
-            "median_eye_line_y_norm": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            "median_eye_line_y_norm": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "mean_figure_ground_luma_delta": { "type": ["number", "null"], "minimum": 0, "maximum": 255 },
+            "dominant_shot_scale": { "type": ["string", "null"], "enum": ["ews", "ws", "ms", "mcu", "cu", "ecu", "graphic", null] },
+            "mean_rule_of_thirds_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "dominant_lighting_key": { "type": ["string", "null"], "enum": ["high_key", "normal_key", "low_key", "chiaroscuro", null] }
           }
         },
         "motion": {
@@ -157,6 +161,13 @@
           "whitespace_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
           "competing_signals": { "type": "integer", "minimum": 0 },
           "eye_line_y_norm": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "shot_scale_est": { "type": ["string", "null"], "enum": ["ews", "ws", "ms", "mcu", "cu", "ecu", "graphic", null] },
+          "headroom_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "figure_ground_luma_delta": { "type": ["number", "null"], "minimum": 0, "maximum": 255 },
+          "lighting_key": { "type": ["string", "null"], "enum": ["high_key", "normal_key", "low_key", "chiaroscuro", null] },
+          "rule_of_thirds_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "symmetry_index": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "warm_cool_balance": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
           "grid_lines_x_norm": {
             "type": "array",
             "items": { "type": "number", "minimum": 0, "maximum": 1 }

@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from vedit.director.storyboard_plan import fit_overlays
+from vedit.director.storyboard_plan import apply_storyboard_to_clips, fit_overlays
 from vedit.director.templates import (
     catalog_by_id,
     motion_props_from_policy,
@@ -139,15 +139,33 @@ def _plan_video_cuts(
                 raw_boundaries.append(snapped)
     raw_boundaries.append(total_dur)
 
-    # Subdivide holds using section soft prior (asl_p50) when available, capped by max_hold.
+    # Subdivide holds using section soft prior (asl_p50) with non-metronomic rhythm contours.
     final_boundaries: list[float] = [raw_boundaries[0]]
     for end_t in raw_boundaries[1:]:
         cur_start = final_boundaries[-1]
+        sub_step_idx = 0
         while True:
             hold = end_t - cur_start
             mid_ratio = min(max(((cur_start + end_t) * 0.5) / total_dur, 0.0), 0.999)
             prior = _section_prior_at(policy, mid_ratio)
-            soft_target = prior.asl_p50_s if prior is not None else max_hold * 0.75
+            if prior is not None:
+                base_asl = prior.asl_p50_s
+                if prior.section == "escalation":
+                    # Accelerando across escalation: step narrows from p75 toward p25.
+                    esc_lo, esc_hi = _SECTION_SPAN["escalation"]
+                    sec_span = max(esc_hi - esc_lo, 1e-6)
+                    sec_prog = min(1.0, max(0.0, (mid_ratio - esc_lo) / sec_span))
+                    soft_target = (
+                        prior.asl_p75_s + (prior.asl_p25_s - prior.asl_p75_s) * sec_prog
+                    )
+                elif prior.section == "climax":
+                    soft_target = prior.asl_p75_s if sub_step_idx == 0 else prior.asl_p25_s
+                else:
+                    # Subtle alternating cadence prevents flat metronomic pacing.
+                    rhythm_mult = 1.12 if (sub_step_idx % 2 == 0) else 0.88
+                    soft_target = min(max(base_asl * rhythm_mult, prior.asl_p25_s), prior.asl_p75_s)
+            else:
+                soft_target = max_hold * 0.75
             soft_target = min(max(soft_target, min_shot), max_hold)
             split_threshold = min(soft_target * 1.35, max_hold)
             if hold <= split_threshold + 1e-6:
@@ -171,6 +189,7 @@ def _plan_video_cuts(
                 break
             final_boundaries.append(snapped)
             cur_start = snapped
+            sub_step_idx += 1
         if end_t - final_boundaries[-1] >= 0.05:
             final_boundaries.append(end_t)
 
@@ -180,6 +199,18 @@ def _plan_video_cuts(
         dur_s = round(final_boundaries[idx + 1] - final_boundaries[idx], 3)
         if dur_s <= 0.0:
             continue
+        mid_ratio = min(max(((start_s + dur_s * 0.5) / total_dur), 0.0), 0.999)
+        sec_prior = _section_prior_at(policy, mid_ratio)
+        pref_tr = [t.lower() for t in (sec_prior.preferred_transitions if sec_prior else [])]
+        j_lead: float | None = None
+        if (
+            idx > 0
+            and probe.audio.present
+            and "j_cut" in pref_tr
+            and start_s >= 0.35
+            and dur_s >= 1.2
+        ):
+            j_lead = round(min(0.35, start_s * 0.5), 3)
         clips.append(
             VideoClipOp(
                 clip_id=f"clip_{idx + 1:03d}",
@@ -190,7 +221,8 @@ def _plan_video_cuts(
                 role="a_roll",
                 reframed_to_target=reframed_to_target,
                 scale=1.0,
-                transition_in=None,
+                transition_in="hard_cut" if j_lead else None,
+                j_cut_lead_s=j_lead,
                 subject_safe_boxes=[],
             )
         )
@@ -494,6 +526,7 @@ def build_edit_plan(
     template_catalog: BrandTemplateCatalog | None = None,
     repo_root: Path | None = None,
     extra_overlays: list[OverlayCompositionOp] | None = None,
+    storyboard: dict[str, Any] | None = None,
 ) -> tuple[EditPlan, VerificationReport]:
     """Assemble and deterministically verify an `EditPlan` using `BrandStylePolicy`.
 
@@ -524,6 +557,8 @@ def build_edit_plan(
         primary_asset_id=primary_asset_id,
         reframed_to_target=reframed_to_target,
     )
+    if storyboard is not None:
+        clips = apply_storyboard_to_clips(clips, storyboard)
     _ground_subject_boxes(clips, probe, decision_port)
 
     overlays = _build_overlays(
