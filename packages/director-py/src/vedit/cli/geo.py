@@ -2229,3 +2229,93 @@ def geo_camera_track_cmd(
                 f"pan reversals {r['reversals']}, zoom reversals {r['zoom_reversals']}, "
                 f"max pan accel {r['max_pan_accel_px']} px/frame^2"
             )
+
+
+def _load_fetch_fonts_module(repo_root: Path) -> Any:
+    import importlib.util
+
+    script = repo_root / "tools" / "geo-assets" / "fetch_fonts.py"
+    if not script.is_file():
+        raise typer.BadParameter(f"Missing font catalog script: {script}")
+    spec = importlib.util.spec_from_file_location("vedit_fetch_fonts", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load font catalog script: {script}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@geo_app.command("list-fonts")
+def geo_list_fonts_cmd(
+    category: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--category",
+            help="Filter by category (display, sans, serif, mono, handwriting). Repeatable.",
+        ),
+    ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
+) -> None:
+    """List installed open-license font families and static/variable files in assets/geo/fonts/."""
+    del as_json
+    root = find_repo_root()
+    mod = _load_fetch_fonts_module(root)
+    payload = mod.list_installed_fonts(
+        fonts_dir=root / "assets" / "geo" / "fonts",
+        categories=category,
+    )
+    typer.echo(json.dumps(payload, indent=2))
+
+
+@geo_app.command("fetch-fonts")
+def geo_fetch_fonts_cmd(
+    category: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--category",
+            help="Filter by category (display, sans, serif, mono, handwriting). Repeatable.",
+        ),
+    ] = None,
+    no_static: Annotated[
+        bool,
+        typer.Option("--no-static", help="Skip variable-to-static TTF derivation for libass."),
+    ] = False,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
+) -> None:
+    """Download curated open-license fonts into assets/geo/fonts/ and build static weights."""
+    del as_json
+    import shutil
+    import sys
+
+    root = find_repo_root()
+    script = root / "tools" / "geo-assets" / "fetch_fonts.py"
+    if not script.is_file():
+        raise typer.BadParameter(f"Missing font catalog script: {script}")
+
+    args = [str(script), "--json"]
+    for cat in category or []:
+        args.extend(["--category", cat])
+    if no_static:
+        args.append("--no-static")
+
+    has_fonttools = False
+    try:
+        import fontTools  # type: ignore[import-not-found] # noqa: F401
+
+        has_fonttools = True
+    except ImportError:
+        has_fonttools = False
+
+    uv_bin = shutil.which("uv")
+    if not has_fonttools and not no_static and uv_bin:
+        cmd = [uv_bin, "run", "--with", "fonttools", "python", *args]
+    else:
+        cmd = [sys.executable, *args]
+
+    proc = subprocess.run(cmd, check=False)
+    if proc.returncode != 0:
+        raise typer.Exit(code=proc.returncode)

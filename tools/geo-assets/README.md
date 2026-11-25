@@ -44,7 +44,7 @@ Active project shot scripts and baked MP4 outputs belong under `VEDIT_PROJECTS_R
 | `svg/world.svg` | Equirectangular world map, one `<path id="<iso2>">` per country | `fetch_library_pack.py` |
 | `flags/<iso2>.svg` (`4x3/`, `1x1/`) | Country flags | `fetch_assets.py`, `fetch_library_pack.py` |
 | `icons/<name>.svg` | Stroke icon set | `fetch_assets.py`, `fetch_lightweight_pack.py`, `fetch_library_pack.py` |
-| `fonts/`, `textures/`, `vendor/` | Caption/title fonts, paper and grain textures, pinned runtimes | `fetch_assets.py`, `fetch_lightweight_pack.py` |
+| `fonts/`, `textures/`, `vendor/` | Curated 38-family open-license font library (`Display`, `Sans`, `Serif`, `Mono`, `Handwriting`), paper and grain textures, pinned runtimes | `vedit geo fetch-fonts` (`fetch_fonts.py`), `fetch_assets.py`, `fetch_lightweight_pack.py` |
 
 Silhouettes use a cosine-latitude equirectangular projection, so they read as shapes, not as measurable maps; use MapLibre scenes for anything to scale. Natural Earth subdivisions follow its release boundaries and may lag recent administrative splits.
 
@@ -103,7 +103,7 @@ Route layers draw on over `draw_duration_s` (default 0.9 s) after `draw_delay_s`
 
 ## Caption Typography
 
-Plain captions burned through libass accept optional props on the first `caption_rail` overlay: `caption_font_family`, `caption_font_px`, `caption_bottom_pct`, `caption_bold`, `caption_opacity`, `caption_outline_px`, `caption_shadow_px`, `caption_shadow_opacity`, `caption_shadow_blur_px` (soft blurred shadow layer), `caption_glow_color`, `caption_glow_px` (outer luminous halo layer), `caption_transition_ms` (symmetric cross-fade up to `200ms`), `caption_fade_in_ms` / `caption_fade_out_ms` (asymmetric fade-in / fade-out up to `200ms`, `0` for hard cut), and `caption_letter_spacing`. The engine font library (`assets/geo/fonts`) is staged for libass automatically; `fetch_assets.py` derives static `Inter-Bold.ttf` (requires `fonttools`) because libass renders only the default instance of variable fonts.
+Plain captions burned through libass accept optional props on the first `caption_rail` overlay: `caption_font_family`, `caption_font_px`, `caption_bottom_pct`, `caption_bold`, `caption_opacity`, `caption_outline_px`, `caption_shadow_px`, `caption_shadow_opacity`, `caption_shadow_blur_px` (soft blurred shadow layer), `caption_glow_color`, `caption_glow_px` (outer luminous halo layer), `caption_transition_ms` (symmetric cross-fade up to `200ms`), `caption_fade_in_ms` / `caption_fade_out_ms` (asymmetric fade-in / fade-out up to `200ms`, `0` for hard cut), and `caption_letter_spacing`. The engine font library (`assets/geo/fonts`) holds 38 open-license families across `display`, `sans`, `serif`, `mono`, and `handwriting` categories managed via `vedit geo list-fonts` and `vedit geo fetch-fonts` (`fetch_fonts.py`), and is staged automatically for HyperFrames, MapLibre `render_map_scene.mjs`, and FFmpeg `libass` (static weights derived from variable fonts when `fonttools` is available).
 
 ## Related Docs
 

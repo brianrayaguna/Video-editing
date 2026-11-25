@@ -101,6 +101,102 @@ function parseArgs(argv) {
   return args;
 }
 
+const __FONT_KNOWN_FAMILIES = Object.freeze({
+  archivoblack: "Archivo Black",
+  unbounded: "Unbounded",
+  bebasneue: "Bebas Neue",
+  oswald: "Oswald",
+  anton: "Anton",
+  leaguegothic: "League Gothic",
+  syne: "Syne",
+  barlowcondensed: "Barlow Condensed",
+  cinzel: "Cinzel",
+  rubik: "Rubik",
+  spacegrotesk: "Space Grotesk",
+  inter: "Inter",
+  montserrat: "Montserrat",
+  plusjakartasans: "Plus Jakarta Sans",
+  roboto: "Roboto",
+  poppins: "Poppins",
+  outfit: "Outfit",
+  dmsans: "DM Sans",
+  manrope: "Manrope",
+  opensans: "Open Sans",
+  lato: "Lato",
+  nunito: "Nunito",
+  sora: "Sora",
+  worksans: "Work Sans",
+  ebgaramond: "EB Garamond",
+  playfairdisplay: "Playfair Display",
+  lora: "Lora",
+  merriweather: "Merriweather",
+  librebaskerville: "Libre Baskerville",
+  instrumentserif: "Instrument Serif",
+  spacemono: "Space Mono",
+  ibmplexmono: "IBM Plex Mono",
+  jetbrainsmono: "JetBrains Mono",
+  sourcecodepro: "Source Code Pro",
+  courierprime: "Courier Prime",
+  caveat: "Caveat",
+  permanentmarker: "Permanent Marker",
+  patrickhand: "Patrick Hand",
+});
+
+function buildDynamicFontFaceCss(baseUrl) {
+  const fontsDir = join(REPO_ROOT, "assets", "geo", "fonts");
+  const rules = [];
+  if (existsSync(fontsDir)) {
+    const files = readdirSync(fontsDir)
+      .filter((fn) => /\.(?:ttf|otf)$/i.test(fn))
+      .sort();
+    for (const fn of files) {
+      const base = fn.replace(/\.(?:ttf|otf)$/i, "");
+      const style = /italic/i.test(base) ? "italic" : "normal";
+      const stem = base
+        .replace(
+          /[-_](Italic[-_])?(Variable|Regular|ExtraLight|Light|Medium|SemiBold|Bold|ExtraBold|Black|Italic)+$/i,
+          ""
+        )
+        .replace(/[-_](BoldItalic|BlackItalic|Italic)$/i, "");
+      const compact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const family =
+        __FONT_KNOWN_FAMILIES[compact] ||
+        stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim();
+      if (!family) continue;
+      let weight = "400";
+      if (/variable/i.test(base)) {
+        weight = "100 900";
+      } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
+        weight = "800";
+      } else if (/(?:^|[-_])(semi[-_]?bold|demibold)(?:italic)?$/i.test(base)) {
+        weight = "600";
+      } else if (/(?:^|[-_])black(?:italic)?$/i.test(base)) {
+        weight = "900";
+      } else if (compact === "archivoblack") {
+        weight = "400 900";
+      } else if (/(?:^|[-_])bold(?:italic)?$/i.test(base)) {
+        weight = "700";
+      } else if (/(?:^|[-_])medium(?:italic)?$/i.test(base)) {
+        weight = "500";
+      } else if (/(?:^|[-_])(extra[-_]?light|ultralight)(?:italic)?$/i.test(base)) {
+        weight = "200";
+      } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
+        weight = "300";
+      }
+      const fmt = fn.toLowerCase().endsWith(".otf") ? "opentype" : "truetype";
+      rules.push(
+        `    @font-face { font-family: "${family}"; src: url("${baseUrl}/fonts/${encodeURIComponent(fn)}") format("${fmt}"); font-weight: ${weight}; font-style: ${style}; font-display: block; }`
+      );
+    }
+  }
+  if (rules.length > 0) return rules.join("\n");
+  return `    @font-face { font-family: "Space Grotesk"; src: url("${baseUrl}/fonts/SpaceGrotesk-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+    @font-face { font-family: "Rubik"; src: url("${baseUrl}/fonts/Rubik-Bold.ttf") format("truetype"); font-weight: 700 800; font-display: block; }
+    @font-face { font-family: "Rubik"; src: url("${baseUrl}/fonts/Rubik-Black.ttf") format("truetype"); font-weight: 900; font-display: block; }
+    @font-face { font-family: "Archivo Black"; src: url("${baseUrl}/fonts/ArchivoBlack-Regular.ttf") format("truetype"); font-weight: 400 900; font-display: block; }
+    @font-face { font-family: "EB Garamond"; src: url("${baseUrl}/fonts/EBGaramond-Variable.ttf") format("truetype"); font-weight: 400 800; font-display: block; }`;
+}
+
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
   const sourceMode = mapOpts.tile_source || "hybrid";
   const tileRoute =
@@ -136,31 +232,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
     if (window.__resolveThreeReady) window.__resolveThreeReady();
   </script>` : ""}
   <style>
-    @font-face {
-      font-family: "Space Grotesk";
-      src: url("${baseUrl}/fonts/SpaceGrotesk-Variable.ttf") format("truetype");
-      font-weight: 100 900;
-    }
-    @font-face {
-      font-family: "Rubik";
-      src: url("${baseUrl}/fonts/Rubik-Bold.ttf") format("truetype");
-      font-weight: 700 800;
-    }
-    @font-face {
-      font-family: "Rubik";
-      src: url("${baseUrl}/fonts/Rubik-Black.ttf") format("truetype");
-      font-weight: 900;
-    }
-    @font-face {
-      font-family: "Archivo Black";
-      src: url("${baseUrl}/fonts/ArchivoBlack-Regular.ttf") format("truetype");
-      font-weight: 400 900;
-    }
-    @font-face {
-      font-family: "EB Garamond";
-      src: url("${baseUrl}/fonts/EBGaramond-Variable.ttf") format("truetype");
-      font-weight: 400 800;
-    }
+${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUrl) : ""}
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #083847; }
     #stage, #map, #ov, #comp { position: absolute; inset: 0; width: ${width}px; height: ${height}px; }
@@ -4393,8 +4465,7 @@ function buildBlueprintHtml(baseUrl, width, height, vectorsJson, actSpec) {
 <head>
   <meta charset="utf-8" />
   <style>
-    @font-face { font-family: "EB Garamond"; src: url("${baseUrl}/fonts/EBGaramond-Variable.ttf") format("truetype"); font-weight: 400 800; }
-    @font-face { font-family: "Archivo Black"; src: url("${baseUrl}/fonts/ArchivoBlack-Regular.ttf") format("truetype"); font-weight: 400 900; }
+${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUrl) : ""}
     * { margin: 0; padding: 0; }
     html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #1E1B18; }
     canvas { display: block; width: ${width}px; height: ${height}px; }

@@ -27,26 +27,45 @@ export interface CompiledProjectResult {
 }
 
 const BUNDLED_FAMILIES = [
+  "Archivo Black",
+  "Unbounded",
+  "Bebas Neue",
+  "Oswald",
+  "Anton",
+  "League Gothic",
+  "Syne",
+  "Barlow Condensed",
+  "Cinzel",
+  "Rubik",
+  "Space Grotesk",
   "Inter",
   "Montserrat",
+  "Plus Jakarta Sans",
+  "Roboto",
+  "Poppins",
   "Outfit",
+  "DM Sans",
+  "Manrope",
+  "Open Sans",
+  "Lato",
   "Nunito",
-  "Oswald",
-  "League Gothic",
-  "Archivo Black",
-  "Space Grotesk",
-  "Unbounded",
+  "Sora",
+  "Work Sans",
+  "EB Garamond",
+  "Playfair Display",
+  "Lora",
+  "Merriweather",
+  "Libre Baskerville",
+  "Instrument Serif",
   "Space Mono",
   "IBM Plex Mono",
   "JetBrains Mono",
-  "EB Garamond",
-  "Playfair Display",
   "Source Code Pro",
+  "Courier Prime",
+  "Caveat",
+  "Permanent Marker",
+  "Patrick Hand",
   "Noto Sans JP",
-  "Roboto",
-  "Open Sans",
-  "Lato",
-  "Poppins",
 ];
 
 interface StagedFontFace {
@@ -109,21 +128,54 @@ function inferFontDescriptor(
   assetId: string
 ): { family: string; weight: string; style: "normal" | "italic" } {
   const knownMap: Record<string, string> = {
-    spacegrotesk: "Space Grotesk",
     archivoblack: "Archivo Black",
     unbounded: "Unbounded",
-    spacemono: "Space Mono",
+    bebasneue: "Bebas Neue",
+    oswald: "Oswald",
+    anton: "Anton",
+    leaguegothic: "League Gothic",
+    syne: "Syne",
+    barlowcondensed: "Barlow Condensed",
+    cinzel: "Cinzel",
+    rubik: "Rubik",
+    spacegrotesk: "Space Grotesk",
     inter: "Inter",
     montserrat: "Montserrat",
+    plusjakartasans: "Plus Jakarta Sans",
+    roboto: "Roboto",
+    poppins: "Poppins",
+    outfit: "Outfit",
+    dmsans: "DM Sans",
+    manrope: "Manrope",
+    opensans: "Open Sans",
+    lato: "Lato",
+    nunito: "Nunito",
+    sora: "Sora",
+    worksans: "Work Sans",
     ebgaramond: "EB Garamond",
     ebgaramonditalic: "EB Garamond",
     playfairdisplay: "Playfair Display",
+    lora: "Lora",
+    merriweather: "Merriweather",
+    librebaskerville: "Libre Baskerville",
+    instrumentserif: "Instrument Serif",
+    spacemono: "Space Mono",
+    ibmplexmono: "IBM Plex Mono",
+    jetbrainsmono: "JetBrains Mono",
+    sourcecodepro: "Source Code Pro",
+    courierprime: "Courier Prime",
+    caveat: "Caveat",
+    permanentmarker: "Permanent Marker",
+    patrickhand: "Patrick Hand",
   };
   const base = path.basename(assetPath, path.extname(assetPath));
   const style: "normal" | "italic" = /italic/i.test(base) || /italic/i.test(assetId) ? "italic" : "normal";
   const stem = base
-    .replace(/[-_](Italic[-_])?(Variable|Regular|Medium|SemiBold|Bold|Black|Light|Italic)$/i, "")
-    .replace(/[-_]Italic$/i, "");
+    .replace(
+      /[-_](Italic[-_])?(Variable|Regular|ExtraLight|Light|Medium|SemiBold|Bold|ExtraBold|Black|Italic)+$/i,
+      ""
+    )
+    .replace(/[-_](BoldItalic|BlackItalic|Italic)$/i, "");
   const pathCompact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
   const idClean = assetId.replace(/^font[_-]?/i, "");
   const idCompact = idClean.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -136,15 +188,31 @@ function inferFontDescriptor(
     (stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim() || assetId);
 
   let weight = "400";
-  if (
-    /variable/i.test(base) ||
-    /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display/i.test(family)
+  if (/variable/i.test(base)) {
+    weight = "100 900";
+  } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
+    weight = "800";
+  } else if (/(?:^|[-_])(semi[-_]?bold|demibold)(?:italic)?$/i.test(base)) {
+    weight = "600";
+  } else if (/(?:^|[-_])black(?:italic)?$/i.test(base)) {
+    weight = "900";
+  } else if (/archivo.?black/i.test(family)) {
+    weight = "400 900";
+  } else if (/(?:^|[-_])bold(?:italic)?$/i.test(base)) {
+    weight = "700";
+  } else if (/(?:^|[-_])medium(?:italic)?$/i.test(base)) {
+    weight = "500";
+  } else if (/(?:^|[-_])(extra[-_]?light|ultralight)(?:italic)?$/i.test(base)) {
+    weight = "200";
+  } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
+    weight = "300";
+  } else if (
+    !/[-_](regular|italic)$/i.test(base) &&
+    /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display|rubik|plus.?jakarta.?sans|oswald|outfit|dm.?sans|manrope|open.?sans|nunito|sora|work.?sans|lora|merriweather|cinzel|syne|jetbrains.?mono|source.?code.?pro|caveat|league.?gothic/i.test(
+      family
+    )
   ) {
     weight = "100 900";
-  } else if (/black/i.test(base) || /archivo.?black/i.test(family)) {
-    weight = "400 900";
-  } else if (/bold/i.test(base)) {
-    weight = "700";
   }
   return { family, weight, style };
 }

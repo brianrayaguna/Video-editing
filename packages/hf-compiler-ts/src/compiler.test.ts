@@ -2015,3 +2015,59 @@ test("fractional caption_bottom_pct normalizes to percentage bottom CSS", () => 
   const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_frac.html"), "utf8");
   assert.match(capHtml, /bottom:\s*18\.1%;/);
 });
+
+test("expanded 38-family catalog resolves directly without falling back to Inter", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-fonts-catalog-"));
+  const probeFamilies = [
+    "Rubik",
+    "Plus Jakarta Sans",
+    "Bebas Neue",
+    "Barlow Condensed",
+    "Cinzel",
+    "Lora",
+    "Courier Prime",
+    "Caveat",
+    "Poppins",
+    "DM Sans",
+  ];
+  const overlays = probeFamilies.map((fam, idx) => ({
+    overlay_id: `ov_font_${idx}`,
+    kind: "kinetic_callout" as const,
+    timeline_start_s: idx * 0.5,
+    timeline_duration_s: 0.45,
+    transparent: true,
+    safe_band: "center_safe" as const,
+    props: {
+      headline: fam,
+      font_family: fam,
+      display_family: fam,
+    },
+  }));
+  const sampleFont = path.join(tmpDir, "BarlowCondensed-SemiBold.ttf");
+  fs.writeFileSync(sampleFont, Buffer.from("000100000000", "hex"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      duration_s: 6.0,
+      assets: [
+        {
+          asset_id: "font_barlow_sb",
+          sha256: "f".repeat(64),
+          kind: "font",
+          path: sampleFont,
+        },
+      ],
+      overlay_compositions: overlays,
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+  assert.equal(compiled.compositionFiles.length, probeFamilies.length);
+  for (let i = 0; i < probeFamilies.length; i += 1) {
+    const html = fs.readFileSync(path.join(tmpDir, "compositions", `ov_font_${i}.html`), "utf8");
+    const expected = probeFamilies[i]!;
+    assert.match(html, new RegExp(`font-family:\\s*'${expected}'`));
+  }
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /font-family:\s*'Barlow Condensed';/);
+  assert.match(indexHtml, /font-weight:\s*600;/);
+});
