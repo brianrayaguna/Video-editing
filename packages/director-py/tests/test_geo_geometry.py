@@ -817,3 +817,220 @@ def test_coverage_validation_fill_dedup_and_prepare_routing(tmp_path: Path, monk
         ],
     )
     assert bake_res.exit_code == 0, bake_res.output
+
+
+def test_validate_scene_supports_3d_layers_and_gloss_warp_flags(tmp_path: Path) -> None:
+    flags = tmp_path / "assets" / "geo" / "flags"
+    flags.mkdir(parents=True)
+    (flags / "id.svg").write_text("<svg/>", encoding="utf-8")
+
+    good = validate_map_scene(
+        {
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "acts": [
+                {
+                    "act_id": "three_d",
+                    "type": "map",
+                    "duration_s": 5.0,
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [106.8, -6.2], "zoom": 6.0, "pitch": 45.0},
+                        {"t": 5.0, "center": [103.8, 1.3], "zoom": 9.0, "pitch": 55.0},
+                    ],
+                    "layers": [
+                        {
+                            "type": "polygon",
+                            "geom_ref": "countries.Indonesia",
+                            "flag_fill": "id",
+                            "flag_wave": 0.3,
+                            "flag_wave_warp": 0.04,
+                            "flag_gloss": True,
+                        },
+                        {
+                            "type": "cable_3d",
+                            "coords": [[106.8, -6.2], [103.8, 1.3]],
+                            "radius_px": 6.0,
+                        },
+                        {
+                            "type": "model_3d",
+                            "model": "transmission_tower",
+                            "coord": [106.8, -6.2],
+                        },
+                        {
+                            "type": "volume_3d",
+                            "coord": [103.8, 1.3],
+                            "width_m": 10954,
+                            "length_m": 10954,
+                            "height_m": 1400,
+                        },
+                    ],
+                }
+            ],
+        },
+        repo_root=tmp_path,
+    )
+    assert good["ok"], good["errors"]
+
+    bad = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "bad_3d",
+                    "duration_s": 3.0,
+                    "layers": [
+                        {"type": "polygon", "geom_ref": "x", "flag_gloss": 1.8},
+                        {"type": "cable_3d", "coords": [[0, 0]]},
+                        {"type": "model_3d", "model": "unknown_mesh", "coord": [0, 0]},
+                        {"type": "volume_3d", "coord": [0, 0], "width_m": -10, "length_m": 5},
+                    ],
+                }
+            ]
+        },
+        repo_root=tmp_path,
+    )
+    assert not bad["ok"]
+    joined = "\n".join(bad["errors"])
+    assert "flag_gloss" in joined
+    assert "cable_3d" in joined
+    assert "model_3d" in joined
+    assert "volume_3d" in joined
+
+    # Verify buildMapSceneHtml produces valid JS even when has_3d=True
+    repo = find_repo_root()
+    node_bin = shutil.which("node")
+    if node_bin:
+        mjs_path = str(repo / "tools" / "geo-assets" / "render_map_scene.mjs")
+        math_path = str(repo / "tools" / "geo-assets" / "map_draw_math.mjs")
+        check_js = (
+            'const fs = require("fs");'
+            f'const src = fs.readFileSync({mjs_path!r}, "utf8");'
+            f'const mathSrc = fs.readFileSync({math_path!r}, "utf8")'
+            r'.replace(/^export\s+/gm, "");'
+            r"const flagWidth = Number(src.match(/const FLAG_RASTER_WIDTH = (\d+)/)[1]);"
+            r"const m = src.match(/function buildMapSceneHtml[\s\S]*?\n\}\n/);"
+            'const fn = new Function("DRAW_MATH_SRC", "FLAG_RASTER_WIDTH", '
+            'm[0] + "\\nreturn buildMapSceneHtml('
+            '\\"http://x\\", 1080, 1920, \\"{}\\", {has_3d: true, origin_coord: [106, -6]});");'
+            r"const html = fn(mathSrc, flagWidth);"
+            r"const scripts = [...html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)];"
+            r"new Function(scripts[scripts.length - 1][1]);"
+        )
+        proc = subprocess.run(
+            [node_bin, "-e", check_js], capture_output=True, text=True, check=False
+        )
+        assert proc.returncode == 0, proc.stderr
+
+
+def test_build_geoverum_ass_captions_supports_word_only_transcript() -> None:
+    word_only = {
+        "source_hash": "a" * 64,
+        "provider": "mock",
+        "language": "id",
+        "duration_s": 3.0,
+        "text": "Kabel listrik melintas di dasar laut.",
+        "words": [
+            {"text": "Kabel", "start_s": 0.0, "end_s": 0.4},
+            {"text": "listrik", "start_s": 0.42, "end_s": 0.8},
+            {"text": "melintas.", "start_s": 0.82, "end_s": 1.3},
+            {"text": "Di", "start_s": 1.8, "end_s": 2.0},
+            {"text": "dasar", "start_s": 2.05, "end_s": 2.4},
+            {"text": "laut.", "start_s": 2.42, "end_s": 2.9},
+        ],
+    }
+    ass = build_geoverum_ass_captions(word_only, speed=1.0, max_words=4)
+    assert "Dialogue: 0," in ass
+    assert "Kabel listrik melintas" in ass
+    assert "Di dasar laut" in ass
+
+
+def test_validate_map_scene_gltf_taper_viewport_edge_and_substation_clearance(
+    tmp_path: Path,
+) -> None:
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "tower.glb").write_bytes(b"glTF")
+
+    report = validate_map_scene(
+        {
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "acts": [
+                {
+                    "act_id": "preflight_checks",
+                    "type": "map",
+                    "duration_s": 10.0,
+                    "tile_source": "hybrid",
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [106.8, -6.2], "zoom": 8.0, "pitch": 30.0},
+                        {"t": 5.0, "center": [106.8, -6.2], "zoom": 8.0, "pitch": 30.0},
+                        {"t": 10.0, "center": [106.8, -6.2], "zoom": 8.0, "pitch": 30.0},
+                    ],
+                    "layers": [
+                        {
+                            "type": "model_3d",
+                            "gltf_url": "project_models/tower.glb",
+                            "coord": [106.8, -6.2],
+                            "start_s": 0.0,
+                            "end_s": 8.0,
+                        },
+                        {
+                            "type": "model_3d",
+                            "model": "substation",
+                            "coord": [106.8, -6.2],
+                            "start_s": 0.0,
+                            "end_s": 8.0,
+                        },
+                        {
+                            "type": "cable_3d",
+                            "coords": [[106.5, -6.2], [106.8005, -6.2], [107.1, -6.2]],
+                            "end_taper_m": 250,
+                            "min_screen_radius_px": 2.0,
+                            "start_s": 0.0,
+                            "end_s": 8.0,
+                        },
+                        {
+                            "type": "pin_label",
+                            "text": "Edge Pin",
+                            "coord": [105.0, -6.2],
+                            "font_px": 42,
+                            "start_s": 0.0,
+                            "end_s": 6.0,
+                        },
+                    ],
+                }
+            ],
+        },
+        repo_root=tmp_path,
+        base_dir=tmp_path,
+    )
+    assert report["ok"] is True, report["errors"]
+    warn_text = "\n".join(report["warnings"])
+    assert "viewport side margin" in warn_text
+    assert "substation center" in warn_text
+
+    missing_glb = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "bad_glb",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "model_3d",
+                            "gltf_url": "project_models/missing.glb",
+                            "coord": [0, 0],
+                        },
+                        {"type": "cable_3d", "coords": [[0, 0], [1, 1]], "end_taper_m": -5},
+                    ],
+                }
+            ]
+        },
+        repo_root=tmp_path,
+        base_dir=tmp_path,
+    )
+    assert missing_glb["ok"] is False
+    err_text = "\n".join(missing_glb["errors"])
+    assert "missing.glb" in err_text
+    assert "end_taper_m" in err_text

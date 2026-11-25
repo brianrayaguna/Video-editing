@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "brand_id": "geoverum",
   "display_name": "Geoverum",
-  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): story-first directing in which each narration's own question, withheld answer, and ending note determine the structure, hook mechanism, signature image, surface count, colour casting, and ending (see DIRECTING.md), rendered with a graded marine deep-teal satellite relief spine (#083847 over #03161F ground) that usually carries 70-90% of runtime as a continuous virtual-camera take, plus story-motivated switches to dark vector, parchment, cross-section, horizon terrain, aerial ortho, globe, or real-footage registers; documentary, wry, or comic registers chosen from the narration's tone (flat vector characters, flag avatars, reaction faces, and speech-bubble gags when the story carries irony); per-entity colour casting with rimmed territory fills and three-layer luminous borders and routes; one graphic event per stressed noun with visuals leading the spoken word by 0-0.9 s; axis-aligned in-world map typography; plain true-centered 2-4 word captions at y 70-72% with short opacity fade-in and hard-cut or brief fade-out transitions; zero default watermark; no call-to-action outro; narration-led pacing with visual-locked kinetic SFX.",
+  "editorial_identity": "Cartographic documentary brand across two documentary formats (9:16 portrait and 16:9 landscape): story-first directing in which each narration's own question, withheld answer, and ending note determine the structure, hook mechanism, signature image, surface count, colour casting, and ending (see DIRECTING.md), rendered with a graded marine deep-teal satellite relief spine (#083847 over #03161F ground) that usually carries 70-90% of runtime as a continuous virtual-camera take with 3D in-map infrastructure/scale geometry (cable_3d, model_3d, volume_3d) as the primary spatial explainer over flat cutaways, plus story-motivated switches to dark vector, parchment, cross-section, horizon terrain, aerial ortho, globe, or real-footage registers; documentary, wry, or comic registers chosen from the narration's tone; per-entity colour casting with rimmed territory fills, glossy waving cloth flags, and three-layer luminous borders and routes; one graphic event per stressed noun with visuals leading the spoken word by 0-0.9 s; axis-aligned in-world map typography; plain true-centered 2-4 word captions locked to the protected lower band (Rubik Bold 56 px, MarginV=348 px, y 66-84% clear zone on 9:16); zero default watermark; no call-to-action outro; narration-led pacing with visual-locked kinetic SFX.",
   "soft_priors": {
     "temporal_curve": [
       {
@@ -127,7 +127,14 @@
         "caption_fade_in_ms": 120,
         "caption_fade_out_ms": 0,
         "max_words_per_caption_group": 4,
-        "default_caption_band": "lower_third"
+        "default_caption_band": "lower_third",
+        "caption_font_family": "Rubik, Space Grotesk, Inter, sans-serif",
+        "caption_font_px_9x16": 56,
+        "caption_margin_v_px_9x16": 348,
+        "caption_band_y_pct_9x16": [
+          0.66,
+          0.84
+        ]
       },
       "motion_style": {
         "easing_feel": "smooth_editorial",
@@ -196,7 +203,9 @@
       "mismatched_spoken_vs_shown_number",
       "unanchored_top_edge_scale_ruler",
       "low_contrast_caption_over_bright_terrain",
-      "clipped_edge_callout_label"
+      "clipped_edge_callout_label",
+      "unmotivated_red_x_negation",
+      "flat_cartoon_cutaway_when_3d_map_applies"
     ],
     "avoid_heavy_css_blur": true
   },
@@ -442,7 +451,9 @@
       "mismatched_spoken_vs_shown_number",
       "unanchored_top_edge_scale_ruler",
       "low_contrast_caption_over_bright_terrain",
-      "clipped_edge_callout_label"
+      "clipped_edge_callout_label",
+      "unmotivated_red_x_negation",
+      "flat_cartoon_cutaway_when_3d_map_applies"
     ],
     "last_calibrated_at": "2026-11-24T12:00:00+00:00"
   },

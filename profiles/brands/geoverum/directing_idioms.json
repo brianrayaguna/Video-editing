@@ -85,7 +85,7 @@
       "params": {
         "band_y_pct": [
           0.66,
-          0.76
+          0.84
         ],
         "frame_px": [
           1080,
@@ -197,11 +197,24 @@
         "prohibition_badge",
         "weather_overlay",
         "swarm_flow",
-        "chevron_flow_band"
+        "chevron_flow_band",
+        "flag_fill",
+        "model_3d",
+        "volume_3d"
       ],
       "lead_s": [
         0.0,
         0.5
+      ]
+    },
+    "continuous_camera": {
+      "devices": [
+        "cable_3d",
+        "camera_3d_move"
+      ],
+      "lead_s": [
+        -0.2,
+        1.5
       ]
     },
     "reading": {
@@ -292,6 +305,21 @@
       "surface": "scene"
     },
     "fill": {
+      "surface": "scene"
+    },
+    "flag_fill": {
+      "surface": "scene"
+    },
+    "cable_3d": {
+      "surface": "scene"
+    },
+    "model_3d": {
+      "surface": "scene"
+    },
+    "volume_3d": {
+      "surface": "scene"
+    },
+    "camera_3d_move": {
       "surface": "scene"
     },
     "dive_zoom": {
@@ -945,7 +973,9 @@
         "back-and-forth framing between adjacent frames",
         "camera starting or stopping abruptly inside a beat",
         "smeared or ghosted map frames during an ordinary move",
-        "tiles sharpening mid-move or blurry upscaled tiles on a held frame"
+        "tiles sharpening mid-move or blurry upscaled tiles on a held frame",
+        "register swap losing camera momentum or popping abruptly",
+        "tool or pointer missing its target contact point on the action frame"
       ]
     },
     {

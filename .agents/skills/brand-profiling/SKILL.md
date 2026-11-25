@@ -69,6 +69,7 @@ A multimodal AI directing client **must** perform visual review automatically (n
    - Semantic **narrative role** per shot (`hook`, `context`, `info`, `proof`, `turn`, `payoff`, `cta`, `mood`) and concise one-sentence `point`.
    - Exact **font families** (display, body, title), caption styling (`plain` / `chip` / `bar`), and watermark/chrome presence.
    - Recurring **anti-patterns** to record under `hard_guardrails.banned_patterns` and `calibration.rejected_patterns`.
+   - Whenever a reference uses whip-zooms, rack-focus register swaps, rapid counters, or curved tool actions, inspect a full-FPS transition window (`±15` frames around the cut or action peak) so easing curves, directional blur duration, and velocity carry-over are measured directly rather than estimated from `1–2 fps` keyframe samples.
 3. Write the verified answers into `$CAL_DIR/bd_<stem>/review_answers.json`.
 4. Fuse the visual review back into the breakdown artifacts:
 

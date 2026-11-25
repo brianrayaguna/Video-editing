@@ -351,3 +351,151 @@ export function polygonRings(geom) {
   collect(geom);
   return { outer, inner };
 }
+
+function clipPlane(verts, fn) {
+  if (!verts || verts.length < 3) return [];
+  const out = [];
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % verts.length];
+    const fa = fn(a);
+    const fb = fn(b);
+    const inA = fa >= 0;
+    const inB = fb >= 0;
+    if (inA && inB) {
+      out.push(b);
+    } else if (inA && !inB) {
+      const t = Math.max(0, Math.min(1, fa / (fa - fb)));
+      out.push({
+        x: a.x + t * (b.x - a.x),
+        y: a.y + t * (b.y - a.y),
+        z: a.z + t * (b.z - a.z),
+        w: a.w + t * (b.w - a.w),
+      });
+    } else if (!inA && inB) {
+      const t = Math.max(0, Math.min(1, fa / (fa - fb)));
+      out.push({
+        x: a.x + t * (b.x - a.x),
+        y: a.y + t * (b.y - a.y),
+        z: a.z + t * (b.z - a.z),
+        w: a.w + t * (b.w - a.w),
+      });
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+/**
+ * Sutherland-Hodgman homogeneous clip-space polygon clipping against the camera
+ * near frustum (`w >= eps` and `z + w >= 0`). Prevents perspective projection
+ * wrap-around glitches when pitched maps traverse vertices behind the camera.
+ *
+ * @param {Array<{x:number,y:number,z:number,w:number}>} verts
+ * @param {number} [eps=1e-4]
+ * @returns {Array<{x:number,y:number,z:number,w:number}>}
+ */
+export function clipHomogeneousRing(verts, eps = 1e-4) {
+  if (!Array.isArray(verts) || verts.length < 3) return [];
+  const open = verts.filter(
+    (v) => v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z) && Number.isFinite(v.w)
+  );
+  if (open.length > 1) {
+    const f = open[0];
+    const l = open[open.length - 1];
+    if (f.x === l.x && f.y === l.y && f.z === l.z && f.w === l.w) open.pop();
+  }
+  if (open.length < 3) return [];
+  const e = Number.isFinite(Number(eps)) && Number(eps) > 0 ? Number(eps) : 1e-4;
+  const posW = clipPlane(open, (v) => v.w - e);
+  if (posW.length < 3) return [];
+  return clipPlane(posW, (v) => v.z + v.w);
+}
+
+function clipPolylineSegment(a, b, fn) {
+  const fa = fn(a);
+  const fb = fn(b);
+  const inA = fa >= 0;
+  const inB = fb >= 0;
+  if (!inA && !inB) return null;
+  if (inA && inB) return [a, b];
+  const t = Math.max(0, Math.min(1, fa / (fa - fb)));
+  const hit = {
+    x: a.x + t * (b.x - a.x),
+    y: a.y + t * (b.y - a.y),
+    z: a.z + t * (b.z - a.z),
+    w: a.w + t * (b.w - a.w),
+  };
+  return inA ? [a, hit] : [hit, b];
+}
+
+/**
+ * Clip an open homogeneous clip-space polyline against the camera near frustum
+ * (`w >= eps` and `z + w >= 0`). Returns an array of contiguous sub-polylines
+ * (each length >= 2), splitting cleanly when the path exits and re-enters the frustum.
+ *
+ * @param {Array<{x:number,y:number,z:number,w:number}>} verts
+ * @param {number} [eps=1e-4]
+ * @returns {Array<Array<{x:number,y:number,z:number,w:number}>>}
+ */
+export function clipHomogeneousPolyline(verts, eps = 1e-4) {
+  if (!Array.isArray(verts) || verts.length < 2) return [];
+  const e = Number.isFinite(Number(eps)) && Number(eps) > 0 ? Number(eps) : 1e-4;
+  const out = [];
+  let cur = [];
+  const pushVertex = (v) => {
+    const prev = cur[cur.length - 1];
+    if (
+      !prev ||
+      Math.abs(prev.x - v.x) > 1e-9 ||
+      Math.abs(prev.y - v.y) > 1e-9 ||
+      Math.abs(prev.z - v.z) > 1e-9 ||
+      Math.abs(prev.w - v.w) > 1e-9
+    ) {
+      cur.push(v);
+    }
+  };
+  for (let i = 0; i < verts.length - 1; i++) {
+    const a = verts[i];
+    const b = verts[i + 1];
+    if (
+      !a ||
+      !b ||
+      !Number.isFinite(a.w) ||
+      !Number.isFinite(b.w) ||
+      !Number.isFinite(a.x) ||
+      !Number.isFinite(b.x)
+    ) {
+      if (cur.length >= 2) out.push(cur);
+      cur = [];
+      continue;
+    }
+    const segW = clipPolylineSegment(a, b, (v) => v.w - e);
+    if (!segW) {
+      if (cur.length >= 2) out.push(cur);
+      cur = [];
+      continue;
+    }
+    const segZ = clipPolylineSegment(segW[0], segW[1], (v) => v.z + v.w);
+    if (!segZ) {
+      if (cur.length >= 2) out.push(cur);
+      cur = [];
+      continue;
+    }
+    if (cur.length > 0) {
+      const last = cur[cur.length - 1];
+      const gap =
+        Math.abs(last.x - segZ[0].x) > 1e-6 ||
+        Math.abs(last.y - segZ[0].y) > 1e-6 ||
+        Math.abs(last.w - segZ[0].w) > 1e-6;
+      if (gap) {
+        if (cur.length >= 2) out.push(cur);
+        cur = [];
+      }
+    }
+    pushVertex(segZ[0]);
+    pushVertex(segZ[1]);
+  }
+  if (cur.length >= 2) out.push(cur);
+  return out;
+}

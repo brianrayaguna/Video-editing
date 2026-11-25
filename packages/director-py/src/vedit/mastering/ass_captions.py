@@ -189,7 +189,6 @@ def write_ass_overlays_file(
     wm_font_px = max(18, round(24 * scale))
     wm_margin_v = round(height * (0.16 if is_portrait else 0.075))
     wm_margin_r = round(width * (0.055 if is_portrait else 0.05))
-    credit_font_px = max(16, round(20 * scale))
     credit_margin_l = round(width * sz.left_pct)
 
     first_cap = next((o for o in overlays if o.kind == "caption_rail"), None)
@@ -218,8 +217,9 @@ def write_ass_overlays_file(
 
     credit_ov = next((o for o in overlays if o.template_id == "source_credit"), None)
     cr_merged = _merge_overlay_props(credit_ov)
-    cr_opacity = float(cr_merged.get("opacity", 0.62))
+    cr_opacity = float(cr_merged.get("opacity", 0.78))
     cr_color = _hex_to_ass_color(str(cr_merged.get("fg_color") or "#F4F1EA"), cr_opacity)
+    cr_font_px = max(14, round(float(cr_merged.get("font_size_px") or (22 * scale))))
 
     outline_w = (
         cap_style["outline_px"] if cap_style["outline_px"] is not None else round(2.6 * scale, 2)
@@ -274,8 +274,8 @@ def write_ass_overlays_file(
             f"9,{sym_x_px},{wm_margin_r},{wm_margin_v},1"
         ),
         (
-            f"Style: SourceCredit,{cap_font},{credit_font_px},{cr_color},{cr_color},"
-            f"{wm_shadow},{wm_shadow},0,0,0,0,100,100,0.4,0,1,0.8,1.2,"
+            f"Style: SourceCredit,{cap_font},{cr_font_px},{cr_color},{cr_color},"
+            f"{outline_color},{wm_shadow},-1,0,0,0,100,100,0.4,0,1,1.6,1.8,"
             f"7,{credit_margin_l},{sym_x_px},{upper_margin_v},1"
         ),
         "",

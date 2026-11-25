@@ -41,6 +41,7 @@ const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.j
 const DRAW_MATH_SRC = readFileSync(join(__dirname, "map_draw_math.mjs"), "utf8").replace(/^export\s+/gm, "");
 const FLAG_RASTER_WIDTH = 1600;
 const puppeteer = require("puppeteer-core");
+const sharp = require("sharp");
 
 function isExecutable(p) {
   try {
@@ -79,36 +80,61 @@ function resolveChrome() {
 
 function parseArgs(argv) {
   const args = {};
+  const onlyActs = [];
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (!k.startsWith("--")) continue;
-    if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
-      args[k.slice(2)] = argv[++i];
-    } else {
-      args[k.slice(2)] = true;
+    const name = k.slice(2);
+    const val = i + 1 < argv.length && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+    if (name === "only-act") {
+      if (typeof val === "string") {
+        for (const part of val.split(",")) {
+          const trimmed = part.trim();
+          if (trimmed) onlyActs.push(trimmed);
+        }
+      }
+      continue;
     }
+    args[name] = val;
   }
+  if (onlyActs.length > 0) args["only-act"] = onlyActs;
   return args;
 }
 
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
   const sourceMode = mapOpts.tile_source || "hybrid";
   const tileRoute =
-    sourceMode === "realistic"
-      ? "/tiles_hq/{z}/{x}/{y}.jpg"
-      : sourceMode === "graded"
-        ? "/tiles/{z}/{x}/{y}.jpg"
-        : "/tiles_hybrid/{z}/{x}/{y}.jpg";
+    sourceMode === "project"
+      ? "/tiles_project/{z}/{x}/{y}.jpg"
+      : sourceMode === "project_graded"
+        ? "/tiles_project_graded/{z}/{x}/{y}.jpg"
+        : sourceMode === "realistic"
+          ? "/tiles_hq/{z}/{x}/{y}.jpg"
+          : sourceMode === "graded"
+            ? "/tiles/{z}/{x}/{y}.jpg"
+            : "/tiles_hybrid/{z}/{x}/{y}.jpg";
   const satMaxZoom = 18;
   const terrain3d = Boolean(mapOpts.terrain_3d);
   const terrainExag = Number(mapOpts.terrain_exaggeration ?? 2.4);
   const demMaxZoom = Number(mapOpts.dem_maxzoom ?? 10);
+  const has3d = Boolean(mapOpts.has_3d);
+  const originCoord = mapOpts.origin_coord || mapOpts.initial_camera?.center || [0, 0];
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <link href="${baseUrl}/vendor/maplibre-gl.css" rel="stylesheet" />
-  <script src="${baseUrl}/vendor/maplibre-gl.js"></script>
+  <script src="${baseUrl}/vendor/maplibre-gl.js"></script>${has3d ? `
+  <script type="importmap">{"imports":{"three":"${baseUrl}/vendor/three/three.module.js","three/addons/":"${baseUrl}/vendor/three/jsm/"}}</script>
+  <script type="module">
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    window.THREE = THREE;
+    window.THREE_ADDONS = { GLTFLoader, DRACOLoader, RoomEnvironment };
+    if (window.__resolveThreeReady) window.__resolveThreeReady();
+  </script>` : ""}
   <style>
     @font-face {
       font-family: "Space Grotesk";
@@ -180,7 +206,7 @@ ${DRAW_MATH_SRC}
         },
         layers: [
           { id: "bg", type: "background", paint: { "background-color": "#0A3A4A" } },
-          { id: "sat", type: "raster", source: "sat", paint: { "raster-contrast": ${mapOpts.tile_source === "realistic" ? 0.08 : 0}, "raster-saturation": ${mapOpts.tile_source === "realistic" ? 0.06 : 0} } }${terrain3d ? `,
+          { id: "sat", type: "raster", source: "sat", paint: { "raster-contrast": ${mapOpts.tile_source === "realistic" ? 0.08 : mapOpts.tile_source === "project" ? 0.06 : 0}, "raster-saturation": ${mapOpts.tile_source === "realistic" ? 0.06 : mapOpts.tile_source === "project" ? 0.04 : 0} } }${terrain3d ? `,
           { id: "hillshade", type: "hillshade", source: "dem", paint: { "hillshade-exaggeration": 0.28, "hillshade-shadow-color": "#041620", "hillshade-highlight-color": "#FFF5D6" } }` : ""}
         ]${terrain3d ? `,
         terrain: { source: "dem", exaggeration: ${terrainExag} },
@@ -206,7 +232,7 @@ ${DRAW_MATH_SRC}
       preserveDrawingBuffer: true,
       maxTileCacheSize: 8000,
       transformConstrain: (lngLat, zoom) => ({ center: lngLat, zoom }),
-      canvasContextAttributes: { alpha: false, preserveDrawingBuffer: true }
+      canvasContextAttributes: { alpha: false, preserveDrawingBuffer: true, antialias: ${has3d ? "true" : "false"} }
     });
 
     const ovCanvas = document.getElementById("ov");
@@ -228,7 +254,50 @@ ${DRAW_MATH_SRC}
     rimCanvas.width = W; rimCanvas.height = H;
     const rimCtx = rimCanvas.getContext("2d");
 
-    window.__ready = new Promise((res) => map.on("load", () => res()));
+    // Downsampled (0.25x) offscreen canvas for exterior bloom passes (16x fewer blur pixels).
+    const GLOW_SCALE = 0.25;
+    const glowW = Math.max(64, Math.round(W * GLOW_SCALE));
+    const glowH = Math.max(64, Math.round(H * GLOW_SCALE));
+    const glowCanvas = document.createElement("canvas");
+    glowCanvas.width = glowW; glowCanvas.height = glowH;
+    const glowCtx = glowCanvas.getContext("2d");
+
+    const HAS_3D = ${has3d};
+    const ORIGIN_COORD = ${JSON.stringify(originCoord)};
+    let __update3DScene = null;
+    const __threeReadyPromise = HAS_3D
+      ? new Promise((resolve) => {
+          if (typeof window.THREE !== "undefined") resolve();
+          else window.__resolveThreeReady = resolve;
+        })
+      : Promise.resolve();
+
+    window.__ready = Promise.all([
+      new Promise((res) => map.on("load", res)),
+      __threeReadyPromise,
+    ]).then(() => {
+      if (HAS_3D && typeof THREE !== "undefined") {
+        __update3DScene = initThreeMapLayer();
+      }
+    });
+    window.__gltfCache = Object.create(null);
+    window.__preloadModels = async function(urls) {
+      const unique = [...new Set((urls || []).filter(Boolean))];
+      if (!unique.length || !window.THREE_ADDONS || !window.THREE_ADDONS.GLTFLoader) return;
+      const loader = new window.THREE_ADDONS.GLTFLoader();
+      if (window.THREE_ADDONS.DRACOLoader) {
+        const draco = new window.THREE_ADDONS.DRACOLoader();
+        draco.setDecoderPath(BASE_URL + "/vendor/three/jsm/libs/draco/gltf/");
+        loader.setDRACOLoader(draco);
+      }
+      await Promise.all(unique.map((u) => new Promise((resolve) => {
+        if (window.__gltfCache[u]) { resolve(); return; }
+        loader.load(u, (gltf) => {
+          window.__gltfCache[u] = gltf.scene || gltf.scenes?.[0] || null;
+          resolve();
+        }, undefined, () => resolve());
+      })));
+    };
     window.__imgCache = Object.create(null);
     window.__preloadAssets = async function(urls) {
       const unique = [...new Set((urls || []).filter(Boolean))];
@@ -304,11 +373,95 @@ ${DRAW_MATH_SRC}
       return cur;
     }
 
+    function projectRingClipped(ring) {
+      if (!ring || ring.length < 3) return [];
+      const tr = map.transform;
+      const M = tr && (tr.mercatorMatrix || tr._mercatorMatrix);
+      if (M && (map.getPitch() || 0) > 1.0) {
+        const hasTerr = ${terrain3d} && typeof map.queryTerrainElevation === "function";
+        const hom = [];
+        for (let i = 0; i < ring.length; i++) {
+          const c = ring[i];
+          const elev = hasTerr ? Math.max(0, map.queryTerrainElevation(c, { exaggerated: true }) || 0) : 0;
+          const mc = maplibregl.MercatorCoordinate.fromLngLat(c, elev);
+          hom.push({
+            x: M[0] * mc.x + M[4] * mc.y + M[8] * mc.z + M[12],
+            y: M[1] * mc.x + M[5] * mc.y + M[9] * mc.z + M[13],
+            z: M[2] * mc.x + M[6] * mc.y + M[10] * mc.z + M[14],
+            w: M[3] * mc.x + M[7] * mc.y + M[11] * mc.z + M[15],
+          });
+        }
+        const clipped = clipHomogeneousRing(hom, 1e-4);
+        if (clipped.length < 3) return [];
+        const pts = [];
+        for (let i = 0; i < clipped.length; i++) {
+          const v = clipped[i];
+          const iw = 1 / Math.max(1e-4, v.w);
+          pts.push({
+            x: (v.x * iw * 0.5 + 0.5) * W,
+            y: (0.5 - v.y * iw * 0.5) * H,
+          });
+        }
+        return pts;
+      }
+      return ring.map((c) => map.project(c));
+    }
+
+    function projectPointSafe(lngLat, eps = 1e-4) {
+      if (!lngLat || lngLat.length < 2) return null;
+      const tr = map.transform;
+      const M = tr && (tr.mercatorMatrix || tr._mercatorMatrix);
+      if (M && (map.getPitch() || 0) > 1.0) {
+        const hasTerr = ${terrain3d} && typeof map.queryTerrainElevation === "function";
+        const elev = hasTerr ? Math.max(0, map.queryTerrainElevation(lngLat, { exaggerated: true }) || 0) : 0;
+        const mc = maplibregl.MercatorCoordinate.fromLngLat(lngLat, elev);
+        const w = M[3] * mc.x + M[7] * mc.y + M[11] * mc.z + M[15];
+        const z = M[2] * mc.x + M[6] * mc.y + M[10] * mc.z + M[14];
+        if (!Number.isFinite(w) || w <= eps || z + w < 0) return null;
+        const x = M[0] * mc.x + M[4] * mc.y + M[8] * mc.z + M[12];
+        const y = M[1] * mc.x + M[5] * mc.y + M[9] * mc.z + M[13];
+        const iw = 1 / w;
+        return { x: (x * iw * 0.5 + 0.5) * W, y: (0.5 - y * iw * 0.5) * H };
+      }
+      const p = map.project(lngLat);
+      return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+    }
+
+    function projectPolylineClipped(coords, eps = 1e-4) {
+      if (!coords || coords.length < 2) return [];
+      const tr = map.transform;
+      const M = tr && (tr.mercatorMatrix || tr._mercatorMatrix);
+      if (M && (map.getPitch() || 0) > 1.0) {
+        const hasTerr = ${terrain3d} && typeof map.queryTerrainElevation === "function";
+        const hom = [];
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
+          const elev = hasTerr ? Math.max(0, map.queryTerrainElevation(c, { exaggerated: true }) || 0) : 0;
+          const mc = maplibregl.MercatorCoordinate.fromLngLat(c, elev);
+          hom.push({
+            x: M[0] * mc.x + M[4] * mc.y + M[8] * mc.z + M[12],
+            y: M[1] * mc.x + M[5] * mc.y + M[9] * mc.z + M[13],
+            z: M[2] * mc.x + M[6] * mc.y + M[10] * mc.z + M[14],
+            w: M[3] * mc.x + M[7] * mc.y + M[11] * mc.z + M[15],
+          });
+        }
+        const segs = clipHomogeneousPolyline(hom, eps);
+        return segs.map((segVerts) =>
+          segVerts.map((v) => {
+            const iw = 1 / Math.max(eps, v.w);
+            return { x: (v.x * iw * 0.5 + 0.5) * W, y: (0.5 - v.y * iw * 0.5) * H };
+          })
+        );
+      }
+      return [coords.map((c) => map.project(c))];
+    }
+
     function traceRing(targetCtx, ring) {
-      for (let i = 0; i < ring.length; i++) {
-        const p = map.project(ring[i]);
-        if (i === 0) targetCtx.moveTo(p.x, p.y);
-        else targetCtx.lineTo(p.x, p.y);
+      const pts = projectRingClipped(ring);
+      if (pts.length < 3) return;
+      for (let i = 0; i < pts.length; i++) {
+        if (i === 0) targetCtx.moveTo(pts[i].x, pts[i].y);
+        else targetCtx.lineTo(pts[i].x, pts[i].y);
       }
       targetCtx.closePath();
     }
@@ -480,8 +633,9 @@ ${DRAW_MATH_SRC}
 
     // Draw a flag raster over a territory's screen bounds (upright, optional quarter turns).
     // "stretch" maps the whole flag design onto the bounding box; "cover" keeps the flag's
-    // proportions and covers the box, cropping the overflow.
-    function drawFlagCover(tctx, img, bounds, rotateDeg = 0, fit = "stretch") {
+    // proportions and covers the box, cropping the overflow. Optional travelling wind-gust
+    // vertical slice displacement warps the fabric silhouette when flagWave.warp > 0.
+    function drawFlagCover(tctx, img, bounds, rotateDeg = 0, fit = "stretch", flagWave = null, time = 0) {
       const quarter = ((Math.round((rotateDeg || 0) / 90) % 4) + 4) % 4;
       const aspect = quarter % 2 ? img.height / img.width : img.width / img.height;
       const r = fit === "cover"
@@ -493,14 +647,43 @@ ${DRAW_MATH_SRC}
       tctx.translate(r.x + r.w / 2, r.y + r.h / 2);
       tctx.rotate((quarter * Math.PI) / 2);
       tctx.imageSmoothingQuality = "high";
-      tctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+      const warpFrac = flagWave && flagWave.warp > 0 ? Number(flagWave.warp) : 0;
+      if (warpFrac > 0.001 && dw >= 12) {
+        const visW = Math.min(dw, Math.max(0, Math.min(bounds.maxX, W) - Math.max(bounds.minX, 0)));
+        const slices = clamp(Math.round(Math.max(visW, dw * 0.45) / 5), 32, 120);
+        const sw = img.width / slices;
+        const dwS = dw / slices;
+        const warpPx = clamp(dh * warpFrac, 2, 42);
+        const cycles = flagWave.cycles ?? 2.5;
+        const speed = flagWave.speed ?? 0.5;
+        for (let i = 0; i < slices; i++) {
+          const u = (i + 0.5) / slices;
+          const ph = 2 * Math.PI * (cycles * u - speed * time);
+          const gust = 0.72 * Math.sin(ph) + 0.28 * Math.sin(2 * ph + 1.15);
+          const dy = gust * warpPx;
+          tctx.drawImage(
+            img,
+            i * sw,
+            0,
+            Math.max(1, sw + 0.9),
+            img.height,
+            -dw / 2 + i * dwS - 0.9,
+            -dh / 2 + dy - warpPx * 0.35,
+            dwS + 2.2,
+            dh + warpPx * 0.70
+          );
+        }
+      } else {
+        tctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+      }
       tctx.restore();
     }
 
     // Cloth shading for a waving flag: highlight and shadow bands along "angleDeg" across the
-    // territory bounds, composited onto the flag pixels only (see clothWaveStops).
+    // territory bounds, composited onto the flag pixels only, plus optional satin gloss sheen.
     function applyClothShade(tctx, b, wave, t) {
-      const stops = clothWaveStops(t, wave);
+      const stops = clothWaveStops(t, { ...wave, stops: 40 });
+      const amp = Math.max(0.001, Number(wave.amplitude) || 0.22);
       const ang = ((wave.angleDeg ?? 20) * Math.PI) / 180;
       const cx = (b.minX + b.maxX) / 2;
       const cy = (b.minY + b.maxY) / 2;
@@ -510,13 +693,32 @@ ${DRAW_MATH_SRC}
       const grad = tctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
       for (const st of stops) {
         grad.addColorStop(st.offset, st.light >= 0
-          ? "rgba(255,255,255," + st.light.toFixed(3) + ")"
-          : "rgba(0,0,0," + (-st.light).toFixed(3) + ")");
+          ? "rgba(255,255,255," + clamp(st.light * 1.15, 0, 0.72).toFixed(3) + ")"
+          : "rgba(0,0,0," + clamp(-st.light * 1.18, 0, 0.72).toFixed(3) + ")");
       }
       tctx.save();
       tctx.globalCompositeOperation = "source-atop";
       tctx.fillStyle = grad;
       tctx.fillRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+      const gloss = wave.gloss > 0 ? clamp(Number(wave.gloss), 0, 1) : 0;
+      if (gloss > 0.01) {
+        const specGrad = tctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+        for (const st of stops) {
+          const ridge = Math.max(0, (st.light / amp - 0.30) / 0.70);
+          const crestA = clamp(Math.pow(ridge, 1.8) * gloss * 0.56, 0, 0.68);
+          specGrad.addColorStop(st.offset, "rgba(255,255,255," + crestA.toFixed(3) + ")");
+        }
+        tctx.fillStyle = specGrad;
+        tctx.fillRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+
+        const sheenGrad = tctx.createLinearGradient(b.minX, b.minY, b.maxX, b.maxY);
+        sheenGrad.addColorStop(0.0, "rgba(255,255,255," + (0.24 * gloss).toFixed(3) + ")");
+        sheenGrad.addColorStop(0.38, "rgba(255,255,255," + (0.04 * gloss).toFixed(3) + ")");
+        sheenGrad.addColorStop(0.68, "rgba(255,255,255," + (0.14 * gloss).toFixed(3) + ")");
+        sheenGrad.addColorStop(1.0, "rgba(255,255,255,0)");
+        tctx.fillStyle = sheenGrad;
+        tctx.fillRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+      }
       tctx.restore();
     }
 
@@ -599,7 +801,7 @@ ${DRAW_MATH_SRC}
       if (traced && traceProgress <= 0.001 && fillReveal <= 0.005) return;
       const needOuter = traced || Boolean(flagImg) || fillRevealMode !== "fade";
       const ringsLL = needOuter ? outerRingsLngLat(geom) : [];
-      const ringsPx = needOuter ? ringsLL.map((r) => r.map((c) => map.project(c))) : [];
+      const ringsPx = needOuter ? ringsLL.map((r) => projectRingClipped(r)) : [];
 
       // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
       maskCtx.clearRect(0, 0, W, H);
@@ -622,7 +824,7 @@ ${DRAW_MATH_SRC}
       if (traced) {
         if (traceProgress > 0.001) {
           const holesLL = polygonRings(geom).inner;
-          const holesPx = holesLL.map((r) => r.map((c) => map.project(c)));
+          const holesPx = holesLL.map((r) => projectRingClipped(r));
           const paths = [
             ...perimeterPartialPaths(ringsPx, traceProgress, borderTraceOptions(ringsLL, traceHeads, traceStart, traceDir)),
             ...perimeterPartialPaths(holesPx, traceProgress, borderTraceOptions(holesLL, traceHeads, traceStart, traceDir)),
@@ -642,7 +844,7 @@ ${DRAW_MATH_SRC}
           if (traceProgress < 1) traceHeadsPx = paths.map((p) => p[p.length - 1]);
         }
       } else {
-        const dirs = 12;
+        const dirs = 8;
         for (let k = 0; k < dirs; k++) {
           const ang = (k / dirs) * Math.PI * 2;
           rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw);
@@ -651,7 +853,7 @@ ${DRAW_MATH_SRC}
       rimCtx.globalCompositeOperation = "destination-out";
       rimCtx.drawImage(maskCanvas, 0, 0);
 
-      // 3. Exterior-only Gaussian bloom (never stacks opaque color over interior mountain texture)
+      // 3. Exterior-only Gaussian bloom rendered on downsampled 0.25x offscreen canvas
       ctx.save();
       if (revealAxis && revealProgress < 0.999) {
         if (!applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds)) {
@@ -669,19 +871,29 @@ ${DRAW_MATH_SRC}
         rimCtx.globalCompositeOperation = "source-in";
         rimCtx.fillStyle = effBloomHex;
         rimCtx.fillRect(0, 0, W, H);
+        glowCtx.clearRect(0, 0, glowW, glowH);
+        glowCtx.save();
+        glowCtx.imageSmoothingEnabled = true;
         const passes = [
-          [42 * effBloomScale, Math.min(0.95, 0.45 + flashIntensity * 0.45)],
-          [20 * effBloomScale, Math.min(0.98, 0.65 + flashIntensity * 0.30)],
-          [8 * effBloomScale, Math.min(1.0, 0.80 + flashIntensity * 0.20)],
+          [42 * effBloomScale * GLOW_SCALE, Math.min(0.95, 0.45 + flashIntensity * 0.45)],
+          [20 * effBloomScale * GLOW_SCALE, Math.min(0.98, 0.65 + flashIntensity * 0.30)],
+          [8 * effBloomScale * GLOW_SCALE, Math.min(1.0, 0.80 + flashIntensity * 0.20)],
         ];
         for (const [blurPx, a] of passes) {
-          ctx.save();
-          ctx.globalAlpha = alpha * a;
-          ctx.shadowColor = effBloomHex;
-          ctx.shadowBlur = blurPx;
-          ctx.drawImage(rimCanvas, 0, 0);
-          ctx.restore();
+          glowCtx.save();
+          glowCtx.globalAlpha = a;
+          glowCtx.shadowColor = effBloomHex;
+          glowCtx.shadowBlur = Math.max(1, blurPx);
+          glowCtx.drawImage(rimCanvas, 0, 0, glowW, glowH);
+          glowCtx.restore();
         }
+        glowCtx.restore();
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(glowCanvas, 0, 0, W, H);
+        ctx.restore();
       }
 
       // 4. Crisp exterior rim (animated by borderReveal)
@@ -733,13 +945,13 @@ ${DRAW_MATH_SRC}
         rimCtx.clearRect(0, 0, W, H);
         rimCtx.globalCompositeOperation = "source-over";
         if (flagImg && fillBounds) {
-          for (const cluster of clusters) {
+          for (const cluster of visibleClusters) {
             const cb = cluster.bounds;
             rimCtx.save();
             rimCtx.beginPath();
             rimCtx.rect(cb.minX, cb.minY, cb.maxX - cb.minX, cb.maxY - cb.minY);
             rimCtx.clip();
-            drawFlagCover(rimCtx, flagImg, cb, flagRotateDeg, flagFit);
+            drawFlagCover(rimCtx, flagImg, cb, flagRotateDeg, flagFit, flagWave, time);
             if (flagWave) applyClothShade(rimCtx, cb, flagWave, time);
             rimCtx.restore();
           }
@@ -842,9 +1054,12 @@ ${DRAW_MATH_SRC}
       ctx.restore();
     }
 
-    function drawPartialRoute(coords, progress, { color = "#FDE047", bloom = "#F5C542", core = "#FFFFFF", width = 8, dash = null, alpha = 1 } = {}) {
+    function drawPartialRoute(coords, progress, { color = "#FDE047", bloom = "#F5C542", core = "#FFFFFF", width = 8, dash = null, alpha = 1, cableCasing = false, pulseSpeed = 0, pulseCount = 3, pulseColor = "#FFFFFF", pulseGlow = "#FDE047", pulseTailFrac = 0.12, time = 0 } = {}) {
       if (progress <= 0.001 || alpha <= 0.005 || !coords || coords.length < 2) return;
-      const pts = coords.map((c) => map.project(c));
+      const clippedSegs = projectPolylineClipped(coords);
+      if (!clippedSegs.length) return;
+      const pts = clippedSegs.reduce((best, s) => (s.length >= best.length ? s : best), clippedSegs[0]);
+      if (!pts || pts.length < 2) return;
       const lens = [0];
       let tot = 0;
       for (let i = 1; i < pts.length; i++) {
@@ -871,6 +1086,9 @@ ${DRAW_MATH_SRC}
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       if (dash) ctx.setLineDash(dash);
+      if (cableCasing && !dash) {
+        trace(); ctx.strokeStyle = "#03161F"; ctx.globalAlpha = alpha * 0.82; ctx.lineWidth = width * 1.48; ctx.stroke();
+      }
       if (bloom) {
         trace(); ctx.strokeStyle = bloom; ctx.globalAlpha = alpha * 0.28; ctx.lineWidth = width * 2.8; ctx.stroke();
         trace(); ctx.strokeStyle = bloom; ctx.globalAlpha = alpha * 0.56; ctx.lineWidth = width * 1.65; ctx.stroke();
@@ -878,6 +1096,60 @@ ${DRAW_MATH_SRC}
       trace(); ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.stroke();
       if (core && !dash) {
         trace(); ctx.strokeStyle = core; ctx.globalAlpha = alpha * 0.88; ctx.lineWidth = Math.max(1.8, width * 0.36); ctx.stroke();
+      }
+      if (pulseSpeed > 0 && !dash && target > 24) {
+        const outLens = [0];
+        let outTot = 0;
+        for (let i = 1; i < out.length; i++) {
+          outTot += Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y);
+          outLens.push(outTot);
+        }
+        const sampleOut = (dist) => {
+          const d = clamp(dist, 0, outTot);
+          for (let i = 1; i < outLens.length; i++) {
+            if (outLens[i] >= d || i === outLens.length - 1) {
+              const span = Math.max(1e-5, outLens[i] - outLens[i - 1]);
+              const f = clamp((d - outLens[i - 1]) / span, 0, 1);
+              return { x: lerp(out[i - 1].x, out[i].x, f), y: lerp(out[i - 1].y, out[i].y, f) };
+            }
+          }
+          return out[0];
+        };
+        ctx.setLineDash([]);
+        const count = Math.max(1, Math.round(pulseCount));
+        const tailDist = Math.max(18, outTot * pulseTailFrac);
+        for (let k = 0; k < count; k++) {
+          const phase = ((time * pulseSpeed + k / count) % 1 + 1) % 1;
+          const headD = phase * (outTot + tailDist);
+          const steps = 10;
+          for (let s = 1; s <= steps; s++) {
+            const d0 = headD - tailDist * (1 - (s - 1) / steps);
+            const d1 = headD - tailDist * (1 - s / steps);
+            if (d1 < 0 || d0 > outTot) continue;
+            const p0 = sampleOut(d0);
+            const p1 = sampleOut(d1);
+            const frac = s / steps;
+            ctx.strokeStyle = frac > 0.72 ? pulseColor : pulseGlow;
+            ctx.globalAlpha = alpha * Math.pow(frac, 1.5) * 0.95;
+            ctx.lineWidth = width * (0.45 + 0.85 * frac);
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.stroke();
+          }
+          if (headD >= 0 && headD <= outTot) {
+            const hp = sampleOut(headD);
+            const hg = ctx.createRadialGradient(hp.x, hp.y, 1, hp.x, hp.y, width * 1.9);
+            hg.addColorStop(0, "rgba(255,255,255," + (0.95 * alpha).toFixed(2) + ")");
+            hg.addColorStop(0.45, rgbaStr(pulseGlow, 0.72 * alpha));
+            hg.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = hg;
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.arc(hp.x, hp.y, width * 1.9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
       ctx.restore();
     }
@@ -1043,14 +1315,22 @@ ${DRAW_MATH_SRC}
       ctx.restore();
     }
 
-    function drawLandmarkSilhouette(x, y, heightPx, landmark = "statue_of_liberty", { fillHex = "#94A3B8", accentHex = "#CBD5E1", rimHex = "#E2E8F0", alpha = 1.0, riseProgress = 1.0 } = {}) {
+    function drawLandmarkSilhouette(x, y, heightPx, landmark = "statue_of_liberty", { fillHex = "#94A3B8", accentHex = "#CBD5E1", rimHex = "#E2E8F0", alpha = 1.0, riseProgress = 1.0, time = 0, angleDeg = 0 } = {}) {
       if (alpha <= 0.005 || heightPx <= 2 || riseProgress <= 0.01) return;
       ctx.save();
       ctx.translate(x, y);
       ctx.globalAlpha = alpha;
+      // Ground shadow anchor beneath structure so it sits physically on terrain
+      const shS = heightPx / 200;
+      ctx.save();
+      ctx.fillStyle = "rgba(2, 10, 14, 0.44)";
+      ctx.beginPath();
+      ctx.ellipse(0, 4 * shS, 42 * shS * clamp(riseProgress, 0.3, 1), 12 * shS * clamp(riseProgress, 0.3, 1), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
       // Clip from baseline upward so the monument rises out of the map anchor cleanly
       ctx.beginPath();
-      ctx.rect(-heightPx * 0.9, -heightPx * 1.35, heightPx * 1.8, heightPx * 1.40);
+      ctx.rect(-heightPx * 1.05, -heightPx * 1.35, heightPx * 2.1, heightPx * 1.45);
       ctx.clip();
       const slideY = (1 - riseProgress) * heightPx * 1.15;
       ctx.translate(0, slideY);
@@ -1119,6 +1399,206 @@ ${DRAW_MATH_SRC}
         ctx.quadraticCurveTo(32, -193, 25.5, -186);
         ctx.quadraticCurveTo(19, -193, 25.5, -203);
         ctx.fill();
+      } else if (landmark === "transmission_tower") {
+        // Steel HVDC lattice transmission pylon with cross-arms and energized insulator terminals
+        ctx.strokeStyle = rimHex;
+        ctx.fillStyle = fillHex;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        // Concrete foundation pads
+        ctx.fillRect(-38, -8, 16, 8);
+        ctx.fillRect(22, -8, 16, 8);
+        // Main tapered lattice legs
+        ctx.lineWidth = 5.5;
+        ctx.beginPath();
+        ctx.moveTo(-30, -8); ctx.lineTo(-10, -158); ctx.lineTo(0, -188);
+        ctx.moveTo(30, -8); ctx.lineTo(10, -158); ctx.lineTo(0, -188);
+        ctx.stroke();
+        // Horizontal cross-arms (lower and upper)
+        ctx.lineWidth = 5.0;
+        ctx.beginPath();
+        ctx.moveTo(-54, -108); ctx.lineTo(54, -108);
+        ctx.moveTo(-40, -148); ctx.lineTo(40, -148);
+        ctx.stroke();
+        // Cross-arm diagonal braces
+        ctx.lineWidth = 3.0;
+        ctx.beginPath();
+        ctx.moveTo(-54, -108); ctx.lineTo(-16, -94);
+        ctx.moveTo(54, -108); ctx.lineTo(16, -94);
+        ctx.moveTo(-40, -148); ctx.lineTo(-12, -134);
+        ctx.moveTo(40, -148); ctx.lineTo(12, -134);
+        // Body X-bracing bays
+        const bays = [[-8, -42, 30, 24], [-42, -76, 24, 19], [-76, -108, 19, 15], [-108, -148, 15, 11]];
+        for (const [y0, y1, w0, w1] of bays) {
+          ctx.moveTo(-w0, y0); ctx.lineTo(w1, y1);
+          ctx.moveTo(w0, y0); ctx.lineTo(-w1, y1);
+          ctx.moveTo(-w1, y1); ctx.lineTo(w1, y1);
+        }
+        ctx.stroke();
+        // Suspended insulator strings & glowing energized terminals
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = accentHex;
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 3.0;
+        for (const [ix, iy] of [[-52, -108], [52, -108], [-38, -148], [38, -148]]) {
+          ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix, iy + 14); ctx.stroke();
+          ctx.fillStyle = accentHex;
+          ctx.beginPath(); ctx.arc(ix, iy + 16, 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath(); ctx.arc(ix, iy + 16, 2.3, 0, Math.PI * 2); ctx.fill();
+        }
+        // Earth-wire apex beacon
+        ctx.fillStyle = accentHex;
+        ctx.beginPath(); ctx.arc(0, -190, 4.5, 0, Math.PI * 2); ctx.fill();
+      } else if (landmark === "solar_array") {
+        // Isometric perspective solar panel bank with tilted PV cell grid and animated sun glint
+        const panels = [[-46, -18], [4, -18], [-34, -58], [16, -58]];
+        for (let pi = 0; pi < panels.length; pi++) {
+          const [px, py] = panels[pi];
+          // Support stanchion
+          ctx.fillStyle = "#64748B";
+          ctx.fillRect(px + 14, py + 12, 5, 16);
+          ctx.save();
+          ctx.translate(px, py);
+          // Tilted panel quad
+          ctx.beginPath();
+          ctx.moveTo(-22, 12);
+          ctx.lineTo(24, 12);
+          ctx.lineTo(34, -16);
+          ctx.lineTo(-12, -16);
+          ctx.closePath();
+          const pg = ctx.createLinearGradient(-18, -16, 30, 12);
+          pg.addColorStop(0, fillHex === "#94A3B8" ? "#1E3A8A" : fillHex);
+          pg.addColorStop(1, "#0F172A");
+          ctx.fillStyle = pg;
+          ctx.fill();
+          ctx.strokeStyle = rimHex;
+          ctx.lineWidth = 2.4;
+          ctx.stroke();
+          // PV cell grid lines
+          ctx.strokeStyle = "rgba(147, 197, 253, 0.45)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          for (const f of [0.33, 0.66]) {
+            ctx.moveTo(lerp(-22, 24, f), 12); ctx.lineTo(lerp(-12, 34, f), -16);
+            ctx.moveTo(lerp(-22, -12, f), lerp(12, -16, f)); ctx.lineTo(lerp(24, 34, f), lerp(12, -16, f));
+          }
+          ctx.stroke();
+          // Subtle sunlit glint sweep
+          const glint = 0.5 + 0.5 * Math.sin(time * 3.4 + pi * 1.3);
+          ctx.fillStyle = rgbaStr(accentHex === "#CBD5E1" ? "#FDE047" : accentHex, 0.16 + glint * 0.24);
+          ctx.beginPath();
+          ctx.moveTo(-12, 8); ctx.lineTo(2, 8); ctx.lineTo(10, -12); ctx.lineTo(-4, -12);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      } else if (landmark === "substation_hub") {
+        // HVDC converter terminal station with glowing energy bolt crest
+        ctx.fillStyle = "#1E293B";
+        ctx.strokeStyle = rimHex;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.roundRect(-48, -56, 96, 56, 6);
+        ctx.fill();
+        ctx.stroke();
+        // Roof deck & transformer bushings
+        ctx.fillStyle = "#334155";
+        ctx.fillRect(-42, -68, 84, 12);
+        for (const bx of [-28, 0, 28]) {
+          ctx.strokeStyle = rimHex;
+          ctx.lineWidth = 3.5;
+          ctx.beginPath(); ctx.moveTo(bx, -68); ctx.lineTo(bx, -88); ctx.stroke();
+          ctx.fillStyle = accentHex;
+          ctx.shadowColor = accentHex;
+          ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(bx, -91, 5, 0, Math.PI * 2); ctx.fill();
+        }
+        // Central energized lightning bolt
+        ctx.fillStyle = accentHex;
+        ctx.beginPath();
+        ctx.moveTo(4, -46); ctx.lineTo(-12, -26); ctx.lineTo(-1, -26);
+        ctx.lineTo(-7, -8); ctx.lineTo(13, -30); ctx.lineTo(2, -30);
+        ctx.closePath();
+        ctx.fill();
+      } else if (landmark === "survey_vessel") {
+        // Ocean cable-laying / survey ship with bow wake and rotating radar mast
+        ctx.save();
+        ctx.translate(0, -18);
+        if (angleDeg) ctx.rotate((angleDeg * Math.PI) / 180);
+        // Subtle ocean wake V behind stern
+        ctx.strokeStyle = "rgba(124, 224, 249, 0.55)";
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(-44, 4); ctx.lineTo(-74, -12);
+        ctx.moveTo(-44, 10); ctx.lineTo(-74, 26);
+        ctx.stroke();
+        // Hull
+        ctx.fillStyle = fillHex === "#94A3B8" ? "#0F172A" : fillHex;
+        ctx.strokeStyle = rimHex;
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.moveTo(-48, 12);
+        ctx.lineTo(36, 12);
+        ctx.lineTo(58, -4);
+        ctx.lineTo(44, -10);
+        ctx.lineTo(-44, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Superstructure & bridge
+        ctx.fillStyle = "#F8FAFC";
+        ctx.fillRect(-16, -26, 36, 16);
+        ctx.fillStyle = "#38BDF8";
+        ctx.fillRect(6, -22, 11, 6);
+        // Cable reel drum on stern deck
+        ctx.fillStyle = accentHex;
+        ctx.beginPath();
+        ctx.arc(-30, -16, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#0F172A";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Mast + radar ping dot
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-2, -26); ctx.lineTo(-2, -44); ctx.stroke();
+        ctx.fillStyle = accentHex;
+        ctx.beginPath(); ctx.arc(-2, -46, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (landmark === "gavel") {
+        // Editorial permit/leverage gavel with strike base and subtle impact ring
+        const strike = Math.sin(clamp(riseProgress, 0, 1) * Math.PI * 0.5);
+        const swingAng = lerp(-0.58, 0.06, strike);
+        // Sound block base
+        ctx.fillStyle = "#451A03";
+        ctx.strokeStyle = rimHex;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.roundRect(-34, -16, 68, 14, 4);
+        ctx.fill();
+        ctx.stroke();
+        // Swinging hammer
+        ctx.save();
+        ctx.translate(22, -22);
+        ctx.rotate(swingAng);
+        // Handle
+        ctx.fillStyle = "#B45309";
+        ctx.strokeStyle = "#FEF3C7";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.roundRect(-42, -5, 76, 10, 4);
+        ctx.fill();
+        ctx.stroke();
+        // Head
+        ctx.fillStyle = fillHex === "#94A3B8" ? "#F59E0B" : fillHex;
+        ctx.beginPath();
+        ctx.roundRect(-52, -24, 24, 48, 5);
+        ctx.fill();
+        ctx.strokeStyle = accentHex;
+        ctx.lineWidth = 2.8;
+        ctx.stroke();
+        ctx.restore();
       } else {
         // Generic monument spire
         ctx.fillStyle = fillHex;
@@ -1221,8 +1701,10 @@ ${DRAW_MATH_SRC}
       for (let i = 0; i <= steps; i++) {
         const u = lerp(segStart, segEnd, i / steps);
         const c = samplePolylineCoord(coords, u);
-        pts.push(map.project(c));
+        const pt = projectPointSafe(c);
+        if (pt) pts.push(pt);
       }
+      if (pts.length < 2) return;
       ctx.save();
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -1742,12 +2224,24 @@ ${DRAW_MATH_SRC}
           const blendMap = { normal: "source-over", multiply: "multiply", overlay: "overlay", "soft-light": "soft-light", screen: "screen" };
           const flagBlend = blendMap[layer.flag_blend || "normal"] || "source-over";
           const waveAmp = layer.flag_wave === true ? 0.22 : Number(layer.flag_wave) || 0;
+          const waveWarp = layer.flag_wave_warp === false
+            ? 0
+            : (layer.flag_wave_warp === true
+              ? 0.036
+              : (layer.flag_wave_warp != null ? Number(layer.flag_wave_warp) : (waveAmp > 0 ? 0.036 : 0)));
+          const waveGloss = layer.flag_gloss === false
+            ? 0
+            : (layer.flag_gloss === true
+              ? 0.48
+              : (layer.flag_gloss != null ? Number(layer.flag_gloss) : (waveAmp > 0 ? 0.48 : 0)));
           const flagWave = waveAmp > 0
             ? {
                 amplitude: waveAmp,
                 cycles: layer.flag_wave_cycles ?? 2.5,
                 speed: layer.flag_wave_speed ?? 0.5,
                 angleDeg: layer.flag_wave_angle_deg ?? 20,
+                warp: waveWarp,
+                gloss: waveGloss,
               }
             : null;
           const revealProgress = layer.reveal_duration_s
@@ -1846,11 +2340,18 @@ ${DRAW_MATH_SRC}
             width: widthPx,
             dash,
             alpha: baseAlpha,
+            cableCasing: Boolean(layer.cable_casing),
+            pulseSpeed: Number(layer.pulse_speed || 0),
+            pulseCount: Number(layer.pulse_count || 3),
+            pulseColor: layer.pulse_color || "#FFFFFF",
+            pulseGlow: layer.pulse_glow || layer.bloom || "#FDE047",
+            pulseTailFrac: Number(layer.pulse_tail_frac || 0.12),
+            time: tLoc,
           });
           if (layer.beacon_coord) {
             const bA = baseAlpha * easeOutCubic(seg(t, layer.beacon_start_s ?? tStart, (layer.beacon_start_s ?? tStart) + 0.7));
-            if (bA > 0.01) {
-              const bp = map.project(layer.beacon_coord);
+            const bp = bA > 0.01 ? projectPointSafe(layer.beacon_coord) : null;
+            if (bp) {
               const bg = ctx.createRadialGradient(bp.x, bp.y, 10, bp.x, bp.y, 130);
               bg.addColorStop(0, "rgba(255,255,255," + (0.95 * bA).toFixed(2) + ")");
               bg.addColorStop(0.35, rgbaStr(layer.beacon_color || "#4ADE80", 0.78 * bA));
@@ -1878,7 +2379,7 @@ ${DRAW_MATH_SRC}
             const cDur = layer.count_duration_s ?? 0.85;
             const cu = easeOutCubic(seg(t, cStart, cStart + cDur));
             const val = Math.round(lerp(layer.count_from ?? 0, layer.count_to, cu));
-            displayText = (layer.count_prefix || "") + val.toLocaleString("en-US") + (layer.count_suffix || "");
+            displayText = (layer.count_prefix || "") + val.toLocaleString(layer.count_locale || "en-US") + (layer.count_suffix || "");
           } else if (layer.typewriter_s) {
             const twStart = tStart + (layer.typewriter_delay_s ?? 0);
             const twU = clamp(seg(t, twStart, twStart + layer.typewriter_s), 0, 1);
@@ -1937,34 +2438,49 @@ ${DRAW_MATH_SRC}
             drawGlowingText(displayText, layer.dx || 0, layer.dy || 0, baseFont, textOpts);
             ctx.restore();
           } else if (curCoord) {
-            const pt = map.project(curCoord);
-            if (layer.ref_zoom != null) {
-              const coupling = layer.scale_coupling ?? 0.45;
-              const zScale = Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling);
-              sc *= clamp(zScale, layer.min_scale ?? 0.45, layer.max_scale ?? 2.4);
-              textOpts.scale = sc;
+            const pt = projectPointSafe(curCoord);
+            if (pt) {
+              if (layer.ref_zoom != null) {
+                const coupling = layer.scale_coupling ?? 0.45;
+                const zScale = Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling);
+                sc *= clamp(zScale, layer.min_scale ?? 0.45, layer.max_scale ?? 2.4);
+                textOpts.scale = sc;
+              }
+              drawGlowingText(displayText, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, baseFont, textOpts);
             }
-            drawGlowingText(displayText, pt.x + (layer.dx || 0), pt.y + (layer.dy || 0) + yFly, baseFont, textOpts);
+          } else if (layer.x_pct != null || layer.y_pct != null) {
+            drawGlowingText(
+              displayText,
+              W * (layer.x_pct ?? 0.5) + (layer.dx || 0),
+              H * (layer.y_pct ?? 0.25) + (layer.dy || 0) + yFly,
+              baseFont,
+              textOpts
+            );
           }
         } else if (layer.type === "crimson_x") {
-          const pt = map.project(layer.coord);
-          const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
-          const sz = lerp(layer.size_start || 56, layer.size_end || 90, seg(t, tStart, tEnd)) * clamp(pop, 0, 1.25);
-          drawCrimsonX(pt.x, pt.y, sz, baseAlpha);
+          const pt = projectPointSafe(layer.coord);
+          if (pt) {
+            const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
+            const sz = lerp(layer.size_start || 56, layer.size_end || 90, seg(t, tStart, tEnd)) * clamp(pop, 0, 1.25);
+            drawCrimsonX(pt.x, pt.y, sz, baseAlpha);
+          }
         } else if (layer.type === "skull") {
-          const pt = map.project(layer.coord);
-          const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
-          const refZoom = layer.ref_zoom ?? 7.3;
-          const zoomScale = Math.pow(2, map.getZoom() - refZoom);
-          const sz = (layer.size_start || 155) * zoomScale * clamp(pop, 0, 1.15);
-          const rotRad = -map.getBearing() * Math.PI / 180;
-          const pitchScale = Math.cos((map.getPitch() || 0) * Math.PI / 180);
-          drawSkull(pt.x, pt.y + (layer.dy || 0), sz, baseAlpha, { rotRad, pitchScale });
+          const pt = projectPointSafe(layer.coord);
+          if (pt) {
+            const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
+            const refZoom = layer.ref_zoom ?? 7.3;
+            const zoomScale = Math.pow(2, map.getZoom() - refZoom);
+            const sz = (layer.size_start || 155) * zoomScale * clamp(pop, 0, 1.15);
+            const rotRad = -map.getBearing() * Math.PI / 180;
+            const pitchScale = Math.cos((map.getPitch() || 0) * Math.PI / 180);
+            drawSkull(pt.x, pt.y + (layer.dy || 0), sz, baseAlpha, { rotRad, pitchScale });
+          }
         } else if (layer.type === "endpoint_dots") {
           const pulse = 1 + 0.16 * Math.sin(t * 14);
           const dr = lerp(layer.r_start || 12, layer.r_end || 28, seg(t, tStart, tEnd)) * pulse;
           for (const c of layer.coords || []) {
-            const pt = map.project(c);
+            const pt = projectPointSafe(c);
+            if (!pt) continue;
             const g = ctx.createRadialGradient(pt.x, pt.y, dr * 0.2, pt.x, pt.y, dr * 2.2);
             g.addColorStop(0, "rgba(255,65,65,0.96)");
             g.addColorStop(0.5, "rgba(220,38,38,0.56)");
@@ -1977,15 +2493,19 @@ ${DRAW_MATH_SRC}
             ctx.restore();
           }
         } else if (layer.type === "measurement_arrow") {
-          const p1 = map.project(layer.from);
-          const p2 = map.project(layer.to);
-          const arrP = easeOutExpo(seg(t, tStart, tStart + (layer.draw_s || 0.75)));
-          const val = Math.round(lerp(layer.count_from ?? 0, layer.count_to ?? 160, easeOutCubic(seg(t, tStart, tStart + (layer.count_s || 1.1)))));
-          drawDoubleArrow(p1, p2, val + " " + (layer.unit || "km"), arrP, baseAlpha);
+          const p1 = projectPointSafe(layer.from);
+          const p2 = projectPointSafe(layer.to);
+          if (p1 && p2) {
+            const arrP = easeOutExpo(seg(t, tStart, tStart + (layer.draw_s || 0.75)));
+            const val = Math.round(lerp(layer.count_from ?? 0, layer.count_to ?? 160, easeOutCubic(seg(t, tStart, tStart + (layer.count_s || 1.1)))));
+            drawDoubleArrow(p1, p2, val + " " + (layer.unit || "km"), arrP, baseAlpha);
+          }
         } else if (layer.type === "weather_clouds_rain") {
-          const pt = map.project(layer.coord);
-          const sc = lerp(layer.scale_start || 0.85, layer.scale_end || 1.22, easeOutCubic(seg(t, tStart, tStart + 0.8)));
-          drawWeatherCloudsRain(pt.x, pt.y + (layer.dy || -30), sc, baseAlpha, tLoc);
+          const pt = projectPointSafe(layer.coord);
+          if (pt) {
+            const sc = lerp(layer.scale_start || 0.85, layer.scale_end || 1.22, easeOutCubic(seg(t, tStart, tStart + 0.8)));
+            drawWeatherCloudsRain(pt.x, pt.y + (layer.dy || -30), sc, baseAlpha, tLoc);
+          }
         } else if (layer.type === "migrant_swarm") {
           const count = layer.count || 28;
           const [sLng0, sLat0, sLng1, sLat1] = layer.from_box;
@@ -1998,10 +2518,11 @@ ${DRAW_MATH_SRC}
             const mt = tLoc - delay;
             if (mt < 0) continue;
             const prog = clamp(mt * (0.14 + (i % 4) * 0.024), 0, 1.15);
-            const pt = map.project([
+            const pt = projectPointSafe([
               lerp(lerp(sLng0, sLng1, sd1), lerp(eLng0, eLng1, sd1), prog),
               lerp(lerp(sLat0, sLat1, sd2), lerp(eLat0, eLat1, sd2), prog),
             ]);
+            if (!pt) continue;
             let dotA = baseAlpha * Math.min(1, mt * 3);
             let isRed = false;
             const isLost = i % 4 === 1;
@@ -2026,21 +2547,24 @@ ${DRAW_MATH_SRC}
           for (const item of layer.items || []) {
             if (t < item.start_s) continue;
             const pop = easeOutBack(seg(t, item.start_s, item.start_s + 0.3));
-            const pt = map.project(item.coord);
-            drawTeardropPin(pt.x, pt.y, (layer.radius || 76) * clamp(pop, 0, 1.15), item.kind, baseAlpha);
+            const pt = projectPointSafe(item.coord);
+            if (pt) drawTeardropPin(pt.x, pt.y, (layer.radius || 76) * clamp(pop, 0, 1.15), item.kind, baseAlpha);
           }
         } else if (layer.type === "prohibition_badge") {
-          const pt = map.project(layer.coord);
-          const inP = easeOutExpo(seg(t, tStart, tStart + 0.65));
-          const outP = easeInCubic(seg(t, tEnd - 0.95, tEnd));
-          const rad = lerp(layer.r_enter || 340, layer.r_hold || 150, inP) * lerp(1.0, 2.8, outP);
-          const cy = lerp(220, pt.y - 20, inP) - outP * 380;
-          drawNoPoliceBadge(pt.x, cy, rad, baseAlpha);
+          const pt = projectPointSafe(layer.coord);
+          if (pt) {
+            const inP = easeOutExpo(seg(t, tStart, tStart + 0.65));
+            const outP = easeInCubic(seg(t, tEnd - 0.95, tEnd));
+            const rad = lerp(layer.r_enter || 340, layer.r_hold || 150, inP) * lerp(1.0, 2.8, outP);
+            const cy = lerp(220, pt.y - 20, inP) - outP * 380;
+            drawNoPoliceBadge(pt.x, cy, rad, baseAlpha);
+          }
         } else if (layer.type === "radar_rings") {
           for (const hub of layer.hubs || []) {
             if (t < hub.start_s) continue;
             const age = t - hub.start_s;
-            const pt = map.project(hub.coord);
+            const pt = projectPointSafe(hub.coord);
+            if (!pt) continue;
             ctx.save();
             ctx.globalAlpha = baseAlpha;
             ctx.fillStyle = hub.color || "#DC2626";
@@ -2055,7 +2579,7 @@ ${DRAW_MATH_SRC}
             ctx.restore();
           }
         } else if (layer.type === "vignette_grade") {
-          const pt = layer.coord ? map.project(layer.coord) : { x: W * 0.5, y: H * 0.48 };
+          const pt = (layer.coord ? projectPointSafe(layer.coord) : null) || { x: W * 0.5, y: H * 0.48 };
           ctx.save();
           const vg = ctx.createRadialGradient(pt.x, pt.y, layer.inner_r || 130, pt.x, pt.y, layer.outer_r || 1050);
           vg.addColorStop(0, "rgba(4,10,14," + (0.22 * baseAlpha).toFixed(3) + ")");
@@ -2088,8 +2612,8 @@ ${DRAW_MATH_SRC}
             alpha: baseAlpha,
           });
           if (layer.label && prog > 0.35) {
-            const lp = map.project([layer.label_lng ?? ((lngMin + lngMax) * 0.5), lat]);
-            drawGlowingText(layer.label, lp.x + (layer.dx || 0), lp.y + (layer.dy || -34), layer.font_px || 36, {
+            const lp = projectPointSafe([layer.label_lng ?? ((lngMin + lngMax) * 0.5), lat]);
+            if (lp) drawGlowingText(layer.label, lp.x + (layer.dx || 0), lp.y + (layer.dy || -34), layer.font_px || 36, {
               fill: "#FFFBEB",
               glowHex: layer.bloom || "#F5C542",
               glowStrength: "luminous",
@@ -2167,7 +2691,8 @@ ${DRAW_MATH_SRC}
               if (layer.angle) ctx.rotate((layer.angle * Math.PI) / 180);
               ctx.scale(popSc, popSc);
             } else {
-              const pt = map.project(layer.coord);
+              const pt = projectPointSafe(layer.coord);
+              if (!pt) { ctx.restore(); continue; }
               const coupling = layer.scale_coupling ?? 0.45;
               const zoomScale = layer.ref_zoom != null
                 ? clamp(Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling), layer.min_scale ?? 0.45, layer.max_scale ?? 2.4)
@@ -2200,8 +2725,10 @@ ${DRAW_MATH_SRC}
             ctx.restore();
           }
         } else if (layer.type === "dashed_distance") {
-          const p1 = map.project(layer.from);
-          const p2 = map.project(layer.to);
+          const dSegs = projectPolylineClipped([layer.from, layer.to]);
+          if (dSegs.length && dSegs[0].length >= 2) {
+            const p1 = dSegs[0][0];
+            const p2 = dSegs[0][dSegs[0].length - 1];
           const prog = layer.draw_s ? easeOutCubic(seg(t, tStart, tStart + layer.draw_s)) : 1.0;
           const qx = lerp(p1.x, p2.x, prog);
           const qy = lerp(p1.y, p2.y, prog);
@@ -2257,11 +2784,13 @@ ${DRAW_MATH_SRC}
             }
             ctx.restore();
           }
+          }
         } else if (layer.type === "curved_arc_arrow") {
-          const p1 = map.project(layer.from);
-          const p2 = map.project(layer.to);
+          const aSegs = projectPolylineClipped([layer.from, layer.to]);
           const prog = layer.draw_s ? easeOutCubic(seg(t, tStart, tStart + layer.draw_s)) : 1.0;
-          if (prog > 0.01) {
+          if (prog > 0.01 && aSegs.length && aSegs[0].length >= 2) {
+            const p1 = aSegs[0][0];
+            const p2 = aSegs[0][aSegs[0].length - 1];
             const dx = p2.x - p1.x, dy = p2.y - p1.y;
             const len = Math.max(1, Math.hypot(dx, dy));
             const nx = -dy / len, ny = dx / len;
@@ -2327,8 +2856,8 @@ ${DRAW_MATH_SRC}
               alpha: baseAlpha,
             });
             if (layer.label && layer.label_coord) {
-              const lp = map.project(layer.label_coord);
-              drawGlowingText(String(layer.label), lp.x + (layer.label_dx || 0), lp.y + (layer.label_dy || -90), layer.font_px || 54, {
+              const lp = projectPointSafe(layer.label_coord);
+              if (lp) drawGlowingText(String(layer.label), lp.x + (layer.label_dx || 0), lp.y + (layer.label_dy || -90), layer.font_px || 54, {
                 fill: "#E0F2FE",
                 glowHex: layer.bloom_hex || "#38BDF8",
                 glowStrength: "luminous",
@@ -2357,49 +2886,51 @@ ${DRAW_MATH_SRC}
           ctx.translate(cx, cy);
           ctx.rotate(((layer.angle_deg ?? -7) * Math.PI) / 180);
           ctx.beginPath();
-          ctx.rect(-fPx * 1.6, -fPx * 0.72, fPx * 3.2, fPx * 1.44);
+          ctx.rect(-W * 0.46, -fPx * 1.05, W * 0.92, fPx * 2.10);
           ctx.clip();
           if (prevStep && rollP < 0.995) {
-            drawGlowingText(String(prevStep.value), 0, lerp(0, -fPx * 1.15, rollP), fPx, {
+            drawGlowingText(String(prevStep.value), 0, lerp(0, -fPx * 0.72, rollP), fPx, {
               fill: layer.fill || "#FDE047",
               glowHex: layer.glow_hex || "#F59E0B",
               glowStrength: "intense",
-              alpha: baseAlpha * (1 - rollP),
+              alpha: baseAlpha * Math.pow(1 - rollP, 2.0),
               family: "Rubik",
               weight: 900,
             });
           }
-          drawGlowingText(String(curStep.value), 0, lerp(fPx * 1.15, 0, rollP), fPx, {
+          drawGlowingText(String(curStep.value), 0, lerp(fPx * 0.72, 0, rollP), fPx, {
             fill: layer.fill || "#FDE047",
             glowHex: layer.glow_hex || "#F59E0B",
             glowStrength: "intense",
-            alpha: baseAlpha,
+            alpha: prevStep ? baseAlpha * Math.pow(rollP, 1.15) : baseAlpha,
             family: "Rubik",
             weight: 900,
           });
           ctx.restore();
         } else if (layer.type === "question_arc") {
-          const pt = map.project(layer.coord);
-          const count = layer.count || 5;
-          const spread = layer.spread_px || 260;
-          const lift = layer.arc_lift_px || 52;
-          const stagger = layer.stagger_s || 0.08;
-          for (let i = 0; i < count; i++) {
-            const it = tStart + i * stagger;
-            if (t < it) continue;
-            const pop = easeOutBack(seg(t, it, it + 0.24));
-            const frac = count > 1 ? i / (count - 1) - 0.5 : 0;
-            const qx = pt.x + (layer.dx || 0) + frac * spread;
-            const qy = pt.y + (layer.dy || -80) - Math.cos(frac * Math.PI) * lift;
-            drawGlowingText("?", qx, qy, Math.round((layer.font_px || 66) * clamp(pop, 0, 1.15)), {
-              fill: layer.fill || "#FDE047",
-              glowHex: layer.glow_hex || "#F59E0B",
-              glowStrength: "intense",
-              angle: frac * 0.35,
-              alpha: baseAlpha,
-              family: "Rubik",
-              weight: 900,
-            });
+          const pt = projectPointSafe(layer.coord);
+          if (pt) {
+            const count = layer.count || 5;
+            const spread = layer.spread_px || 260;
+            const lift = layer.arc_lift_px || 52;
+            const stagger = layer.stagger_s || 0.08;
+            for (let i = 0; i < count; i++) {
+              const it = tStart + i * stagger;
+              if (t < it) continue;
+              const pop = easeOutBack(seg(t, it, it + 0.24));
+              const frac = count > 1 ? i / (count - 1) - 0.5 : 0;
+              const qx = pt.x + (layer.dx || 0) + frac * spread;
+              const qy = pt.y + (layer.dy || -80) - Math.cos(frac * Math.PI) * lift;
+              drawGlowingText("?", qx, qy, Math.round((layer.font_px || 66) * clamp(pop, 0, 1.15)), {
+                fill: layer.fill || "#FDE047",
+                glowHex: layer.glow_hex || "#F59E0B",
+                glowStrength: "intense",
+                angle: frac * 0.35,
+                alpha: baseAlpha,
+                family: "Rubik",
+                weight: 900,
+              });
+            }
           }
         } else if (layer.type === "shifting_route") {
           const coordsA = resolveGeom(layer.coords_a_ref) || layer.coords_a || [];
@@ -2423,7 +2954,8 @@ ${DRAW_MATH_SRC}
             });
           }
         } else if (layer.type === "curved_pointer_label") {
-          const anchor = layer.coord ? map.project(layer.coord) : { x: W * (layer.x_pct ?? 0.5), y: H * (layer.y_pct ?? 0.25) };
+          const anchor = layer.coord ? projectPointSafe(layer.coord) : { x: W * (layer.x_pct ?? 0.5), y: H * (layer.y_pct ?? 0.25) };
+          if (!anchor) continue;
           const bx = anchor.x + (layer.dx || 0);
           const by = anchor.y + (layer.dy || 0);
           const pop = easeOutCubic(seg(t, tStart, tStart + 0.28));
@@ -2481,10 +3013,10 @@ ${DRAW_MATH_SRC}
           ctx.restore();
           // Graceful hand-drawn curved white Bezier arrow with open chevron tip
           if (layer.pointer_coord) {
-            const tp = map.project(layer.pointer_coord);
+            const tp = projectPointSafe(layer.pointer_coord);
             const sx = bx + (layer.arrow_start_dx || 0);
             const sy = by + (layer.arrow_start_dy ?? Math.round(lines.length * lineH * 0.5 + 14));
-            const arrowProg = easeOutCubic(seg(t, tStart + 0.08, tStart + 0.44));
+            const arrowProg = tp ? easeOutCubic(seg(t, tStart + 0.08, tStart + 0.44)) : 0;
             if (arrowProg > 0.01) {
               const dx = tp.x - sx, dy = tp.y - sy;
               const len = Math.max(1, Math.hypot(dx, dy));
@@ -2530,7 +3062,8 @@ ${DRAW_MATH_SRC}
             }
           }
         } else if (layer.type === "pin_label") {
-          const pt = map.project(layer.coord);
+          const pt = projectPointSafe(layer.coord);
+          if (!pt) continue;
           const pop = easeOutCubic(seg(t, tStart, tStart + 0.28));
           const coupling = layer.scale_coupling ?? 0.42;
           const zSc = layer.ref_zoom != null
@@ -2575,9 +3108,10 @@ ${DRAW_MATH_SRC}
             ? 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd))
             : 1.0;
 
-          const basePt = map.project(layer.coord);
-          const leftPt = layer.left_coord ? map.project(layer.left_coord) : basePt;
-          const rightPt = layer.right_coord ? map.project(layer.right_coord) : basePt;
+          const basePt = projectPointSafe(layer.coord);
+          if (!basePt) continue;
+          const leftPt = (layer.left_coord ? projectPointSafe(layer.left_coord) : null) || basePt;
+          const rightPt = (layer.right_coord ? projectPointSafe(layer.right_coord) : null) || basePt;
           const refZoom = layer.ref_zoom ?? map.getZoom();
           const coupling = layer.scale_coupling ?? 0.85;
           const zSc = clamp(Math.pow(2, (map.getZoom() - refZoom) * coupling), layer.min_scale ?? 0.35, layer.max_scale ?? 2.6) * exitScale;
@@ -2616,7 +3150,22 @@ ${DRAW_MATH_SRC}
             drawHumanFigure(tx, ty, figH * zSc * clamp(p, 0, 1.18), layer.color || "#FFFFFF", figAlpha);
           }
         } else if (layer.type === "landmark_silhouette") {
-          const pt = map.project(layer.coord);
+          let curCoord = layer.coord;
+          let headingDeg = layer.angle_deg || 0;
+          if (Array.isArray(layer.path) && layer.path.length >= 2) {
+            const moveDur = layer.move_duration_s ?? (tEnd - tStart);
+            const u = clamp(seg(t, tStart, tStart + moveDur), 0, 1);
+            curCoord = samplePolylineCoord(layer.path, u);
+            if (layer.auto_heading) {
+              const pA = projectPointSafe(samplePolylineCoord(layer.path, Math.max(0, u - 0.02)));
+              const pB = projectPointSafe(samplePolylineCoord(layer.path, Math.min(1, u + 0.02)));
+              if (pA && pB && Math.hypot(pB.x - pA.x, pB.y - pA.y) > 0.5) {
+                headingDeg = (Math.atan2(pB.y - pA.y, pB.x - pA.x) * 180) / Math.PI;
+              }
+            }
+          }
+          const pt = projectPointSafe(curCoord);
+          if (!pt) continue;
           const coupling = layer.scale_coupling ?? 0.55;
           const zSc = layer.ref_zoom != null
             ? clamp(Math.pow(2, (map.getZoom() - layer.ref_zoom) * coupling), layer.min_scale ?? 0.45, layer.max_scale ?? 2.4)
@@ -2638,6 +3187,8 @@ ${DRAW_MATH_SRC}
               rimHex: layer.rim_hex || "#E2E8F0",
               alpha: baseAlpha,
               riseProgress: clamp(riseP, 0, 1.08),
+              time: tLoc,
+              angleDeg: headingDeg,
             },
           );
         } else if (layer.type === "cloud_system") {
@@ -2656,7 +3207,8 @@ ${DRAW_MATH_SRC}
             const rawU = seg(t, cStart, cStart + moveDur);
             const u = cl.easing === "linear" ? rawU : cl.easing === "ease_in_out" ? easeInOutCubic(rawU) : easeOutCubic(rawU);
             const coord = samplePolylineCoord(cl.path, u);
-            const pt = map.project(coord);
+            const pt = projectPointSafe(coord);
+            if (!pt) continue;
             drawShadedCloud(
               pt.x + (cl.dx || 0),
               pt.y + (cl.dy || 0),
@@ -2700,7 +3252,8 @@ ${DRAW_MATH_SRC}
             const popP = easeOutBack(seg(t, pStart, pStart + (pin.pop_duration_s ?? 0.26)));
             const slashStart = pStart + (pin.slash_delay_s ?? 0.36);
             const slashP = easeOutCubic(seg(t, slashStart, slashStart + (pin.slash_duration_s ?? 0.24)));
-            const pt = map.project(pin.coord);
+            const pt = projectPointSafe(pin.coord);
+            if (!pt) continue;
             drawProhibitionPin(
               pt.x + (pin.dx || 0),
               pt.y + (pin.dy || 0),
@@ -2770,8 +3323,1004 @@ ${DRAW_MATH_SRC}
       });
     };
 
+    function initThreeMapLayer() {
+      const originLng = ORIGIN_COORD[0] || 0;
+      const originLat = ORIGIN_COORD[1] || 0;
+      const originMerc = maplibregl.MercatorCoordinate.fromLngLat([originLng, originLat], 0);
+      const meterScale = originMerc.meterInMercatorCoordinateUnits();
+      const sceneOriginMat = new THREE.Matrix4()
+        .makeTranslation(originMerc.x, originMerc.y, originMerc.z)
+        .scale(new THREE.Vector3(meterScale, -meterScale, meterScale));
+
+      function lngLatAltToLocal(lng, lat, altM = 0) {
+        const mc = maplibregl.MercatorCoordinate.fromLngLat([lng, lat], altM);
+        return new THREE.Vector3(
+          (mc.x - originMerc.x) / meterScale,
+          -(mc.y - originMerc.y) / meterScale,
+          (mc.z - originMerc.z) / meterScale
+        );
+      }
+
+      function groundElevM(lng, lat) {
+        if (${terrain3d} && typeof map.queryTerrainElevation === "function") {
+          const e = map.queryTerrainElevation([lng, lat], { exaggerated: true });
+          if (Number.isFinite(e) && e > 0) return e;
+        }
+        return 0;
+      }
+
+      function metersForScreenPx(px, lat, curZoom, refZoom, coupling = 0.45, minScale = 0.4, maxScale = 3.2) {
+        const baseZ = refZoom != null ? refZoom : curZoom;
+        const mpp = (156543.03392 * Math.max(0.2, Math.cos((lat * Math.PI) / 180))) / Math.pow(2, curZoom);
+        const ratio = Math.pow(2, (curZoom - baseZ) * coupling);
+        return px * mpp * clamp(ratio, minScale, maxScale);
+      }
+
+      // Procedural PBR textures built once per WebGL scene
+      function makeShadowDiscTex() {
+        const c = document.createElement("canvas");
+        c.width = 128; c.height = 128;
+        const cx = c.getContext("2d");
+        const g = cx.createRadialGradient(64, 64, 4, 64, 64, 62);
+        g.addColorStop(0, "rgba(2,8,14,0.68)");
+        g.addColorStop(0.55, "rgba(2,8,14,0.30)");
+        g.addColorStop(1, "rgba(2,8,14,0)");
+        cx.fillStyle = g;
+        cx.fillRect(0, 0, 128, 128);
+        const tex = new THREE.CanvasTexture(c);
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      function makeSolarCellTex() {
+        const c = document.createElement("canvas");
+        c.width = 256; c.height = 256;
+        const cx = c.getContext("2d");
+        const bg = cx.createLinearGradient(0, 0, 256, 256);
+        bg.addColorStop(0, "#102B63");
+        bg.addColorStop(0.5, "#1D4D9F");
+        bg.addColorStop(1, "#0B1D42");
+        cx.fillStyle = bg;
+        cx.fillRect(0, 0, 256, 256);
+        cx.strokeStyle = "rgba(186, 230, 253, 0.55)";
+        cx.lineWidth = 2;
+        for (let i = 1; i < 8; i++) {
+          const p = (i * 256) / 8;
+          cx.beginPath(); cx.moveTo(p, 0); cx.lineTo(p, 256); cx.stroke();
+          cx.beginPath(); cx.moveTo(0, p); cx.lineTo(256, p); cx.stroke();
+        }
+        cx.strokeStyle = "#CBD5E1";
+        cx.lineWidth = 8;
+        cx.strokeRect(4, 4, 248, 248);
+        const tex = new THREE.CanvasTexture(c);
+        tex.anisotropy = 4;
+        return tex;
+      }
+
+      function makeVolumeTopTex(edgeHex) {
+        const c = document.createElement("canvas");
+        c.width = 256; c.height = 256;
+        const cx = c.getContext("2d");
+        cx.fillStyle = "rgba(245, 158, 11, 0.24)";
+        cx.fillRect(0, 0, 256, 256);
+        cx.strokeStyle = edgeHex || "#FEF08A";
+        cx.lineWidth = 2;
+        for (let i = 1; i < 8; i++) {
+          const p = (i * 256) / 8;
+          cx.beginPath(); cx.moveTo(p, 0); cx.lineTo(p, 256); cx.stroke();
+          cx.beginPath(); cx.moveTo(0, p); cx.lineTo(256, p); cx.stroke();
+        }
+        cx.lineWidth = 6;
+        cx.strokeRect(3, 3, 250, 250);
+        const tex = new THREE.CanvasTexture(c);
+        return tex;
+      }
+
+      const armorTexCache = new Map();
+      function getArmorTexSet(armorHex, jacketHex) {
+        const key = (armorHex || "#D4A037") + "|" + (jacketHex || "#1E293B");
+        if (armorTexCache.has(key)) return armorTexCache.get(key);
+        const W_TEX = 256, H_TEX = 256;
+        const cCol = document.createElement("canvas");
+        cCol.width = W_TEX; cCol.height = H_TEX;
+        const xCol = cCol.getContext("2d");
+        xCol.fillStyle = jacketHex || "#1E293B";
+        xCol.fillRect(0, 0, W_TEX, H_TEX);
+
+        const cBump = document.createElement("canvas");
+        cBump.width = W_TEX; cBump.height = H_TEX;
+        const xBump = cBump.getContext("2d");
+        xBump.fillStyle = "#303030";
+        xBump.fillRect(0, 0, W_TEX, H_TEX);
+
+        // Diagonal helical steel-wire & armored brass/copper strands wrapping continuously across UV tile
+        const strands = 12;
+        for (let i = -strands; i <= strands * 2; i++) {
+          const u0 = (i / strands) * W_TEX;
+          const isAccent = (Math.abs(i) % 3 === 0);
+          xCol.strokeStyle = isAccent ? (armorHex || "#E5B449") : "#64748B";
+          xCol.lineWidth = isAccent ? 12 : 9;
+          xCol.beginPath(); xCol.moveTo(u0, 0); xCol.lineTo(u0 + W_TEX, H_TEX); xCol.stroke();
+
+          // Dark crevice between wrapped wires
+          xCol.strokeStyle = "#0F172A";
+          xCol.lineWidth = 3;
+          xCol.beginPath(); xCol.moveTo(u0 + 6, 0); xCol.lineTo(u0 + 6 + W_TEX, H_TEX); xCol.stroke();
+
+          // Cylindrical ridge in bump map
+          xBump.strokeStyle = "#FFFFFF";
+          xBump.lineWidth = 10;
+          xBump.beginPath(); xBump.moveTo(u0, 0); xBump.lineTo(u0 + W_TEX, H_TEX); xBump.stroke();
+        }
+        // Subtle specular highlight band along longitudinal center
+        const shine = xCol.createLinearGradient(0, 0, 0, H_TEX);
+        shine.addColorStop(0, "rgba(0,0,0,0.22)");
+        shine.addColorStop(0.5, "rgba(255,255,255,0.20)");
+        shine.addColorStop(1, "rgba(0,0,0,0.22)");
+        xCol.fillStyle = shine;
+        xCol.fillRect(0, 0, W_TEX, H_TEX);
+
+        const makeWrapped = (canvas) => {
+          const t = new THREE.CanvasTexture(canvas);
+          t.wrapS = THREE.RepeatWrapping;
+          t.wrapT = THREE.RepeatWrapping;
+          t.anisotropy = 8;
+          return t;
+        };
+        const out = { colCanvas: cCol, bumpCanvas: cBump, makeWrapped };
+        armorTexCache.set(key, out);
+        return out;
+      }
+
+      const shadowTex = makeShadowDiscTex();
+      const solarTex = makeSolarCellTex();
+
+      function makeBeamBetween(a, b, r, mat) {
+        const dir = new THREE.Vector3().subVectors(b, a);
+        const len = dir.length();
+        const geo = new THREE.CylinderGeometry(r, r, len, 6, 1);
+        geo.rotateX(Math.PI / 2);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(a).add(b).multiplyScalar(0.5);
+        mesh.lookAt(b);
+        return mesh;
+      }
+
+      function addGroundShadow(group, radiusXY) {
+        const sGeo = new THREE.PlaneGeometry(radiusXY * 2, radiusXY * 2);
+        const sMat = new THREE.MeshBasicMaterial({
+          map: shadowTex,
+          transparent: true,
+          depthWrite: false,
+          opacity: 0.72,
+        });
+        const m = new THREE.Mesh(sGeo, sMat);
+        m.position.set(0, 0, 0.004);
+        group.add(m);
+      }
+
+      function buildTransmissionTowerModel(layer) {
+        const root = new THREE.Group();
+        const powered = layer.powered !== false;
+        const accentHex = layer.accent_hex || "#FDE047";
+        const steelMat = new THREE.MeshStandardMaterial({
+          color: powered ? 0xe2e8f0 : 0x475569,
+          metalness: powered ? 0.82 : 0.45,
+          roughness: powered ? 0.28 : 0.65,
+        });
+        const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85, metalness: 0.1 });
+        const termMat = powered
+          ? new THREE.MeshStandardMaterial({
+              color: new THREE.Color(accentHex),
+              emissive: new THREE.Color(accentHex),
+              emissiveIntensity: 0.9,
+              roughness: 0.2,
+              metalness: 0.3,
+            })
+          : new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7, metalness: 0.2 });
+
+        addGroundShadow(root, 0.42);
+        const cornersBase = [[-0.17, -0.17], [0.17, -0.17], [0.17, 0.17], [-0.17, 0.17]];
+        for (const [cx, cy] of cornersBase) {
+          const pad = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.045), concreteMat);
+          pad.position.set(cx, cy, 0.022);
+          root.add(pad);
+        }
+        const levelZ = [0.03, 0.24, 0.46, 0.66, 0.85, 1.0];
+        const levelW = [0.165, 0.125, 0.092, 0.068, 0.046, 0.008];
+        for (let bay = 0; bay < levelZ.length - 1; bay++) {
+          const z0 = levelZ[bay], z1 = levelZ[bay + 1];
+          const w0 = levelW[bay], w1 = levelW[bay + 1];
+          const bPts = [[-w0, -w0, z0], [w0, -w0, z0], [w0, w0, z0], [-w0, w0, z0]];
+          const tPts = [[-w1, -w1, z1], [w1, -w1, z1], [w1, w1, z1], [-w1, w1, z1]];
+          for (let k = 0; k < 4; k++) {
+            const kn = (k + 1) % 4;
+            const a = new THREE.Vector3(...bPts[k]);
+            const b = new THREE.Vector3(...tPts[k]);
+            const an = new THREE.Vector3(...bPts[kn]);
+            const bn = new THREE.Vector3(...tPts[kn]);
+            root.add(makeBeamBetween(a, b, 0.017, steelMat));
+            root.add(makeBeamBetween(b, bn, 0.011, steelMat));
+            if (bay < 4) {
+              root.add(makeBeamBetween(a, bn, 0.009, steelMat));
+              root.add(makeBeamBetween(an, b, 0.009, steelMat));
+            }
+          }
+        }
+        // Two 3D cross-arm assemblies with hanging ceramic insulators & energized corona spheres
+        const arms = [[0.64, 0.36, 0.068], [0.83, 0.26, 0.048]];
+        const insMat = new THREE.MeshStandardMaterial({ color: powered ? 0xf8fafc : 0x475569, roughness: 0.35, metalness: 0.2 });
+        for (const [az, span, bodyW] of arms) {
+          for (const side of [-1, 1]) {
+            const tip = new THREE.Vector3(side * span, 0, az);
+            const innerUp = new THREE.Vector3(side * bodyW, 0, az + 0.07);
+            const innerF = new THREE.Vector3(side * bodyW, bodyW, az);
+            const innerB = new THREE.Vector3(side * bodyW, -bodyW, az);
+            root.add(makeBeamBetween(tip, innerUp, 0.013, steelMat));
+            root.add(makeBeamBetween(tip, innerF, 0.013, steelMat));
+            root.add(makeBeamBetween(tip, innerB, 0.013, steelMat));
+            const insTop = new THREE.Vector3(side * (span * 0.94), 0, az);
+            const insBot = new THREE.Vector3(side * (span * 0.94), 0, az - 0.11);
+            root.add(makeBeamBetween(insTop, insBot, 0.014, insMat));
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.030, 12, 10), termMat);
+            orb.position.copy(insBot);
+            root.add(orb);
+          }
+        }
+        const apexOrb = new THREE.Mesh(new THREE.SphereGeometry(0.028, 12, 10), termMat);
+        apexOrb.position.set(0, 0, 1.015);
+        root.add(apexOrb);
+        return root;
+      }
+
+      function buildSubstationModel(layer) {
+        const root = new THREE.Group();
+        const powered = layer.powered !== false;
+        const accentHex = layer.accent_hex || "#38BDF8";
+        addGroundShadow(root, 0.85);
+        const padMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.88, metalness: 0.08 });
+        const hallMat = new THREE.MeshStandardMaterial({
+          color: powered ? 0x1e293b : 0x334155,
+          metalness: 0.65,
+          roughness: 0.35,
+        });
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.72, roughness: 0.3 });
+        const glowMat = powered
+          ? new THREE.MeshStandardMaterial({
+              color: new THREE.Color(accentHex),
+              emissive: new THREE.Color(accentHex),
+              emissiveIntensity: 0.85,
+              roughness: 0.25,
+            })
+          : new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.75 });
+
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.96, 0.06), padMat);
+        pad.position.set(0, 0, 0.03);
+        root.add(pad);
+
+        const hall = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.56, 0.56), hallMat);
+        hall.position.set(-0.12, 0.06, 0.34);
+        root.add(hall);
+
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.62, 0.06), roofMat);
+        roof.position.set(-0.12, 0.06, 0.65);
+        root.add(roof);
+
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.58, 0.065), glowMat);
+        strip.position.set(-0.12, 0.06, 0.52);
+        root.add(strip);
+
+        // 3 outdoor cylindrical HVDC converter transformers + high-voltage ceramic bushings
+        for (let i = 0; i < 3; i++) {
+          const tx = 0.44;
+          const ty = -0.26 + i * 0.26;
+          const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.36, 14), roofMat);
+          tank.rotation.x = Math.PI / 2;
+          tank.position.set(tx, ty, 0.24);
+          root.add(tank);
+
+          const bush = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.28, 10), roofMat);
+          bush.rotation.x = Math.PI / 2;
+          bush.position.set(tx, ty, 0.55);
+          root.add(bush);
+
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), glowMat);
+          tip.position.set(tx, ty, 0.71);
+          root.add(tip);
+        }
+        return root;
+      }
+
+      function buildSolarFarmModel(layer) {
+        const root = new THREE.Group();
+        addGroundShadow(root, 1.25);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x5c3a28, roughness: 0.95, metalness: 0.04 });
+        const steelMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.8, roughness: 0.3 });
+        const panelMat = new THREE.MeshStandardMaterial({
+          map: solarTex,
+          metalness: 0.52,
+          roughness: 0.18,
+          emissive: new THREE.Color("#0F2A6B"),
+          emissiveIntensity: 0.18,
+        });
+        const accentMat = new THREE.MeshStandardMaterial({
+          color: 0xfde047,
+          emissive: 0xf59e0b,
+          emissiveIntensity: 0.75,
+        });
+
+        const apron = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.65, 0.04), baseMat);
+        apron.position.set(0, 0, 0.02);
+        root.add(apron);
+
+        const rows = 4, cols = 4;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const px = -0.66 + c * 0.44;
+            const py = -0.54 + r * 0.34;
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.022, 0.18, 6), steelMat);
+            leg.rotation.x = Math.PI / 2;
+            leg.position.set(px, py, 0.12);
+            root.add(leg);
+
+            const tbl = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.25, 0.024), panelMat);
+            tbl.position.set(px, py, 0.21);
+            tbl.rotation.x = 0.48;
+            root.add(tbl);
+          }
+        }
+        // Inverter / collector cabin + glowing energy bus
+        const inv = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.22), steelMat);
+        inv.position.set(0.82, 0.62, 0.15);
+        root.add(inv);
+        const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.24, 0.05), accentMat);
+        beacon.position.set(0.82, 0.62, 0.27);
+        root.add(beacon);
+        return root;
+      }
+
+      function buildSurveyVesselModel(layer) {
+        const root = new THREE.Group();
+        addGroundShadow(root, 0.95);
+        const hullMat = new THREE.MeshStandardMaterial({ color: 0x0f2744, metalness: 0.45, roughness: 0.38 });
+        const keelMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.55, metalness: 0.2 });
+        const deckMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.72, metalness: 0.25 });
+        const bridgeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.32, metalness: 0.15 });
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.45, metalness: 0.8, roughness: 0.15 });
+        const drumMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.25, metalness: 0.65, roughness: 0.28 });
+
+        // Hull plan extruded along Z (Bow pointing toward +Y)
+        const shape = new THREE.Shape();
+        shape.moveTo(-0.22, -0.78);
+        shape.lineTo(0.22, -0.78);
+        shape.lineTo(0.24, 0.36);
+        shape.quadraticCurveTo(0.14, 0.82, 0, 0.98);
+        shape.quadraticCurveTo(-0.14, 0.82, -0.24, 0.36);
+        shape.closePath();
+
+        const keelGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
+        const keel = new THREE.Mesh(keelGeo, keelMat);
+        keel.position.z = 0.01;
+        root.add(keel);
+
+        const hullGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.015, bevelSegments: 2 });
+        const hull = new THREE.Mesh(hullGeo, hullMat);
+        hull.position.z = 0.09;
+        root.add(hull);
+
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(0.40, 1.05, 0.03), deckMat);
+        deck.position.set(0, -0.18, 0.27);
+        root.add(deck);
+
+        // Bridge superstructure near bow
+        const br1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.24), bridgeMat);
+        br1.position.set(0, 0.30, 0.39);
+        root.add(br1);
+        const br2 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.14), bridgeMat);
+        br2.position.set(0, 0.32, 0.56);
+        root.add(br2);
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.14, 0.07), glassMat);
+        win.position.set(0, 0.40, 0.57);
+        root.add(win);
+
+        // Radar mast & aft cable carousel drum
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.28, 8), bridgeMat);
+        mast.rotation.x = Math.PI / 2;
+        mast.position.set(0, 0.28, 0.76);
+        root.add(mast);
+
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.16, 20), drumMat);
+        drum.rotation.z = Math.PI / 2;
+        drum.position.set(0, -0.34, 0.40);
+        root.add(drum);
+
+        // Stern A-frame gantry crane
+        const gantryL = makeBeamBetween(new THREE.Vector3(-0.18, -0.72, 0.27), new THREE.Vector3(-0.12, -0.76, 0.58), 0.016, bridgeMat);
+        const gantryR = makeBeamBetween(new THREE.Vector3(0.18, -0.72, 0.27), new THREE.Vector3(0.12, -0.76, 0.58), 0.016, bridgeMat);
+        const gantryT = makeBeamBetween(new THREE.Vector3(-0.12, -0.76, 0.58), new THREE.Vector3(0.12, -0.76, 0.58), 0.016, bridgeMat);
+        root.add(gantryL, gantryR, gantryT);
+
+        // Subtle V-shaped foam wake on sea behind stern
+        const wakeMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.48, side: THREE.DoubleSide, depthWrite: false });
+        for (const s of [-1, 1]) {
+          const wMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.85), wakeMat);
+          wMesh.position.set(s * 0.26, -1.16, 0.02);
+          wMesh.rotation.z = s * 0.28;
+          root.add(wMesh);
+        }
+        return root;
+      }
+
+      function computeParallelFrames(pts) {
+        const n = pts.length;
+        const tangents = [];
+        const normals = [];
+        const binormals = [];
+        const worldUp = new THREE.Vector3(0, 0, 1);
+        for (let i = 0; i < n; i++) {
+          const a = pts[Math.max(0, i - 1)];
+          const b = pts[Math.min(n - 1, i + 1)];
+          const tan = new THREE.Vector3().subVectors(b, a).normalize();
+          if (tan.lengthSq() < 1e-8) tan.set(1, 0, 0);
+          tangents.push(tan);
+        }
+        let n0 = new THREE.Vector3().crossVectors(tangents[0], worldUp);
+        if (n0.lengthSq() < 1e-5) n0.set(1, 0, 0);
+        n0.normalize();
+        normals.push(n0);
+        binormals.push(new THREE.Vector3().crossVectors(tangents[0], n0).normalize());
+        for (let i = 1; i < n; i++) {
+          const prevN = normals[i - 1].clone();
+          const tPrev = tangents[i - 1];
+          const tCur = tangents[i];
+          const axis = new THREE.Vector3().crossVectors(tPrev, tCur);
+          if (axis.lengthSq() > 1e-9) {
+            axis.normalize();
+            const ang = Math.acos(clamp(tPrev.dot(tCur), -1, 1));
+            prevN.applyAxisAngle(axis, ang);
+          }
+          prevN.normalize();
+          normals.push(prevN);
+          binormals.push(new THREE.Vector3().crossVectors(tCur, prevN).normalize());
+        }
+        return { tangents, normals, binormals };
+      }
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera();
+      camera.matrixAutoUpdate = false;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+      scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.95));
+      const keySun = new THREE.DirectionalLight(0xfff5e0, 1.85);
+      keySun.position.set(1.2, -0.7, 2.2);
+      scene.add(keySun);
+      const rimSun = new THREE.DirectionalLight(0x7dd3fc, 0.72);
+      rimSun.position.set(-1.3, 1.1, 0.9);
+      scene.add(rimSun);
+
+      let renderer = null;
+      const customLayer = {
+        id: "vedit-three-3d",
+        type: "custom",
+        renderingMode: "3d",
+        onAdd(m, gl) {
+          renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+          renderer.autoClear = false;
+          if (window.THREE_ADDONS && window.THREE_ADDONS.RoomEnvironment && typeof THREE.PMREMGenerator === "function") {
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            const envTex = pmrem.fromScene(new window.THREE_ADDONS.RoomEnvironment(), 0.04).texture;
+            scene.environment = envTex;
+            if ("environmentIntensity" in scene) scene.environmentIntensity = 0.55;
+            pmrem.dispose();
+          }
+        },
+        render(gl, options) {
+          if (!renderer) return;
+          const rawMat = (options && options.defaultProjectionData && options.defaultProjectionData.mainMatrix) || options;
+          camera.projectionMatrix = new THREE.Matrix4().fromArray(rawMat).multiply(sceneOriginMat);
+          renderer.resetState();
+          renderer.clearDepth();
+          renderer.render(scene, camera);
+        },
+      };
+      map.addLayer(customLayer);
+
+      const cableCache = new Map();
+      const modelCache = new Map();
+      const volumeCache = new Map();
+
+      function buildCableEntry(layer, idx) {
+        const rawCoords = resolveGeom(layer.coords_ref) || layer.coords || [];
+        const coords = layer.reverse ? [...rawCoords].reverse() : rawCoords;
+        const rawPts = coords.map((c) => {
+          const v = lngLatAltToLocal(c[0], c[1], c[2] || 0);
+          return v;
+        });
+        const curve = rawPts.length >= 2 ? new THREE.CatmullRomCurve3(rawPts, false, "catmullrom", 0.35) : null;
+        const baseSegs = clamp(Math.round(Math.max(90, coords.length * 14)), 90, 320);
+        const radialSegs = 14;
+        const catenary = Boolean(layer.catenary);
+        const spanAnchors = layer.span_fractions || null; // optional array of sub-spans for catenary sag
+        const centerPts = [];
+        const unitVert = [];
+        let totalLenM = 1;
+        if (curve) {
+          let prev = null;
+          totalLenM = 0;
+          for (let i = 0; i <= baseSegs; i++) {
+            const u = i / baseSegs;
+            const p = curve.getPointAt(u);
+            centerPts.push(p);
+            if (prev) totalLenM += p.distanceTo(prev);
+            prev = p;
+          }
+        }
+        const frames = centerPts.length >= 2 ? computeParallelFrames(centerPts) : null;
+        const texSet = getArmorTexSet(layer.armor_hex || "#E5B449", layer.jacket_hex || "#1E293B");
+        const colorTex = texSet.makeWrapped(texSet.colCanvas);
+        const bumpTex = texSet.makeWrapped(texSet.bumpCanvas);
+
+        const offCount = Array.isArray(layer.parallel_offsets_px) && layer.parallel_offsets_px.length > 0
+          ? layer.parallel_offsets_px
+          : [0];
+        const strands = offCount.map((offPx) => {
+          const tubeGeo = new THREE.BufferGeometry();
+          const vertCount = (baseSegs + 1) * (radialSegs + 1);
+          const posArr = new Float32Array(vertCount * 3);
+          const normArr = new Float32Array(vertCount * 3);
+          const uvArr = new Float32Array(vertCount * 2);
+          const idxArr = [];
+          for (let i = 0; i <= baseSegs; i++) {
+            const u = i / baseSegs;
+            for (let j = 0; j <= radialSegs; j++) {
+              const v = j / radialSegs;
+              const k = i * (radialSegs + 1) + j;
+              uvArr[k * 2] = u;
+              uvArr[k * 2 + 1] = v;
+              if (i < baseSegs && j < radialSegs) {
+                const a = i * (radialSegs + 1) + j;
+                const b = (i + 1) * (radialSegs + 1) + j;
+                const c = (i + 1) * (radialSegs + 1) + (j + 1);
+                const d = i * (radialSegs + 1) + (j + 1);
+                idxArr.push(a, b, d, b, c, d);
+              }
+            }
+          }
+          tubeGeo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+          tubeGeo.setAttribute("normal", new THREE.BufferAttribute(normArr, 3));
+          tubeGeo.setAttribute("uv", new THREE.BufferAttribute(uvArr, 2));
+          tubeGeo.setIndex(idxArr);
+          const mat = new THREE.MeshStandardMaterial({
+            map: colorTex,
+            bumpMap: bumpTex,
+            bumpScale: 0.35,
+            metalness: layer.metalness ?? 0.78,
+            roughness: layer.roughness ?? 0.28,
+            emissive: new THREE.Color(layer.emissive_hex || "#F59E0B"),
+            emissiveIntensity: layer.emissive_intensity ?? 0.16,
+            transparent: true,
+            opacity: 1,
+          });
+          const mesh = new THREE.Mesh(tubeGeo, mat);
+          mesh.frustumCulled = false;
+
+          // Seabed / ground shadow ribbon under the cable
+          const shGeo = new THREE.BufferGeometry();
+          const shPos = new Float32Array((baseSegs + 1) * 2 * 3);
+          const shIdx = [];
+          for (let i = 0; i < baseSegs; i++) {
+            const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+            shIdx.push(a, c, b, c, d, b);
+          }
+          shGeo.setAttribute("position", new THREE.BufferAttribute(shPos, 3));
+          shGeo.setIndex(shIdx);
+          const shMat = new THREE.MeshBasicMaterial({
+            color: 0x02080d,
+            transparent: true,
+            opacity: 0.42,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          });
+          const shMesh = new THREE.Mesh(shGeo, shMat);
+          shMesh.frustumCulled = false;
+
+          return { offPx, tubeGeo, posArr, normArr, mat, mesh, shGeo, shPos, shMat, shMesh };
+        });
+
+        const group = new THREE.Group();
+        for (const s of strands) {
+          group.add(s.shMesh);
+          group.add(s.mesh);
+        }
+
+        // Energized induction rings travelling smoothly along sheath
+        const pulseCount = Math.max(0, Math.round(layer.pulse_count ?? 3));
+        const pulseRings = [];
+        const ringMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(layer.pulse_hex || "#FDE047"),
+          emissive: new THREE.Color(layer.pulse_hex || "#F59E0B"),
+          emissiveIntensity: 0.95,
+          roughness: 0.22,
+          metalness: 0.65,
+          transparent: true,
+        });
+        for (let p = 0; p < pulseCount; p++) {
+          const rm = new THREE.Mesh(new THREE.TorusGeometry(1, 0.17, 8, 18), ringMat);
+          rm.frustumCulled = false;
+          group.add(rm);
+          pulseRings.push(rm);
+        }
+        const tipSpark = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), ringMat);
+        tipSpark.frustumCulled = false;
+        group.add(tipSpark);
+
+        let startCollar = null;
+        let endCollar = null;
+        if (layer.landing_collar) {
+          const collarMat = new THREE.MeshStandardMaterial({
+            color: 0x94a3b8,
+            metalness: 0.85,
+            roughness: 0.25,
+          });
+          startCollar = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.85, 1.4, 14), collarMat);
+          startCollar.rotation.x = Math.PI / 2;
+          startCollar.frustumCulled = false;
+          endCollar = startCollar.clone();
+          endCollar.frustumCulled = false;
+          group.add(startCollar, endCollar);
+        }
+
+        scene.add(group);
+        return {
+          key: layer.id || ("cable_" + idx),
+          coords,
+          baseSegs,
+          radialSegs,
+          centerPts,
+          frames,
+          totalLenM,
+          colorTex,
+          bumpTex,
+          strands,
+          pulseRings,
+          ringMat,
+          tipSpark,
+          startCollar,
+          endCollar,
+          catenary,
+          spanAnchors,
+          group,
+        };
+      }
+
+      function update3DScene(layers, t) {
+        const curZoom = map.getZoom();
+        const activeCables = new Set();
+        const activeModels = new Set();
+        const activeVolumes = new Set();
+
+        for (let idx = 0; idx < (layers || []).length; idx++) {
+          const layer = layers[idx];
+          const tStart = layer.start_s ?? 0;
+          const tEnd = layer.end_s ?? 1e9;
+          const visible = t >= tStart - 0.001 && t <= tEnd + 0.001;
+          const fadeIn = layer.fade_in_s ? easeOutCubic(seg(t, tStart, tStart + layer.fade_in_s)) : 1;
+          const fadeOut = layer.fade_out_s ? 1 - seg(t, tEnd - layer.fade_out_s, tEnd) : 1;
+          const alpha = clamp(fadeIn * fadeOut * (layer.opacity ?? 1), 0, 1);
+
+          if (layer.type === "cable_3d") {
+            const key = layer.id || ("cable_" + idx);
+            let entry = cableCache.get(key);
+            if (!entry) {
+              entry = buildCableEntry(layer, idx);
+              cableCache.set(key, entry);
+            }
+            activeCables.add(key);
+            entry.group.visible = visible && alpha > 0.01 && entry.centerPts.length >= 2;
+            if (!entry.group.visible) continue;
+
+            const midLat = entry.coords.length ? entry.coords[Math.floor(entry.coords.length / 2)][1] : originLat;
+            const rawRMeters = metersForScreenPx(
+              layer.radius_px ?? 5.5,
+              midLat,
+              curZoom,
+              layer.radius_ref_zoom ?? curZoom,
+              layer.radius_coupling ?? 0.42,
+              layer.min_scale ?? 0.45,
+              layer.max_scale ?? 2.8
+            );
+            const minScreenPx = Number(layer.min_screen_radius_px || 0);
+            const minRMeters = minScreenPx > 0 ? metersForScreenPx(minScreenPx, midLat, curZoom, curZoom, 0, 1, 1) : 0;
+            const rMeters = Math.max(rawRMeters, minRMeters);
+            const endTaperM = Math.max(0, Number(layer.end_taper_m || 0));
+            const altMeters = layer.altitude_px != null
+              ? metersForScreenPx(layer.altitude_px, midLat, curZoom, layer.radius_ref_zoom ?? curZoom, layer.radius_coupling ?? 0.42, layer.min_scale ?? 0.45, layer.max_scale ?? 2.8)
+              : rMeters * 1.15;
+            const sagMeters = metersForScreenPx(layer.catenary_sag_px ?? 16, midLat, curZoom, layer.radius_ref_zoom ?? curZoom, layer.radius_coupling ?? 0.42, 0.45, 2.8);
+
+            const drawS = layer.instant === true ? 0 : (layer.draw_duration_s ?? 1.2);
+            const drawFrom = tStart + (layer.draw_delay_s ?? 0);
+            const drawEase = layer.draw_ease === "linear" ? (x) => x : layer.draw_ease === "in_out" ? easeInOutCubic : easeOutCubic;
+            const prog = drawS > 0 ? drawEase(seg(t, drawFrom, drawFrom + drawS)) : (t >= drawFrom - 0.001 ? 1 : 0);
+            const activeSegs = clamp(Math.floor(entry.baseSegs * prog), 0, entry.baseSegs);
+
+            const repU = clamp(entry.totalLenM / Math.max(1, rMeters * 4.5), 6, 420);
+            entry.colorTex.repeat.set(repU, 1);
+            entry.bumpTex.repeat.set(repU, 1);
+
+            const N = entry.frames.normals;
+            const B = entry.frames.binormals;
+            const T = entry.frames.tangents;
+            const rSeg = entry.radialSegs;
+
+            for (const st of entry.strands) {
+              const latShiftM = st.offPx
+                ? metersForScreenPx(st.offPx, midLat, curZoom, layer.radius_ref_zoom ?? curZoom, layer.radius_coupling ?? 0.42, 0.45, 2.8)
+                : 0;
+              st.mat.opacity = alpha;
+              st.shMat.opacity = alpha * (entry.catenary ? 0.30 : 0.48);
+
+              for (let i = 0; i <= activeSegs; i++) {
+                const u = i / entry.baseSegs;
+                let sagOff = 0;
+                if (entry.catenary) {
+                  const nSpans = Math.max(1, (entry.coords.length || 2) - 1);
+                  const spanPhase = (u * nSpans) % 1;
+                  sagOff = -Math.sin(spanPhase * Math.PI) * sagMeters;
+                }
+                const cp = entry.centerPts[i];
+                const tan = T[i];
+                const sideDir = new THREE.Vector3(-tan.y, tan.x, 0).normalize();
+                if (sideDir.lengthSq() < 0.01) sideDir.set(1, 0, 0);
+                const cx = cp.x + sideDir.x * latShiftM;
+                const cy = cp.y + sideDir.y * latShiftM;
+                const cz = cp.z + altMeters + sagOff;
+
+                const nVec = N[i];
+                const bVec = B[i];
+                let localRad = rMeters;
+                if (endTaperM > 0) {
+                  const distFromStart = u * entry.totalLenM;
+                  const distFromEnd = (1 - u) * entry.totalLenM;
+                  const taperFactor = Math.min(1, distFromStart / endTaperM, distFromEnd / endTaperM);
+                  localRad = rMeters * clamp(taperFactor, 0.15, 1.0);
+                }
+                for (let j = 0; j <= rSeg; j++) {
+                  const theta = (j / rSeg) * Math.PI * 2;
+                  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+                  const nx = nVec.x * cosT + bVec.x * sinT;
+                  const ny = nVec.y * cosT + bVec.y * sinT;
+                  const nz = nVec.z * cosT + bVec.z * sinT;
+                  const k = (i * (rSeg + 1) + j) * 3;
+                  st.posArr[k] = cx + nx * localRad;
+                  st.posArr[k + 1] = cy + ny * localRad;
+                  st.posArr[k + 2] = cz + nz * localRad;
+                  st.normArr[k] = nx;
+                  st.normArr[k + 1] = ny;
+                  st.normArr[k + 2] = nz;
+                }
+                const sk = i * 6;
+                const sw = rMeters * 1.65;
+                st.shPos[sk] = cx - sideDir.x * sw;
+                st.shPos[sk + 1] = cy - sideDir.y * sw;
+                st.shPos[sk + 2] = cp.z + rMeters * 0.08;
+                st.shPos[sk + 3] = cx + sideDir.x * sw;
+                st.shPos[sk + 4] = cy + sideDir.y * sw;
+                st.shPos[sk + 5] = cp.z + rMeters * 0.08;
+              }
+              st.tubeGeo.attributes.position.needsUpdate = true;
+              st.tubeGeo.attributes.normal.needsUpdate = true;
+              st.tubeGeo.setDrawRange(0, activeSegs * rSeg * 6);
+              st.shGeo.attributes.position.needsUpdate = true;
+              st.shGeo.setDrawRange(0, activeSegs * 6);
+            }
+
+            // Animate pulse rings along sheath
+            const pSpeed = Number(layer.pulse_speed || 0);
+            entry.ringMat.opacity = alpha;
+            if (pSpeed > 0 && activeSegs >= 4) {
+              const pLen = entry.pulseRings.length;
+              for (let p = 0; p < pLen; p++) {
+                const rm = entry.pulseRings[p];
+                const ph = (((t - tStart) * pSpeed + p / Math.max(1, pLen)) % 1 + 1) % 1;
+                const si = Math.round(ph * activeSegs);
+                const cp = entry.centerPts[si];
+                const tan = T[si];
+                rm.visible = true;
+                rm.position.set(cp.x, cp.y, cp.z + altMeters);
+                rm.scale.setScalar(rMeters * 1.18);
+                rm.lookAt(cp.x + tan.x, cp.y + tan.y, cp.z + altMeters + tan.z);
+              }
+            } else {
+              for (const rm of entry.pulseRings) rm.visible = false;
+            }
+            if (entry.startCollar && entry.endCollar) {
+              const sp0 = entry.centerPts[0];
+              entry.startCollar.visible = activeSegs >= 1;
+              entry.startCollar.position.set(sp0.x, sp0.y, sp0.z + altMeters * 0.55);
+              entry.startCollar.scale.set(rMeters, rMeters, Math.max(rMeters, altMeters));
+              const spEnd = entry.centerPts[entry.baseSegs];
+              entry.endCollar.visible = prog >= 0.99;
+              entry.endCollar.position.set(spEnd.x, spEnd.y, spEnd.z + altMeters * 0.55);
+              entry.endCollar.scale.set(rMeters, rMeters, Math.max(rMeters, altMeters));
+            }
+            if (prog > 0.02 && prog < 0.995 && activeSegs > 0) {
+              const tp = entry.centerPts[activeSegs];
+              entry.tipSpark.visible = true;
+              entry.tipSpark.position.set(tp.x, tp.y, tp.z + altMeters);
+              entry.tipSpark.scale.setScalar(rMeters * 1.8);
+            } else {
+              entry.tipSpark.visible = false;
+            }
+          } else if (layer.type === "model_3d") {
+            const key = layer.id || ("model_" + idx);
+            let entry = modelCache.get(key);
+            if (!entry) {
+              let grp = null;
+              const gltfUrl = layer.gltf_url
+                ? (String(layer.gltf_url).startsWith("http")
+                  ? String(layer.gltf_url)
+                  : BASE_URL + "/" + String(layer.gltf_url).replace(/^\\/+/, ""))
+                : null;
+              if (gltfUrl && window.__gltfCache[gltfUrl]) {
+                grp = new THREE.Group();
+                const rawClone = window.__gltfCache[gltfUrl].clone(true);
+                if (layer.up_axis !== "z") rawClone.rotation.x = Math.PI / 2;
+                rawClone.updateMatrixWorld(true);
+                const box = new THREE.Box3().setFromObject(rawClone);
+                const size = new THREE.Vector3();
+                const center = new THREE.Vector3();
+                box.getSize(size);
+                box.getCenter(center);
+                const normH = Math.max(1e-4, size.z || size.y || 1);
+                rawClone.position.set(-center.x, -center.y, -box.min.z);
+                const holder = new THREE.Group();
+                holder.add(rawClone);
+                holder.scale.setScalar(1 / normH);
+                if (layer.powered === false) {
+                  rawClone.traverse((ch) => {
+                    if (ch.isMesh && ch.material) {
+                      const m = ch.material.clone();
+                      if (m.color) m.color.multiplyScalar(0.45);
+                      if ("emissiveIntensity" in m) m.emissiveIntensity = 0.05;
+                      ch.material = m;
+                    }
+                  });
+                }
+                addGroundShadow(grp, 0.72);
+                grp.add(holder);
+              } else if (layer.model === "transmission_tower") grp = buildTransmissionTowerModel(layer);
+              else if (layer.model === "substation") grp = buildSubstationModel(layer);
+              else if (layer.model === "solar_farm") grp = buildSolarFarmModel(layer);
+              else if (layer.model === "survey_vessel") grp = buildSurveyVesselModel(layer);
+              else grp = buildTransmissionTowerModel(layer);
+              scene.add(grp);
+              entry = { key, grp };
+              modelCache.set(key, entry);
+            }
+            activeModels.add(key);
+            entry.grp.visible = visible && alpha > 0.01;
+            if (!entry.grp.visible) continue;
+
+            let curCoord = layer.coord || [originLng, originLat];
+            let headingDeg = layer.heading_deg || 0;
+            if (Array.isArray(layer.path) && layer.path.length >= 2) {
+              const moveDur = layer.move_duration_s ?? Math.max(0.1, tEnd - tStart);
+              const u = clamp(seg(t, tStart, tStart + moveDur), 0, 1);
+              curCoord = samplePolylineCoord(layer.path, u);
+              if (layer.auto_heading !== false) {
+                const cA = samplePolylineCoord(layer.path, Math.max(0, u - 0.02));
+                const cB = samplePolylineCoord(layer.path, Math.min(1, u + 0.02));
+                const pA = lngLatAltToLocal(cA[0], cA[1], 0);
+                const pB = lngLatAltToLocal(cB[0], cB[1], 0);
+                const dx = pB.x - pA.x, dy = pB.y - pA.y;
+                if (Math.hypot(dx, dy) > 1e-3) {
+                  headingDeg = (Math.atan2(-dx, dy) * 180) / Math.PI;
+                }
+              }
+            }
+            const elev = layer.model === "survey_vessel" ? 0 : groundElevM(curCoord[0], curCoord[1]);
+            const pos = lngLatAltToLocal(curCoord[0], curCoord[1], elev);
+            const hMeters = metersForScreenPx(
+              layer.height_px ?? 95,
+              curCoord[1],
+              curZoom,
+              layer.ref_zoom ?? curZoom,
+              layer.scale_coupling ?? 0.46,
+              layer.min_scale ?? 0.45,
+              layer.max_scale ?? 2.8
+            );
+            const riseP = layer.rise_duration_s
+              ? easeOutBack(seg(t, tStart, tStart + layer.rise_duration_s))
+              : 1.0;
+            const exitSc = (layer.exit_scale_down_s && t > tEnd - layer.exit_scale_down_s)
+              ? 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd))
+              : 1.0;
+            const scXY = hMeters * clamp(exitSc, 0.01, 1.5);
+            const scZ = hMeters * clamp(riseP, 0.02, 1.15) * clamp(exitSc, 0.01, 1.5);
+            entry.grp.position.copy(pos);
+            entry.grp.rotation.set(0, 0, (headingDeg * Math.PI) / 180);
+            entry.grp.scale.set(scXY, scXY, scZ);
+          } else if (layer.type === "volume_3d") {
+            const key = layer.id || ("vol_" + idx);
+            let entry = volumeCache.get(key);
+            if (!entry) {
+              const grp = new THREE.Group();
+              const wM = Number(layer.width_m || 10000);
+              const lM = Number(layer.length_m || 10000);
+              const hM = Number(layer.height_m || 1200);
+              const boxGeo = new THREE.BoxGeometry(wM, lM, hM);
+              const wallMat = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(layer.fill_hex || "#F59E0B"),
+                emissive: new THREE.Color(layer.fill_hex || "#F59E0B"),
+                emissiveIntensity: 0.35,
+                transparent: true,
+                opacity: layer.fill_alpha ?? 0.32,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+              });
+              const boxMesh = new THREE.Mesh(boxGeo, wallMat);
+              boxMesh.position.set(0, 0, hM * 0.5);
+              grp.add(boxMesh);
+
+              const edgeMat = new THREE.LineBasicMaterial({
+                color: new THREE.Color(layer.edge_hex || "#FEF08A"),
+                transparent: true,
+                opacity: 0.95,
+              });
+              const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo), edgeMat);
+              edges.position.set(0, 0, hM * 0.5);
+              grp.add(edges);
+
+              if (layer.grid_top !== false) {
+                const topTex = makeVolumeTopTex(layer.edge_hex || "#FEF08A");
+                const topMat = new THREE.MeshBasicMaterial({
+                  map: topTex,
+                  transparent: true,
+                  opacity: 0.85,
+                  side: THREE.DoubleSide,
+                  depthWrite: false,
+                });
+                const topPlane = new THREE.Mesh(new THREE.PlaneGeometry(wM, lM), topMat);
+                topPlane.position.set(0, 0, hM + 2);
+                grp.add(topPlane);
+              }
+              scene.add(grp);
+              entry = { key, grp, wallMat, edgeMat, baseFillAlpha: layer.fill_alpha ?? 0.32 };
+              volumeCache.set(key, entry);
+            }
+            activeVolumes.add(key);
+            entry.grp.visible = visible && alpha > 0.01;
+            if (!entry.grp.visible) continue;
+            const c = layer.coord || [originLng, originLat];
+            const pos = lngLatAltToLocal(c[0], c[1], groundElevM(c[0], c[1]));
+            const riseP = layer.rise_duration_s ? easeOutCubic(seg(t, tStart, tStart + layer.rise_duration_s)) : 1.0;
+            entry.grp.position.copy(pos);
+            entry.grp.rotation.set(0, 0, ((layer.heading_deg || 0) * Math.PI) / 180);
+            entry.grp.scale.set(1, 1, clamp(riseP, 0.02, 1.0));
+            entry.wallMat.opacity = entry.baseFillAlpha * alpha;
+            entry.edgeMat.opacity = 0.95 * alpha;
+          }
+        }
+
+        for (const [k, v] of cableCache.entries()) if (!activeCables.has(k)) v.group.visible = false;
+        for (const [k, v] of modelCache.entries()) if (!activeModels.has(k)) v.grp.visible = false;
+        for (const [k, v] of volumeCache.entries()) if (!activeVolumes.has(k)) v.grp.visible = false;
+      }
+
+      return update3DScene;
+    }
+
     window.__drawSceneLayers = function(layers, t) {
+      if (__update3DScene) {
+        __update3DScene(layers, t);
+      }
       drawLayers(layers, t);
+      if (__update3DScene) {
+        map.triggerRepaint();
+        return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      }
     };
 
     // Optical sub-frame shutter accumulator (blends MapLibre WebGL canvas + overlay canvas with roll overscan)
@@ -3060,7 +4609,9 @@ function sampleCameraAt(samples, frameIndex, subOffset = 0) {
   };
 }
 
-async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, outDir) {
+async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, outDir, opts = {}) {
+  const previewCount = Number(opts.previewKeyframes || 0);
+  const isPreview = previewCount > 0;
   const outName = act.output_file || act.output_name || `${act.act_id}.mp4`;
   const outMp4 = resolve(outDir, outName);
   const resolvedOutDir = resolve(outDir);
@@ -3087,29 +4638,46 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       }
     }
   }
-  console.log(`\n=== Baking ${act.act_id} (${actKind}): ${act.duration_s.toFixed(3)}s (${totalFrames} frames) -> ${outMp4} ===`);
+  console.log(`\n=== ${isPreview ? "Previewing" : "Baking"} ${act.act_id} (${actKind}): ${act.duration_s.toFixed(3)}s (${totalFrames} frames) -> ${isPreview ? "keyframes" : outMp4} ===`);
 
   const page = await browser.newPage();
   page.on("pageerror", (err) => console.error(`  [${act.act_id} pageerror]`, err));
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   const shotter = await createCdpScreenshotter(page, width, height, { quality: 92 });
-  const encoder = spawnMjpegPipeEncoder(outMp4, { fps, crf: 15, gop: 1, preset: "fast", useVideoToolbox: false });
+  const encoder = isPreview ? null : spawnMjpegPipeEncoder(outMp4, { fps, crf: 15, gop: 1, preset: "fast", useVideoToolbox: false });
   const t0 = Date.now();
   const trackLog = [];
+  const previewFrames = [];
   let succeeded = false;
+
+  const sampleIndices = (() => {
+    if (!isPreview) return null;
+    const count = Math.max(1, Math.min(totalFrames, previewCount));
+    if (count === 1) return [0];
+    const s = new Set([0, totalFrames - 1]);
+    for (let i = 1; i < count - 1; i++) {
+      s.add(Math.min(totalFrames - 1, Math.round((i / (count - 1)) * (totalFrames - 1))));
+    }
+    return [...s].sort((a, b) => a - b);
+  })();
 
   try {
     if (actKind === "blueprint_paper") {
       await page.setContent(buildBlueprintHtml(baseUrl, width, height, vectorsJson, act), { waitUntil: "load" });
       await page.evaluate(() => document.fonts.ready);
-      for (let f = 0; f < totalFrames; f++) {
+      const framesToRun = sampleIndices || Array.from({ length: totalFrames }, (_, i) => i);
+      for (const f of framesToRun) {
         await page.evaluate((sec) => window.__renderBlueprint(sec), f / fps);
-        await encoder.writeFrame(await shotter.captureJpegBuffer());
-        if (f % 60 === 0 || f === totalFrames - 1) {
+        const buf = await shotter.captureJpegBuffer();
+        if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
+        else await encoder.writeFrame(buf);
+        if (!isPreview && (f % 60 === 0 || f === totalFrames - 1)) {
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
       }
     } else {
+      const has3d = (act.layers || []).some((l) => l && (l.type === "cable_3d" || l.type === "model_3d" || l.type === "volume_3d"));
+      const initialCam = sampleCameraAt(act.camera_samples || [], 0, 0);
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
           tile_source: act.tile_source || "hybrid",
@@ -3118,6 +4686,9 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
           dem_maxzoom: act.dem_maxzoom ?? 10,
           allow_world_void: Boolean(act.allow_world_void),
+          has_3d: has3d,
+          origin_coord: act.origin_coord || initialCam.center,
+          initial_camera: initialCam,
         }),
         { waitUntil: "load" }
       );
@@ -3126,6 +4697,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       const samples = act.camera_samples || [];
       const layers = act.layers || [];
       const preloadUrls = [];
+      const preloadModelUrls = [];
       for (const layer of layers) {
         if (layer.type === "flag_pin" && layer.code) {
           preloadUrls.push(`${baseUrl}/flags/${String(layer.code).toLowerCase()}.svg`);
@@ -3133,12 +4705,23 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         if (layer.type === "polygon" && layer.flag_fill) {
           preloadUrls.push(`${baseUrl}/flags/${String(layer.flag_fill).toLowerCase()}.svg`);
         }
+        if (layer.type === "model_3d" && layer.gltf_url) {
+          const u = String(layer.gltf_url);
+          preloadModelUrls.push(u.startsWith("http") ? u : `${baseUrl}/${u.replace(/^\/+/, "")}`);
+        }
       }
       if (preloadUrls.length > 0) {
         await page.evaluate((urls) => window.__preloadAssets(urls), preloadUrls);
         const missing = await page.evaluate((urls) => urls.filter((u) => !window.__imgCache[u]), [...new Set(preloadUrls)]);
         for (const u of missing) {
           console.warn(`  [${act.act_id}] warning: flag asset not found (${u.split("/").pop()}); layer falls back to its colour fill`);
+        }
+      }
+      if (preloadModelUrls.length > 0) {
+        await page.evaluate((urls) => window.__preloadModels(urls), preloadModelUrls);
+        const missingM = await page.evaluate((urls) => urls.filter((u) => !window.__gltfCache[u]), [...new Set(preloadModelUrls)]);
+        for (const u of missingM) {
+          console.warn(`  [${act.act_id}] warning: glTF asset failed to load (${u}); falling back to procedural geometry`);
         }
       }
       // Sub-frame shutter accumulation is opt-in so frames stay crisp by default.
@@ -3150,16 +4733,19 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       const IDLE_WAIT_MS = 6000;
       let pendingFrames = 0;
 
-      // Pre-warm tiles across act timeline
-      for (let f = 0; f < totalFrames; f += Math.max(15, Math.floor(totalFrames / 8))) {
-        const cam = sampleCameraAt(samples, f, 0);
-        await page.evaluate((c) => window.__setSceneCamera(c), cam);
-        await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+      // Pre-warm tiles across act timeline (skip for fast keyframe preview)
+      if (!isPreview) {
+        for (let f = 0; f < totalFrames; f += Math.max(15, Math.floor(totalFrames / 8))) {
+          const cam = sampleCameraAt(samples, f, 0);
+          await page.evaluate((c) => window.__setSceneCamera(c), cam);
+          await page.evaluate((ms) => window.__waitIdle(ms), 1500);
+        }
       }
 
-      for (let f = 0; f < totalFrames; f++) {
+      const framesToRun = sampleIndices || Array.from({ length: totalFrames }, (_, i) => i);
+      for (const f of framesToRun) {
         const cam = sampleCameraAt(samples, f, 0);
-        const subN = enableShutter ? Math.min(16, Math.max(1, cam.shutter_samples || 1)) : 1;
+        const subN = !isPreview && enableShutter ? Math.min(16, Math.max(1, cam.shutter_samples || 1)) : 1;
         const blurAmt = cutBlurAmount(f, totalFrames, fps, cutBlurIn, cutBlurOut, cutBlurStrength);
         const applyCutBlur = async () => {
           if (blurAmt > 0.002) await page.evaluate((a) => window.__cutBlurComposite(a, 12), blurAmt);
@@ -3185,18 +4771,20 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           if (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) pendingFrames++;
           await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, f / fps]);
           await applyCutBlur();
-          await encoder.writeFrame(await shotter.captureJpegBuffer());
+          const buf = await shotter.captureJpegBuffer();
+          if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
+          else await encoder.writeFrame(buf);
           if (blurAmt > 0.002) await page.evaluate(() => window.__endShutterAccum());
         }
-        if (act.export_camera_track) {
+        if (!isPreview && act.export_camera_track) {
           trackLog.push({ frame: f, t: Number((f / fps).toFixed(4)), ...cam });
         }
-        if (f % 60 === 0 || f === totalFrames - 1) {
+        if (!isPreview && (f % 60 === 0 || f === totalFrames - 1)) {
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
       }
       console.log(`  [${act.act_id}] frames captured with tiles still pending: ${pendingFrames}`);
-      if (act.export_camera_track) {
+      if (!isPreview && act.export_camera_track) {
         writeFileSync(join(outDir, `${act.act_id}_camera_track.json`), JSON.stringify(trackLog));
       }
     }
@@ -3204,11 +4792,12 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   } finally {
     await shotter.close();
     await page.close();
-    if (!succeeded) {
+    if (!succeeded && encoder) {
       await encoder.abort();
     }
   }
-  await encoder.finish();
+  if (encoder) await encoder.finish();
+  return previewFrames;
 }
 
 /**
@@ -3306,24 +4895,86 @@ async function main() {
   }
   const vectorsJson = JSON.stringify(vectorsObj);
 
-  const server = await startTileServer(0, "127.0.0.1", { recordGaps: Boolean(coverageOut) });
+  const projectTilesSpec = spec.project_tiles_dir;
+  const projectTilesDir = projectTilesSpec
+    ? (isAbsolute(projectTilesSpec) ? projectTilesSpec : resolve(baseDir, projectTilesSpec))
+    : null;
+  const projectModelsSpec = spec.project_models_dir;
+  const projectModelsDir = projectModelsSpec
+    ? (isAbsolute(projectModelsSpec) ? projectModelsSpec : resolve(baseDir, projectModelsSpec))
+    : (existsSync(resolve(baseDir, "models")) ? resolve(baseDir, "models") : null);
+
+  let selectedActs = spec.acts || [];
+  const onlyActs = args["only-act"];
+  if (Array.isArray(onlyActs) && onlyActs.length > 0) {
+    const known = new Set(selectedActs.map((a) => a.act_id));
+    for (const id of onlyActs) {
+      if (!known.has(id)) {
+        throw new Error(`Unknown act_id '${id}' passed to --only-act (available: ${[...known].join(", ")})`);
+      }
+    }
+    const want = new Set(onlyActs);
+    selectedActs = selectedActs.filter((a) => want.has(a.act_id));
+  }
+
+  const rawPreview = args["preview-keyframes"];
+  const previewTotal = rawPreview === true ? 12 : (typeof rawPreview === "string" ? Math.max(1, Number(rawPreview) || 12) : 0);
+
+  const server = await startTileServer(0, "127.0.0.1", {
+    recordGaps: Boolean(coverageOut),
+    projectTilesDir,
+    projectModelsDir,
+  });
   const url = `http://127.0.0.1:${server.address().port}`;
   const browser = await puppeteer.launch({
     executablePath: resolveChrome(),
     headless: "new",
     args: getChromeArgs(width, height),
   });
+  const allPreviewFrames = [];
   try {
-    for (const act of spec.acts || []) {
+    for (const act of selectedActs) {
       if (coverageOnly) {
         await coverageAct(browser, url, vectorsJson, width, height, fps, act);
       } else {
-        await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir);
+        const perActPreview = previewTotal > 0 ? Math.max(2, Math.ceil(previewTotal / Math.max(1, selectedActs.length))) : 0;
+        const pFrames = await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir, {
+          previewKeyframes: perActPreview,
+        });
+        if (perActPreview > 0 && Array.isArray(pFrames)) allPreviewFrames.push(...pFrames);
       }
     }
   } finally {
     await browser.close();
     server.close();
+  }
+  if (previewTotal > 0 && allPreviewFrames.length > 0) {
+    const previewDir = join(outDir, "preview_keyframes");
+    mkdirSync(previewDir, { recursive: true });
+    for (const pf of allPreviewFrames) {
+      const pName = `${pf.act_id}_${pf.t_s.toFixed(2).replace(".", "_")}s.jpg`;
+      writeFileSync(join(previewDir, pName), pf.buf);
+    }
+    const cols = Math.min(4, allPreviewFrames.length);
+    const rows = Math.ceil(allPreviewFrames.length / cols);
+    const thumbW = 360;
+    const thumbH = Math.max(120, Math.round((height / width) * thumbW));
+    const composites = await Promise.all(
+      allPreviewFrames.map(async (pf, idx) => ({
+        input: await sharp(pf.buf).resize(thumbW, thumbH).toBuffer(),
+        left: (idx % cols) * thumbW,
+        top: Math.floor(idx / cols) * thumbH,
+      }))
+    );
+    const sheetPath = join(outDir, "preview_contact_sheet.jpg");
+    await sharp({
+      create: { width: cols * thumbW, height: rows * thumbH, channels: 3, background: { r: 6, g: 16, b: 24 } },
+    })
+      .composite(composites)
+      .jpeg({ quality: 88 })
+      .toFile(sheetPath);
+    console.log(JSON.stringify({ ok: true, preview_frames: allPreviewFrames.length, contact_sheet: sheetPath }));
+    return;
   }
   if (coverageOut) {
     const report = coverageReport(server.tileGaps);

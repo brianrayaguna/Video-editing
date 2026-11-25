@@ -84,6 +84,16 @@ class TranscriptWord(StrictModel):
     is_filler: bool = False
 
 
+class TranscriptSegment(StrictModel):
+    id: int | str | None = None
+    start: float | None = Field(default=None, ge=0.0)
+    end: float | None = Field(default=None, ge=0.0)
+    start_s: float | None = Field(default=None, ge=0.0)
+    end_s: float | None = Field(default=None, ge=0.0)
+    text: str
+    speaker: str | int | None = None
+
+
 class NormalizedTranscript(StrictModel):
     source_hash: str = Field(min_length=8)
     provider: str = Field(min_length=1)
@@ -92,6 +102,7 @@ class NormalizedTranscript(StrictModel):
     duration_s: float = Field(ge=0.0)
     text: str
     words: list[TranscriptWord]
+    segments: list[TranscriptSegment] | None = None
 
 
 class TemporalSectionPrior(StrictModel):
@@ -128,6 +139,10 @@ class TypographyTokens(StrictModel):
     default_caption_band: Literal[
         "lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"
     ] = "dynamic_away_from_subject"
+    caption_font_family: str | None = None
+    caption_font_px_9x16: int | None = Field(default=None, ge=20, le=120)
+    caption_margin_v_px_9x16: int | None = Field(default=None, ge=0, le=960)
+    caption_band_y_pct_9x16: list[float] | None = Field(default=None, min_length=2, max_length=2)
 
 
 class MotionStyleTokens(StrictModel):

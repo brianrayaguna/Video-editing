@@ -482,6 +482,8 @@ def assemble_hybrid_deliverable(
     overlay_video_path: Path | None = None,
     overlay_segments: list[tuple[float, float, Path]] | None = None,
     mastered_audio_path: Path | None = None,
+    captions_ass_path: Path | None = None,
+    fonts_dir: Path | None = None,
     use_ass_fastpath: bool = True,
     encode_preset: Literal["ultrafast", "veryfast", "fast", "medium", "slow"] = "fast",
     use_hardware_encoder: bool = False,
@@ -627,25 +629,51 @@ def assemble_hybrid_deliverable(
         used_overlay = True
 
     ass_overlays, _ = partition_overlays_for_hybrid(plan) if use_ass_fastpath else ([], [])
+    ext_captions_ass: Path | None = None
+    if captions_ass_path is not None:
+        ext_captions_ass = captions_ass_path.expanduser().resolve()
+        if not ext_captions_ass.is_file():
+            raise MasteringError(f"Captions ASS file not found: {ext_captions_ass}")
 
     audio_result: MasteredAudioResult | None = None
     with tempfile.TemporaryDirectory(prefix="vedit_master_") as tmp_dir:
         tmp_path = Path(tmp_dir)
+        staged_fonts = _stage_plan_fonts_dir(plan, tmp_path / "fonts")
+        if fonts_dir is not None:
+            extra_fonts_dir = fonts_dir.expanduser().resolve()
+            if extra_fonts_dir.is_dir():
+                fonts_dest = tmp_path / "fonts"
+                fonts_dest.mkdir(parents=True, exist_ok=True)
+                for src_f in sorted(extra_fonts_dir.iterdir()):
+                    if src_f.is_file() and src_f.suffix.lower() in {".ttf", ".otf"}:
+                        if not (fonts_dest / src_f.name).exists():
+                            shutil.copy2(src_f, fonts_dest / src_f.name)
+                        staged_fonts = fonts_dest
+
         if ass_overlays:
             ass_file = write_ass_overlays_file(
                 ass_overlays,
                 platform_target,
                 tmp_path / "overlays.ass",
             )
-            fonts_dir = _stage_plan_fonts_dir(plan, tmp_path / "fonts")
             escaped_ass = escape_ffmpeg_filter_path(ass_file)
-            if fonts_dir is not None:
-                escaped_fonts = escape_ffmpeg_filter_path(fonts_dir)
+            if staged_fonts is not None:
+                escaped_fonts = escape_ffmpeg_filter_path(staged_fonts)
                 sub_filter = f"ass='{escaped_ass}':fontsdir='{escaped_fonts}'"
             else:
                 sub_filter = f"ass='{escaped_ass}'"
             chains.append(f"{final_v_label}{sub_filter},format=yuv420p[v_ass]")
             final_v_label = "[v_ass]"
+
+        if ext_captions_ass is not None:
+            escaped_cap = escape_ffmpeg_filter_path(ext_captions_ass)
+            if staged_fonts is not None:
+                escaped_fonts = escape_ffmpeg_filter_path(staged_fonts)
+                cap_filter = f"ass='{escaped_cap}':fontsdir='{escaped_fonts}'"
+            else:
+                cap_filter = f"ass='{escaped_cap}'"
+            chains.append(f"{final_v_label}{cap_filter},format=yuv420p[v_cap]")
+            final_v_label = "[v_cap]"
 
         vspec = platform_target.video
         chains.append(

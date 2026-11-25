@@ -751,3 +751,65 @@ def test_verifier_rejects_inverted_overlay_box_and_unsupported_template_aspect(
     assert report.passed is False
     assert "INVALID_OVERLAY_BOX" in err_codes
     assert "TEMPLATE_VARIABLE_INVALID" in err_codes
+
+
+def test_verifier_continuous_camera_no_temporal_drift_and_transcript_segments() -> None:
+    from vedit.contracts import find_repo_root, load_platform_targets
+    from vedit.models import VideoClipOp
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    shorts = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+
+    transcript = NormalizedTranscript.model_validate(
+        {
+            "source_hash": "b" * 64,
+            "provider": "whisper",
+            "language": "id",
+            "duration_s": 30.0,
+            "text": "Kabel listrik bawah laut terpanjang.",
+            "words": [
+                {"text": "Kabel", "start_s": 0.1, "end_s": 0.5},
+                {"text": "listrik", "start_s": 0.6, "end_s": 1.1},
+            ],
+            "segments": [
+                {"id": 0, "start": 0.0, "end": 1.5, "text": "Kabel listrik bawah laut terpanjang."}
+            ],
+        }
+    )
+    assert transcript.segments is not None and len(transcript.segments) == 1
+
+    plan = EditPlan(
+        job_id="verify_continuous_3d",
+        project_id="proj_3d",
+        brand_id="geoverum",
+        platform_target_id=shorts.platform_id,
+        render_strategy="hybrid",
+        duration_s=30.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(asset_id="v1", sha256="a" * 64, kind="video", path="a.mp4", duration_s=30.0),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="v1",
+                timeline_start_s=0.0,
+                timeline_duration_s=30.0,
+                source_start_s=0.0,
+                role="a_roll",
+                content_type="map",
+                reframed_to_target=True,
+                visual_beat_count=32,
+            )
+        ],
+        overlay_compositions=[],
+        audio_tracks=[],
+    )
+    report = verify_edit_plan(plan, policy, shorts, transcript=transcript)
+    assert "SOFT_TEMPORAL_CURVE_DRIFT" not in {w.code for w in report.warnings}

@@ -439,10 +439,17 @@
     },
     {
       "trigger_id": "delayed_prohibition_pin_escalation",
-      "condition": "narration.states_environmental_or_resource_deficit",
-      "action": "overlay.stagger_teardrop_domain_pins(pop_ms=260, slash_delay_ms=360); overlay.layer_second_deficit_category()",
-      "weight": 0.78,
-      "rationale": "Popping the positive resource icon (water droplet, wheat crop) before drawing the crimson prohibition slash turns each pin into a two-beat visual argument."
+      "condition": "narration.states_legal_ban_or_literal_blockade",
+      "action": "prefer physical spatial proof on the 3D map first (bypassed route, powered=false infrastructure, or oversized volume_3d footprint); use overlay.stagger_teardrop_domain_pins(pop_ms=260, slash_delay_ms=360) only when illustrating a literal ban or blocked resource",
+      "weight": 0.72,
+      "rationale": "Physical spatial proof on the map communicates geometric or engineering constraints directly without unmotivated red X graphics, reserving two-stage prohibition slashes for genuine bans."
+    },
+    {
+      "trigger_id": "three_d_in_map_infrastructure",
+      "condition": "narration.explains_cable_grid_pipeline_shipping_or_footprint_scale",
+      "action": "scene.cable_3d(armored sheath, catenary/subsea spans, landing_collar=true, pulse_speed>0) + scene.model_3d(transmission_tower|substation|solar_farm|survey_vessel|gltf_url, powered=true|false) + scene.volume_3d(width_m, length_m, height_m) directly inside the 3D pitched map",
+      "weight": 0.88,
+      "rationale": "Rendering engineered corridors and scale prisms directly in the pitched map space replaces detached 2D cutaways with unified physical cartographic proof."
     },
     {
       "trigger_id": "territory_border_trace_then_fill",
@@ -454,9 +461,9 @@
     {
       "trigger_id": "nationality_flag_fill",
       "condition": "narration.contrasts_nationality_or_ownership_of_territories",
-      "action": "scene.polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.15-0.25 for a waving cloth, flag_blend='multiply' on satellite relief, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
-      "weight": 0.78,
-      "rationale": "A flag clipped to the coast states ownership without a label; terrain blending keeps relief legible, and replacing the flag with a flat colour keeps the cast readable for the rest of the film."
+      "action": "scene.polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.15-0.25, flag_wave_warp=true, flag_gloss=true, flag_blend='normal' on satellite relief with calibrated flag_alpha, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
+      "weight": 0.82,
+      "rationale": "A glossy waving flag clipped to the coast under source-over alpha states ownership clearly even over dark ocean or forest terrain while preserving luminous specular motion."
     },
     {
       "trigger_id": "border_line_single_head_draw",

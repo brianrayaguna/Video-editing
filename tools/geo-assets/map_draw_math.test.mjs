@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  clipHomogeneousPolyline,
+  clipHomogeneousRing,
   clothWaveStops,
   coverRect,
   cutBlurAmount,
@@ -298,4 +300,58 @@ test("polygonRings separates exterior rings from hole rings across geometry shap
   assert.deepEqual(polygonRings(wrapped), { outer: [outer], inner: [hole] });
   const geomColl = { type: "GeometryCollection", geometries: [poly, { type: "Polygon", coordinates: [island] }] };
   assert.deepEqual(polygonRings(geomColl), { outer: [outer, island], inner: [hole] });
+});
+
+test("clipHomogeneousRing clips near-plane crossings and drops behind-camera rings", () => {
+  const inFront = [
+    { x: -1, y: -1, z: 0, w: 2 },
+    { x: 1, y: -1, z: 0, w: 2 },
+    { x: 0, y: 1, z: 0, w: 2 },
+  ];
+  assert.equal(clipHomogeneousRing(inFront).length, 3);
+
+  const behind = [
+    { x: -1, y: -1, z: -2, w: -1 },
+    { x: 1, y: -1, z: -2, w: -1 },
+    { x: 0, y: 1, z: -2, w: -1 },
+  ];
+  assert.deepEqual(clipHomogeneousRing(behind), []);
+
+  // Triangle spanning w = -1 to w = 3 gets clipped cleanly to positive w >= eps and z + w >= 0.
+  const crossing = [
+    { x: -2, y: -1, z: 0, w: 3 },
+    { x: 2, y: -1, z: 0, w: 3 },
+    { x: 0, y: 2, z: -2, w: -1 },
+  ];
+  const clipped = clipHomogeneousRing(crossing, 1e-4);
+  assert.equal(clipped.length, 4);
+  assert.ok(clipped.every((v) => v.w >= 1e-4 - 1e-9 && v.z + v.w >= -1e-9));
+});
+
+test("clipHomogeneousPolyline clips near-plane crossings and splits out-and-in paths", () => {
+  const behind = [
+    { x: -1, y: 0, z: -2, w: -1 },
+    { x: 1, y: 0, z: -2, w: -1 },
+  ];
+  assert.deepEqual(clipHomogeneousPolyline(behind), []);
+
+  const cross = [
+    { x: -1, y: 0, z: 0, w: 3 },
+    { x: 1, y: 0, z: -2, w: -1 },
+  ];
+  const clipped = clipHomogeneousPolyline(cross, 1e-4);
+  assert.equal(clipped.length, 1);
+  assert.equal(clipped[0].length, 2);
+  assert.ok(clipped[0].every((v) => v.w >= 1e-4 - 1e-9 && v.z + v.w >= -1e-9));
+
+  // Path exits behind camera and re-enters -> two disjoint sub-polylines
+  const reentry = [
+    { x: -2, y: 0, z: 0, w: 2 },
+    { x: -1, y: 0, z: -2, w: -2 },
+    { x: 1, y: 0, z: -2, w: -2 },
+    { x: 2, y: 0, z: 0, w: 2 },
+  ];
+  const split = clipHomogeneousPolyline(reentry, 1e-4);
+  assert.equal(split.length, 2);
+  assert.ok(split.every((seg) => seg.length === 2 && seg.every((v) => v.w >= 1e-4 - 1e-9)));
 });

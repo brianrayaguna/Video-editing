@@ -1183,3 +1183,92 @@ def test_ass_captions_null_fade_and_variables_override_plus_square_disc_sweep(
     sq_frames = _disc_sweep_frames("color=c=white", "108x108", (15, 15))
     black_frac = sum(1 for v in sq_frames[0] if v < 128) / (108 * 108)
     assert black_frac == pytest.approx(1.0, abs=0.005)
+
+
+def test_single_pass_mastering_with_external_captions_ass_and_source_credit_style(
+    tmp_path: Path,
+) -> None:
+    from vedit.mastering.ass_captions import write_ass_overlays_file
+
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    credit = OverlayCompositionOp(
+        overlay_id="ov_credit",
+        kind="lower_third",
+        template_id="source_credit",
+        timeline_start_s=0.0,
+        timeline_duration_s=1.5,
+        transparent=True,
+        safe_band="upper_safe",
+        variables={"text": "Imagery: Open Earth Archive", "opacity": 0.8},
+        props={},
+    )
+    ov_ass = write_ass_overlays_file([credit], target, tmp_path / "ov.ass").read_text(
+        encoding="utf-8"
+    )
+    assert "Style: SourceCredit," in ov_ass
+    assert ",1,1.6,1.8,7," in ov_ass
+
+    src_video = tmp_path / "clip.mp4"
+    _synth_video(src_video, duration_s=1.5)
+    v_hash = hash_media(src_video)["sha256"]
+    cap_ass = tmp_path / "captions.ass"
+    cap_ass.write_text(
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        "Style: Default,Rubik,56,&H00FFFFFF,&H0000FFFF,&H90000000,&HA0000000,"
+        "-1,0,0,0,100,100,0,0,1,1.6,3.2,2,60,60,348,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, "
+        "MarginV, Effect, Text\n"
+        "Dialogue: 0,0:00:00.00,0:00:01.20,Default,,0,0,0,,Single pass caption test\n",
+        encoding="utf-8",
+    )
+    plan = EditPlan(
+        schema_version="1.0",
+        job_id="job_1pass",
+        project_id="proj_1pass",
+        brand_id="geoverum",
+        platform_target_id=target.platform_id,
+        render_strategy="hybrid",
+        duration_s=1.2,
+        fps=target.fps,
+        width=target.width,
+        height=target.height,
+        assets=[
+            AssetRef(
+                asset_id="vid_1",
+                sha256=v_hash,
+                kind="video",
+                path=str(src_video),
+                duration_s=1.5,
+                has_audio=False,
+            )
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="vid_1",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.2,
+                source_start_s=0.0,
+                role="a_roll",
+                reframed_to_target=True,
+            )
+        ],
+        overlay_compositions=[credit],
+        audio_tracks=[],
+        verifier_passed=True,
+    )
+    out_mp4 = tmp_path / "onepass.mp4"
+    res = assemble_hybrid_deliverable(
+        plan,
+        target,
+        out_mp4,
+        captions_ass_path=cap_ass,
+        encode_preset="ultrafast",
+    )
+    assert res.output_path.is_file()
+    qc = audit_mastered_deliverable(out_mp4, target, require_audio=False, check_visual=False)
+    assert qc.passed is True, qc.errors

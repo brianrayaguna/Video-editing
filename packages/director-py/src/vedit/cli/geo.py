@@ -650,6 +650,7 @@ REJECTED_SCENE_LAYER_TYPES = frozenset(
 )
 
 _TEXT_LAYER_TYPES = frozenset({"glow_label", "pin_label", "curved_pointer_label", "year_badge"})
+_THREE_D_MODELS = frozenset({"transmission_tower", "solar_farm", "substation", "survey_vessel"})
 
 _REVEAL_MODES = frozenset(
     {"fade", "radial", "organic", "wipe_left", "wipe_right", "wipe_down", "wipe_up"}
@@ -660,6 +661,10 @@ _POLYGON_NUMERIC_KEYS: dict[str, tuple[float, float | None]] = {
     "flag_wave_cycles": (0.0, None),
     "flag_wave_angle_deg": (-360.0, 360.0),
     "fill_reveal_roughness": (0.0, 0.6),
+}
+_POLYGON_OPT_BOOL_FLOAT_KEYS: dict[str, tuple[float, float]] = {
+    "flag_gloss": (0.0, 1.0),
+    "flag_wave_warp": (0.0, 0.15),
 }
 # Polygon keys whose unknown values the renderer would silently replace with a default.
 _POLYGON_ENUM_KEYS: dict[str, frozenset[Any]] = {
@@ -843,24 +848,37 @@ def validate_map_scene(
                 "which blur below ~2 km. Use tile_source 'hybrid' or 'realistic' and fetch "
                 "high-resolution tiles with `vedit geo prepare --hq`."
             )
-        if check_hq_tiles and closeup_centers and hq_dir is not None:
+        use_project_tiles = tile_source in {"project", "project_graded"}
+        project_tiles_spec = spec.get("project_tiles_dir")
+        if use_project_tiles and not project_tiles_spec:
+            errors.append(
+                f"[{act_id}] tile_source '{tile_source}' requires top-level 'project_tiles_dir'."
+            )
+        if check_hq_tiles and closeup_centers and (hq_dir is not None or use_project_tiles):
+            probe_root = hq_dir
+            if use_project_tiles and project_tiles_spec:
+                p_dir = Path(str(project_tiles_spec))
+                probe_root = p_dir if p_dir.is_absolute() else ((base_dir or Path.cwd()) / p_dir)
             for lng, lat, z in closeup_centers:
                 check_z = min(16, max(13, round(z)))
                 found_z: int | None = None
-                for probe_z in range(check_z, 12, -1):
-                    tx, ty = _deg2num(lat, lng, probe_z)
-                    if (hq_dir / str(probe_z) / str(tx) / f"{ty}.jpg").is_file():
-                        found_z = probe_z
-                        break
+                if probe_root is not None:
+                    for probe_z in range(check_z, 12, -1):
+                        tx, ty = _deg2num(lat, lng, probe_z)
+                        if (probe_root / str(probe_z) / str(tx) / f"{ty}.jpg").is_file():
+                            found_z = probe_z
+                            break
                 has_hq = found_z is not None
                 if (
-                    has_hq
+                    not use_project_tiles
+                    and has_hq
                     and z >= 14.5
                     and (found_z is None or found_z <= S2_CLOUDLESS_MAX_NATIVE_Z)
+                    and probe_root is not None
                 ):
                     has_ortho = any(
                         (
-                            hq_dir
+                            probe_root
                             / str(oz)
                             / str(_deg2num(lat, lng, oz)[0])
                             / f"{_deg2num(lat, lng, oz)[1]}.jpg"
@@ -875,13 +893,19 @@ def validate_map_scene(
                             "supply a project-scoped aerial plate."
                         )
                 if not has_hq:
-                    errors.append(
-                        f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
-                        "high-resolution aerial tiles in assets/geo/tiles_hq/. Run "
-                        f"`vedit geo prepare --bbox \"{lng-0.06:.3f},{lat-0.06:.3f},"
-                        f"{lng+0.06:.3f},{lat+0.06:.3f}:13,14,15,16\" --hq "
-                        "-o media/maps/vectors.json` first."
-                    )
+                    if use_project_tiles:
+                        errors.append(
+                            f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
+                            f"project tiles in {probe_root} covering z13-16."
+                        )
+                    else:
+                        errors.append(
+                            f"[{act_id}] close-up at [{lng:.4f}, {lat:.4f}] z={z:.1f} has no "
+                            "high-resolution aerial tiles in assets/geo/tiles_hq/. Run "
+                            f"`vedit geo prepare --bbox \"{lng-0.06:.3f},{lat-0.06:.3f},"
+                            f"{lng+0.06:.3f},{lat+0.06:.3f}:13,14,15,16\" --hq "
+                            "-o media/maps/vectors.json` first."
+                        )
                     break
 
         # 4. Camera dynamism check (reject flat/static maps)
@@ -933,6 +957,18 @@ def validate_map_scene(
                     errors.append(
                         f"[{act_id}] layer #{idx} {key} must be a number {bound}, "
                         f"got {layer[key]!r}."
+                    )
+            for key, (lo, hi) in _POLYGON_OPT_BOOL_FLOAT_KEYS.items():
+                if key not in layer:
+                    continue
+                raw_val = layer[key]
+                if isinstance(raw_val, bool):
+                    continue
+                val = _as_finite_float(raw_val)
+                if val is None or val < lo or val > hi:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} {key} must be true/false or between "
+                        f"{lo:g} and {hi:g}, got {raw_val!r}."
                     )
             code = layer.get("flag_fill")
             if code:
@@ -996,6 +1032,161 @@ def validate_map_scene(
                         "(countries.<ISO>) or reveal multi-part regions with border_draw_s."
                     )
 
+        # 6. 3D scene layers (cable_3d, model_3d, volume_3d)
+        for idx, layer in enumerate(layers):
+            ltype = str(layer.get("type") or "")
+            if ltype == "cable_3d":
+                coords = layer.get("coords")
+                coords_ref = layer.get("coords_ref")
+                if not coords_ref and (not isinstance(coords, list) or len(coords) < 2):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} cable_3d requires coords (len >= 2) or "
+                        "coords_ref."
+                    )
+                if "end_taper_m" in layer and layer["end_taper_m"] is not None:
+                    et = _as_finite_float(layer["end_taper_m"])
+                    if et is None or et < 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} cable_3d end_taper_m must be >= 0, "
+                            f"got {layer['end_taper_m']!r}."
+                        )
+                if "min_screen_radius_px" in layer and layer["min_screen_radius_px"] is not None:
+                    mr = _as_finite_float(layer["min_screen_radius_px"])
+                    if mr is None or mr <= 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} cable_3d min_screen_radius_px must be > 0, "
+                            f"got {layer['min_screen_radius_px']!r}."
+                        )
+            elif ltype == "model_3d":
+                mtype = str(layer.get("model") or "")
+                gltf_url = layer.get("gltf_url")
+                if not gltf_url and mtype not in _THREE_D_MODELS:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} model_3d has unknown model {mtype!r}; "
+                        f"expected one of {sorted(_THREE_D_MODELS)} or gltf_url."
+                    )
+                if gltf_url:
+                    g_raw = str(gltf_url).strip()
+                    if not g_raw.startswith(("http://", "https://")):
+                        g_rel = g_raw.lstrip("/")
+                        candidates = []
+                        if base_dir is not None:
+                            candidates.append(base_dir / g_rel)
+                            if g_rel.startswith("project_models/"):
+                                candidates.append(
+                                    base_dir / "models" / g_rel[len("project_models/"):]
+                                )
+                        if repo_root is not None:
+                            candidates.append(repo_root / "assets" / "geo" / g_rel)
+                            candidates.append(repo_root / "assets" / "geo" / "models" / g_rel)
+                        if candidates and not any(c.is_file() for c in candidates):
+                            errors.append(
+                                f"[{act_id}] layer #{idx} model_3d gltf_url {gltf_url!r} "
+                                "not found in project models/ or assets/geo/models/."
+                            )
+                coord = layer.get("coord")
+                path = layer.get("path")
+                has_coord = isinstance(coord, list) and len(coord) >= 2
+                has_path = isinstance(path, list) and len(path) >= 2
+                if not has_coord and not has_path:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} model_3d requires coord [lng, lat] or path."
+                    )
+            elif ltype == "volume_3d":
+                coord = layer.get("coord")
+                if not (isinstance(coord, list) and len(coord) >= 2):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} volume_3d requires coord [lng, lat]."
+                    )
+                for dim in ("width_m", "length_m", "height_m"):
+                    dval = _as_finite_float(layer.get(dim))
+                    if dval is None or dval <= 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} volume_3d {dim} must be > 0, "
+                            f"got {layer.get(dim)!r}."
+                        )
+
+        # 7. Preflight viewport edge-clipping, caption-band, and cable/substation clearance checks
+        cam_points: list[tuple[float, list[float], float, float]] = []
+        for kf in kfs:
+            if isinstance(kf, dict):
+                tk = float(kf.get("t", kf.get("t_s", 0.0)))
+                ctr = kf.get("center") or [kf.get("lng", 0.0), kf.get("lat", 0.0)]
+                zk = float(kf.get("zoom", 5.0))
+                bk = float(kf.get("bearing", 0.0))
+            elif len(kf) >= 4:
+                tk, ctr, zk = float(kf[0]), [float(kf[1]), float(kf[2])], float(kf[3])
+                bk = float(kf[4]) if len(kf) > 4 else 0.0
+            else:
+                continue
+            cam_points.append((tk, [float(ctr[0]), float(ctr[1])], zk, bk))
+        cam_points.sort(key=lambda item: item[0])
+
+        substations = [
+            layer.get("coord")
+            for layer in layers
+            if str(layer.get("type") or "") == "model_3d"
+            and str(layer.get("model") or "") == "substation"
+            and isinstance(layer.get("coord"), list)
+            and len(layer["coord"]) >= 2
+        ]
+        for idx, layer in enumerate(layers):
+            ltype = str(layer.get("type") or "")
+            if (
+                ltype in {"pin_label", "glow_label"}
+                and cam_points
+                and isinstance(layer.get("coord"), list)
+                and len(layer["coord"]) >= 2
+            ):
+                t0 = float(layer.get("start_s", 0.0))
+                t1 = float(layer.get("end_s", dur if dur > 0 else t0 + 1.0))
+                t_mid = 0.5 * (t0 + t1)
+                nearest_cam = min(cam_points, key=lambda item: abs(item[0] - t_mid))
+                xp, yp = _approx_viewport_pct(
+                    float(layer["coord"][0]),
+                    float(layer["coord"][1]),
+                    nearest_cam[1],
+                    nearest_cam[2],
+                    nearest_cam[3],
+                    width,
+                    height,
+                    dx=float(layer.get("dx") or 0.0),
+                    dy=float(layer.get("dy") or 0.0),
+                )
+                if -0.25 <= xp <= 1.25 and -0.25 <= yp <= 1.25:
+                    if xp < 0.06 or xp > 0.94:
+                        warnings.append(
+                            f"[{act_id}] layer #{idx} ({ltype}) projected x={xp:.2f} nears "
+                            "viewport side margin (<0.06 or >0.94); adjust dx or x_pct."
+                        )
+                    if height > width and 0.66 <= yp <= 0.84:
+                        warnings.append(
+                            f"[{act_id}] layer #{idx} ({ltype}) projected y={yp:.2f} enters "
+                            "protected caption band [0.66, 0.84]."
+                        )
+            elif ltype == "cable_3d" and substations:
+                raw_coords = (
+                    _resolve_geom_ref(vectors, layer.get("coords_ref"))
+                    or layer.get("coords")
+                    or []
+                )
+                if isinstance(raw_coords, list) and len(raw_coords) >= 3:
+                    for wi in range(1, len(raw_coords) - 1):
+                        wp = raw_coords[wi]
+                        if not isinstance(wp, list) or len(wp) < 2:
+                            continue
+                        for sc in substations:
+                            dist_m = _haversine_m(
+                                float(wp[0]), float(wp[1]), float(sc[0]), float(sc[1])
+                            )
+                            if dist_m < 250.0:
+                                warnings.append(
+                                    f"[{act_id}] layer #{idx} cable_3d intermediate waypoint "
+                                    f"#{wi} passes within {dist_m:.0f}m of substation center; "
+                                    "route clear of structure roof."
+                                )
+                                break
+
     return {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
@@ -1016,6 +1207,89 @@ def _escape_geo_ass_text(text: str) -> str:
     return cleaned.replace("\n", r"\N")
 
 
+def _haversine_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2.0) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2.0) ** 2
+    return 2.0 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _approx_viewport_pct(
+    lng: float,
+    lat: float,
+    center: list[float],
+    zoom: float,
+    bearing_deg: float,
+    width: int,
+    height: int,
+    *,
+    dx: float = 0.0,
+    dy: float = 0.0,
+) -> tuple[float, float]:
+    scale = 512.0 * (2.0**zoom)
+
+    def _merc(lon_v: float, lat_v: float) -> tuple[float, float]:
+        s = math.sin(math.radians(max(-85.0, min(85.0, lat_v))))
+        mx = ((lon_v + 180.0) / 360.0) * scale
+        my = (0.5 - math.log((1.0 + s) / (1.0 - s)) / (4.0 * math.pi)) * scale
+        return mx, my
+
+    px, py = _merc(lng, lat)
+    cx, cy = _merc(center[0], center[1])
+    vx, vy = px - cx, py - cy
+    rad = math.radians(-bearing_deg)
+    rx = vx * math.cos(rad) - vy * math.sin(rad)
+    ry = vx * math.sin(rad) + vy * math.cos(rad)
+    sx = width * 0.5 + rx + dx
+    sy = height * 0.5 + ry + dy
+    return sx / max(1, width), sy / max(1, height)
+
+
+def _segments_from_words(words: list[dict[str, Any]], max_words: int = 8) -> list[dict[str, Any]]:
+    if not words:
+        return []
+    out: list[dict[str, Any]] = []
+    bucket: list[dict[str, Any]] = []
+    group_limit = max(4, min(10, max_words * 2))
+    for w in words:
+        txt = str(w.get("text") or "").strip()
+        if not txt:
+            continue
+        t0 = float(w.get("start_s", w.get("start", 0.0)))
+        if bucket:
+            prev_end = float(bucket[-1].get("end_s", bucket[-1].get("end", t0)))
+            if t0 - prev_end >= 0.35 or len(bucket) >= group_limit:
+                out.append(
+                    {
+                        "start": float(bucket[0].get("start_s", bucket[0].get("start", 0.0))),
+                        "end": prev_end,
+                        "text": " ".join(str(x.get("text") or "").strip() for x in bucket),
+                    }
+                )
+                bucket = []
+        bucket.append(w)
+        if txt.endswith((".", "?", "!", ",")) and len(bucket) >= max(2, max_words):
+            out.append(
+                {
+                    "start": float(bucket[0].get("start_s", bucket[0].get("start", 0.0))),
+                    "end": float(w.get("end_s", w.get("end", t0 + 0.2))),
+                    "text": " ".join(str(x.get("text") or "").strip() for x in bucket),
+                }
+            )
+            bucket = []
+    if bucket:
+        out.append(
+            {
+                "start": float(bucket[0].get("start_s", bucket[0].get("start", 0.0))),
+                "end": float(bucket[-1].get("end_s", bucket[-1].get("end", 0.0))),
+                "text": " ".join(str(x.get("text") or "").strip() for x in bucket),
+            }
+        )
+    return out
+
+
 def build_geoverum_ass_captions(
     transcript_data: dict[str, Any] | list[dict[str, Any]],
     *,
@@ -1025,8 +1299,9 @@ def build_geoverum_ass_captions(
     margin_v: int = 348,
     fade_in_ms: int = 130,
     fade_out_ms: int = 0,
+    font_name: str = "Rubik",
 ) -> str:
-    """Build locked Geoverum boxless bottom-band Rubik ASS subtitles from transcript segments.
+    """Build locked Geoverum boxless bottom-band ASS subtitles from segments or words.
 
     Each caption group fades in over ``fade_in_ms`` and leaves over ``fade_out_ms``
     (default 0: a hard cut to the next group). Both are clamped to 0-200 ms.
@@ -1036,11 +1311,12 @@ def build_geoverum_ass_captions(
     fade_in = max(0, min(200, int(fade_in_ms)))
     fade_out = max(0, min(200, int(fade_out_ms)))
     fade_tag = f"{{\\fad({fade_in},{fade_out})}}" if (fade_in or fade_out) else ""
-    segments = (
-        transcript_data
-        if isinstance(transcript_data, list)
-        else list(transcript_data.get("segments") or [])
-    )
+    if isinstance(transcript_data, list):
+        segments = transcript_data
+    else:
+        segments = list(transcript_data.get("segments") or [])
+        if not segments and isinstance(transcript_data.get("words"), list):
+            segments = _segments_from_words(list(transcript_data["words"]), max_words=max_words)
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -1053,7 +1329,7 @@ def build_geoverum_ass_captions(
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        f"Style: Default,Rubik,{font_size},&H00FFFFFF,&H0000FFFF,&H90000000,&HA0000000,"
+        f"Style: Default,{font_name},{font_size},&H00FFFFFF,&H0000FFFF,&H90000000,&HA0000000,"
         f"-1,0,0,0,100,100,0,0,1,1.6,3.2,2,60,60,{margin_v},1",
         "",
         "[Events]",
@@ -1061,8 +1337,8 @@ def build_geoverum_ass_captions(
     ]
 
     for seg in segments:
-        t0 = float(seg.get("start", 0.0)) / speed
-        t1 = float(seg.get("end", t0 + 0.5)) / speed
+        t0 = float(seg.get("start", seg.get("start_s", 0.0))) / speed
+        t1 = float(seg.get("end", seg.get("end_s", t0 + 0.5))) / speed
         raw_text = " ".join(str(seg.get("text") or "").split())
         if not raw_text or t1 <= t0:
             continue
@@ -1115,7 +1391,7 @@ def geo_validate_scene_cmd(
 @geo_app.command("build-captions")
 def geo_build_captions_cmd(
     transcript_file: Annotated[
-        Path, typer.Argument(help="Transcript JSON with `segments: [{start, end, text}]`.")
+        Path, typer.Argument(help="Transcript JSON with `segments` or word-level `words`.")
     ],
     out_file: Annotated[
         Path, typer.Option("--out-file", "-o", help="Destination ASS subtitle path.")
@@ -1124,31 +1400,66 @@ def geo_build_captions_cmd(
         float, typer.Option("--speed", help="Audio playback speed multiplier (e.g. 1.3).")
     ] = 1.0,
     max_words: Annotated[
-        int, typer.Option("--max-words", help="Maximum words per caption group.")
-    ] = 4,
+        int | None, typer.Option("--max-words", help="Maximum words per caption group.")
+    ] = None,
     font_size: Annotated[
-        int, typer.Option("--font-size", help="ASS font size on 1080x1920 canvas.")
-    ] = 56,
+        int | None, typer.Option("--font-size", help="ASS font size on 1080x1920 canvas.")
+    ] = None,
     margin_v: Annotated[
-        int, typer.Option("--margin-v", help="Bottom safe margin in px (default 348 -> y~80%).")
-    ] = 348,
+        int | None, typer.Option("--margin-v", help="Bottom safe margin in px.")
+    ] = None,
     fade_in_ms: Annotated[
-        int, typer.Option("--fade-in-ms", help="Caption fade-in in ms (0-200).")
-    ] = 130,
+        int | None, typer.Option("--fade-in-ms", help="Caption fade-in in ms (0-200).")
+    ] = None,
     fade_out_ms: Annotated[
-        int, typer.Option("--fade-out-ms", help="Caption fade-out in ms (0 = hard cut out).")
-    ] = 0,
+        int | None,
+        typer.Option("--fade-out-ms", help="Caption fade-out in ms (0 = hard cut out)."),
+    ] = None,
+    brand: Annotated[
+        str | None,
+        typer.Option("--brand", help="Brand profile ID to load caption defaults from."),
+    ] = "geoverum",
 ) -> None:
-    """Generate locked Geoverum boxless bottom-band Rubik ASS subtitles."""
+    """Generate locked Geoverum boxless bottom-band ASS subtitles."""
+    eff_max_words = 4
+    eff_font_size = 56
+    eff_margin_v = 348
+    eff_fade_in = 130
+    eff_fade_out = 0
+    eff_font = "Rubik"
+    if brand:
+        try:
+            policy_path = (
+                find_repo_root() / "profiles" / "brands" / brand / "brand_style_policy.json"
+            )
+            if policy_path.is_file():
+                pol = json.loads(policy_path.read_text(encoding="utf-8"))
+                typo = ((pol.get("soft_priors") or {}).get("visual_tokens") or {}).get(
+                    "typography"
+                ) or {}
+                eff_max_words = int(typo.get("max_words_per_caption_group", eff_max_words))
+                eff_font_size = int(typo.get("caption_font_px_9x16", eff_font_size))
+                eff_margin_v = int(typo.get("caption_margin_v_px_9x16", eff_margin_v))
+                if typo.get("caption_fade_in_ms") is not None:
+                    eff_fade_in = int(typo["caption_fade_in_ms"])
+                if typo.get("caption_fade_out_ms") is not None:
+                    eff_fade_out = int(typo["caption_fade_out_ms"])
+                raw_fam = typo.get("caption_font_family")
+                if isinstance(raw_fam, str) and raw_fam.strip():
+                    eff_font = raw_fam.split(",")[0].strip().strip("'\"") or eff_font
+        except FileNotFoundError:
+            pass
+
     data = json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
     ass_text = build_geoverum_ass_captions(
         data,
         speed=speed,
-        max_words=max_words,
-        font_size=font_size,
-        margin_v=margin_v,
-        fade_in_ms=fade_in_ms,
-        fade_out_ms=fade_out_ms,
+        max_words=max_words if max_words is not None else eff_max_words,
+        font_size=font_size if font_size is not None else eff_font_size,
+        margin_v=margin_v if margin_v is not None else eff_margin_v,
+        fade_in_ms=fade_in_ms if fade_in_ms is not None else eff_fade_in,
+        fade_out_ms=fade_out_ms if fade_out_ms is not None else eff_fade_out,
+        font_name=eff_font,
     )
     out = out_file.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1164,6 +1475,9 @@ _SFX_LAYER_MAP: dict[str, tuple[str, float]] = {
     "dashed_distance": ("whoosh_fast.wav", -11.5),
     "curved_arc_arrow": ("whoosh_fast.wav", -11.5),
     "route": ("whoosh_deep.wav", -12.0),
+    "cable_3d": ("whoosh_deep.wav", -12.0),
+    "model_3d": ("sub_thud.wav", -10.0),
+    "volume_3d": ("flash_swish.wav", -10.5),
     "radar_rings": ("radar_ping.wav", -13.0),
     "counter_odometer": ("counter_tick.wav", -11.0),
     "human_silhouette_row": ("pop_bright.wav", -11.0),
@@ -1391,7 +1705,7 @@ def geo_mix_audio_cmd(
 
         chains.append(
             f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:normalize=0,"
-            "loudnorm=I=-14.0:TP=-1.5:LRA=7[out_a]"
+            "loudnorm=I=-14.0:TP=-1.5:LRA=7,alimiter=limit=-1.0dB:level=disabled[out_a]"
         )
         cmd.extend(
             [
@@ -1463,6 +1777,17 @@ def geo_bake_scene_cmd(
             "are reported as coverage_unfillable.",
         ),
     ] = False,
+    only_act: Annotated[
+        list[str] | None,
+        typer.Option("--only-act", help="Bake only specific act_id(s) (repeatable)."),
+    ] = None,
+    preview_keyframes: Annotated[
+        int | None,
+        typer.Option(
+            "--preview-keyframes",
+            help="Fast visual check: render N evenly sampled keyframe JPEGs + contact sheet.",
+        ),
+    ] = None,
 ) -> None:
     """Expand smooth camera plans and bake declarative world-space map scenes via MapLibre."""
     root = find_repo_root()
@@ -1510,6 +1835,12 @@ def geo_bake_scene_cmd(
 
     try:
         runner = root / "tools" / "geo-assets" / "render_map_scene.mjs"
+        extra_args: list[str] = []
+        for aid in only_act or []:
+            extra_args.extend(["--only-act", aid])
+        if preview_keyframes is not None and preview_keyframes > 0:
+            extra_args.extend(["--preview-keyframes", str(preview_keyframes)])
+
         if fill_tiles:
             coverage_path = expanded_path.with_suffix(".coverage.json")
             try:
@@ -1526,6 +1857,7 @@ def geo_bake_scene_cmd(
                         "--coverage-only",
                         "--coverage-out",
                         str(coverage_path),
+                        *[a for aid in (only_act or []) for a in ("--only-act", aid)],
                     ],
                     check=False,
                 )
@@ -1552,6 +1884,7 @@ def geo_bake_scene_cmd(
                 str(scene_path.parent),
                 "--out-dir",
                 str(out_dir.expanduser().resolve()),
+                *extra_args,
             ],
             check=False,
         )

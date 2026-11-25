@@ -745,16 +745,20 @@ def _check_soft_temporal_priors(
             overlap = max(0.0, min(c_end, sec_end) - max(c_start, sec_start))
             if overlap > 0:
                 visual_beats += clip.visual_beat_count * (overlap / clip.timeline_duration_s)
-        cpm = ((cuts + visual_beats) / sec_dur) * 60.0
+        raw_cuts_cpm = (cuts / sec_dur) * 60.0
+        beat_cpm = ((cuts + visual_beats) / sec_dur) * 60.0
+        is_continuous_camera = visual_beats > 0 and raw_cuts_cpm <= 6.0
         lo_cpm, hi_cpm = prior.cuts_per_min_range
-        if cpm < lo_cpm * 0.55 or cpm > hi_cpm * 1.45:
+        if beat_cpm < lo_cpm * 0.55 or (
+            not is_continuous_camera and beat_cpm > hi_cpm * 1.45
+        ) or (is_continuous_camera and raw_cuts_cpm > hi_cpm * 1.45):
             warnings.append(
                 VerificationIssue(
                     severity="warning",
                     code="SOFT_TEMPORAL_CURVE_DRIFT",
                     target_id=section,
                     message=(
-                        f"Section {section} cuts/min={cpm:.1f} outside soft prior "
+                        f"Section {section} cuts/min={beat_cpm:.1f} outside soft prior "
                         f"[{lo_cpm:.1f}, {hi_cpm:.1f}] (advisory)."
                     ),
                 )

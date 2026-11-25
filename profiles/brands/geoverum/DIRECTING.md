@@ -155,13 +155,13 @@ The *story need* column is mandatory. A visual answer without a stated need is d
 3. **The signature image persists and mutates.** A line drawn on "this line" stays for the whole film and is reused as the mechanism's edge. A focal shape survives surface cuts.
 4. **Re-frame recurring places differently each time**: fill, title, threat icon, measurement, pins. Repetition builds ownership without repeating a shot.
 5. **Contrasting entities get contrasting treatments**: a documentary dive for one, a satirical icon set for the other.
-6. **Make invisible qualities literal**: weather as particles, danger as a footprint-matched icon on the place, absence as an icon with a prohibition mark, sparseness as items placed one at a time on a wide shot.
+6. **Make invisible qualities literal on the map**: weather as particles, active corridors as physical `cable_3d` links and `model_3d` assets, capacity or spatial impossibility as true-scale `volume_3d` prisms or unpowered infrastructure (`powered: false`), reserving prohibition slashes strictly for literal legal bans, and sparseness as items placed one at a time on a wide shot.
 7. **Bring abstraction to human scale** once per film: a pinned place the viewer knows, a street cut by a rule, two people disagreeing across a line.
 8. **Mirror sentence grammar.** A causal chain of N links in one sentence pops N icons in spoken order; a list of causes uses a different icon family per cause, worst last.
 9. **Counters land on the word.** Count-ups span the spoken phrase and reach the final value as the number is said; roll speed expresses escalation.
 10. **Familiar anchors for scale**: tile a familiar silhouette across the zone, transplant the shape onto a familiar region, or overlay a translucent silhouette at true scale.
 11. **Numbers on the geometry.** Distances are measurement lines with dual-unit labels rotated along the line, re-proven at each new zoom level.
-12. **Park graphics above the caption band.** Keep the active region in the upper 55–60% of the frame and re-centre with camera moves; never let graphics fight the captions.
+12. **Park graphics above the protected caption band.** Keep active in-world labels and callouts above `y = 66%` (`y = 66–84%` protected caption clearance) and inside `6%–94%` horizontal margins, re-centering with camera moves so graphics never collide with captions or frame edges.
 
 ### 5.3 Device selection by story need
 
@@ -169,8 +169,10 @@ The *story need* column is mandatory. A visual answer without a stated need is d
 | :--- | :--- |
 | Locate a place | Dive-zoom from a recognisable parent; fill in mention order; pin 0–0.25 s before the name |
 | Introduce a territory or border | Trace the outline from the story anchor, then fill; one-headed north-to-south line for a border shared by two filled countries |
-| Show nationality or ownership | Flag clipped to the territory, revealed from an irregular seed (`organic`) or a bottom-up wipe, with a gentle cloth ripple while it holds, optionally replaced by the story's flat colour |
-| Prove scale | Familiar silhouette tiling; shape transplant; translucent overlay; pull-out until the subject is a pinhead |
+| Show nationality or ownership | Flag clipped to the territory, revealed from an irregular seed (`organic`) or a bottom-up wipe, rendered `source-over` with wind-gust cloth warp and satin sheen |
+| Show infrastructure, energy, or subsea links | Pitched 3D map geometry (`cable_3d` physical armored/catenary link, `model_3d` towers/substations/solar farms/vessels, `.glb` assets) fused into terrain |
+| Prove scale or spatial impossibility | True-meter `volume_3d` prism on terrain; familiar silhouette tiling; shape transplant; pull-out until the subject is a pinhead |
+| Show negation, bypass, or shortage | Spatial proof on the map (`powered: false` unlit grid, route bypassing an isolated hub, `volume_3d` exceeding landmass bounds); reserve prohibition slashes for literal legal bans |
 | Prove distance | Measurement line with count-up and dual units; glowing travel line for non-contiguous links |
 | Explain a physical process | Actors (clouds, wind, water) moving and being blocked; cross-section zoom-through; horizon-level terrain flight for vertical facts |
 | Explain a historical process | Era register (parchment, serif stamp); entities popping in birth order; growth fill with the camera travelling in the growth direction |
@@ -204,8 +206,9 @@ Every film is reviewed on rendered frames, not only on the plan:
 
 1. Render a low-resolution preview.
 2. `vedit critique packet --storyboard … --camera-track … --video … -o …` runs the idiom check and the camera shake budget, and renders grid-anchored contact sheets at each beat's sync word (columns A–F, rows 1–10).
-3. The reviewer scores every rubric criterion in `directing_idioms.json` from 0 to 1, citing frame labels and grid cells, and lists fixes per beat.
-4. `vedit critique gate` passes only when the deterministic checks pass, the weighted rubric score reaches `0.8`, and no criterion is below `0.5`. Otherwise apply the fixes and repeat (two or three rounds at most).
+3. Alongside beat-level sheets, inspect an action-checkpoint and transition-window view covering exact action peaks (tool/stamp contact, border closure, odometer landing, callout lock-on) and transition boundaries (`t_cut - 2f`, `t_cut`, `t_cut + 2f`) so easing discontinuities, off-target pointers, or mistimed directional blurs are caught before final render.
+4. The reviewer scores every rubric criterion in `directing_idioms.json` from 0 to 1, citing frame labels and grid cells, and lists fixes per beat.
+5. `vedit critique gate` passes only when the deterministic checks pass, the weighted rubric score reaches `0.8`, and no criterion is below `0.5`. Otherwise apply the fixes and repeat (two or three rounds at most).
 
 
 ---
@@ -236,6 +239,7 @@ Within one film, each kind of jump keeps its own device so transitions read as g
 
 | Jump | Device |
 | :--- | :--- |
+| Contiguous map acts in the same world | Exact camera match-frame (`hard_cut` with identical end/start camera coordinates and framing) |
 | Regional leap or scale change | Dive-zoom or whip-zoom with radial blur (0.25–1.0 s) |
 | Map → diagram | Zoom through the last icon |
 | Chapter reset | Dip to black (≈0.5 s) or full graphic clear by dissolve |

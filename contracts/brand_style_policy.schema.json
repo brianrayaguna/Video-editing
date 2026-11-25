@@ -92,7 +92,16 @@
                 "caption_fade_in_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "caption_fade_out_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "max_words_per_caption_group": { "type": "integer", "minimum": 1, "maximum": 12 },
-                "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] }
+                "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] },
+                "caption_font_family": { "type": "string" },
+                "caption_font_px_9x16": { "type": "integer", "minimum": 20, "maximum": 120 },
+                "caption_margin_v_px_9x16": { "type": "integer", "minimum": 0, "maximum": 960 },
+                "caption_band_y_pct_9x16": {
+                  "type": "array",
+                  "items": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
               }
             },
             "motion_style": {

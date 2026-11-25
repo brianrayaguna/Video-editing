@@ -265,11 +265,21 @@ def storyboard_check_cmd(
     brand: BrandOpt = None,
     idioms_file: IdiomsOpt = None,
     min_score: Annotated[float, typer.Option(help="Fail below this score.")] = 70.0,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
+    out_file: Annotated[
+        Path | None,
+        typer.Option("--out-file", "-o", help="Optional path to persist the check report."),
+    ] = None,
 ) -> None:
     """Check a storyboard against the brand's executable directing idioms."""
+    del as_json
     sb = _read(storyboard_file)
     report = check_storyboard(sb, _idioms(brand, idioms_file, sb)).to_dict()
     report["min_score"] = min_score
+    if out_file is not None:
+        _write(out_file, report)
     typer.echo(json.dumps(report, indent=2, ensure_ascii=False))
     if not report["passed"] or report["score"] < min_score:
         raise typer.Exit(code=1)

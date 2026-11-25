@@ -28,6 +28,23 @@
           "is_filler": { "type": "boolean", "default": false }
         }
       }
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "id": { "type": ["integer", "string"] },
+          "start": { "type": "number", "minimum": 0 },
+          "end": { "type": "number", "minimum": 0 },
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "text": { "type": "string" },
+          "speaker": { "type": ["string", "integer", "null"] }
+        }
+      }
     }
   }
 }

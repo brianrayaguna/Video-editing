@@ -170,9 +170,22 @@ def director_plan_cmd(
 
 @director_app.command("verify")
 def director_verify_cmd(
-    plan_file: Annotated[Path, typer.Option("--plan-file", help="EditPlan JSON path.")],
-    policy_file: Annotated[Path, typer.Option("--policy-file", help="BrandStylePolicy JSON path.")],
-    platform_id: Annotated[str, typer.Option("--platform", help="Target platform preset ID.")],
+    plan_file: Annotated[
+        Path | None, typer.Option("--plan-file", help="EditPlan JSON path.")
+    ] = None,
+    policy_file: Annotated[
+        Path | None, typer.Option("--policy-file", help="BrandStylePolicy JSON path.")
+    ] = None,
+    platform_id: Annotated[
+        str | None, typer.Option("--platform", help="Target platform preset ID.")
+    ] = None,
+    project_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-dir",
+            help="Optional project directory containing project.json to auto-resolve paths.",
+        ),
+    ] = None,
     transcript_file: Annotated[Path | None, typer.Option("--transcript-file")] = None,
     brand_dir: Annotated[
         Path | None, typer.Option("--brand-dir", help="Brand dir for templates/catalog.json.")
@@ -189,10 +202,38 @@ def director_verify_cmd(
     ] = False,
     report_out: Annotated[
         Path | None,
-        typer.Option("--report-out", help="Optional path to persist the verification report JSON."),
+        typer.Option(
+            "--report-out",
+            "--out-file",
+            "-o",
+            help="Optional path to persist the verification report JSON.",
+        ),
     ] = None,
 ) -> None:
     """Verify an EditPlan deterministically against BrandStylePolicy and PlatformTarget."""
+    if project_dir is not None:
+        proj_root = project_dir.expanduser().resolve()
+        manifest_path = proj_root / "project.json"
+        if not manifest_path.is_file():
+            raise typer.BadParameter(f"Missing project.json in {proj_root}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if plan_file is None:
+            plan_file = proj_root / "plan" / "edit_plan.json"
+        if platform_id is None:
+            platform_id = manifest.get("platform_target_id")
+        brand_id = manifest.get("brand_id")
+        if brand_dir is None and brand_id:
+            candidate_brand = find_repo_root() / "profiles" / "brands" / str(brand_id)
+            if candidate_brand.is_dir():
+                brand_dir = candidate_brand
+        if policy_file is None and brand_dir is not None:
+            policy_file = brand_dir / "brand_style_policy.json"
+        if transcript_file is None and (proj_root / "plan" / "transcript.json").is_file():
+            transcript_file = proj_root / "plan" / "transcript.json"
+    if plan_file is None or policy_file is None or platform_id is None:
+        raise typer.BadParameter(
+            "Provide --project-dir or all of --plan-file, --policy-file, and --platform."
+        )
     platforms = load_platform_targets()
     if platform_id not in platforms:
         raise typer.BadParameter(f"Unknown platform target: {platform_id}")
@@ -350,7 +391,10 @@ def compile_cmd(
 @app.command("master", rich_help_panel="Production")
 def master_cmd(
     plan_file: Annotated[Path, typer.Option("--plan-file", help="EditPlan JSON path.")],
-    output: Annotated[Path, typer.Option("--output", "-o", help="Final mastered MP4 output path.")],
+    output: Annotated[
+        Path,
+        typer.Option("--output", "--out-file", "-o", help="Final mastered MP4 output path."),
+    ],
     platform_id: Annotated[str | None, typer.Option("--platform")] = None,
     overlay_video: Annotated[
         Path | None, typer.Option("--overlay-video", help="Rendered transparent HyperFrames MOV.")
@@ -361,6 +405,14 @@ def master_cmd(
             "--overlay-segment",
             help="Sparse overlay segment spec 'start_s:end_s:path.mov' (repeatable).",
         ),
+    ] = None,
+    captions_ass: Annotated[
+        Path | None,
+        typer.Option("--captions-ass", help="Optional ASS subtitle file to burn in one pass."),
+    ] = None,
+    fonts_dir: Annotated[
+        Path | None,
+        typer.Option("--fonts-dir", help="Optional font directory for external ASS subtitles."),
     ] = None,
     render_overlays: Annotated[
         bool,
@@ -423,6 +475,8 @@ def master_cmd(
         output,
         overlay_video_path=overlay_video,
         overlay_segments=parsed_segments or None,
+        captions_ass_path=captions_ass,
+        fonts_dir=fonts_dir,
         use_ass_fastpath=ass_fastpath,
         encode_preset=preset,
         use_hardware_encoder=hw_encode,
@@ -482,6 +536,10 @@ def audit_cmd(
             help="Optional JPEG path to render a side-by-side REF vs deliverable contact sheet.",
         ),
     ] = None,
+    out_file: Annotated[
+        Path | None,
+        typer.Option("--out-file", "-o", help="Optional path to save audit JSON report."),
+    ] = None,
 ) -> None:
     """Run deterministic ffprobe, EBU R128, and visual QC verification on a deliverable video."""
     platforms = load_platform_targets()
@@ -499,7 +557,12 @@ def audit_cmd(
         sheet = generate_diff_contact_sheet(media_file, reference, diff_sheet)
         if sheet is not None:
             qc.metrics["diff_sheet_path"] = str(sheet)
-    typer.echo(json.dumps(qc.to_dict(), indent=2, default=str))
+    payload_json = json.dumps(qc.to_dict(), indent=2, default=str)
+    if out_file is not None:
+        out_path = out_file.expanduser().resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(payload_json + "\n", encoding="utf-8")
+    typer.echo(payload_json)
     if not qc.passed:
         raise typer.Exit(code=1)
 

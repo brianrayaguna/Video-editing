@@ -7,6 +7,8 @@
  *   parent-tile quadrant cropping via `sharp` when an out-of-AOI high-zoom tile is requested.
  * - `GET /tiles_hybrid/{z}/{x}/{y}.jpg`: nearest of the graded and high-resolution sets, with
  *   high-resolution tiles passed through the same documentary grade as `assets/geo/tiles/`.
+ * - `GET /tiles_project/{z}/{x}/{y}.jpg` and `/tiles_project_graded/{z}/{x}/{y}.jpg`: nearest of
+ *   the project-scoped tile directory (when configured) and `assets/geo/tiles/`.
  * - `GET /vector/*`, `/fonts/*`, `/flags/*`, `/icons/*`, `/vendor/*` from `assets/geo/`.
  * - `GET /health` -> `200 OK` JSON status.
  */
@@ -41,9 +43,13 @@ const MIME_TYPES = {
   ".json": "application/json; charset=utf-8",
   ".geojson": "application/geo+json; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".ttf": "font/ttf",
   ".woff2": "font/woff2",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".wasm": "application/wasm",
 };
 
 const MAX_TILE_ZOOM = 22;
@@ -169,6 +175,11 @@ export const MAX_FETCH_ZOOM = 16;
  * native resolution ends at z14; the HQ routes can also draw on orthoimagery to z16.
  */
 export const ROUTE_MAX_FETCH_ZOOM = Object.freeze({ tiles: 14, tiles_hq: MAX_FETCH_ZOOM, tiles_hybrid: MAX_FETCH_ZOOM });
+const ALL_COVERAGE_MAX_ZOOM = Object.freeze({
+  ...ROUTE_MAX_FETCH_ZOOM,
+  tiles_project: MAX_FETCH_ZOOM,
+  tiles_project_graded: MAX_FETCH_ZOOM,
+});
 
 /**
  * Coverage report for recorded gaps: every gap once under `tiles`, plus the gaps each raster
@@ -180,7 +191,10 @@ export function coverageReport(tileGaps) {
     .sort((a, b) => a.z - b.z || a.x - b.x || a.y - b.y);
   const byRoute = Object.fromEntries(Object.keys(ROUTE_MAX_FETCH_ZOOM).map((route) => [route, []]));
   for (const g of gaps) {
-    for (const route of g.routes || []) byRoute[route]?.push([g.z, g.x, g.y]);
+    for (const route of g.routes || []) {
+      if (!(route in byRoute) && route in ALL_COVERAGE_MAX_ZOOM) byRoute[route] = [];
+      byRoute[route]?.push([g.z, g.x, g.y]);
+    }
   }
   return { tiles: gaps.map((g) => [g.z, g.x, g.y]), by_route: byRoute };
 }
@@ -269,8 +283,12 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
   const geoRoot = options.geoRoot ? resolve(options.geoRoot) : GEO_ROOT;
   const tilesDir = join(geoRoot, "tiles");
   const tilesHqDir = join(geoRoot, "tiles_hq");
+  const projectTilesDir = options.projectTilesDir ? resolve(options.projectTilesDir) : null;
+  const projectModelsDir = options.projectModelsDir ? resolve(options.projectModelsDir) : null;
+  const projectModelsReal = projectModelsDir && existsSync(projectModelsDir) ? realpathSync(projectModelsDir) : projectModelsDir;
   const demDir = join(geoRoot, "dem");
   const hasHqTile = (pz, px, py) => existsSync(join(tilesHqDir, String(pz), String(px), `${py}.jpg`));
+  const hasProjectTile = (pz, px, py) => Boolean(projectTilesDir) && existsSync(join(projectTilesDir, String(pz), String(px), `${py}.jpg`));
   const hasRegularTile = (pz, px, py) => existsSync(join(tilesDir, String(pz), String(px), `${py}.jpg`));
   const caches = {
     fallbackCache: new Map(),
@@ -282,7 +300,7 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
   const tileGaps = options.recordGaps ? new Map() : null;
   const noteGap = (route, z, x, y, hasHq, hqMinZoom) => {
     if (!tileGaps) return;
-    const gap = gapForTile(z, x, y, hasHq, hasRegularTile, hqMinZoom, ROUTE_MAX_FETCH_ZOOM[route]);
+    const gap = gapForTile(z, x, y, hasHq, hasRegularTile, hqMinZoom, ALL_COVERAGE_MAX_ZOOM[route] ?? MAX_FETCH_ZOOM);
     if (!gap) return;
     const key = `${z}/${x}/${y}`;
     const known = tileGaps.get(key);
@@ -379,6 +397,43 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         return;
       }
 
+      const projectMatch = pathname.match(/^\/tiles_project(_graded)?\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
+      if (projectMatch) {
+        const gradeProject = Boolean(projectMatch[1]);
+        const routeName = gradeProject ? "tiles_project_graded" : "tiles_project";
+        const z = Number(projectMatch[2]);
+        const x = Number(projectMatch[3]);
+        const y = Number(projectMatch[4]);
+        if (!isValidTileCoord(z, x, y)) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        noteGap(routeName, z, x, y, projectTilesDir ? hasProjectTile : noTile, 0);
+        let buf = null;
+        if (projectTilesDir) {
+          const pick = pickTileSource(z, x, y, hasProjectTile, hasRegularTile, 0);
+          if (pick?.source === "hq") {
+            buf = await resolveHqOrRegularTile(tilesDir, projectTilesDir, caches, z, x, y, 0, 90, gradeProject);
+          } else {
+            buf = await resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
+          }
+        } else {
+          buf = await resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
+        }
+        if (!buf) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+        res.end(buf);
+        return;
+      }
+
       const tileMatch = pathname.match(/^\/tiles\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
       if (tileMatch) {
         const z = Number(tileMatch[1]);
@@ -425,6 +480,44 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
           "Cache-Control": "public, max-age=31536000, immutable",
         });
         res.end(buf);
+        return;
+      }
+
+      if (pathname.startsWith("/project_models/")) {
+        if (!projectModelsReal) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const rawModelRel = pathname.slice("/project_models/".length);
+        if (rawModelRel.split(/[\\/]/).includes("..")) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const relModel = normalize(rawModelRel).replace(/^\/+/, "");
+        const modelPath = resolve(projectModelsReal, relModel);
+        if (
+          (modelPath !== projectModelsReal && !modelPath.startsWith(projectModelsReal + sep)) ||
+          !existsSync(modelPath) ||
+          !statSync(modelPath).isFile()
+        ) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const realModel = realpathSync(modelPath);
+        if (realModel !== projectModelsReal && !realModel.startsWith(projectModelsReal + sep)) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const ext = extname(realModel).toLowerCase();
+        res.writeHead(200, {
+          "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+        res.end(readFileSync(realModel));
         return;
       }
 

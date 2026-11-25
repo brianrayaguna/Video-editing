@@ -267,3 +267,76 @@ test("the server starts when launched through a symlink in a directory with a sp
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("projectTilesDir serves exact and ancestor-cropped tiles on /tiles_project/", async () => {
+  const geoRoot = mkdtempSync(join(tmpdir(), "geo-proj-"));
+  const projectTilesDir = join(geoRoot, "project_tiles");
+  try {
+    mkdirSync(join(projectTilesDir, "13", "6460"), { recursive: true });
+    await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 24, g: 168, b: 96 } },
+    })
+      .jpeg({ quality: 90 })
+      .toFile(join(projectTilesDir, "13", "6460", "4072.jpg"));
+
+    const server = await startTileServer(0, "127.0.0.1", { geoRoot, projectTilesDir });
+    try {
+      const { port } = server.address();
+      const exact = await fetch(`http://127.0.0.1:${port}/tiles_project/13/6460/4072.jpg`);
+      assert.equal(exact.status, 200);
+      const child = await fetch(`http://127.0.0.1:${port}/tiles_project/14/12920/8144.jpg`);
+      assert.equal(child.status, 200);
+      const px = await sharp(Buffer.from(await child.arrayBuffer())).raw().toBuffer();
+      assert.ok(px[1] > 120, "expected green ancestor crop from projectTilesDir");
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    rmSync(geoRoot, { recursive: true, force: true });
+  }
+});
+
+test("projectModelsDir serves .glb and .wasm with proper MIME and blocks traversal, and project tile routes record coverage gaps", async () => {
+  const geoRoot = mkdtempSync(join(tmpdir(), "geo-mod-"));
+  const projectModelsDir = join(geoRoot, "proj_models");
+  try {
+    mkdirSync(join(geoRoot, "tiles", "10", "5"), { recursive: true });
+    mkdirSync(projectModelsDir, { recursive: true });
+    await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 20, g: 80, b: 120 } },
+    })
+      .jpeg({ quality: 90 })
+      .toFile(join(geoRoot, "tiles", "10", "5", "5.jpg"));
+    writeFileSync(join(projectModelsDir, "tower.glb"), Buffer.from("glTF-binary-stub"));
+    writeFileSync(join(projectModelsDir, "decoder.wasm"), Buffer.from("wasm-stub"));
+    writeFileSync(join(geoRoot, "secret.txt"), "secret");
+
+    const server = await startTileServer(0, "127.0.0.1", {
+      geoRoot,
+      projectModelsDir,
+      recordGaps: true,
+    });
+    try {
+      const { port } = server.address();
+      const glbRes = await fetch(`http://127.0.0.1:${port}/project_models/tower.glb`);
+      assert.equal(glbRes.status, 200);
+      assert.equal(glbRes.headers.get("content-type"), "model/gltf-binary");
+
+      const wasmRes = await fetch(`http://127.0.0.1:${port}/project_models/decoder.wasm`);
+      assert.equal(wasmRes.status, 200);
+      assert.equal(wasmRes.headers.get("content-type"), "application/wasm");
+
+      const badRes = await fetch(`http://127.0.0.1:${port}/project_models/..%2fsecret.txt`);
+      assert.equal(badRes.status, 404);
+
+      const tileRes = await fetch(`http://127.0.0.1:${port}/tiles_project/14/80/80.jpg`);
+      assert.equal(tileRes.status, 200);
+      assert.ok(server.tileGaps.has("14/80/80"));
+      assert.deepEqual(server.tileGaps.get("14/80/80").routes, ["tiles_project"]);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    rmSync(geoRoot, { recursive: true, force: true });
+  }
+});

@@ -12,7 +12,8 @@
   "dependencies": {
     "@hyperframes/core": "0.9.68",
     "@hyperframes/lint": "0.9.68",
-    "@hyperframes/producer": "0.9.68"
+    "@hyperframes/producer": "0.9.68",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
