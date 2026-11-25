@@ -781,6 +781,24 @@ def plan_narrative_audio_cues(
                         "pan": 0.0,
                     }
                 )
+            elif ltype == "model_3d":
+                impacts.append(
+                    {
+                        "start_s": round(t0, 3),
+                        "character": "reveal",
+                        "gain_db": -14.5,
+                        "pan": 0.0,
+                    }
+                )
+            elif ltype in ("cable_3d", "volume_3d"):
+                whooshes.append(
+                    {
+                        "start_s": round(t0, 3),
+                        "duration_s": 0.38,
+                        "direction": "in",
+                        "gain_db": -15.5,
+                    }
+                )
         time_offset += dur
 
     if storyboard:

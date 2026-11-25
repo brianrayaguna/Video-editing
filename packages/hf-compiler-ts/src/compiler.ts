@@ -592,6 +592,35 @@ function resolveMotionPhysics(ov: OverlayCompositionOp, duration: number): Resol
   };
 }
 
+function resolveCaptionTypographyOverrides(
+  ov: OverlayCompositionOp,
+  width: number,
+  height: number,
+  safeZone: SafeZoneMargins
+): {
+  symXPct: number;
+  captionFontPx: number;
+  hasBottomOverride: boolean;
+  captionBottomPct: number;
+} {
+  const symXPct = computeSymmetricMarginPct(safeZone);
+  const rawBottomPct = ov.props.caption_bottom_pct;
+  const hasBottomOverride = typeof rawBottomPct === "number" && Number.isFinite(rawBottomPct);
+  const scaledBottomPct =
+    hasBottomOverride && rawBottomPct > 0 && rawBottomPct <= 1.0
+      ? rawBottomPct * 100
+      : rawBottomPct;
+  const captionBottomPct = hasBottomOverride
+    ? Math.max(0, Math.min(90, Number((scaledBottomPct as number).toFixed(1))))
+    : computeCaptionBottomPct(safeZone, width, height);
+  const rawFontPx = ov.props.caption_font_px;
+  const captionFontPx =
+    typeof rawFontPx === "number" && Number.isFinite(rawFontPx)
+      ? Math.max(16, Math.min(160, Math.round(rawFontPx)))
+      : computeProportionalCaptionFontPx(width, height);
+  return { symXPct, captionFontPx, hasBottomOverride, captionBottomPct };
+}
+
 function buildOverlayCompositionHtml(
   ov: OverlayCompositionOp,
   sceneId: string,
@@ -615,7 +644,8 @@ function buildOverlayCompositionHtml(
   const duration = Number(ov.timeline_duration_s.toFixed(3));
   const isCaption = ov.kind === "caption_rail";
   const scaleFactor = Math.min(width, height) / 1080;
-  const captionFontPx = computeProportionalCaptionFontPx(width, height);
+  const { symXPct, captionFontPx, hasBottomOverride, captionBottomPct } =
+    resolveCaptionTypographyOverrides(ov, width, height, safeZone);
   const headlineFontPx = Math.round(48 * scaleFactor);
   const subtitleFontPx = Math.round(24 * scaleFactor);
   const badgeFontPx = Math.round(16 * scaleFactor);
@@ -662,7 +692,9 @@ function buildOverlayCompositionHtml(
     : "";
   const posCss = hasCustomHtml
     ? "inset: 0;"
-    : computeBandPositionCss(band, safeZone, width, height, ov.props.box);
+    : band === "lower_third" && hasBottomOverride && !ov.props.box
+      ? `bottom: ${captionBottomPct}%; left: ${symXPct}%; right: ${symXPct}%; display: flex; justify-content: center; align-items: flex-end;`
+      : computeBandPositionCss(band, safeZone, width, height, ov.props.box);
   const bgFill = ov.transparent ? "transparent" : "var(--vedit-ground)";
   const rootBgLayer = ov.transparent
     ? ""
@@ -868,17 +900,8 @@ function renderParameterizedTemplate(
           ? "none"
           : "expo.out";
 
-  const symXPct = computeSymmetricMarginPct(safeZone);
-  const rawBottomPct = ov.props.caption_bottom_pct;
-  const hasBottomOverride = typeof rawBottomPct === "number" && Number.isFinite(rawBottomPct);
-  const captionBottomPct = hasBottomOverride
-    ? Math.max(0, Math.min(90, Number(rawBottomPct.toFixed(1))))
-    : computeCaptionBottomPct(safeZone, width, height);
-  const rawFontPx = ov.props.caption_font_px;
-  const captionFontPx =
-    typeof rawFontPx === "number" && Number.isFinite(rawFontPx)
-      ? Math.max(16, Math.min(160, Math.round(rawFontPx)))
-      : computeProportionalCaptionFontPx(width, height);
+  const { symXPct, captionFontPx, hasBottomOverride, captionBottomPct } =
+    resolveCaptionTypographyOverrides(ov, width, height, safeZone);
   const safeBand: SafeBand = ov.safe_band ?? "lower_third";
   const bandPositionCss =
     safeBand === "lower_third" && hasBottomOverride && !ov.props.box

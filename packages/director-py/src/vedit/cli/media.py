@@ -223,10 +223,14 @@ def remove_silence_cmd(
 def inspect_audio_cmd(
     media_file: Annotated[Path, typer.Argument(help="Raw voiceover or field recording path.")],
     out_file: Annotated[
-        Path | None, typer.Option("--out", "-o", help="Optional JSON report path.")
+        Path | None, typer.Option("--out", "--out-file", "-o", help="Optional JSON report path.")
     ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
 ) -> None:
     """Inspect production sound health (clipping, SNR, sub-80 Hz rumble, plosives)."""
+    del as_json
     report = audit_production_sound(media_file).to_dict()
     payload = json.dumps(report, indent=2)
     if out_file is not None:

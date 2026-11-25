@@ -1988,3 +1988,30 @@ test("matte_mode, parent_overlay_id, and short kinetic legibility warnings behav
   assert.equal(lintResult.totalErrors, 0);
   assert.equal(lintResult.ok, true);
 });
+
+test("fractional caption_bottom_pct normalizes to percentage bottom CSS", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-frac-bottom-"));
+  const plan = makeSamplePlan({
+    duration_s: 2.0,
+    overlay_compositions: [
+      {
+        overlay_id: "cap_frac",
+        kind: "caption_rail",
+        template_id: "caption_rail",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 1.5,
+        transparent: true,
+        safe_band: "lower_third",
+        props: {
+          text: "Lower band",
+          caption_bottom_pct: 0.18125,
+          font_family: "Rubik",
+        },
+      },
+    ],
+  });
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+  assert.equal(compiled.compositionFiles.length, 1);
+  const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_frac.html"), "utf8");
+  assert.match(capHtml, /bottom:\s*18\.1%;/);
+});

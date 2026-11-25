@@ -604,7 +604,8 @@ def audit_cmd(
 def cloud_render_cmd(
     plan_file: Annotated[Path, typer.Option("--plan-file", help="Verified EditPlan JSON path.")],
     output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Local output deliverable MP4 path.")
+        Path | None,
+        typer.Option("--output", "--out-file", "-o", help="Local output deliverable MP4 path."),
     ] = None,
     platform_id: Annotated[str | None, typer.Option("--platform")] = None,
     chunk_frames: Annotated[

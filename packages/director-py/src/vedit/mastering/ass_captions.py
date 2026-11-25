@@ -149,9 +149,12 @@ def _caption_style(
     )
     spacing = _num("caption_letter_spacing")
     bold_raw = merged.get("caption_bold", True)
+    norm_bottom = (
+        (bottom_pct / 100.0) if (bottom_pct is not None and bottom_pct > 1.0) else bottom_pct
+    )
     return {
         "font_px": round(font_px) if font_px and font_px > 0 else default_px,
-        "bottom_pct": min(max(bottom_pct, 0.0), 0.9) if bottom_pct is not None else None,
+        "bottom_pct": min(max(norm_bottom, 0.0), 0.9) if norm_bottom is not None else None,
         "bold": bool(bold_raw),
         "opacity": min(max(opacity, 0.0), 1.0) if opacity is not None else 1.0,
         "outline_px": max(_num("caption_outline_px") or 0.0, 0.0)

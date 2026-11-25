@@ -421,6 +421,17 @@ def _build_overlays(
                 "pattern": "clean_caption_rail",
                 **motion,
             }
+            is_portrait = platform_target.height > platform_target.width
+            if typo.caption_font_family:
+                caption_props["caption_font_family"] = typo.caption_font_family
+            if is_portrait and typo.caption_font_px_9x16 is not None:
+                caption_props["caption_font_px"] = max(
+                    16, round(typo.caption_font_px_9x16 * (platform_target.height / 1920.0))
+                )
+            if is_portrait and typo.caption_margin_v_px_9x16 is not None:
+                caption_props["caption_bottom_pct"] = round(
+                    typo.caption_margin_v_px_9x16 / 1920.0, 5
+                )
             if typo.caption_fade_in_ms is not None:
                 caption_props["caption_fade_in_ms"] = typo.caption_fade_in_ms
             if typo.caption_fade_out_ms is not None:

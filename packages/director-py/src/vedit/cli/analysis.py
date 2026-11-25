@@ -320,10 +320,14 @@ def breakdown_editorial_cmd(
         typer.Option("--storyboard", help="Optional Storyboard JSON for tension-curve comparison."),
     ] = None,
     out_file: Annotated[
-        Path | None, typer.Option("--out", "-o", help="Optional JSON output path.")
+        Path | None, typer.Option("--out", "--out-file", "-o", help="Optional JSON output path.")
     ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
 ) -> None:
     """Analyze cross-cut eye-trace, luma/Lab shock, J/L edits, mono phase, and tension."""
+    del as_json
     from vedit.analyzers.editorial_forensics import analyze_editorial_forensics
 
     cuts_s: list[float] = []

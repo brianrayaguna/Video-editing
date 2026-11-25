@@ -1860,9 +1860,15 @@ def geo_mix_audio_cmd(
             "-i",
             str(bgm_path),
         ]
+        synth_transient_times = [
+            float(fx["t_s"])
+            for fx in extra_fx
+            if Path(str(fx["path"])).stem.startswith(("impact_", "whoosh_", "stinger_"))
+        ]
         all_sfx = [
             {"t_s": ev["t_s"], "path": sfx_dir / ev["sfx"], "gain_db": ev["gain_db"], "pan": 0.0}
             for ev in events
+            if not any(abs(float(ev["t_s"]) - st) <= 0.18 for st in synth_transient_times)
         ] + extra_fx
         for ev in all_sfx:
             cmd.extend(["-i", str(ev["path"])])

@@ -290,10 +290,14 @@ def storyboard_check_cmd(
 def storyboard_shot_list_cmd(
     storyboard_file: Annotated[Path, typer.Argument(help="Storyboard JSON.")],
     out: Annotated[
-        Path | None, typer.Option("--out", "-o", help="Optional shot list JSON path.")
+        Path | None, typer.Option("--out", "--out-file", "-o", help="Optional shot list JSON path.")
     ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit JSON output (always JSON, for CLI parity).")
+    ] = True,
 ) -> None:
     """Export a structured production shot list from storyboard beats, shots, and blocking."""
+    del as_json
     shot_list = export_shot_list(_read(storyboard_file))
     if out is not None:
         _write(out, shot_list)

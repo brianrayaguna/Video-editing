@@ -12,7 +12,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from vedit.cli import app
-from vedit.contracts import load_platform_targets
+from vedit.contracts import find_repo_root, load_brand_template_catalog, load_platform_targets
+from vedit.director.planner import build_edit_plan
+from vedit.mastering.ass_captions import write_ass_overlays_file
 from vedit.mastering.ffmpeg_master import (
     _derive_split_edit_audio_tracks,
     assemble_hybrid_deliverable,
@@ -35,8 +37,13 @@ from vedit.mastering.sound_design import (
 from vedit.models import (
     AssetRef,
     AudioTrackOp,
+    BrandStylePolicy,
+    BrandTemplateCatalog,
     ColorCorrectionSpec,
+    ColorGradeSpec,
     EditPlan,
+    MediaProbeResult,
+    NormalizedTranscript,
     OverlayCompositionOp,
     PlatformTarget,
     VideoClipOp,
@@ -485,3 +492,187 @@ def test_blend_mode_auto_resolve_shot_match_and_spectral_qc(tmp_path: Path) -> N
     qc = audit_mastered_deliverable(out_mp4, _test_target(), check_visual=False)
     assert qc.passed
     assert "low_to_mid_db" in qc.metrics
+
+
+def test_cross_commit_caption_ssot_3d_audio_cues_and_single_pass_grade(tmp_path: Path) -> None:
+    vid = _make_test_video(tmp_path / "src.mp4", color="#183040", dur_s=2.0)
+    repo = find_repo_root()
+    policy = BrandStylePolicy.model_validate(
+        json.loads(
+            (repo / "profiles" / "brands" / "geoverum" / "brand_style_policy.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(
+            repo / "profiles" / "brands" / "geoverum" / "templates" / "catalog.json"
+        )
+    )
+    shorts = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    probe = MediaProbeResult.model_validate(
+        {
+            "schema_version": "1.0",
+            "path": str(vid),
+            "sha256": "e" * 64,
+            "file_bytes": vid.stat().st_size,
+            "container": {"format_name": "mp4", "duration_s": 2.0},
+            "video": {
+                "present": True,
+                "width": 360,
+                "height": 640,
+                "fps": 30.0,
+                "is_cfr": True,
+            },
+            "audio": {
+                "present": True,
+                "sample_rate_hz": 48000,
+                "channels": 2,
+                "silence_intervals": [],
+                "silence_ratio": 0.0,
+            },
+            "shots": [
+                {
+                    "shot_index": 0,
+                    "start_s": 0.0,
+                    "end_s": 2.0,
+                    "duration_s": 2.0,
+                    "confidence": 0.9,
+                }
+            ],
+            "shot_stats": {
+                "count": 1,
+                "asl_p25_s": 2.0,
+                "asl_p50_s": 2.0,
+                "asl_p75_s": 2.0,
+                "cuts_per_min": 0.0,
+            },
+            "visual": {
+                "sampled_frames": 2,
+                "palette": [],
+                "palette_entropy": 0.0,
+                "mean_luminance": 60.0,
+                "band_luminance": {"upper": 60.0, "center": 60.0, "lower_third": 60.0},
+                "mean_sharpness": 100.0,
+                "black_intervals": [],
+                "keyframes": [],
+            },
+            "timing_ms": {
+                "hash_ms": 1,
+                "ffprobe_ms": 5,
+                "stream_analyze_ms": 5,
+                "total_ms": 11,
+            },
+        }
+    )
+    transcript = NormalizedTranscript.model_validate(
+        {
+            "provider": "mock",
+            "source_hash": "f" * 64,
+            "language": "en",
+            "duration_s": 2.0,
+            "text": "Deep cable corridor",
+            "words": [
+                {"text": "Deep", "start_s": 0.1, "end_s": 0.5, "confidence": 0.99},
+                {"text": "cable", "start_s": 0.5, "end_s": 0.9, "confidence": 0.99},
+                {"text": "corridor", "start_s": 0.9, "end_s": 1.4, "confidence": 0.99},
+            ],
+        }
+    )
+    plan, report = build_edit_plan(
+        job_id="job_ssot",
+        project_id="proj_ssot",
+        probe=probe,
+        policy=policy,
+        platform_target=shorts,
+        transcript=transcript,
+        template_catalog=catalog,
+    )
+    assert report.passed
+    cap_ovs = [o for o in plan.overlay_compositions if o.kind == "caption_rail"]
+    assert cap_ovs
+    assert str(cap_ovs[0].props["caption_font_family"]).startswith("Rubik")
+    assert cap_ovs[0].props["caption_font_px"] == 56
+    assert cap_ovs[0].props["caption_bottom_pct"] == round(348 / 1920.0, 5)
+
+    ass_out = write_ass_overlays_file(cap_ovs, shorts, tmp_path / "ssot_caps.ass")
+    ass_txt = ass_out.read_text(encoding="utf-8")
+    assert "Style: CaptionLower,Rubik,56," in ass_txt
+    assert ",348,1\n" in ass_txt
+
+    # 3D map layers trigger procedural audio cues cleanly.
+    cues_3d = plan_narrative_audio_cues(
+        {
+            "acts": [
+                {
+                    "duration_s": 3.0,
+                    "layers": [
+                        {"type": "cable_3d", "start_s": 0.4},
+                        {"type": "model_3d", "start_s": 1.2},
+                        {"type": "volume_3d", "start_s": 2.1},
+                    ],
+                }
+            ]
+        }
+    )
+    assert len(cues_3d["impacts"]) == 1
+    assert len(cues_3d["whooshes"]) == 2
+
+    # Combined single-pass captions_ass_path + Stage-2 color_grade + podcast_video loudness profile.
+    ext_ass = tmp_path / "ext_caps.ass"
+    write_ass_overlays_file(cap_ovs, _test_target(), ext_ass)
+    graded_plan = EditPlan(
+        job_id="job_combo",
+        project_id="proj_combo",
+        brand_id="geoverum",
+        platform_target_id="test_9x16",
+        render_strategy="hybrid",
+        duration_s=2.0,
+        fps=30,
+        width=360,
+        height=640,
+        assets=[
+            AssetRef(
+                asset_id="v1",
+                sha256="a" * 32,
+                kind="video",
+                path=str(vid),
+                has_audio=True,
+            )
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="v1",
+                timeline_start_s=0.0,
+                timeline_duration_s=2.0,
+                source_start_s=0.0,
+                role="a_roll",
+                color_grade=ColorGradeSpec(preset="cool_investigative", intensity=0.8),
+            )
+        ],
+        overlay_compositions=[],
+        audio_tracks=[
+            AudioTrackOp(
+                track_id="vo",
+                asset_id="v1",
+                audio_group="voiceover",
+                timeline_start_s=0.0,
+                timeline_duration_s=2.0,
+                source_start_s=0.0,
+            )
+        ],
+    )
+    combo_mp4 = tmp_path / "combo.mp4"
+    assemble_hybrid_deliverable(
+        graded_plan,
+        _test_target(),
+        combo_mp4,
+        captions_ass_path=ext_ass,
+        loudness_profile="podcast_video",
+        use_ass_fastpath=False,
+    )
+    combo_qc = audit_mastered_deliverable(
+        combo_mp4, _test_target(), check_visual=False, loudness_profile="podcast_video"
+    )
+    assert combo_qc.passed
