@@ -499,3 +499,597 @@ export function clipHomogeneousPolyline(verts, eps = 1e-4) {
   if (cur.length >= 2) out.push(cur);
   return out;
 }
+
+function clampUnit(u) {
+  const n = Number(u);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+/**
+ * Unit-domain cubic Bezier easing curve solver using Newton-Raphson iteration
+ * with a deterministic bisection fallback.
+ */
+export function cubicBezier(x1, y1, x2, y2) {
+  const cx1 = Math.max(0, Math.min(1, Number(x1) || 0));
+  const cy1 = Number.isFinite(Number(y1)) ? Number(y1) : 0;
+  const cx2 = Math.max(0, Math.min(1, Number(x2) || 1));
+  const cy2 = Number.isFinite(Number(y2)) ? Number(y2) : 1;
+  const sampleX = (t) => ((3 * (cx1 - cx2) + 1) * t + 3 * (cx2 - 2 * cx1)) * t * t + 3 * cx1 * t;
+  const sampleY = (t) => ((3 * (cy1 - cy2) + 1) * t + 3 * (cy2 - 2 * cy1)) * t * t + 3 * cy1 * t;
+  const slopeX = (t) => (3 * (3 * (cx1 - cx2) + 1) * t + 6 * (cx2 - 2 * cx1)) * t + 3 * cx1;
+  return (u) => {
+    const x = clampUnit(u);
+    if (x === 0) return 0;
+    if (x === 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = sampleX(t) - x;
+      if (Math.abs(err) < 1e-7) return sampleY(t);
+      const d = slopeX(t);
+      if (Math.abs(d) < 1e-6) break;
+      const next = t - err / d;
+      if (next < 0 || next > 1) break;
+      t = next;
+    }
+    let lo = 0;
+    let hi = 1;
+    t = x;
+    for (let i = 0; i < 20; i++) {
+      const err = sampleX(t) - x;
+      if (Math.abs(err) < 1e-7) break;
+      if (err < 0) lo = t;
+      else hi = t;
+      t = 0.5 * (lo + hi);
+    }
+    return sampleY(t);
+  };
+}
+
+export const editorialOut = cubicBezier(0.16, 1, 0.3, 1);
+
+export function easeOutQuint(u) {
+  const p = clampUnit(u);
+  return 1 - (1 - p) ** 5;
+}
+
+export function easeInOutQuart(u) {
+  const p = clampUnit(u);
+  return p < 0.5 ? 8 * p * p * p * p : 1 - ((-2 * p + 2) ** 4) / 2;
+}
+
+export function easeInQuad(u) {
+  const p = clampUnit(u);
+  return p * p;
+}
+
+/**
+ * Closed-form analytical damped spring evaluated at normalized time `tNorm` in [0, 1].
+ * Seek-safe for arbitrary frame access, hitting exact 0 at tNorm <= 0 and exact 1 at tNorm >= 1.
+ */
+export function springClosedForm(tNorm, { stiffness = 180, damping = 22, mass = 1, durationS = 0.65 } = {}) {
+  const u = clampUnit(tNorm);
+  if (u === 0) return 0;
+  if (u === 1) return 1;
+  const k = Math.max(1, Number(stiffness) || 180);
+  const c = Math.max(0.1, Number(damping) || 22);
+  const m = Math.max(0.05, Number(mass) || 1);
+  const dur = Math.max(0.05, Number(durationS) || 0.65);
+  const t = u * dur;
+  const w0 = Math.sqrt(k / m);
+  const zeta = c / (2 * Math.sqrt(k * m));
+  let residual;
+  if (zeta < 1 - 1e-4) {
+    const wd = w0 * Math.sqrt(1 - zeta * zeta);
+    residual = Math.exp(-zeta * w0 * t) * (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t));
+  } else if (zeta > 1 + 1e-4) {
+    const sq = Math.sqrt(zeta * zeta - 1);
+    const s1 = -w0 * (zeta - sq);
+    const s2 = -w0 * (zeta + sq);
+    residual = (s2 * Math.exp(s1 * t) - s1 * Math.exp(s2 * t)) / (s2 - s1);
+  } else {
+    residual = Math.exp(-w0 * t) * (1 + w0 * t);
+  }
+  const settleFade = 1 - u * u * u * u;
+  return 1 - residual * settleFade;
+}
+
+/** Unified named easing evaluator used across overlay and 3D animations. */
+export function evalEase(name, u) {
+  const p = clampUnit(u);
+  if (p === 0) return 0;
+  if (p === 1) return 1;
+  switch (name) {
+    case "linear":
+      return p;
+    case "out":
+      return 1 - (1 - p) ** 3;
+    case "in_out":
+      return p < 0.5 ? 4 * p * p * p : 1 - ((-2 * p + 2) ** 3) / 2;
+    case "expo_out":
+      return 1 - 2 ** (-10 * p);
+    case "quint_out":
+      return easeOutQuint(p);
+    case "quart_in_out":
+      return easeInOutQuart(p);
+    case "in_quad":
+      return easeInQuad(p);
+    case "in_cubic":
+      return p * p * p;
+    case "editorial_out":
+      return editorialOut(p);
+    case "spring_crisp":
+      return springClosedForm(p, { stiffness: 260, damping: 33, mass: 1, durationS: 0.55 });
+    case "spring_tactile":
+      return springClosedForm(p, { stiffness: 180, damping: 20, mass: 1, durationS: 0.75 });
+    case "spring_playful":
+      return springClosedForm(p, { stiffness: 220, damping: 14, mass: 1, durationS: 0.85 });
+    default:
+      return editorialOut(p);
+  }
+}
+
+const MERC_MAX_LAT = 85.05112877980659;
+
+/** Convert `[lng, lat]` (or `{lng, lat}`) to normalized Web Mercator `[0..1]` space. */
+export function lngLatToMercNorm(coord) {
+  const rawLng = Array.isArray(coord) ? Number(coord[0]) : Number(coord?.lng);
+  const rawLat = Array.isArray(coord) ? Number(coord[1]) : Number(coord?.lat);
+  const lng = Number.isFinite(rawLng) ? rawLng : 0;
+  const lat = Number.isFinite(rawLat) ? Math.max(-MERC_MAX_LAT, Math.min(MERC_MAX_LAT, rawLat)) : 0;
+  const sinLat = Math.sin((lat * Math.PI) / 180);
+  const x = (lng + 180) / 360;
+  const y = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
+  return { x, y };
+}
+
+/** Convert normalized Web Mercator `(mx, my)` back to `[lng, lat]`. */
+export function mercNormToLngLat(mx, my) {
+  const x = Number.isFinite(Number(mx)) ? Number(mx) : 0.5;
+  const y = Number.isFinite(Number(my)) ? Math.max(1e-7, Math.min(1 - 1e-7, Number(my))) : 0.5;
+  const lng = x * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
+  return [lng, lat];
+}
+
+function ringLLToMercUnwrapped(ringLL) {
+  const out = [];
+  let prevX = null;
+  for (const c of ringLL || []) {
+    if (!c) continue;
+    const rawLng = Array.isArray(c) ? Number(c[0]) : Number(c.lng);
+    const rawLat = Array.isArray(c) ? Number(c[1]) : Number(c.lat);
+    if (!Number.isFinite(rawLng) || !Number.isFinite(rawLat)) continue;
+    const m = lngLatToMercNorm([rawLng, rawLat]);
+    if (prevX !== null) {
+      while (m.x - prevX > 0.5) m.x -= 1;
+      while (m.x - prevX < -0.5) m.x += 1;
+    }
+    prevX = m.x;
+    out.push(m);
+  }
+  return openRing(out);
+}
+
+function extractTailByLength(pts, tailLen) {
+  if (!pts || pts.length < 2 || !(tailLen > 0)) return [];
+  const rev = [pts[pts.length - 1]];
+  let rem = tailLen;
+  for (let i = pts.length - 1; i > 0 && rem > 0; i--) {
+    const b = pts[i];
+    const a = pts[i - 1];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg > 0 && seg >= rem) {
+      const t = rem / seg;
+      rev.push({ x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t });
+      rem = 0;
+      break;
+    }
+    rev.push(a);
+    rem -= seg;
+  }
+  rev.reverse();
+  return rev;
+}
+
+/**
+ * World-space Web Mercator arc-length perimeter border trace.
+ * Keeps trace speed constant on the ground regardless of camera pitch or zoom,
+ * and emits trailing comet segments at advancing trace tips while `0 < progress < 1`.
+ */
+export function perimeterPartialPathsLngLat(ringsLL, progress, opts = {}) {
+  const p = clampUnit(progress);
+  if (p <= 0) return { paths: [], comets: [] };
+  const heads = opts.heads === 1 ? 1 : 2;
+  const cometFrac = Math.max(0, Math.min(0.5, Number(opts.cometFraction ?? 0.05) || 0));
+  const mercRings = [];
+  const ringIndices = [];
+  (ringsLL || []).forEach((raw, ri) => {
+    const m = ringLLToMercUnwrapped(raw);
+    if (m.length >= 2) {
+      mercRings.push(m);
+      ringIndices.push(ri);
+    }
+  });
+  const paths = [];
+  const comets = [];
+  mercRings.forEach((ring, idx) => {
+    const ri = ringIndices[idx];
+    const n = ring.length;
+    const total = ringLength(ring);
+    if (!(total > 0)) return;
+    const startRaw = Math.round(Number(pickOption(opts.startIndex, ri, 0)) || 0);
+    const start = ((startRaw % n) + n) % n;
+    if (p >= 1) {
+      const closed = [];
+      for (let k = 0; k <= n; k++) {
+        const q = ring[(start + k) % n];
+        closed.push(mercNormToLngLat(q.x, q.y));
+      }
+      paths.push(closed);
+      return;
+    }
+    const dir = Number(pickOption(opts.direction, ri, 1)) < 0 ? -1 : 1;
+    const pushWalk = (dist, walkDir) => {
+      const walked = walkRing(ring, start, walkDir, dist);
+      if (walked.length < 2) return;
+      paths.push(walked.map((q) => mercNormToLngLat(q.x, q.y)));
+      if (cometFrac > 0) {
+        const cometLen = Math.min(dist, total * cometFrac);
+        const tail = extractTailByLength(walked, cometLen);
+        if (tail.length >= 2) {
+          comets.push(tail.map((q) => mercNormToLngLat(q.x, q.y)));
+        }
+      }
+    };
+    if (heads === 1) {
+      pushWalk(p * total, dir);
+    } else {
+      pushWalk((p * total) / 2, dir);
+      pushWalk((p * total) / 2, -dir);
+    }
+  });
+  return { paths, comets };
+}
+
+/**
+ * Extract a travelling arc-length window along each ring in Mercator space
+ * (wrapping seamlessly around [0, 1]), used for perimeter rim glints.
+ */
+export function perimeterWindowPathsLngLat(ringsLL, startFrac, spanFrac, opts = {}) {
+  const span = Math.max(0, Math.min(1, Number(spanFrac) || 0));
+  if (span <= 0) return [];
+  const rawStart = Number(startFrac);
+  const startWrapped = Number.isFinite(rawStart) ? ((rawStart % 1) + 1) % 1 : 0;
+  const dir = Number(opts.direction ?? 1) < 0 ? -1 : 1;
+  const out = [];
+  for (const raw of ringsLL || []) {
+    const ring = ringLLToMercUnwrapped(raw);
+    const n = ring.length;
+    if (n < 2) continue;
+    const total = ringLength(ring);
+    if (!(total > 0)) continue;
+    const startDist = startWrapped * total;
+    const wantLen = span * total;
+    // Locate starting vertex + fractional offset along ring.
+    let i = 0;
+    let rem = startDist;
+    for (let step = 0; step < n; step++) {
+      const j = (i + dir + n) % n;
+      const seg = Math.hypot(ring[j].x - ring[i].x, ring[j].y - ring[i].y);
+      if (seg > 0 && rem <= seg) {
+        const t0 = rem / seg;
+        const pts = [{ x: ring[i].x + (ring[j].x - ring[i].x) * t0, y: ring[i].y + (ring[j].y - ring[i].y) * t0 }];
+        let left = wantLen;
+        let cur = pts[0];
+        let nextIdx = j;
+        let guard = 0;
+        while (left > 1e-12 && guard <= n + 2) {
+          guard++;
+          const target = ring[nextIdx];
+          const d = Math.hypot(target.x - cur.x, target.y - cur.y);
+          if (d > 0 && d >= left) {
+            const tf = left / d;
+            pts.push({ x: cur.x + (target.x - cur.x) * tf, y: cur.y + (target.y - cur.y) * tf });
+            left = 0;
+            break;
+          }
+          pts.push({ x: target.x, y: target.y });
+          left -= d;
+          cur = target;
+          nextIdx = (nextIdx + dir + n) % n;
+        }
+        if (pts.length >= 2) out.push(pts.map((q) => mercNormToLngLat(q.x, q.y)));
+        break;
+      }
+      rem -= seg;
+      i = j;
+    }
+  }
+  return out;
+}
+
+/**
+ * Compute world-space Mercator hatch spacing with logarithmic octave blending
+ * so surface-locked hatch lines never alias when zooming out or pop when zooming in.
+ */
+export function computeOctaveHatchSpacing(baseSpacingPx, zoom, refZoom = null) {
+  const px = Math.max(2, Number(baseSpacingPx) || 12);
+  const z = Number.isFinite(Number(zoom)) ? Number(zoom) : 6;
+  const rz =
+    refZoom !== null && refZoom !== undefined && refZoom !== "" && Number.isFinite(Number(refZoom))
+      ? Number(refZoom)
+      : z;
+  const dz = z - rz;
+  const octave = Math.floor(dz);
+  const frac = dz - octave;
+  const primarySpacingMerc = px / (512 * 2 ** (rz + octave));
+  return {
+    primarySpacingMerc,
+    subSpacingMerc: primarySpacingMerc * 0.5,
+    subAlpha: clampUnit(frac),
+    octave,
+    screenSpacingPx: primarySpacingMerc * 512 * 2 ** z,
+  };
+}
+
+/**
+ * Generate parallel world-space Mercator hatch lines covering `boundsLngLat`,
+ * quantized to the global binary Mercator grid so lines stay pinned to Earth.
+ */
+export function buildWorldHatchLines(
+  boundsLngLat,
+  { angleDeg = 45, spacingMerc = 0.001, maxLines = 180, padFrac = 0.15, segmentsPerLine = 8 } = {}
+) {
+  if (!boundsLngLat) return [];
+  const minLng = Number(boundsLngLat.minLng);
+  const maxLng = Number(boundsLngLat.maxLng);
+  const minLat = Math.max(-82, Math.min(82, Number(boundsLngLat.minLat)));
+  const maxLat = Math.max(-82, Math.min(82, Number(boundsLngLat.maxLat)));
+  if (![minLng, maxLng, minLat, maxLat].every(Number.isFinite)) return [];
+  const c00 = lngLatToMercNorm([minLng, maxLat]);
+  const c11 = lngLatToMercNorm([maxLng, minLat]);
+  const minX = Math.min(c00.x, c11.x);
+  const maxX = Math.max(c00.x, c11.x);
+  const minY = Math.min(c00.y, c11.y);
+  const maxY = Math.max(c00.y, c11.y);
+  const pad = Math.max(0, Number(padFrac) || 0);
+  const spanX = Math.max(1e-7, maxX - minX);
+  const spanY = Math.max(1e-7, maxY - minY);
+  const bx0 = minX - spanX * pad;
+  const bx1 = maxX + spanX * pad;
+  const by0 = Math.max(1e-6, minY - spanY * pad);
+  const by1 = Math.min(1 - 1e-6, maxY + spanY * pad);
+
+  const rad = ((Number.isFinite(Number(angleDeg)) ? Number(angleDeg) : 45) * Math.PI) / 180;
+  // Angle 45 deg tilts lower-left to upper-right in y-down Mercator space.
+  const ux = Math.cos(rad);
+  const uy = -Math.sin(rad);
+  const nx = Math.sin(rad);
+  const ny = Math.cos(rad);
+
+  const corners = [
+    [bx0, by0],
+    [bx1, by0],
+    [bx1, by1],
+    [bx0, by1],
+  ];
+  let nMin = Infinity;
+  let nMax = -Infinity;
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  for (const [cx, cy] of corners) {
+    const nv = cx * nx + cy * ny;
+    const uv = cx * ux + cy * uy;
+    if (nv < nMin) nMin = nv;
+    if (nv > nMax) nMax = nv;
+    if (uv < uMin) uMin = uv;
+    if (uv > uMax) uMax = uv;
+  }
+
+  const cap = Math.max(2, Math.min(400, Math.round(Number(maxLines) || 180)));
+  let step = Number.isFinite(Number(spacingMerc)) && Number(spacingMerc) > 0 ? Number(spacingMerc) : (nMax - nMin) / 20;
+  if (!(step > 0)) return [];
+  while ((nMax - nMin) / step + 1 > cap) {
+    step *= 2;
+  }
+  const kStart = Math.floor(nMin / step);
+  const kEnd = Math.ceil(nMax / step);
+  const segs = Math.max(2, Math.min(48, Math.round(Number(segmentsPerLine) || 8)));
+
+  const lines = [];
+  let idx = 0;
+  for (let k = kStart; k <= kEnd && lines.length < cap; k++) {
+    const nVal = k * step;
+    const coords = [];
+    for (let s = 0; s <= segs; s++) {
+      const uVal = uMin + ((uMax - uMin) * s) / segs;
+      const mx = nVal * nx + uVal * ux;
+      const my = nVal * ny + uVal * uy;
+      coords.push(mercNormToLngLat(mx, my));
+    }
+    lines.push({ index: idx++, gridK: k, isSub: Math.abs(k) % 2 === 1, coords });
+  }
+  return lines;
+}
+
+/** Slice a `[lng, lat]` polyline by normalized arc-length fraction `[fromFrac, toFrac]`. */
+export function slicePolylineFraction(coords, fromFrac, toFrac) {
+  if (!Array.isArray(coords) || coords.length < 2) return [];
+  const f0 = clampUnit(fromFrac);
+  const f1 = clampUnit(toFrac);
+  if (f1 <= f0 + 1e-7) return [];
+  if (f0 <= 1e-7 && f1 >= 1 - 1e-7) return coords;
+  const n = coords.length - 1;
+  const out = [];
+  const sampleAt = (frac) => {
+    const pos = frac * n;
+    const i = Math.min(n - 1, Math.max(0, Math.floor(pos)));
+    const t = pos - i;
+    const a = coords[i];
+    const b = coords[i + 1];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  out.push(sampleAt(f0));
+  const iStart = Math.floor(f0 * n) + 1;
+  const iEnd = Math.ceil(f1 * n) - 1;
+  for (let i = iStart; i <= iEnd; i++) {
+    if (i > 0 && i < coords.length) out.push(coords[i]);
+  }
+  out.push(sampleAt(f1));
+  return out;
+}
+
+/**
+ * Deterministic per-line reveal state for progressive interior hatching and contours.
+ */
+export function hatchLineRevealState(
+  lineIndex,
+  totalLines,
+  progress,
+  { mode = "staggered_draw", staggerFrac = 0.65, direction = "ltr", ease = "editorial_out" } = {}
+) {
+  const p = clampUnit(progress);
+  const total = Math.max(0, Math.round(Number(totalLines) || 0));
+  const idx = Math.max(0, Math.min(Math.max(0, total - 1), Math.round(Number(lineIndex) || 0)));
+  if (p <= 0 || total <= 0) {
+    return { active: false, drawFrom: 0, drawTo: 0, widthScale: 0, alpha: 0 };
+  }
+  if (mode === "fade") {
+    return { active: true, drawFrom: 0, drawTo: 1, widthScale: 1, alpha: p };
+  }
+  let rank = 0;
+  if (total > 1) {
+    if (direction === "rtl") rank = (total - 1 - idx) / (total - 1);
+    else if (direction === "center_out") {
+      const mid = (total - 1) / 2;
+      rank = mid > 0 ? Math.abs(idx - mid) / mid : 0;
+    } else {
+      rank = idx / (total - 1);
+    }
+  }
+  const stag = Math.max(0, Math.min(0.95, Number(staggerFrac ?? 0.65) || 0));
+  const start = rank * stag;
+  const span = Math.max(1e-4, 1 - stag);
+  const localRaw = (p - start) / span;
+  if (localRaw <= 0) {
+    return { active: false, drawFrom: 0, drawTo: 0, widthScale: 0, alpha: 0 };
+  }
+  const clampedLocal = Math.min(1, localRaw);
+  const eased = evalEase(ease, clampedLocal);
+  const drawLen = Math.max(0, Math.min(1, eased));
+  if (mode === "venetian_grow") {
+    return {
+      active: true,
+      drawFrom: 0,
+      drawTo: 1,
+      widthScale: Math.max(0, eased),
+      alpha: Math.min(1, Math.max(0, eased)),
+    };
+  }
+  if (mode === "contour_ripple") {
+    return {
+      active: true,
+      drawFrom: 0,
+      drawTo: 1,
+      widthScale: 0.6 + 0.4 * drawLen,
+      alpha: Math.min(1, Math.max(0, eased)),
+    };
+  }
+  const reverseAlternate = direction === "alternate" && idx % 2 === 1;
+  return {
+    active: true,
+    drawFrom: reverseAlternate ? 1 - drawLen : 0,
+    drawTo: reverseAlternate ? 1 : drawLen,
+    widthScale: 0.55 + 0.45 * Math.min(1, drawLen * 2.5),
+    alpha: Math.min(1, clampedLocal * 4),
+  };
+}
+
+/**
+ * Sample a quadratic Bezier continuously from u = 0 to exact u = progress,
+ * returning points terminating strictly at B(progress) plus analytic tangent angle.
+ */
+export function sampleQuadraticBezierTo(p1, ctrl, p2, progress, steps = 40) {
+  const p = clampUnit(progress);
+  const n = Math.max(2, Math.min(256, Math.round(Number(steps) || 40)));
+  const evalPt = (u) => {
+    const inv = 1 - u;
+    return {
+      x: inv * inv * p1.x + 2 * inv * u * ctrl.x + u * u * p2.x,
+      y: inv * inv * p1.y + 2 * inv * u * ctrl.y + u * u * p2.y,
+    };
+  };
+  const points = [evalPt(0)];
+  const count = Math.max(1, Math.ceil(n * p));
+  for (let i = 1; i <= count; i++) {
+    const u = (p * i) / count;
+    points.push(evalPt(u));
+  }
+  const tip = points[points.length - 1];
+  let dx = 2 * (1 - p) * (ctrl.x - p1.x) + 2 * p * (p2.x - ctrl.x);
+  let dy = 2 * (1 - p) * (ctrl.y - p1.y) + 2 * p * (p2.y - ctrl.y);
+  if (Math.hypot(dx, dy) < 1e-7) {
+    dx = p2.x - p1.x;
+    dy = p2.y - p1.y;
+  }
+  return { points, tip, angleRad: Math.atan2(dy, dx) };
+}
+
+/**
+ * Symmetric centered subframe schedule for optical motion-blur accumulation.
+ * Offsets span [-shutterSpan/2, +shutterSpan/2] in frames; weights sum strictly to 1.0.
+ */
+export function shutterSubframeSchedule(subN, shutterAngleDeg = 180, profile = "cosine") {
+  const n = Math.max(1, Math.min(32, Math.round(Number(subN)) || 1));
+  if (n === 1) return [{ offset: 0, weight: 1 }];
+  const angle = Number.isFinite(Number(shutterAngleDeg)) ? Number(shutterAngleDeg) : 180;
+  const span = Math.max(0, Math.min(1, angle / 360));
+  const raw = [];
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5) / n;
+    const offset = (u - 0.5) * span;
+    let w = 1;
+    if (profile === "cosine") {
+      w = Math.sin(Math.PI * u);
+    } else if (profile === "trapezoid") {
+      if (u < 0.2) w = u / 0.2;
+      else if (u > 0.8) w = (1 - u) / 0.2;
+      else w = 1;
+    }
+    raw.push({ offset, weight: w });
+    sum += w;
+  }
+  return raw.map((s) => ({ offset: s.offset, weight: s.weight / (sum || 1) }));
+}
+
+/**
+ * Unified sun direction vector from cartographic azimuth (clockwise from North)
+ * and elevation angle (degrees above horizon).
+ * Returns ENU Z-up unit vector `(x, y, z)` for 3D lighting plus 2D screen cast-shadow vector.
+ */
+export function sunDirectionFromAzimuthElevation(azimuthDeg = 335, elevationDeg = 42) {
+  const azDeg = Number.isFinite(Number(azimuthDeg)) ? ((Number(azimuthDeg) % 360) + 360) % 360 : 335;
+  const elDeg = Number.isFinite(Number(elevationDeg)) ? Math.max(5, Math.min(89, Number(elevationDeg))) : 42;
+  const az = (azDeg * Math.PI) / 180;
+  const el = (elDeg * Math.PI) / 180;
+  const cosEl = Math.cos(el);
+  const x = cosEl * Math.sin(az);
+  const y = cosEl * Math.cos(az);
+  const z = Math.sin(el);
+  const shadowDx = -Math.sin(az);
+  const shadowDy = Math.cos(az);
+  return {
+    x,
+    y,
+    z,
+    shadowDx,
+    shadowDy,
+    lightDx: -shadowDx,
+    lightDy: -shadowDy,
+    azimuthDeg: azDeg,
+    elevationDeg: elDeg,
+  };
+}

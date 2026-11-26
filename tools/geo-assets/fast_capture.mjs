@@ -31,21 +31,33 @@ export function getChromeArgs(width, height) {
 }
 
 /**
- * Create a persistent CDP session for fast JPEG capture with `optimizeForSpeed: true`.
+ * Create a persistent CDP session for fast frame capture (`jpeg` or lossless `png`).
  */
-export async function createCdpScreenshotter(page, width, height, { quality = 92 } = {}) {
+export async function createCdpScreenshotter(
+  page,
+  width,
+  height,
+  { format = "jpeg", quality = 95 } = {}
+) {
   const cdp = await page.createCDPSession();
   const clip = { x: 0, y: 0, width, height, scale: 1 };
+  const fmt = format === "png" ? "png" : "jpeg";
+  const q = Math.max(50, Math.min(100, Math.round(Number(quality) || 95)));
+  const captureParams =
+    fmt === "png"
+      ? { format: "png", optimizeForSpeed: true, clip }
+      : { format: "jpeg", quality: q, optimizeForSpeed: true, clip };
+
+  const captureBuffer = async () => {
+    const { data } = await cdp.send("Page.captureScreenshot", captureParams);
+    return Buffer.from(data, "base64");
+  };
+
   return {
-    async captureJpegBuffer() {
-      const { data } = await cdp.send("Page.captureScreenshot", {
-        format: "jpeg",
-        quality,
-        optimizeForSpeed: true,
-        clip,
-      });
-      return Buffer.from(data, "base64");
-    },
+    format: fmt,
+    captureBuffer,
+    // Backward-compatible alias used by legacy callers.
+    captureJpegBuffer: captureBuffer,
     async close() {
       try {
         await cdp.detach();
@@ -57,13 +69,14 @@ export async function createCdpScreenshotter(page, width, height, { quality = 92
 }
 
 /**
- * Spawn an FFmpeg encoder accepting raw JPEG buffers on stdin (`image2pipe` MJPEG)
+ * Spawn an FFmpeg encoder accepting raw encoded image buffers on stdin (`mjpeg` or `png`)
  * and emitting a `bt709` `yuv420p` MP4.
  */
-export function spawnMjpegPipeEncoder(
+export function spawnFramePipeEncoder(
   outMp4,
-  { fps = 30, crf = 16, gop = 1, preset = "fast", useVideoToolbox = false } = {}
+  { codec = "mjpeg", fps = 30, crf = 16, gop = 1, preset = "fast", useVideoToolbox = false } = {}
 ) {
+  const inputCodec = codec === "png" ? "png" : "mjpeg";
   const codecArgs =
     useVideoToolbox && process.platform === "darwin"
       ? ["-c:v", "h264_videotoolbox", "-q:v", "65", "-profile:v", "high"]
@@ -77,7 +90,7 @@ export function spawnMjpegPipeEncoder(
     "-f",
     "image2pipe",
     "-vcodec",
-    "mjpeg",
+    inputCodec,
     "-framerate",
     String(fps),
     "-i",
@@ -136,11 +149,11 @@ export function spawnMjpegPipeEncoder(
   done.catch(() => {});
 
   return {
-    async writeFrame(jpegBuffer) {
+    async writeFrame(frameBuffer) {
       if (exited) {
         throw exitError || new Error(`FFmpeg pipe encoder exited early for ${outMp4}`);
       }
-      if (!proc.stdin.write(jpegBuffer)) {
+      if (!proc.stdin.write(frameBuffer)) {
         await new Promise((resolve, reject) => {
           const onDrain = () => {
             cleanup();
@@ -183,6 +196,13 @@ export function spawnMjpegPipeEncoder(
       await done.catch(() => {});
     },
   };
+}
+
+/**
+ * Backward-compatible MJPEG pipe encoder wrapper.
+ */
+export function spawnMjpegPipeEncoder(outMp4, opts = {}) {
+  return spawnFramePipeEncoder(outMp4, { ...opts, codec: "mjpeg" });
 }
 
 /**

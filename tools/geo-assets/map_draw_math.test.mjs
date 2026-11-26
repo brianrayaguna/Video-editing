@@ -3,18 +3,36 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  buildWorldHatchLines,
   clipHomogeneousPolyline,
   clipHomogeneousRing,
   clothWaveStops,
+  computeOctaveHatchSpacing,
   coverRect,
+  cubicBezier,
   cutBlurAmount,
+  easeInOutQuart,
+  easeInQuad,
+  easeOutQuint,
+  editorialOut,
+  evalEase,
+  hatchLineRevealState,
+  lngLatToMercNorm,
+  mercNormToLngLat,
   nearestVertexIndex,
   organicRevealRadii,
   perimeterPartialPaths,
+  perimeterPartialPathsLngLat,
+  perimeterWindowPathsLngLat,
   polygonRings,
   ringClusters,
+  sampleQuadraticBezierTo,
   scaledWidth,
+  shutterSubframeSchedule,
   signedArea,
+  slicePolylineFraction,
+  springClosedForm,
+  sunDirectionFromAzimuthElevation,
   wipeFrontEdge,
 } from "./map_draw_math.mjs";
 
@@ -354,4 +372,194 @@ test("clipHomogeneousPolyline clips near-plane crossings and splits out-and-in p
   const split = clipHomogeneousPolyline(reentry, 1e-4);
   assert.equal(split.length, 2);
   assert.ok(split.every((seg) => seg.length === 2 && seg.every((v) => v.w >= 1e-4 - 1e-9)));
+});
+
+test("editorial easing curves hit exact endpoints and stay monotonic", () => {
+  const curve = cubicBezier(0.16, 1, 0.3, 1);
+  assert.equal(curve(0), 0);
+  assert.equal(curve(1), 1);
+  assert.equal(editorialOut(0), 0);
+  assert.equal(editorialOut(1), 1);
+  assert.ok(editorialOut(0.25) > 0.55, "editorial out accelerates sharply out of gate");
+  assert.ok(easeOutQuint(0.5) > 0.9);
+  assert.ok(close(easeInOutQuart(0.5), 0.5));
+  assert.ok(close(easeInQuad(0.5), 0.25));
+  let prev = -1;
+  for (let i = 0; i <= 20; i++) {
+    const val = editorialOut(i / 20);
+    assert.ok(val >= prev - 1e-9);
+    prev = val;
+  }
+});
+
+test("springClosedForm is seek-safe, crisp monotonic, tactile overshoots, and clamps hostile inputs", () => {
+  assert.equal(springClosedForm(0), 0);
+  assert.equal(springClosedForm(1), 1);
+  assert.equal(springClosedForm(-0.5), 0);
+  assert.equal(springClosedForm(1.5), 1);
+  assert.equal(springClosedForm(Number.NaN), 0);
+
+  // Critically/overdamped crisp spring never overshoots and rises monotonically.
+  let prev = 0;
+  for (let i = 1; i <= 40; i++) {
+    const val = evalEase("spring_crisp", i / 40);
+    assert.ok(val >= prev - 1e-9 && val <= 1 + 1e-9, `crisp spring step ${i}: ${val}`);
+    prev = val;
+  }
+
+  // Tactile spring has controlled gentle overshoot above 1.0 before settling cleanly to 1.0.
+  let maxVal = 0;
+  for (let i = 0; i <= 60; i++) {
+    maxVal = Math.max(maxVal, evalEase("spring_tactile", i / 60));
+  }
+  assert.ok(maxVal > 1.01 && maxVal < 1.12, `expected subtle tactile overshoot, got ${maxVal}`);
+  assert.equal(evalEase("spring_tactile", 1), 1);
+  assert.equal(evalEase("linear", 0.35), 0.35);
+  assert.ok(evalEase("expo_out", 0.5) > 0.95);
+  assert.ok(Number.isFinite(evalEase("unknown_curve", 0.4)));
+});
+
+test("lngLatToMercNorm and mercNormToLngLat round-trip and clamp polar latitudes", () => {
+  const orig = [106.8456, -6.2088];
+  const m = lngLatToMercNorm(orig);
+  const back = mercNormToLngLat(m.x, m.y);
+  assert.ok(close(back[0], orig[0], 1e-6));
+  assert.ok(close(back[1], orig[1], 1e-6));
+
+  const pole = lngLatToMercNorm([0, 90]);
+  assert.ok(Number.isFinite(pole.x) && Number.isFinite(pole.y));
+  const nanPt = lngLatToMercNorm([Number.NaN, Number.NaN]);
+  assert.ok(Number.isFinite(nanPt.x) && Number.isFinite(nanPt.y));
+});
+
+test("perimeterPartialPathsLngLat traces at constant Mercator speed and returns comet tail", () => {
+  const ring = [
+    [0, 0],
+    [10, 0],
+    [10, 10],
+    [0, 10],
+    [0, 0],
+  ];
+  assert.deepEqual(perimeterPartialPathsLngLat([ring], 0), { paths: [], comets: [] });
+
+  const mid = perimeterPartialPathsLngLat([ring], 0.5, { heads: 1, cometFraction: 0.1 });
+  assert.equal(mid.paths.length, 1);
+  assert.equal(mid.comets.length, 1);
+  const tip = mid.paths[0].at(-1);
+  assert.ok(close(tip[0], 10, 0.25) && close(tip[1], 10, 0.25), `unexpected mid tip: ${tip}`);
+  assert.deepEqual(mid.comets[0].at(-1), tip);
+  assert.ok(mid.comets[0].length >= 2);
+
+  const done = perimeterPartialPathsLngLat([ring], 1, { heads: 2 });
+  assert.equal(done.paths.length, 1);
+  assert.equal(done.comets.length, 0);
+  assert.ok(close(done.paths[0][0][0], done.paths[0].at(-1)[0], 1e-5));
+
+  // Travelling window for rim_glint wraps cleanly across ring start/end.
+  const win = perimeterWindowPathsLngLat([ring], 0.95, 0.12);
+  assert.equal(win.length, 1);
+  assert.ok(win[0].length >= 3);
+});
+
+test("computeOctaveHatchSpacing stays C0 continuous across zoom octaves", () => {
+  const atRef = computeOctaveHatchSpacing(14, 6, 6);
+  assert.ok(close(atRef.screenSpacingPx, 14, 1e-6));
+  assert.equal(atRef.subAlpha, 0);
+
+  const beforeBoundary = computeOctaveHatchSpacing(14, 6.9999, 6);
+  const afterBoundary = computeOctaveHatchSpacing(14, 7.0001, 6);
+  assert.ok(beforeBoundary.subAlpha > 0.99);
+  assert.ok(afterBoundary.subAlpha < 0.01);
+  assert.ok(close(beforeBoundary.subSpacingMerc, afterBoundary.primarySpacingMerc, 1e-9));
+});
+
+test("buildWorldHatchLines caps line count, aligns to global Mercator grid, and slices cleanly", () => {
+  const bounds = { minLng: 95, maxLng: 141, minLat: -11, maxLat: 6 };
+  const spacing = computeOctaveHatchSpacing(18, 5, 5).primarySpacingMerc;
+  const lines = buildWorldHatchLines(bounds, { angleDeg: 45, spacingMerc: spacing, maxLines: 60, segmentsPerLine: 6 });
+  assert.ok(lines.length > 4 && lines.length <= 60, `got ${lines.length} lines`);
+  assert.equal(lines[0].coords.length, 7);
+
+  // Hostile tiny spacing still respects maxLines cap without hanging or NaN.
+  const capped = buildWorldHatchLines(
+    { minLng: -179, maxLng: 179, minLat: -85, maxLat: 85 },
+    { angleDeg: 45, spacingMerc: 1e-9, maxLines: 120 }
+  );
+  assert.ok(capped.length > 0 && capped.length <= 120);
+  assert.ok(capped.every((l) => l.coords.every((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]))));
+
+  const sub = slicePolylineFraction(lines[0].coords, 0.2, 0.7);
+  assert.ok(sub.length >= 2);
+  assert.deepEqual(slicePolylineFraction(lines[0].coords, 0.5, 0.5), []);
+});
+
+test("hatchLineRevealState supports staggered_draw, venetian_grow, contour_ripple, fade, and all directions", () => {
+  const n = 10;
+  const earlyLtr0 = hatchLineRevealState(0, n, 0.2, { mode: "staggered_draw", direction: "ltr" });
+  const earlyLtr9 = hatchLineRevealState(9, n, 0.2, { mode: "staggered_draw", direction: "ltr" });
+  assert.ok(earlyLtr0.active && earlyLtr0.drawTo > 0);
+  assert.equal(earlyLtr9.active, false);
+
+  const earlyRtl0 = hatchLineRevealState(0, n, 0.2, { mode: "staggered_draw", direction: "rtl" });
+  const earlyRtl9 = hatchLineRevealState(9, n, 0.2, { mode: "staggered_draw", direction: "rtl" });
+  assert.equal(earlyRtl0.active, false);
+  assert.ok(earlyRtl9.active && earlyRtl9.drawTo > 0);
+
+  const midCenter = hatchLineRevealState(5, n, 0.2, { mode: "staggered_draw", direction: "center_out" });
+  const edgeCenter = hatchLineRevealState(0, n, 0.2, { mode: "staggered_draw", direction: "center_out" });
+  assert.ok(midCenter.active && midCenter.drawTo > edgeCenter.drawTo);
+
+  const altOdd = hatchLineRevealState(1, n, 0.4, { mode: "staggered_draw", direction: "alternate" });
+  assert.ok(altOdd.active && altOdd.drawTo === 1 && altOdd.drawFrom > 0 && altOdd.drawFrom < 1);
+
+  const venetian = hatchLineRevealState(0, n, 0.25, { mode: "venetian_grow" });
+  assert.ok(venetian.active && venetian.drawFrom === 0 && venetian.drawTo === 1 && venetian.widthScale > 0);
+
+  const ripple = hatchLineRevealState(0, 5, 0.3, { mode: "contour_ripple" });
+  assert.ok(ripple.active && ripple.alpha > 0);
+
+  const fade = hatchLineRevealState(7, n, 0.4, { mode: "fade" });
+  assert.ok(fade.active && close(fade.alpha, 0.4) && fade.drawTo === 1);
+
+  const done = hatchLineRevealState(9, n, 1.0, { mode: "staggered_draw" });
+  assert.ok(done.active && close(done.drawTo, 1) && close(done.alpha, 1));
+});
+
+test("sampleQuadraticBezierTo terminates exactly at arbitrary progress with analytic tangent", () => {
+  const p1 = { x: 0, y: 0 };
+  const ctrl = { x: 50, y: 100 };
+  const p2 = { x: 100, y: 0 };
+  for (const prog of [0.137, 0.503, 0.991]) {
+    const res = sampleQuadraticBezierTo(p1, ctrl, p2, prog, 24);
+    const inv = 1 - prog;
+    const expectedX = inv * inv * p1.x + 2 * inv * prog * ctrl.x + prog * prog * p2.x;
+    const expectedY = inv * inv * p1.y + 2 * inv * prog * ctrl.y + prog * prog * p2.y;
+    assert.ok(close(res.tip.x, expectedX, 1e-6));
+    assert.ok(close(res.tip.y, expectedY, 1e-6));
+    assert.deepEqual(res.points.at(-1), res.tip);
+    assert.ok(Number.isFinite(res.angleRad));
+  }
+  // At apex u = 0.5, tangent is purely horizontal (+x -> angle 0).
+  const apex = sampleQuadraticBezierTo(p1, ctrl, p2, 0.5, 20);
+  assert.ok(close(apex.angleRad, 0, 1e-6));
+});
+
+test("shutterSubframeSchedule returns symmetric centered weights summing to 1", () => {
+  const cos = shutterSubframeSchedule(5, 180, "cosine");
+  assert.equal(cos.length, 5);
+  const sum = cos.reduce((acc, s) => acc + s.weight, 0);
+  assert.ok(close(sum, 1, 1e-9));
+  assert.ok(close(cos[0].offset, -cos[4].offset, 1e-9));
+  assert.ok(close(cos[2].offset, 0, 1e-9));
+  assert.ok(cos[2].weight > cos[0].weight, "cosine window peaks at center");
+  assert.deepEqual(shutterSubframeSchedule(1, 180, "cosine"), [{ offset: 0, weight: 1 }]);
+});
+
+test("sunDirectionFromAzimuthElevation returns unit vector and matching 2D cast shadow vector", () => {
+  const sun = sunDirectionFromAzimuthElevation(335, 42);
+  const len = Math.hypot(sun.x, sun.y, sun.z);
+  assert.ok(close(len, 1, 1e-6));
+  // 335 deg (NNW) sun is West (-x), North (+y), Up (+z); casts shadow South-East (+shadowDx, +shadowDy).
+  assert.ok(sun.x < 0 && sun.y > 0 && sun.z > 0);
+  assert.ok(sun.shadowDx > 0 && sun.shadowDy > 0);
 });

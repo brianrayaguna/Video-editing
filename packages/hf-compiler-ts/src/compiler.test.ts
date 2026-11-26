@@ -2071,3 +2071,64 @@ test("expanded 38-family catalog resolves directly without falling back to Inter
   assert.match(indexHtml, /font-family:\s*'Barlow Condensed';/);
   assert.match(indexHtml, /font-weight:\s*600;/);
 });
+
+test("arc track keyframes subdivide cleanly with 24 eased steps and radar_pulse_rings uses GPU scale", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-smooth-arc-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: 4.0,
+      overlay_compositions: [
+        {
+          overlay_id: "arc_track_card",
+          kind: "kinetic_callout",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: { headline: "Arc Flight" },
+          track_keyframes: [
+            { t_s: 0.0, x_pct: 25, y_pct: 60, scale: 0.9, opacity: 1 },
+            { t_s: 2.0, x_pct: 75, y_pct: 40, scale: 1.05, opacity: 1, curve: "arc_up", arc_height_px: -180 },
+          ],
+        },
+        {
+          overlay_id: "radar_gpu",
+          kind: "full_scene",
+          template_id: "radar_pulse_rings",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {
+            composition_path: "profiles/brands/geoverum/templates/components/radar_pulse_rings.html",
+          },
+          variables: {
+            center_x_pct: "50",
+            center_y_pct: "45",
+            max_radius: "180",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const arcHtml = fs.readFileSync(path.join(tmpDir, "compositions", "arc_track_card.html"), "utf8");
+  assert.match(arcHtml, /var steps = 24;/);
+  assert.match(arcHtml, /var eu =/);
+
+  const radarHtml = fs.readFileSync(path.join(tmpDir, "compositions", "radar_gpu.html"), "utf8");
+  assert.match(radarHtml, /vector-effect="non-scaling-stroke"/);
+  assert.doesNotMatch(radarHtml, /attr:\s*\{\s*r:/);
+  assert.match(radarHtml, /scale:\s*1/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});

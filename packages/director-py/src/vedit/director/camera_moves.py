@@ -329,10 +329,10 @@ def _apply_velocity_blending(
                 ap += orig[j][4] * w
                 w_sum += w
             s = samples[lo + i]
-            s["center"] = [round(math.degrees(ax / w_sum), 5), round(_inv_merc_y(ay / w_sum), 5)]
-            s["zoom"] = round(az / w_sum, 4)
-            s["bearing"] = round(ab / w_sum, 3)
-            s["pitch"] = round(ap / w_sum, 3)
+            s["center"] = [round(math.degrees(ax / w_sum), 7), round(_inv_merc_y(ay / w_sum), 7)]
+            s["zoom"] = round(az / w_sum, 5)
+            s["bearing"] = round(ab / w_sum, 4)
+            s["pitch"] = round(ap / w_sum, 4)
 
 
 def _annotate_motion_and_shutter(
@@ -379,11 +379,11 @@ def expand_move_plan(
     def emit(frame: int, cam: CameraState) -> None:
         sample = {
             "frame": frame,
-            "t": round(frame / fps, 4),
-            "center": [round(cam.lng, 5), round(cam.lat, 5)],
-            "zoom": round(cam.zoom, 4),
-            "bearing": round(cam.bearing, 3),
-            "pitch": round(cam.pitch, 3),
+            "t": round(frame / fps, 5),
+            "center": [round(cam.lng, 7), round(cam.lat, 7)],
+            "zoom": round(cam.zoom, 5),
+            "bearing": round(cam.bearing, 4),
+            "pitch": round(cam.pitch, 4),
         }
         if samples and samples[-1]["frame"] == frame:
             samples[-1] = sample
@@ -606,10 +606,10 @@ def smooth_scene_keys(
                 k = max_shift_px / shift
                 x, y = ox + (x - ox) * k, oy + (y - oy) * k
             out[i][1:5] = [
-                round(math.degrees(x), 5),
-                round(_inv_merc_y(y), 5),
-                round(z, 4),
-                round(b, 3),
+                round(math.degrees(x), 7),
+                round(_inv_merc_y(y), 7),
+                round(z, 5),
+                round(b, 4),
             ]
     return out
 
@@ -1125,12 +1125,12 @@ def build_cinema_camera_track(
         samples.append(
             {
                 "frame": f,
-                "t": round(t, 4),
-                "center": [round(lng, 5), round(lat, 5)],
-                "zoom": round(sm_z[f], 4),
-                "bearing": round(sm_b[f], 3),
-                "pitch": round(max(0.0, min(72.0, sm_p[f])), 2),
-                "roll": round(max(-12.0, min(12.0, sm_r[f])), 3),
+                "t": round(t, 5),
+                "center": [round(lng, 7), round(lat, 7)],
+                "zoom": round(sm_z[f], 5),
+                "bearing": round(sm_b[f], 4),
+                "pitch": round(max(0.0, min(72.0, sm_p[f])), 4),
+                "roll": round(max(-12.0, min(12.0, sm_r[f])), 4),
                 "shutter_samples": shutter,
             }
         )

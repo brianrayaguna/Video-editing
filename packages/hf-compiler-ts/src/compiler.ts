@@ -957,16 +957,6 @@ function renderParameterizedTemplate(
   const exitS = Number(Math.min(Math.max(0.12, enterS * 0.48), duration * 0.25).toFixed(3));
   const exitAtS = Number(Math.max(0.05, duration - exitS).toFixed(3));
   const captionExitAtS = Number(Math.max(captionTransitionS, duration - captionFadeOutS).toFixed(3));
-  const easingFeel =
-    typeof ov.props.easing_feel === "string" ? String(ov.props.easing_feel) : "smooth_editorial";
-  const easeName =
-    easingFeel === "smooth_editorial"
-      ? "expo.out"
-      : easingFeel === "energetic_pop"
-        ? "back.out(1.4)"
-        : easingFeel === "minimal_static"
-          ? "none"
-          : "expo.out";
 
   const { symXPct, captionFontPx, hasBottomOverride, captionBottomPct } =
     resolveCaptionTypographyOverrides(ov, width, height, safeZone);
@@ -1215,27 +1205,28 @@ function injectOverlayTrackKeyframes(
         var curr = kfs[i];
         var segDur = Math.max(0.001, curr.t - prev.t);
         if (curr.curve === "arc_up" || curr.curve === "arc_down") {
-          var steps = 8;
+          var steps = 24;
           var ctrlX = (prev.dx + curr.dx) * 0.5;
           var ctrlY = (prev.dy + curr.dy) * 0.5 + curr.arcHeightPx;
           for (var s = 1; s <= steps; s++) {
             var u = s / steps;
-            var inv = 1 - u;
-            var bx = inv * inv * prev.dx + 2 * inv * u * ctrlX + u * u * curr.dx;
-            var by = inv * inv * prev.dy + 2 * inv * u * ctrlY + u * u * curr.dy;
+            var eu = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+            var inv = 1 - eu;
+            var bx = inv * inv * prev.dx + 2 * inv * eu * ctrlX + eu * eu * curr.dx;
+            var by = inv * inv * prev.dy + 2 * inv * eu * ctrlY + eu * eu * curr.dy;
             var subDur = segDur / steps;
             trackTl.to(target, {
               x: Number(bx.toFixed(2)),
               y: Number(by.toFixed(2)),
-              scale: prev.scale + (curr.scale - prev.scale) * u,
-              rotation: prev.rotation + (curr.rotation - prev.rotation) * u,${
+              scale: prev.scale + (curr.scale - prev.scale) * eu,
+              rotation: prev.rotation + (curr.rotation - prev.rotation) * eu,${
                 has3d
                   ? `
-              rotationX: prev.rotationX + (curr.rotationX - prev.rotationX) * u,
+              rotationX: prev.rotationX + (curr.rotationX - prev.rotationX) * eu,
               transformPerspective: curr.perspective || 1600,`
                   : ""
               }
-              opacity: prev.opacity + (curr.opacity - prev.opacity) * u,
+              opacity: prev.opacity + (curr.opacity - prev.opacity) * eu,
               duration: subDur,
               ease: "none"
             }, prev.t + (s - 1) * subDur);

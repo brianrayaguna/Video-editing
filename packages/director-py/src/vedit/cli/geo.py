@@ -671,16 +671,42 @@ _THREE_D_MODELS = frozenset({"transmission_tower", "solar_farm", "substation", "
 _REVEAL_MODES = frozenset(
     {"fade", "radial", "organic", "wipe_left", "wipe_right", "wipe_down", "wipe_up"}
 )
+_EASE_MODES = frozenset(
+    {
+        "linear",
+        "out",
+        "in_out",
+        "expo_out",
+        "quint_out",
+        "quart_in_out",
+        "in_quad",
+        "in_cubic",
+        "editorial_out",
+        "spring_crisp",
+        "spring_tactile",
+        "spring_playful",
+    }
+)
+_CAPTURE_FORMATS = frozenset({"jpeg", "png"})
 # Numeric polygon keys: (lower bound, upper bound or None).
 _POLYGON_NUMERIC_KEYS: dict[str, tuple[float, float | None]] = {
     "flag_wave_speed": (0.0, None),
     "flag_wave_cycles": (0.0, None),
     "flag_wave_angle_deg": (-360.0, 360.0),
     "fill_reveal_roughness": (0.0, 0.6),
+    "hatch_draw_s": (0.0, None),
+    "hatch_delay_s": (0.0, None),
+    "hatch_stagger": (0.0, 0.95),
+    "hatch_angle_deg": (-360.0, 360.0),
+    "hatch_spacing": (2.0, None),
+    "hatch_width": (0.2, 64.0),
+    "lift_px": (0.0, 120.0),
+    "fill_bloom_overshoot": (1.0, 1.6),
 }
 _POLYGON_OPT_BOOL_FLOAT_KEYS: dict[str, tuple[float, float]] = {
     "flag_gloss": (0.0, 1.0),
     "flag_wave_warp": (0.0, 0.15),
+    "bevel_light": (0.0, 1.0),
 }
 # Polygon keys whose unknown values the renderer would silently replace with a default.
 _POLYGON_ENUM_KEYS: dict[str, frozenset[Any]] = {
@@ -688,9 +714,14 @@ _POLYGON_ENUM_KEYS: dict[str, frozenset[Any]] = {
     "fill_reveal_mode": _REVEAL_MODES,
     "flag_blend": frozenset({"normal", "multiply", "overlay", "soft-light", "screen"}),
     "flag_fit": frozenset({"stretch", "cover"}),
-    "border_trace_ease": frozenset({"linear", "in_out", "out"}),
+    "border_trace_ease": _EASE_MODES,
     "border_trace_dir": frozenset({"cw", "ccw"}),
     "border_trace_heads": frozenset({1, 2}),
+    "hatch_space": frozenset({"world", "screen"}),
+    "hatch_reveal_mode": frozenset({"staggered_draw", "venetian_grow", "contour_ripple", "fade"}),
+    "hatch_direction": frozenset({"ltr", "rtl", "center_out", "alternate"}),
+    "hatch_ease": _EASE_MODES,
+    "lift_ease": _EASE_MODES,
 }
 _FLAG_CODE_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
@@ -772,11 +803,30 @@ def validate_map_scene(
     min_font_px = 36 if height >= 1600 else 28
     hq_dir = (repo_root / "assets" / "geo" / "tiles_hq") if repo_root else None
 
+    def _check_render_opts(container: dict[str, Any], scope: str) -> None:
+        if "ov_scale" in container and container["ov_scale"] is not None:
+            ov = _as_finite_float(container["ov_scale"])
+            if ov is None or not (1.0 <= ov <= 2.0):
+                errors.append(
+                    f"[{scope}] ov_scale must be a number between 1 and 2, "
+                    f"got {container['ov_scale']!r}."
+                )
+        if "capture_format" in container and container["capture_format"] is not None:
+            cf = container["capture_format"]
+            if isinstance(cf, bool) or cf not in _CAPTURE_FORMATS:
+                errors.append(
+                    f"[{scope}] capture_format={cf!r} is not one of "
+                    f"{sorted(_CAPTURE_FORMATS)}."
+                )
+
+    _check_render_opts(spec, "scene")
+
     for act in spec.get("acts") or []:
         act_id = str(act.get("act_id") or "unknown")
         act_kind = str(act.get("kind") or act.get("mode") or act.get("type") or "map")
         if act_kind != "map":
             continue
+        _check_render_opts(act, act_id)
         dur = float(act.get("duration_s", 0.0))
         tile_source = str(act.get("tile_source") or "hybrid")
         layers = list(act.get("layers") or [])
@@ -986,6 +1036,14 @@ def validate_map_scene(
                         f"[{act_id}] layer #{idx} {key} must be true/false or between "
                         f"{lo:g} and {hi:g}, got {raw_val!r}."
                     )
+            for opt_obj_key in ("light_sweep", "rim_glint", "cast_shadow"):
+                if opt_obj_key in layer and layer[opt_obj_key] is not None:
+                    raw_obj = layer[opt_obj_key]
+                    if not isinstance(raw_obj, (bool, dict)):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} {opt_obj_key} must be a boolean or object, "
+                            f"got {raw_obj!r}."
+                        )
             code = layer.get("flag_fill")
             if code:
                 code_s = str(code).lower()
@@ -1120,6 +1178,60 @@ def validate_map_scene(
                         errors.append(
                             f"[{act_id}] layer #{idx} volume_3d {dim} must be > 0, "
                             f"got {layer.get(dim)!r}."
+                        )
+            elif ltype == "country_block_3d":
+                if not layer.get("geom_ref"):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} country_block_3d requires geom_ref."
+                    )
+                if "extrude_height_m" in layer and layer["extrude_height_m"] is not None:
+                    eh = _as_finite_float(layer["extrude_height_m"])
+                    if eh is None or eh <= 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d extrude_height_m "
+                            f"must be > 0, got {layer['extrude_height_m']!r}."
+                        )
+                if "bevel_px" in layer and layer["bevel_px"] is not None:
+                    bp = _as_finite_float(layer["bevel_px"])
+                    if bp is None or bp < 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d bevel_px must be >= 0, "
+                            f"got {layer['bevel_px']!r}."
+                        )
+                if "rise_ease" in layer and layer["rise_ease"] is not None:
+                    re_val = layer["rise_ease"]
+                    if isinstance(re_val, bool) or re_val not in _EASE_MODES:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d rise_ease={re_val!r} "
+                            f"is not one of {sorted(_EASE_MODES)}."
+                        )
+                if "light_sweep" in layer and layer["light_sweep"] is not None:
+                    if not isinstance(layer["light_sweep"], (bool, dict)):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d light_sweep must be "
+                            f"boolean or object, got {layer['light_sweep']!r}."
+                        )
+            elif ltype == "focus_spotlight":
+                gref = layer.get("geom_ref")
+                grefs = layer.get("geom_refs")
+                has_refs = bool(gref) or (isinstance(grefs, list) and len(grefs) > 0)
+                if not has_refs:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} focus_spotlight requires geom_ref or geom_refs."
+                    )
+                if "dim_alpha" in layer and layer["dim_alpha"] is not None:
+                    da = _as_finite_float(layer["dim_alpha"])
+                    if da is None or not (0.0 <= da <= 1.0):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} focus_spotlight dim_alpha must be "
+                            f"between 0 and 1, got {layer['dim_alpha']!r}."
+                        )
+                if "feather_px" in layer and layer["feather_px"] is not None:
+                    fp = _as_finite_float(layer["feather_px"])
+                    if fp is None or fp < 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} focus_spotlight feather_px must be >= 0, "
+                            f"got {layer['feather_px']!r}."
                         )
 
         # 7. Preflight viewport edge-clipping, caption-band, and cable/substation clearance checks
@@ -1494,6 +1606,7 @@ _SFX_LAYER_MAP: dict[str, tuple[str, float]] = {
     "cable_3d": ("whoosh_deep.wav", -12.0),
     "model_3d": ("sub_thud.wav", -10.0),
     "volume_3d": ("flash_swish.wav", -10.5),
+    "country_block_3d": ("sub_thud.wav", -10.5),
     "radar_rings": ("radar_ping.wav", -13.0),
     "counter_odometer": ("counter_tick.wav", -11.0),
     "human_silhouette_row": ("pop_bright.wav", -11.0),

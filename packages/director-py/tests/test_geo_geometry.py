@@ -1034,3 +1034,156 @@ def test_validate_map_scene_gltf_taper_viewport_edge_and_substation_clearance(
     err_text = "\n".join(missing_glb["errors"])
     assert "missing.glb" in err_text
     assert "end_taper_m" in err_text
+
+
+def test_validate_scene_smooth_hatch_lighting_country_block_3d_and_sfx(tmp_path: Path) -> None:
+    good = validate_map_scene(
+        {
+            "width": 1080,
+            "height": 1920,
+            "fps": 60,
+            "ov_scale": 1.5,
+            "capture_format": "png",
+            "acts": [
+                {
+                    "act_id": "smooth_2d_and_3d",
+                    "type": "map",
+                    "duration_s": 6.0,
+                    "ov_scale": 2.0,
+                    "capture_format": "jpeg",
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [106.8, -6.2], "zoom": 5.0, "pitch": 30.0},
+                        {"t": 6.0, "center": [110.0, -7.0], "zoom": 6.0, "pitch": 45.0},
+                    ],
+                    "layers": [
+                        {
+                            "type": "polygon",
+                            "geom_ref": "countries.Indonesia",
+                            "border_trace_s": 0.9,
+                            "border_trace_ease": "editorial_out",
+                            "fill_bloom_overshoot": 1.18,
+                            "hatch": True,
+                            "hatch_space": "world",
+                            "hatch_reveal_mode": "staggered_draw",
+                            "hatch_direction": "center_out",
+                            "hatch_ease": "spring_crisp",
+                            "hatch_draw_s": 0.75,
+                            "hatch_delay_s": 0.08,
+                            "hatch_stagger": 0.62,
+                            "hatch_angle_deg": 45,
+                            "hatch_spacing": 16,
+                            "hatch_width": 3.0,
+                            "lift_px": 14,
+                            "bevel_light": True,
+                            "cast_shadow": True,
+                            "light_sweep": {"duration_s": 0.65, "intensity": 0.55},
+                            "rim_glint": True,
+                            "start_s": 0.0,
+                            "end_s": 3.0,
+                        },
+                        {
+                            "type": "focus_spotlight",
+                            "geom_refs": ["countries.Indonesia"],
+                            "dim_alpha": 0.55,
+                            "feather_px": 36,
+                            "start_s": 0.2,
+                            "end_s": 3.0,
+                        },
+                        {
+                            "type": "country_block_3d",
+                            "geom_ref": "countries.Indonesia",
+                            "extrude_height_m": 65000,
+                            "bevel_px": 12,
+                            "rise_ease": "spring_tactile",
+                            "hatch": True,
+                            "light_sweep": True,
+                            "start_s": 3.0,
+                            "end_s": 6.0,
+                        },
+                    ],
+                }
+            ],
+        },
+        repo_root=tmp_path,
+    )
+    assert good["ok"], good["errors"]
+
+    sfx = derive_sfx_events_from_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "three_d_block",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "country_block_3d",
+                            "geom_ref": "countries.Indonesia",
+                            "start_s": 1.0,
+                            "end_s": 4.0,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert any(ev["sfx"] == "sub_thud.wav" and ev["gain_db"] == -10.5 for ev in sfx), sfx
+
+    bad = validate_map_scene(
+        {
+            "ov_scale": 99,
+            "capture_format": "gif",
+            "acts": [
+                {
+                    "act_id": "hostile_smooth",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "polygon",
+                            "geom_ref": "x",
+                            "hatch_space": "invalid_space",
+                            "hatch_reveal_mode": "bogus_mode",
+                            "hatch_direction": "sideways",
+                            "hatch_draw_s": -1,
+                            "hatch_spacing": 0,
+                            "hatch_stagger": 1.5,
+                            "lift_px": 500,
+                            "bevel_light": 2.5,
+                            "fill_bloom_overshoot": 0.5,
+                            "light_sweep": 123,
+                            "rim_glint": "nope",
+                        },
+                        {
+                            "type": "country_block_3d",
+                            "extrude_height_m": float("nan"),
+                            "bevel_px": -4,
+                        },
+                        {
+                            "type": "focus_spotlight",
+                            "dim_alpha": 1.8,
+                        },
+                    ],
+                }
+            ],
+        },
+        repo_root=tmp_path,
+    )
+    assert not bad["ok"]
+    joined = "\n".join(bad["errors"])
+    for token in (
+        "ov_scale",
+        "capture_format",
+        "hatch_space",
+        "hatch_reveal_mode",
+        "hatch_direction",
+        "hatch_draw_s",
+        "hatch_spacing",
+        "hatch_stagger",
+        "lift_px",
+        "bevel_light",
+        "fill_bloom_overshoot",
+        "light_sweep",
+        "rim_glint",
+        "country_block_3d",
+        "focus_spotlight",
+    ):
+        assert token in joined, f"Expected error mentioning {token!r}, got:\n{joined}"

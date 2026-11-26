@@ -572,3 +572,39 @@ def test_cuts_with_through_keyframes_start_cuts_auto_shutter_and_none_curve() ->
         fps=10.0,
     )
     assert min(s["zoom"] for s in none_curve) < 6.0
+
+
+def test_high_zoom_slow_drift_preserves_subpixel_precision() -> None:
+    from vedit.director.camera_moves import build_cinema_camera_track
+
+    # Slow 1.0s drift across ~30 meters at z=16.5 (~0.00027 deg total, ~9e-6 deg/frame).
+    # With 5-decimal quantization (1e-5 deg) adjacent frames stall identically; 7-decimal precision
+    # preserves smooth sub-pixel increments on every interior frame.
+    kfs = [
+        {
+            "t": 0.0,
+            "center": [106.8270000, -6.1750000],
+            "zoom": 16.5,
+            "pitch": 45.0,
+            "bearing": 12.0,
+        },
+        {
+            "t": 1.0,
+            "center": [106.8272700, -6.1751800],
+            "zoom": 16.504,
+            "pitch": 45.12,
+            "bearing": 12.15,
+        },
+    ]
+    samples = build_cinema_camera_track(kfs, duration_s=1.0, fps=30.0)
+    assert len(samples) == 30
+    interior = samples[4:26]
+    # Every consecutive interior frame must advance strictly in longitude and pitch.
+    stalled_lng = sum(
+        1 for a, b in zip(interior, interior[1:], strict=False) if a["center"][0] == b["center"][0]
+    )
+    stalled_pitch = sum(
+        1 for a, b in zip(interior, interior[1:], strict=False) if a["pitch"] == b["pitch"]
+    )
+    assert stalled_lng == 0, f"Detected {stalled_lng} quantized longitude stalls at z=16.5"
+    assert stalled_pitch == 0, f"Detected {stalled_pitch} quantized pitch stalls"

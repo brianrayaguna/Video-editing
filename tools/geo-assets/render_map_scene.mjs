@@ -29,10 +29,10 @@ import { createRequire } from "node:module";
 import {
   createCdpScreenshotter,
   getChromeArgs,
-  spawnMjpegPipeEncoder,
+  spawnFramePipeEncoder,
 } from "./fast_capture.mjs";
 import { coverageReport, startTileServer } from "./serve_tiles.mjs";
-import { cutBlurAmount } from "./map_draw_math.mjs";
+import { cutBlurAmount, shutterSubframeSchedule } from "./map_draw_math.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -215,6 +215,31 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
   const demMaxZoom = Number(mapOpts.dem_maxzoom ?? 10);
   const has3d = Boolean(mapOpts.has_3d);
   const originCoord = mapOpts.origin_coord || mapOpts.initial_camera?.center || [0, 0];
+  const ovScale = Math.max(1.0, Math.min(2.0, Number(mapOpts.ov_scale ?? 1.5) || 1.5));
+  const ovW = Math.round(width * ovScale);
+  const ovH = Math.round(height * ovScale);
+  const sunAzimuth = Number.isFinite(Number(mapOpts.sun_azimuth_deg)) ? Number(mapOpts.sun_azimuth_deg) : 335;
+  const sunElevation = Number.isFinite(Number(mapOpts.sun_elevation_deg)) ? Number(mapOpts.sun_elevation_deg) : 42;
+  const maxPitch = Math.max(Number(mapOpts.max_pitch || 0), Number(mapOpts.initial_camera?.pitch || 0));
+  const enableSky = mapOpts.atmosphere === false ? false : Boolean(terrain3d || maxPitch >= 25 || mapOpts.atmosphere);
+  const hdrBloomEnabled = mapOpts.hdr_bloom !== false;
+  const skySpec = mapOpts.atmosphere && typeof mapOpts.atmosphere === "object"
+    ? {
+        "sky-color": mapOpts.atmosphere.sky_color || "#071E2E",
+        "sky-horizon-blend": mapOpts.atmosphere.sky_horizon_blend ?? 0.55,
+        "horizon-color": mapOpts.atmosphere.horizon_color || "#1E5B70",
+        "horizon-fog-blend": mapOpts.atmosphere.horizon_fog_blend ?? 0.45,
+        "fog-color": mapOpts.atmosphere.fog_color || "#0C2C3B",
+        "fog-ground-blend": mapOpts.atmosphere.fog_ground_blend ?? 0.35,
+      }
+    : {
+        "sky-color": "#071E2E",
+        "sky-horizon-blend": 0.55,
+        "horizon-color": "#1E5B70",
+        "horizon-fog-blend": 0.45,
+        "fog-color": "#0C2C3B",
+        "fog-ground-blend": 0.35,
+      };
   return `<!doctype html>
 <html>
 <head>
@@ -245,15 +270,21 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
 <body>
   <div id="stage">
     <div id="map"></div>
-    <canvas id="ov" width="${width}" height="${height}"></canvas>
+    <canvas id="ov" width="${ovW}" height="${ovH}"></canvas>
   </div>
   <canvas id="comp" width="${width}" height="${height}"></canvas>
   <script>
     const BASE_URL = ${JSON.stringify(baseUrl)};
     const VEC = ${vectorsJson};
     const W = ${width}, H = ${height};
+    const OV_SCALE = ${ovScale};
+    const OV_W = ${ovW}, OV_H = ${ovH};
+    const SUN_AZIMUTH_DEG = ${sunAzimuth};
+    const SUN_ELEVATION_DEG = ${sunElevation};
+    const HDR_BLOOM_ENABLED = ${hdrBloomEnabled};
     const FLAG_RASTER_WIDTH = ${FLAG_RASTER_WIDTH};
 ${DRAW_MATH_SRC}
+    const SUN_VEC = sunDirectionFromAzimuthElevation(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG);
 
     const map = new maplibregl.Map({
       container: "map",
@@ -279,17 +310,10 @@ ${DRAW_MATH_SRC}
         layers: [
           { id: "bg", type: "background", paint: { "background-color": "#0A3A4A" } },
           { id: "sat", type: "raster", source: "sat", paint: { "raster-contrast": ${mapOpts.tile_source === "realistic" ? 0.08 : mapOpts.tile_source === "project" ? 0.06 : 0}, "raster-saturation": ${mapOpts.tile_source === "realistic" ? 0.06 : mapOpts.tile_source === "project" ? 0.04 : 0} } }${terrain3d ? `,
-          { id: "hillshade", type: "hillshade", source: "dem", paint: { "hillshade-exaggeration": 0.28, "hillshade-shadow-color": "#041620", "hillshade-highlight-color": "#FFF5D6" } }` : ""}
+          { id: "hillshade", type: "hillshade", source: "dem", paint: { "hillshade-exaggeration": 0.28, "hillshade-illumination-direction": ${sunAzimuth}, "hillshade-illumination-anchor": "map", "hillshade-shadow-color": "#041620", "hillshade-highlight-color": "#FFF5D6" } }` : ""}
         ]${terrain3d ? `,
-        terrain: { source: "dem", exaggeration: ${terrainExag} },
-        sky: {
-          "sky-color": "#071E2E",
-          "sky-horizon-blend": 0.55,
-          "horizon-color": "#1E5B70",
-          "horizon-fog-blend": 0.45,
-          "fog-color": "#0C2C3B",
-          "fog-ground-blend": 0.35
-        }` : ""}
+        terrain: { source: "dem", exaggeration: ${terrainExag} }` : ""}${enableSky ? `,
+        sky: ${JSON.stringify(skySpec)}` : ""}
       },
       center: ${JSON.stringify(mapOpts.initial_camera?.center || [0, 0])},
       zoom: ${Number(mapOpts.initial_camera?.zoom ?? 2)},
@@ -304,35 +328,84 @@ ${DRAW_MATH_SRC}
       preserveDrawingBuffer: true,
       maxTileCacheSize: 8000,
       transformConstrain: (lngLat, zoom) => ({ center: lngLat, zoom }),
-      canvasContextAttributes: { alpha: false, preserveDrawingBuffer: true, antialias: ${has3d ? "true" : "false"} }
+      canvasContextAttributes: { alpha: false, preserveDrawingBuffer: true, antialias: true }
     });
 
     const ovCanvas = document.getElementById("ov");
     const ctx = ovCanvas.getContext("2d");
+    ctx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
     const compCanvas = document.getElementById("comp");
     const compCtx = compCanvas.getContext("2d");
 
-    // Offscreen canvas for the feathered organic reveal mask
+    // Half-resolution offscreen canvas for smooth continuous-feathered organic masks & spotlights
+    const ORG_SCALE = 0.5;
+    const orgW = Math.max(128, Math.round(W * ORG_SCALE));
+    const orgH = Math.max(128, Math.round(H * ORG_SCALE));
     const organicCanvas = document.createElement("canvas");
-    organicCanvas.width = W; organicCanvas.height = H;
+    organicCanvas.width = orgW; organicCanvas.height = orgH;
     const organicCtx = organicCanvas.getContext("2d");
 
-    // Offscreen canvases for seamless dissolved polygon exterior glow & rim (zero internal borders)
+    // Supersampled offscreen canvases for seamless dissolved polygon exterior glow, rim & FX passes
     const maskCanvas = document.createElement("canvas");
-    maskCanvas.width = W; maskCanvas.height = H;
+    maskCanvas.width = OV_W; maskCanvas.height = OV_H;
     const maskCtx = maskCanvas.getContext("2d");
 
     const rimCanvas = document.createElement("canvas");
-    rimCanvas.width = W; rimCanvas.height = H;
+    rimCanvas.width = OV_W; rimCanvas.height = OV_H;
     const rimCtx = rimCanvas.getContext("2d");
 
-    // Downsampled (0.25x) offscreen canvas for exterior bloom passes (16x fewer blur pixels).
+    const fxCanvas = document.createElement("canvas");
+    fxCanvas.width = OV_W; fxCanvas.height = OV_H;
+    const fxCtx = fxCanvas.getContext("2d");
+
+    // Two-step pyramid bloom buffers (0.5x -> 0.25x) to eliminate thin-rim temporal shimmer
+    const GLOW_HALF_SCALE = 0.5;
+    const glowHalfW = Math.max(128, Math.round(W * GLOW_HALF_SCALE));
+    const glowHalfH = Math.max(128, Math.round(H * GLOW_HALF_SCALE));
+    const glowHalfCanvas = document.createElement("canvas");
+    glowHalfCanvas.width = glowHalfW; glowHalfCanvas.height = glowHalfH;
+    const glowHalfCtx = glowHalfCanvas.getContext("2d");
+
     const GLOW_SCALE = 0.25;
     const glowW = Math.max(64, Math.round(W * GLOW_SCALE));
     const glowH = Math.max(64, Math.round(H * GLOW_SCALE));
     const glowCanvas = document.createElement("canvas");
     glowCanvas.width = glowW; glowCanvas.height = glowH;
     const glowCtx = glowCanvas.getContext("2d");
+
+    // Deterministic triangular-PDF micro-dither tile (128x128) to suppress 8-bit gradient banding
+    const ditherCanvas = document.createElement("canvas");
+    ditherCanvas.width = 128; ditherCanvas.height = 128;
+    const ditherCtx = ditherCanvas.getContext("2d");
+    const ditherImg = ditherCtx.createImageData(128, 128);
+    {
+      let seed = 133791;
+      const nextRand = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let i = 0; i < ditherImg.data.length; i += 4) {
+        const tri = nextRand() - nextRand();
+        const v = tri >= 0 ? 255 : 0;
+        ditherImg.data[i] = v;
+        ditherImg.data[i + 1] = v;
+        ditherImg.data[i + 2] = v;
+        ditherImg.data[i + 3] = Math.round(Math.abs(tri) * 255);
+      }
+      ditherCtx.putImageData(ditherImg, 0, 0);
+    }
+    const ditherPattern = ctx.createPattern(ditherCanvas, "repeat");
+    function applyMicroDither(targetCtx, alpha = 0.025) {
+      if (!ditherPattern || alpha <= 0.001) return;
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "overlay";
+      targetCtx.globalAlpha = clamp(alpha, 0, 0.08);
+      targetCtx.fillStyle = ditherPattern;
+      targetCtx.fillRect(0, 0, W, H);
+      targetCtx.restore();
+    }
+
+    const __worldHatchCache = new Map();
 
     const HAS_3D = ${has3d};
     const ORIGIN_COORD = ${JSON.stringify(originCoord)};
@@ -634,11 +707,12 @@ ${DRAW_MATH_SRC}
         w = lerp(maxLng + 0.5, minLng - padLng, p);
       }
       const corners = [[w, n], [e, n], [e, s], [w, s]];
+      const projCorners = projectRingClipped(corners);
+      if (projCorners.length < 3) return false;
       targetCtx.beginPath();
-      for (let i = 0; i < corners.length; i++) {
-        const sp = map.project(corners[i]);
-        if (i === 0) targetCtx.moveTo(sp.x, sp.y);
-        else targetCtx.lineTo(sp.x, sp.y);
+      for (let i = 0; i < projCorners.length; i++) {
+        if (i === 0) targetCtx.moveTo(projCorners[i].x, projCorners[i].y);
+        else targetCtx.lineTo(projCorners[i].x, projCorners[i].y);
       }
       targetCtx.closePath();
       targetCtx.clip();
@@ -721,8 +795,7 @@ ${DRAW_MATH_SRC}
       tctx.imageSmoothingQuality = "high";
       const warpFrac = flagWave && flagWave.warp > 0 ? Number(flagWave.warp) : 0;
       if (warpFrac > 0.001 && dw >= 12) {
-        const visW = Math.min(dw, Math.max(0, Math.min(bounds.maxX, W) - Math.max(bounds.minX, 0)));
-        const slices = clamp(Math.round(Math.max(visW, dw * 0.45) / 5), 32, 120);
+        const slices = 80;
         const sw = img.width / slices;
         const dwS = dw / slices;
         const warpPx = clamp(dh * warpFrac, 2, 42);
@@ -795,47 +868,75 @@ ${DRAW_MATH_SRC}
     }
 
     // Soft-edged reveal mask applied with destination-in: "radial" grows from "origin" (default
-    // bounds centre); "organic" grows a noise-edged seed from the same origin (see
-    // organicRevealRadii); "wipe_right" / "wipe_left" / "wipe_down" / "wipe_up" travel in the
-    // named direction (see wipeFrontEdge).
-    function applyRevealMask(tctx, mode, progress, b, origin = null, organic = null) {
+    // bounds centre); "organic" grows a world-space noise-edged seed with continuous Gaussian
+    // feathering (zero step banding); "wipe_right" / "wipe_left" / "wipe_down" / "wipe_up" travel
+    // in the named direction (see wipeFrontEdge).
+    function applyRevealMask(tctx, mode, progress, b, origin = null, organic = null, geomBounds = null, originLngLat = null) {
       const p = clamp(progress, 0, 1);
       if (!b || mode === "fade" || p >= 0.999) return;
       if (mode === "organic") {
-        const cx = origin ? origin.x : (b.minX + b.maxX) / 2;
-        const cy = origin ? origin.y : (b.minY + b.maxY) / 2;
-        const R = Math.max(
-          Math.hypot(b.minX - cx, b.minY - cy), Math.hypot(b.maxX - cx, b.minY - cy),
-          Math.hypot(b.minX - cx, b.maxY - cy), Math.hypot(b.maxX - cx, b.maxY - cy), 1
-        );
-        // Feather of 10% of the front: the inner copies add alpha so the core reaches 1.
-        const radii = organicRevealRadii(p, R / 0.9, {
-          points: 120,
-          roughness: organic && organic.roughness != null ? organic.roughness : 0.22,
-          seed: organic && organic.seed != null ? organic.seed : 1,
-        });
-        const K = 5;
         organicCtx.save();
+        organicCtx.setTransform(ORG_SCALE, 0, 0, ORG_SCALE, 0, 0);
         organicCtx.clearRect(0, 0, W, H);
-        organicCtx.globalCompositeOperation = "lighter";
-        organicCtx.globalAlpha = 1 / K;
+        organicCtx.filter = "blur(6px)";
         organicCtx.fillStyle = "#000";
-        for (let k = 0; k < K; k++) {
-          const sc = 1 - 0.1 * (k / (K - 1));
+        const rough = organic && organic.roughness != null ? organic.roughness : 0.22;
+        const seed = organic && organic.seed != null ? organic.seed : 1;
+        let drewWorld = false;
+        if (geomBounds && geomBounds.length === 4) {
+          const [minLng, minLat, maxLng, maxLat] = geomBounds;
+          const origLL = originLngLat || [(minLng + maxLng) * 0.5, (minLat + maxLat) * 0.5];
+          const om = lngLatToMercNorm(origLL);
+          const cornersM = [
+            lngLatToMercNorm([minLng, minLat]),
+            lngLatToMercNorm([maxLng, minLat]),
+            lngLatToMercNorm([maxLng, maxLat]),
+            lngLatToMercNorm([minLng, maxLat]),
+          ];
+          const maxRMerc = Math.max(
+            1e-6,
+            ...cornersM.map((cm) => Math.hypot(cm.x - om.x, cm.y - om.y))
+          );
+          const radii = organicRevealRadii(p, maxRMerc / 0.88, { points: 120, roughness: rough, seed });
+          const ringLL = radii.map((r, i) => {
+            const th = (2 * Math.PI * i) / radii.length;
+            return mercNormToLngLat(om.x + Math.cos(th) * r, om.y + Math.sin(th) * r);
+          });
+          const pts = projectRingClipped(ringLL);
+          if (pts.length >= 3) {
+            organicCtx.beginPath();
+            for (let i = 0; i < pts.length; i++) {
+              if (i === 0) organicCtx.moveTo(pts[i].x, pts[i].y);
+              else organicCtx.lineTo(pts[i].x, pts[i].y);
+            }
+            organicCtx.closePath();
+            organicCtx.fill();
+            drewWorld = true;
+          }
+        }
+        if (!drewWorld) {
+          const cx = origin ? origin.x : (b.minX + b.maxX) / 2;
+          const cy = origin ? origin.y : (b.minY + b.maxY) / 2;
+          const R = Math.max(
+            Math.hypot(b.minX - cx, b.minY - cy), Math.hypot(b.maxX - cx, b.minY - cy),
+            Math.hypot(b.minX - cx, b.maxY - cy), Math.hypot(b.maxX - cx, b.maxY - cy), 1
+          );
+          const radii = organicRevealRadii(p, R / 0.88, { points: 120, roughness: rough, seed });
           organicCtx.beginPath();
           radii.forEach((r, i) => {
             const th = (2 * Math.PI * i) / radii.length;
-            const x = cx + Math.cos(th) * r * sc;
-            const y = cy + Math.sin(th) * r * sc;
+            const x = cx + Math.cos(th) * r;
+            const y = cy + Math.sin(th) * r;
             if (i === 0) organicCtx.moveTo(x, y); else organicCtx.lineTo(x, y);
           });
           organicCtx.closePath();
           organicCtx.fill();
         }
+        organicCtx.filter = "none";
         organicCtx.restore();
         tctx.save();
         tctx.globalCompositeOperation = "destination-in";
-        tctx.drawImage(organicCanvas, 0, 0);
+        tctx.drawImage(organicCanvas, 0, 0, W, H);
         tctx.restore();
         return;
       }
@@ -863,72 +964,512 @@ ${DRAW_MATH_SRC}
       tctx.restore();
     }
 
-    // Seamless exterior polygon dissolve + exterior-only feathered bloom + animated perimeter/directional reveal + optional diagonal hatch & flash surge
-    function drawDissolvedPolygon(geom, { fillHex, fillAlpha = 0.56, rimHex = "#F4F1EA", rimWidth = 3.0, bloomHex = "#22C55E", bloomScale = 1.0, alpha = 1.0, preserveTerrain = true, borderReveal = 1.0, fillReveal = 1.0, revealAxis = null, revealProgress = 1.0, revealBounds = null, outlineOnly = false, perimeterProgress = 1.0, featherPx = 0, hatch = false, hatchColor = "rgba(255,255,255,0.22)", hatchSpacing = 22, hatchWidth = 6, flashHex = null, flashIntensity = 0, traced = false, traceProgress = 1.0, traceHeads = 2, traceStart = null, traceDir = "cw", traceHeadGlow = false, flagImg = null, flagAlpha = 1.0, flagBlend = "source-over", flagRotateDeg = 0, flagFit = "stretch", fillRevealMode = "fade", fillRevealOrigin = null, fillRevealOrganic = null, flagWave = null, time = 0 } = {}) {
+    // World-space surface-locked or concentric-contour progressive interior hatching clipped cleanly to maskCanvas.
+    function drawProgressiveInteriorHatch(geom, geomBounds, {
+      hatchColor = "rgba(255,255,255,0.24)",
+      hatchSpacing = 18,
+      hatchWidth = 3.2,
+      hatchSpace = "world",
+      hatchRevealMode = "fade",
+      hatchProgress = 1.0,
+      hatchStagger = 0.62,
+      hatchDirection = "ltr",
+      hatchAngleDeg = 45,
+      hatchEase = "editorial_out",
+      hatchRefZoom = null,
+      hatchCross = false,
+      hatchTipGlow = false,
+      hatchGlowHex = null,
+      fillRevealMode = "fade",
+      fillReveal = 1.0,
+      revealTargetBounds = null,
+      fillRevealOriginPx = null,
+      fillRevealOriginLL = null,
+      fillRevealOrganic = null,
+      revealAxis = null,
+      revealProgress = 1.0,
+      revealBounds = null,
+      geomKey = "",
+      alpha = 1.0,
+    } = {}) {
+      if (alpha <= 0.005 || hatchProgress <= 0.001) return;
+      rimCtx.save();
+      rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+      rimCtx.clearRect(0, 0, W, H);
+      rimCtx.globalCompositeOperation = "source-over";
+
+      const tipPoints = [];
+      if (hatchRevealMode === "contour_ripple") {
+        // Exact Euclidean interior iso-contours via (S(d) \ S(d - w)) intersected with maskCanvas.
+        const count = 5;
+        const stepPx = Math.max(8, hatchSpacing * 0.85);
+        const bandW = Math.max(1.5, hatchWidth);
+        for (let k = 0; k < count; k++) {
+          const st = hatchLineRevealState(k, count, hatchProgress, {
+            mode: "contour_ripple",
+            staggerFrac: hatchStagger,
+            direction: hatchDirection,
+            ease: hatchEase,
+          });
+          if (!st.active || st.alpha <= 0.005) continue;
+          const dist = (k + 1) * stepPx;
+          const lw = Math.max(1.0, bandW * st.widthScale);
+          fxCtx.save();
+          fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+          fxCtx.clearRect(0, 0, W, H);
+          fxCtx.lineJoin = "round";
+          fxCtx.lineCap = "round";
+          fxCtx.strokeStyle = "#FFFFFF";
+          fxCtx.lineWidth = 2 * dist;
+          fxCtx.beginPath();
+          traceGeom(fxCtx, geom);
+          fxCtx.stroke();
+          const innerD = Math.max(0, dist - lw);
+          if (innerD > 0.25) {
+            fxCtx.globalCompositeOperation = "destination-out";
+            fxCtx.lineWidth = 2 * innerD;
+            fxCtx.beginPath();
+            traceGeom(fxCtx, geom);
+            fxCtx.stroke();
+          }
+          fxCtx.globalCompositeOperation = "source-in";
+          fxCtx.fillStyle = hatchColor;
+          fxCtx.fillRect(0, 0, W, H);
+          fxCtx.restore();
+
+          rimCtx.save();
+          rimCtx.globalAlpha = st.alpha * (1 - k * 0.12);
+          rimCtx.drawImage(fxCanvas, 0, 0, W, H);
+          rimCtx.restore();
+        }
+      } else if (hatchSpace === "screen" || !geomBounds) {
+        const angRad = ((hatchAngleDeg ?? 45) * Math.PI) / 180;
+        const sp = Math.max(4, hatchSpacing);
+        const diag = Math.hypot(W, H);
+        const cx = W * 0.5, cy = H * 0.5;
+        const ux = Math.cos(angRad), uy = -Math.sin(angRad);
+        const nx = Math.sin(angRad), ny = Math.cos(angRad);
+        const halfN = diag * 0.65;
+        const count = Math.max(2, Math.min(260, Math.ceil((2 * halfN) / sp)));
+        rimCtx.strokeStyle = hatchColor;
+        rimCtx.lineCap = "round";
+        for (let i = 0; i < count; i++) {
+          const st = hatchLineRevealState(i, count, hatchProgress, {
+            mode: hatchRevealMode,
+            staggerFrac: hatchStagger,
+            direction: hatchDirection,
+            ease: hatchEase,
+          });
+          if (!st.active || st.alpha <= 0.005) continue;
+          const nOff = -halfN + i * sp;
+          const u0 = lerp(-halfN, halfN, st.drawFrom);
+          const u1 = lerp(-halfN, halfN, st.drawTo);
+          rimCtx.save();
+          rimCtx.globalAlpha = st.alpha;
+          rimCtx.lineWidth = Math.max(0.8, hatchWidth * st.widthScale);
+          rimCtx.beginPath();
+          rimCtx.moveTo(cx + nOff * nx + u0 * ux, cy + nOff * ny + u0 * uy);
+          rimCtx.lineTo(cx + nOff * nx + u1 * ux, cy + nOff * ny + u1 * uy);
+          rimCtx.stroke();
+          rimCtx.restore();
+        }
+      } else {
+        // World-space surface-locked Mercator hatch with octave blending & progressive per-line reveal.
+        const curZoom = map.getZoom();
+        const oct = computeOctaveHatchSpacing(hatchSpacing, curZoom, hatchRefZoom);
+        const angles = hatchCross ? [hatchAngleDeg, hatchAngleDeg + 90] : [hatchAngleDeg];
+        const bObj = {
+          minLng: geomBounds[0],
+          minLat: geomBounds[1],
+          maxLng: geomBounds[2],
+          maxLat: geomBounds[3],
+        };
+        const spacingStep = oct.subAlpha > 0.02 ? oct.subSpacingMerc : oct.primarySpacingMerc;
+        const useSubFlag = oct.subAlpha > 0.02;
+        for (let ai = 0; ai < angles.length; ai++) {
+          const ang = angles[ai];
+          const cacheKey = [
+            geomKey || geomBounds.map((v) => v.toFixed(3)).join(","),
+            ang.toFixed(1),
+            oct.octave,
+            useSubFlag ? "s" : "p",
+            hatchSpacing,
+          ].join("|");
+          let lines = __worldHatchCache.get(cacheKey);
+          if (!lines) {
+            lines = buildWorldHatchLines(bObj, {
+              angleDeg: ang,
+              spacingMerc: spacingStep,
+              maxLines: 180,
+              padFrac: 0.14,
+              segmentsPerLine: 10,
+            });
+            if (__worldHatchCache.size > 128) __worldHatchCache.clear();
+            __worldHatchCache.set(cacheKey, lines);
+          }
+          const total = lines.length;
+          const passProg = ai === 0 ? hatchProgress : clamp((hatchProgress - 0.18) / 0.82, 0, 1);
+          if (passProg <= 0.001 || total === 0) continue;
+          rimCtx.strokeStyle = hatchColor;
+          rimCtx.lineCap = "round";
+          rimCtx.lineJoin = "round";
+          for (let i = 0; i < total; i++) {
+            const line = lines[i];
+            const octaveAlpha = useSubFlag && line.isSub ? oct.subAlpha : 1.0;
+            if (octaveAlpha <= 0.01) continue;
+            const st = hatchLineRevealState(i, total, passProg, {
+              mode: hatchRevealMode,
+              staggerFrac: hatchStagger,
+              direction: hatchDirection,
+              ease: hatchEase,
+            });
+            if (!st.active || st.alpha <= 0.005) continue;
+            const subCoords = slicePolylineFraction(line.coords, st.drawFrom, st.drawTo);
+            if (subCoords.length < 2) continue;
+            const projSegs = projectPolylineClipped(subCoords);
+            if (!projSegs.length) continue;
+            rimCtx.save();
+            rimCtx.globalAlpha = st.alpha * octaveAlpha * (ai === 1 ? 0.72 : 1.0);
+            rimCtx.lineWidth = Math.max(0.8, hatchWidth * st.widthScale);
+            rimCtx.beginPath();
+            for (const segPts of projSegs) {
+              if (segPts.length < 2) continue;
+              rimCtx.moveTo(segPts[0].x, segPts[0].y);
+              for (let k = 1; k < segPts.length; k++) rimCtx.lineTo(segPts[k].x, segPts[k].y);
+            }
+            rimCtx.stroke();
+            rimCtx.restore();
+            if (hatchTipGlow && st.drawTo > 0.02 && st.drawTo < 0.985) {
+              const tipSeg = (hatchDirection === "alternate" && i % 2 === 1)
+                ? projSegs[0]?.[0]
+                : projSegs[projSegs.length - 1]?.[projSegs[projSegs.length - 1].length - 1];
+              if (tipSeg && Number.isFinite(tipSeg.x) && Number.isFinite(tipSeg.y)) {
+                tipPoints.push({ x: tipSeg.x, y: tipSeg.y, a: st.alpha * octaveAlpha });
+              }
+            }
+          }
+        }
+      }
+
+      // Optional luminous tip spark riding each actively drawing hatch line (clipped inside silhouette)
+      if (tipPoints.length > 0) {
+        const gHex = hatchGlowHex || "#FFFFFF";
+        rimCtx.save();
+        rimCtx.globalCompositeOperation = "lighter";
+        for (const tp of tipPoints) {
+          const rad = Math.max(6, hatchWidth * 3.2);
+          const g = rimCtx.createRadialGradient(tp.x, tp.y, 0, tp.x, tp.y, rad);
+          g.addColorStop(0, "rgba(255,255,255," + (0.85 * tp.a).toFixed(3) + ")");
+          g.addColorStop(0.45, rgbaStr(gHex, 0.45 * tp.a));
+          g.addColorStop(1, rgbaStr(gHex, 0));
+          rimCtx.fillStyle = g;
+          rimCtx.beginPath();
+          rimCtx.arc(tp.x, tp.y, rad, 0, Math.PI * 2);
+          rimCtx.fill();
+        }
+        rimCtx.restore();
+      }
+
+      // Mask to active reveal front (if non-fade) and strictly clip inside polygon silhouette
+      if (fillRevealMode !== "fade" && fillReveal < 0.999) {
+        applyRevealMask(rimCtx, fillRevealMode, fillReveal, revealTargetBounds, fillRevealOriginPx, fillRevealOrganic, geomBounds, fillRevealOriginLL);
+      }
+      rimCtx.globalCompositeOperation = "destination-in";
+      rimCtx.drawImage(maskCanvas, 0, 0, W, H);
+      rimCtx.restore();
+
+      ctx.save();
+      if (revealAxis && revealProgress < 0.999) {
+        applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds);
+      }
+      ctx.globalAlpha = alpha * (fillRevealMode === "fade" ? clamp(fillReveal, 0, 1) : 1);
+      ctx.drawImage(rimCanvas, 0, 0, W, H);
+      ctx.restore();
+    }
+
+    // Shape-aware studio spotlight: dims map outside target polygons with soft feathered cutout.
+    function drawFocusSpotlight(geoms, { dimAlpha = 0.58, dimHex = "#04101A", featherPx = 36, rimGlowHex = null, rimGlowAlpha = 0.25, alpha = 1.0 } = {}) {
+      if (alpha <= 0.005 || dimAlpha <= 0.005) return;
+      const list = (geoms || []).filter(Boolean);
+      if (!list.length) return;
+      maskCtx.save();
+      maskCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+      maskCtx.clearRect(0, 0, W, H);
+      maskCtx.fillStyle = "#FFFFFF";
+      maskCtx.beginPath();
+      for (const g of list) traceGeom(maskCtx, g);
+      maskCtx.fill();
+      maskCtx.restore();
+
+      const blurR = clamp(Math.round((Number(featherPx) || 36) * ORG_SCALE), 2, 60);
+      organicCtx.save();
+      organicCtx.setTransform(ORG_SCALE, 0, 0, ORG_SCALE, 0, 0);
+      organicCtx.clearRect(0, 0, W, H);
+      organicCtx.filter = "blur(" + blurR + "px)";
+      organicCtx.drawImage(maskCanvas, 0, 0, W, H);
+      organicCtx.filter = "none";
+      organicCtx.restore();
+
+      fxCtx.save();
+      fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+      fxCtx.clearRect(0, 0, W, H);
+      fxCtx.fillStyle = rgbaStr(dimHex, clamp(dimAlpha * alpha, 0, 0.95));
+      fxCtx.fillRect(0, 0, W, H);
+      fxCtx.globalCompositeOperation = "destination-out";
+      fxCtx.drawImage(organicCanvas, 0, 0, W, H);
+      fxCtx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(fxCanvas, 0, 0, W, H);
+      if (rimGlowHex && rimGlowAlpha > 0.005) {
+        fxCtx.save();
+        fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+        fxCtx.clearRect(0, 0, W, H);
+        fxCtx.drawImage(organicCanvas, 0, 0, W, H);
+        fxCtx.globalCompositeOperation = "destination-out";
+        fxCtx.drawImage(maskCanvas, 0, 0, W, H);
+        fxCtx.globalCompositeOperation = "source-in";
+        fxCtx.fillStyle = rimGlowHex;
+        fxCtx.fillRect(0, 0, W, H);
+        fxCtx.restore();
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = clamp(rimGlowAlpha * alpha, 0, 0.85);
+        ctx.drawImage(fxCanvas, 0, 0, W, H);
+      }
+      ctx.restore();
+      applyMicroDither(ctx, 0.025 * alpha);
+    }
+
+    // Seamless exterior polygon dissolve + 2.5D lift/bevel/cast-shadow + 2-step pyramid screen bloom +
+    // world-space border trace with comet head + world-space progressive hatch & optical lighting sweeps.
+    function drawDissolvedPolygon(geom, {
+      fillHex,
+      fillAlpha = 0.56,
+      rimHex = "#F4F1EA",
+      rimWidth = 3.0,
+      bloomHex = "#22C55E",
+      bloomScale = 1.0,
+      alpha = 1.0,
+      preserveTerrain = true,
+      borderReveal = 1.0,
+      fillReveal = 1.0,
+      revealAxis = null,
+      revealProgress = 1.0,
+      revealBounds = null,
+      outlineOnly = false,
+      perimeterProgress = 1.0,
+      featherPx = 0,
+      hatch = false,
+      hatchColor = "rgba(255,255,255,0.22)",
+      hatchSpacing = 18,
+      hatchWidth = 3.5,
+      hatchSpace = "world",
+      hatchRevealMode = "fade",
+      hatchProgress = 1.0,
+      hatchStagger = 0.62,
+      hatchDirection = "ltr",
+      hatchAngleDeg = 45,
+      hatchEase = "editorial_out",
+      hatchRefZoom = null,
+      hatchCross = false,
+      hatchTipGlow = false,
+      hatchGlowHex = null,
+      flashHex = null,
+      flashIntensity = 0,
+      traced = false,
+      traceProgress = 1.0,
+      traceEndS = 0,
+      traceHeads = 2,
+      traceStart = null,
+      traceDir = "cw",
+      traceHeadGlow = false,
+      flagImg = null,
+      flagAlpha = 1.0,
+      flagBlend = "source-over",
+      flagRotateDeg = 0,
+      flagFit = "stretch",
+      fillRevealMode = "fade",
+      fillRevealOrigin = null,
+      fillRevealOrganic = null,
+      fillBloomOvershoot = 1.0,
+      flagWave = null,
+      dissolveSeams = false,
+      liftPx = 0,
+      liftProgress = 1.0,
+      castShadow = null,
+      bevelLight = 0,
+      lightSweep = null,
+      rimGlint = null,
+      geomKey = "",
+      time = 0,
+    } = {}) {
       if (alpha <= 0.005 || !geom) return;
       if (outlineOnly && perimeterProgress < 0.999 && !traced) {
         drawProgressiveGeomPerimeter(geom, perimeterProgress, { rimHex, rimWidth, bloomHex, bloomScale, alpha });
         return;
       }
       if (traced && traceProgress <= 0.001 && fillReveal <= 0.005) return;
-      const needOuter = traced || Boolean(flagImg) || fillRevealMode !== "fade";
+
+      const geomBounds = computeGeomBounds(geom);
+      const isMultiPart = Boolean(dissolveSeams) || Array.isArray(geom) || (geom && (geom.type === "FeatureCollection" || geom.type === "GeometryCollection"));
+      const needOuter = traced || Boolean(flagImg) || fillRevealMode !== "fade" || Boolean(rimGlint) || Boolean(lightSweep);
       const ringsLL = needOuter ? outerRingsLngLat(geom) : [];
       const ringsPx = needOuter ? ringsLL.map((r) => projectRingClipped(r)) : [];
 
-      // 1. Build unified solid silhouette mask (bridges tiny sub-pixel gaps between adjacent provinces)
+      // 1. Build clean solid silhouette mask (seam-bridge stroke only on multi-part dissolved regions)
+      maskCtx.save();
+      maskCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
       maskCtx.clearRect(0, 0, W, H);
       maskCtx.fillStyle = "#FFFFFF";
-      maskCtx.strokeStyle = "#FFFFFF";
-      maskCtx.lineWidth = 3.5;
-      maskCtx.lineJoin = "round";
       maskCtx.beginPath();
       traceGeom(maskCtx, geom);
       maskCtx.fill();
-      maskCtx.stroke();
+      if (isMultiPart) {
+        maskCtx.strokeStyle = "#FFFFFF";
+        maskCtx.lineWidth = 3.5;
+        maskCtx.lineJoin = "round";
+        maskCtx.stroke();
+      }
+      maskCtx.restore();
 
-      // 2. Build exterior-only rim ring into rimCanvas (8-12 direction dilation minus inner mask).
-      // Traced borders stroke the exterior and hole rings instead (partial while tracing, closed
-      // after), with the same band width, so the finished trace of one polygon matches its rim.
+      // 2. Optional 2.5D tactile lift & directional cast shadow synced to global SUN_VEC
+      const effLiftPx = Math.max(0, Number(liftPx) || 0) * clamp(liftProgress, 0, 1.15);
+      const shadowCfg = castShadow === true
+        ? { opacity: 0.44, blurPx: Math.max(10, effLiftPx * 0.95 + 8), offsetScale: 1.0 }
+        : (castShadow && typeof castShadow === "object"
+          ? {
+              opacity: clamp(Number(castShadow.opacity ?? 0.44), 0, 0.9),
+              blurPx: Math.max(4, Number(castShadow.blur_px ?? (effLiftPx * 0.95 + 10))),
+              offsetScale: Math.max(0.2, Number(castShadow.offset_scale ?? 1.0)),
+            }
+          : (effLiftPx > 0.5 ? { opacity: 0.42, blurPx: Math.max(10, effLiftPx * 0.9 + 6), offsetScale: 1.0 } : null));
+
+      if (shadowCfg && !outlineOnly && fillReveal > 0.01) {
+        const shDist = Math.max(6, effLiftPx * 1.15 + 4) * shadowCfg.offsetScale;
+        const shDx = SUN_VEC.shadowDx * shDist;
+        const shDy = SUN_VEC.shadowDy * shDist;
+        const blurOrg = clamp(Math.round(shadowCfg.blurPx * ORG_SCALE), 2, 40);
+        organicCtx.save();
+        organicCtx.setTransform(ORG_SCALE, 0, 0, ORG_SCALE, 0, 0);
+        organicCtx.clearRect(0, 0, W, H);
+        organicCtx.filter = "blur(" + blurOrg + "px)";
+        organicCtx.drawImage(maskCanvas, shDx, shDy, W, H);
+        organicCtx.filter = "none";
+        organicCtx.globalCompositeOperation = "source-in";
+        organicCtx.fillStyle = "#020A12";
+        organicCtx.fillRect(0, 0, W, H);
+        organicCtx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = alpha * shadowCfg.opacity * clamp(fillReveal, 0, 1);
+        ctx.drawImage(organicCanvas, 0, 0, W, H);
+        ctx.restore();
+      }
+
+      // Faux 2.5D extruded skirt wall beneath lifted country block
+      if (effLiftPx > 0.8 && !outlineOnly && fillReveal > 0.01) {
+        const skirtColor = mixHex(fillHex || "#16A82A", "#030B12", 0.64);
+        fxCtx.save();
+        fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+        fxCtx.clearRect(0, 0, W, H);
+        const steps = Math.max(2, Math.min(18, Math.ceil(effLiftPx / 1.4)));
+        for (let s = 0; s < steps; s++) {
+          const yOff = -((s / steps) * effLiftPx);
+          fxCtx.drawImage(maskCanvas, 0, yOff, W, H);
+        }
+        fxCtx.globalCompositeOperation = "destination-out";
+        fxCtx.drawImage(maskCanvas, 0, -effLiftPx, W, H);
+        fxCtx.globalCompositeOperation = "source-in";
+        fxCtx.fillStyle = skirtColor;
+        fxCtx.fillRect(0, 0, W, H);
+        fxCtx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = alpha * Math.min(0.94, fillAlpha + 0.25) * clamp(fillReveal, 0, 1);
+        ctx.drawImage(fxCanvas, 0, 0, W, H);
+        ctx.restore();
+      }
+
+      // 3. Build exterior-only rim ring into supersampled rimCanvas.
+      rimCtx.save();
+      rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
       rimCtx.clearRect(0, 0, W, H);
       rimCtx.globalCompositeOperation = "source-over";
-      const rw = Math.max(2.0, rimWidth);
+      const rw = Math.max(1.8, rimWidth);
       let traceHeadsPx = [];
+      let cometSegsPx = [];
+      const cometCloseFade = traced
+        ? (traceProgress < 0.999 ? 1.0 : 1.0 - easeOutCubic(seg(time, traceEndS, traceEndS + 0.28)))
+        : 0;
       if (traced) {
         if (traceProgress > 0.001) {
           const holesLL = polygonRings(geom).inner;
-          const holesPx = holesLL.map((r) => projectRingClipped(r));
-          const paths = [
-            ...perimeterPartialPaths(ringsPx, traceProgress, borderTraceOptions(ringsLL, traceHeads, traceStart, traceDir)),
-            ...perimeterPartialPaths(holesPx, traceProgress, borderTraceOptions(holesLL, traceHeads, traceStart, traceDir)),
-          ];
+          const outerRes = perimeterPartialPathsLngLat(ringsLL, traceProgress, {
+            ...borderTraceOptions(ringsLL, traceHeads, traceStart, traceDir),
+            cometFraction: 0.055,
+          });
+          const holeRes = holesLL.length
+            ? perimeterPartialPathsLngLat(holesLL, traceProgress, {
+                ...borderTraceOptions(holesLL, traceHeads, traceStart, traceDir),
+                cometFraction: 0.055,
+              })
+            : { paths: [], comets: [] };
+          const allPathsLL = [...outerRes.paths, ...holeRes.paths];
+          const allCometsLL = [...outerRes.comets, ...holeRes.comets];
+
           rimCtx.strokeStyle = "#FFFFFF";
-          rimCtx.lineWidth = 2 * (rw + 1.75);
+          rimCtx.lineWidth = 2 * (rw + (isMultiPart ? 1.75 : 0.25));
           rimCtx.lineCap = "round";
           rimCtx.lineJoin = "round";
           rimCtx.beginPath();
-          for (const path of paths) {
-            if (path.length < 2) continue;
-            rimCtx.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) rimCtx.lineTo(path[i].x, path[i].y);
-            if (traceProgress >= 1) rimCtx.closePath();
+          for (const pathLL of allPathsLL) {
+            const segs = projectPolylineClipped(pathLL);
+            for (const pts of segs) {
+              if (pts.length < 2) continue;
+              rimCtx.moveTo(pts[0].x, pts[0].y);
+              for (let i = 1; i < pts.length; i++) rimCtx.lineTo(pts[i].x, pts[i].y);
+              if (traceProgress >= 1) rimCtx.closePath();
+              if (traceProgress < 1) traceHeadsPx.push(pts[pts.length - 1]);
+            }
           }
           rimCtx.stroke();
-          if (traceProgress < 1) traceHeadsPx = paths.map((p) => p[p.length - 1]);
+          if (cometCloseFade > 0.01) {
+            for (const cLL of allCometsLL) {
+              for (const pts of projectPolylineClipped(cLL)) {
+                if (pts.length >= 2) cometSegsPx.push(pts);
+              }
+            }
+          }
         }
+      } else if (!isMultiPart) {
+        rimCtx.strokeStyle = "#FFFFFF";
+        rimCtx.lineWidth = 2 * rw;
+        rimCtx.lineCap = "round";
+        rimCtx.lineJoin = "round";
+        rimCtx.beginPath();
+        traceGeom(rimCtx, geom);
+        rimCtx.stroke();
       } else {
-        const dirs = 8;
+        const dirs = 16;
         for (let k = 0; k < dirs; k++) {
           const ang = (k / dirs) * Math.PI * 2;
-          rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw);
+          rimCtx.drawImage(maskCanvas, Math.cos(ang) * rw, Math.sin(ang) * rw, W, H);
         }
       }
       rimCtx.globalCompositeOperation = "destination-out";
-      rimCtx.drawImage(maskCanvas, 0, 0);
+      rimCtx.drawImage(maskCanvas, 0, 0, W, H);
+      rimCtx.restore();
 
-      // 3. Exterior-only Gaussian bloom rendered on downsampled 0.25x offscreen canvas
+      // Begin lifted country body coordinate space
+      ctx.save();
+      if (effLiftPx > 0.05) ctx.translate(0, -effLiftPx);
+
+      // 4. Exterior-only 2-step pyramid screen bloom (0.5x -> 0.25x prevents thin-rim shimmer)
       ctx.save();
       if (revealAxis && revealProgress < 0.999) {
         if (!applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds)) {
+          ctx.restore();
           ctx.restore();
           return;
         }
@@ -937,67 +1478,157 @@ ${DRAW_MATH_SRC}
         ctx.rect(0, 0, W, H * clamp(borderReveal, 0, 1));
         ctx.clip();
       }
+      const overshootWave = (fillBloomOvershoot > 1.001 && fillReveal > 0.005 && fillReveal < 0.999)
+        ? 1.0 + (fillBloomOvershoot - 1.0) * Math.sin(fillReveal * Math.PI) * (1 - 0.35 * fillReveal)
+        : 1.0;
       const effBloomHex = (flashHex && flashIntensity > 0.01) ? flashHex : bloomHex;
-      const effBloomScale = bloomScale + flashIntensity * 1.15;
+      const effBloomScale = bloomScale * overshootWave + flashIntensity * 1.15;
       if (effBloomHex && effBloomScale > 0) {
+        rimCtx.save();
+        rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
         rimCtx.globalCompositeOperation = "source-in";
         rimCtx.fillStyle = effBloomHex;
         rimCtx.fillRect(0, 0, W, H);
-        glowCtx.clearRect(0, 0, glowW, glowH);
+        rimCtx.restore();
+
+        // Step 1: smooth 0.5x half-pyramid downsample
+        glowHalfCtx.save();
+        glowHalfCtx.clearRect(0, 0, glowHalfW, glowHalfH);
+        glowHalfCtx.imageSmoothingEnabled = true;
+        glowHalfCtx.imageSmoothingQuality = "high";
+        glowHalfCtx.drawImage(rimCanvas, 0, 0, glowHalfW, glowHalfH);
+        glowHalfCtx.restore();
+
+        // Step 2: multi-radius glow on 0.25x buffer
         glowCtx.save();
+        glowCtx.clearRect(0, 0, glowW, glowH);
         glowCtx.imageSmoothingEnabled = true;
+        glowCtx.imageSmoothingQuality = "high";
         const passes = [
-          [42 * effBloomScale * GLOW_SCALE, Math.min(0.95, 0.45 + flashIntensity * 0.45)],
-          [20 * effBloomScale * GLOW_SCALE, Math.min(0.98, 0.65 + flashIntensity * 0.30)],
-          [8 * effBloomScale * GLOW_SCALE, Math.min(1.0, 0.80 + flashIntensity * 0.20)],
+          [42 * effBloomScale * GLOW_SCALE, Math.min(0.95, 0.42 + flashIntensity * 0.40)],
+          [20 * effBloomScale * GLOW_SCALE, Math.min(0.98, 0.62 + flashIntensity * 0.28)],
+          [8 * effBloomScale * GLOW_SCALE, Math.min(1.0, 0.78 + flashIntensity * 0.20)],
         ];
         for (const [blurPx, a] of passes) {
           glowCtx.save();
           glowCtx.globalAlpha = a;
           glowCtx.shadowColor = effBloomHex;
           glowCtx.shadowBlur = Math.max(1, blurPx);
-          glowCtx.drawImage(rimCanvas, 0, 0, glowW, glowH);
+          glowCtx.drawImage(glowHalfCanvas, 0, 0, glowW, glowH);
           glowCtx.restore();
         }
         glowCtx.restore();
+
         ctx.save();
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = clamp(alpha * 0.92, 0, 1);
+        ctx.drawImage(glowCanvas, 0, 0, W, H);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = clamp(alpha * 0.22, 0, 0.45);
         ctx.drawImage(glowCanvas, 0, 0, W, H);
         ctx.restore();
       }
 
-      // 4. Crisp exterior rim (animated by borderReveal)
+      // 5. Crisp exterior rim (animated by borderReveal)
       if (rimHex && rimWidth > 0) {
+        rimCtx.save();
+        rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
         rimCtx.globalCompositeOperation = "source-in";
         rimCtx.fillStyle = (flashHex && flashIntensity > 0.25) ? "#FFFFFF" : rimHex;
         rimCtx.fillRect(0, 0, W, H);
+        rimCtx.restore();
         ctx.globalCompositeOperation = "source-over";
-        ctx.globalAlpha = alpha * 0.92;
-        ctx.drawImage(rimCanvas, 0, 0);
+        ctx.globalAlpha = alpha * 0.94;
+        ctx.drawImage(rimCanvas, 0, 0, W, H);
       }
-      // Optional soft glow dot riding each trace head
-      if (traceHeadGlow && traceHeadsPx.length) {
+
+      // 5b. Travelling specular rim glint riding the exterior rim while polygon holds
+      if (rimGlint && (!traced || traceProgress >= 0.99) && ringsLL.length > 0) {
+        const gSpeed = Number(rimGlint.speed ?? 0.22);
+        const gSpan = clamp(Number(rimGlint.span_frac ?? 0.14), 0.03, 0.45);
+        const gCol = rimGlint.color || "#FFFFFF";
+        const gInt = clamp(Number(rimGlint.intensity ?? 0.85), 0.05, 1.5);
+        const phase = ((time * gSpeed) % 1 + 1) % 1;
+        const glintPaths = perimeterWindowPathsLngLat(ringsLL, phase, gSpan);
+        if (glintPaths.length > 0) {
+          fxCtx.save();
+          fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+          fxCtx.clearRect(0, 0, W, H);
+          fxCtx.lineCap = "round";
+          fxCtx.lineJoin = "round";
+          for (const gpLL of glintPaths) {
+            for (const pts of projectPolylineClipped(gpLL)) {
+              if (pts.length < 2) continue;
+              const p0 = pts[0], p1 = pts[pts.length - 1];
+              const grad = fxCtx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+              grad.addColorStop(0, rgbaStr(gCol, 0));
+              grad.addColorStop(0.5, rgbaStr(gCol, 0.95));
+              grad.addColorStop(1, rgbaStr(gCol, 0));
+              fxCtx.strokeStyle = grad;
+              fxCtx.lineWidth = rw * 2.6;
+              fxCtx.beginPath();
+              fxCtx.moveTo(pts[0].x, pts[0].y);
+              for (let i = 1; i < pts.length; i++) fxCtx.lineTo(pts[i].x, pts[i].y);
+              fxCtx.stroke();
+            }
+          }
+          fxCtx.globalCompositeOperation = "destination-in";
+          fxCtx.drawImage(rimCanvas, 0, 0, W, H);
+          fxCtx.restore();
+
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = clamp(alpha * gInt, 0, 1);
+          ctx.drawImage(fxCanvas, 0, 0, W, H);
+          ctx.restore();
+        }
+      }
+
+      // 5c. Tapered electric comet draw-head & flare during border_trace
+      if (cometSegsPx.length > 0 && cometCloseFade > 0.01) {
+        const glowHex = bloomHex || rimHex || "#FFFFFF";
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (const pts of cometSegsPx) {
+          const p0 = pts[0], p1 = pts[pts.length - 1];
+          const cg = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+          cg.addColorStop(0, rgbaStr(glowHex, 0));
+          cg.addColorStop(0.55, rgbaStr(glowHex, 0.72 * alpha * cometCloseFade));
+          cg.addColorStop(1, "rgba(255,255,255," + (0.96 * alpha * cometCloseFade).toFixed(3) + ")");
+          ctx.strokeStyle = cg;
+          ctx.lineWidth = rw * 1.9;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if ((traceHeadGlow || cometSegsPx.length > 0) && traceHeadsPx.length) {
         const glowHex = bloomHex || rimHex;
+        const flareScale = traceHeadGlow ? 6.0 : 3.6;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
         for (const hp of traceHeadsPx) {
-          const rad = rw * 6;
+          const rad = rw * flareScale;
           const g = ctx.createRadialGradient(hp.x, hp.y, 0, hp.x, hp.y, rad);
-          g.addColorStop(0, "rgba(255,255,255," + (0.9 * alpha).toFixed(3) + ")");
-          g.addColorStop(0.35, rgbaStr(glowHex, 0.55 * alpha));
+          g.addColorStop(0, "rgba(255,255,255," + (0.92 * alpha * cometCloseFade).toFixed(3) + ")");
+          g.addColorStop(0.32, rgbaStr(glowHex, 0.56 * alpha * cometCloseFade));
           g.addColorStop(1, rgbaStr(glowHex, 0));
           ctx.globalAlpha = 1;
           ctx.fillStyle = g;
           ctx.beginPath(); ctx.arc(hp.x, hp.y, rad, 0, Math.PI * 2); ctx.fill();
         }
+        ctx.restore();
       }
       ctx.restore();
 
-      // 5. Terrain-preserving interior fill (single clean translucent pass so mountain ridges shine through),
-      // or a flag raster cover-fitted to the territory and clipped to its silhouette.
+      // 6. Interior fill (terrain-preserving tint or flag raster), inner bevel, progressive hatch & light sweep
       if (!outlineOnly && fillReveal > 0.005) {
-        // Landmass clusters: the one on screen sets the flag fit and the reveal origin and
-        // radius; remote parts (overseas regions, far islands) carry their own flag copy.
         const clusters = needOuter ? ringClusters(ringsPx, { viewport: { w: W, h: H } }) : [];
         const fillBounds = clusters.length ? clusters[0].bounds : null;
         const visibleClusters = clusters.filter(
@@ -1014,6 +1645,10 @@ ${DRAW_MATH_SRC}
               visibleClusters[0].bounds
             )
           : fillBounds;
+        const fillRevealOriginPx = fillRevealOrigin ? projectPointSafe(fillRevealOrigin) : null;
+
+        rimCtx.save();
+        rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
         rimCtx.clearRect(0, 0, W, H);
         rimCtx.globalCompositeOperation = "source-over";
         if (flagImg && fillBounds) {
@@ -1028,74 +1663,172 @@ ${DRAW_MATH_SRC}
             rimCtx.restore();
           }
           rimCtx.globalCompositeOperation = "destination-in";
-          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.drawImage(maskCanvas, 0, 0, W, H);
         } else {
-          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.drawImage(maskCanvas, 0, 0, W, H);
           rimCtx.globalCompositeOperation = "source-in";
           rimCtx.fillStyle = fillHex;
           rimCtx.fillRect(0, 0, W, H);
         }
         if (fillRevealMode !== "fade") {
-          applyRevealMask(rimCtx, fillRevealMode, fillReveal, revealTargetBounds, fillRevealOrigin ? map.project(fillRevealOrigin) : null, fillRevealOrganic);
+          applyRevealMask(rimCtx, fillRevealMode, fillReveal, revealTargetBounds, fillRevealOriginPx, fillRevealOrganic, geomBounds, fillRevealOrigin);
         }
+        rimCtx.restore();
         const revealAlpha = fillRevealMode === "fade" ? clamp(fillReveal, 0, 1) : 1;
 
         ctx.save();
         if (revealAxis && revealProgress < 0.999) {
           if (!applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds)) {
             ctx.restore();
+            ctx.restore();
             return;
           }
         }
         const useFlag = Boolean(flagImg && fillBounds);
         ctx.globalCompositeOperation = useFlag ? flagBlend : "source-over";
-        ctx.globalAlpha = alpha * (useFlag ? flagAlpha : fillAlpha) * revealAlpha;
+        const baseFillA = (useFlag ? flagAlpha : fillAlpha) * overshootWave;
+        ctx.globalAlpha = clamp(alpha * baseFillA * revealAlpha, 0, 1);
         if (featherPx > 0) {
           ctx.shadowColor = fillHex;
           ctx.shadowBlur = featherPx;
         }
-        ctx.drawImage(rimCanvas, 0, 0);
+        ctx.drawImage(rimCanvas, 0, 0, W, H);
         ctx.restore();
 
-        // Optional 45-degree forward-slash (/) diagonal stripe hatch clipped cleanly to polygon silhouette
-        if (hatch) {
-          rimCtx.clearRect(0, 0, W, H);
-          rimCtx.globalCompositeOperation = "source-over";
-          rimCtx.drawImage(maskCanvas, 0, 0);
-          rimCtx.globalCompositeOperation = "source-in";
-          rimCtx.strokeStyle = hatchColor;
-          rimCtx.lineWidth = hatchWidth;
-          rimCtx.beginPath();
-          const diag = W + H;
-          for (let x = -H; x < diag; x += hatchSpacing) {
-            rimCtx.moveTo(x, H);
-            rimCtx.lineTo(x + H, 0);
-          }
-          rimCtx.stroke();
+        // 6b. Subtle directional inner bevel (sun-facing inner highlight + opposite inner shadow)
+        const bAmt = clamp(Number(bevelLight) || 0, 0, 1);
+        if (bAmt > 0.01) {
+          const bOff = 2.2;
+          // Sun-facing highlight edge
+          fxCtx.save();
+          fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+          fxCtx.clearRect(0, 0, W, H);
+          fxCtx.drawImage(maskCanvas, 0, 0, W, H);
+          fxCtx.globalCompositeOperation = "destination-out";
+          fxCtx.drawImage(maskCanvas, SUN_VEC.shadowDx * bOff, SUN_VEC.shadowDy * bOff, W, H);
+          fxCtx.globalCompositeOperation = "source-in";
+          fxCtx.fillStyle = "#FFFFFF";
+          fxCtx.fillRect(0, 0, W, H);
+          fxCtx.restore();
           ctx.save();
-          if (revealAxis && revealProgress < 0.999) {
-            applyWorldDirectionalClip(ctx, geom, revealAxis, revealProgress, revealBounds);
-          }
-          ctx.globalAlpha = alpha * clamp(fillReveal, 0, 1);
-          ctx.drawImage(rimCanvas, 0, 0);
+          ctx.globalCompositeOperation = "screen";
+          ctx.globalAlpha = alpha * bAmt * 0.42 * revealAlpha;
+          ctx.drawImage(fxCanvas, 0, 0, W, H);
+          ctx.restore();
+
+          // Shadow-facing inner depth edge
+          fxCtx.save();
+          fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+          fxCtx.clearRect(0, 0, W, H);
+          fxCtx.drawImage(maskCanvas, 0, 0, W, H);
+          fxCtx.globalCompositeOperation = "destination-out";
+          fxCtx.drawImage(maskCanvas, SUN_VEC.lightDx * bOff, SUN_VEC.lightDy * bOff, W, H);
+          fxCtx.globalCompositeOperation = "source-in";
+          fxCtx.fillStyle = "#03101A";
+          fxCtx.fillRect(0, 0, W, H);
+          fxCtx.restore();
+          ctx.save();
+          ctx.globalCompositeOperation = "multiply";
+          ctx.globalAlpha = alpha * bAmt * 0.34 * revealAlpha;
+          ctx.drawImage(fxCanvas, 0, 0, W, H);
           ctx.restore();
         }
 
-        // Optional ownership tint-flash surge over interior silhouette
+        // 6c. Progressive world-space / contour interior hatch
+        if (hatch) {
+          drawProgressiveInteriorHatch(geom, geomBounds, {
+            hatchColor,
+            hatchSpacing,
+            hatchWidth,
+            hatchSpace,
+            hatchRevealMode,
+            hatchProgress,
+            hatchStagger,
+            hatchDirection,
+            hatchAngleDeg,
+            hatchEase,
+            hatchRefZoom,
+            hatchCross,
+            hatchTipGlow,
+            hatchGlowHex: hatchGlowHex || bloomHex || rimHex,
+            fillRevealMode,
+            fillReveal,
+            revealTargetBounds,
+            fillRevealOriginPx,
+            fillRevealOriginLL: fillRevealOrigin,
+            fillRevealOrganic,
+            revealAxis,
+            revealProgress,
+            revealBounds,
+            geomKey,
+            alpha,
+          });
+        }
+
+        // 6d. Optional diagonal specular light sweep across country silhouette
+        if (lightSweep && lightSweep.progress > 0.001 && lightSweep.progress < 0.999) {
+          const sb = revealTargetBounds || { minX: 0, minY: 0, maxX: W, maxY: H };
+          const bw = Math.max(40, sb.maxX - sb.minX);
+          const bh = Math.max(40, sb.maxY - sb.minY);
+          const diag = Math.hypot(bw, bh);
+          const cx = (sb.minX + sb.maxX) * 0.5;
+          const cy = (sb.minY + sb.maxY) * 0.5;
+          const ang = ((lightSweep.angleDeg ?? 32) * Math.PI) / 180;
+          const dx = Math.cos(ang), dy = Math.sin(ang);
+          const bandW = diag * clamp(lightSweep.widthFrac ?? 0.24, 0.08, 0.65);
+          const travel = lerp(-diag * 0.72 - bandW, diag * 0.72 + bandW, lightSweep.progress);
+          const sx0 = cx + dx * (travel - bandW * 0.5);
+          const sy0 = cy + dy * (travel - bandW * 0.5);
+          const sx1 = cx + dx * (travel + bandW * 0.5);
+          const sy1 = cy + dy * (travel + bandW * 0.5);
+          const col = lightSweep.color || "#FFFFFF";
+          const env = Math.sin(lightSweep.progress * Math.PI);
+          const inten = clamp((lightSweep.intensity ?? 0.55) * env, 0, 1);
+          if (inten > 0.005) {
+            fxCtx.save();
+            fxCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
+            fxCtx.clearRect(0, 0, W, H);
+            const lg = fxCtx.createLinearGradient(sx0, sy0, sx1, sy1);
+            lg.addColorStop(0.0, rgbaStr(col, 0));
+            lg.addColorStop(0.28, rgbaStr(col, 0.22 * inten));
+            lg.addColorStop(0.50, rgbaStr(col, 0.95 * inten));
+            lg.addColorStop(0.76, rgbaStr(col, 0.28 * inten));
+            lg.addColorStop(1.0, rgbaStr(col, 0));
+            fxCtx.fillStyle = lg;
+            fxCtx.fillRect(0, 0, W, H);
+            fxCtx.globalCompositeOperation = "destination-in";
+            fxCtx.drawImage(maskCanvas, 0, 0, W, H);
+            fxCtx.restore();
+
+            ctx.save();
+            ctx.globalCompositeOperation = "screen";
+            ctx.globalAlpha = alpha * revealAlpha;
+            ctx.drawImage(fxCanvas, 0, 0, W, H);
+            ctx.restore();
+          }
+        }
+
+        // 6e. Optional ownership tint-flash surge over interior silhouette
         if (flashHex && flashIntensity > 0.01) {
+          rimCtx.save();
+          rimCtx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
           rimCtx.clearRect(0, 0, W, H);
           rimCtx.globalCompositeOperation = "source-over";
-          rimCtx.drawImage(maskCanvas, 0, 0);
+          rimCtx.drawImage(maskCanvas, 0, 0, W, H);
           rimCtx.globalCompositeOperation = "source-in";
           rimCtx.fillStyle = flashHex;
           rimCtx.fillRect(0, 0, W, H);
+          rimCtx.restore();
           ctx.save();
           ctx.globalCompositeOperation = "screen";
           ctx.globalAlpha = alpha * Math.min(0.85, flashIntensity * 0.72);
-          ctx.drawImage(rimCanvas, 0, 0);
+          ctx.drawImage(rimCanvas, 0, 0, W, H);
           ctx.restore();
         }
       }
+
+      // End lifted country body coordinate space
+      ctx.restore();
     }
 
     function drawStandardPolygon(geom, { fillHex, fillAlpha = 0.45, rimHex = "#F4F1EA", rimWidth = 2.2, bloomHex = null, bloomScale = 0.4, alpha = 1.0 } = {}) {
@@ -2238,6 +2971,7 @@ ${DRAW_MATH_SRC}
     }
 
     function drawLayers(layers, t) {
+      ctx.setTransform(OV_SCALE, 0, 0, OV_SCALE, 0, 0);
       ctx.clearRect(0, 0, W, H);
       for (const layer of layers || []) {
         const tStart = layer.start_s ?? 0;
@@ -2245,7 +2979,7 @@ ${DRAW_MATH_SRC}
         if (t < tStart - 0.001 || t > tEnd + 0.001) continue;
         const tLoc = t - tStart;
         const fadeIn = layer.fade_in_s ? easeOutCubic(seg(t, tStart, tStart + layer.fade_in_s)) : 1;
-        const fadeOut = layer.fade_out_s ? 1 - seg(t, tEnd - layer.fade_out_s, tEnd) : 1;
+        const fadeOut = layer.fade_out_s ? 1 - easeInCubic(seg(t, tEnd - layer.fade_out_s, tEnd)) : 1;
         const baseAlpha = clamp(fadeIn * fadeOut * (layer.opacity ?? 1), 0, 1);
 
         if (layer.type === "polygon") {
@@ -2268,7 +3002,7 @@ ${DRAW_MATH_SRC}
           const borderReveal = layer.border_draw_s
             ? easeOutCubic(seg(t, tStart + (layer.border_delay_s ?? 0), tStart + (layer.border_delay_s ?? 0) + layer.border_draw_s))
             : 1.0;
-          // Border trace: the exterior rim grows along the perimeter, then fill/flag enters.
+          // Border trace: exterior rim traces in Web Mercator space, overlapping fill entry at 75%.
           const traceS = Number(layer.border_trace_s || 0);
           const traced = traceS > 0;
           const traceStartS = tStart + (layer.border_trace_delay_s ?? 0);
@@ -2276,8 +3010,8 @@ ${DRAW_MATH_SRC}
           let traceProgress = 1.0;
           if (traced) {
             const u = seg(t, traceStartS, traceEndS);
-            const ease = layer.border_trace_ease || "linear";
-            traceProgress = ease === "in_out" ? easeInOutCubic(u) : ease === "out" ? easeOutCubic(u) : u;
+            const ease = layer.border_trace_ease || "editorial_out";
+            traceProgress = evalEase(ease, u);
             const traceHex = layer.border_trace_hex || rimHex;
             const traceWidth = layer.border_trace_width ?? rimWidth;
             const settleS = layer.border_trace_settle_s ?? 0;
@@ -2285,11 +3019,16 @@ ${DRAW_MATH_SRC}
             if (traceHex !== rimHex) rimHex = mixHex(traceHex, rimHex, settle);
             rimWidth = lerp(traceWidth, rimWidth, settle);
           }
-          const fillStartS = layer.fill_delay_s != null ? tStart + layer.fill_delay_s : (traced ? traceEndS : tStart);
-          const fillDrawS = layer.fill_draw_s ?? (traced ? 0.15 : 0);
+          const fillStartS = layer.fill_delay_s != null
+            ? tStart + layer.fill_delay_s
+            : (traced ? traceStartS + traceS * 0.75 : tStart);
+          const fillDrawS = layer.fill_draw_s ?? (traced ? 0.45 : 0);
           const fillReveal = fillDrawS > 0
-            ? easeOutCubic(seg(t, fillStartS, fillStartS + fillDrawS))
+            ? editorialOut(seg(t, fillStartS, fillStartS + fillDrawS))
             : (!traced && layer.fill_delay_s == null ? 1.0 : (t >= fillStartS - 0.001 ? 1.0 : 0.0));
+          const fillBloomOvershoot = layer.fill_bloom_overshoot != null
+            ? clamp(Number(layer.fill_bloom_overshoot), 1.0, 1.6)
+            : (traced || fillDrawS > 0 ? 1.18 : 1.0);
           const flagCode = layer.flag_fill ? String(layer.flag_fill).toLowerCase() : null;
           const flagImg = flagCode ? (window.__imgCache[BASE_URL + "/flags/" + flagCode + ".svg"] || null) : null;
           const fillRevealMode = (flagCode ? layer.flag_reveal : null) || layer.fill_reveal_mode || "fade";
@@ -2322,6 +3061,50 @@ ${DRAW_MATH_SRC}
           const perimeterProgress = layer.perimeter_draw_s
             ? easeOutCubic(seg(t, tStart + (layer.perimeter_delay_s ?? 0), tStart + (layer.perimeter_delay_s ?? 0) + layer.perimeter_draw_s))
             : 1.0;
+
+          // Progressive world-space / contour hatch timing
+          const hatchRevealMode = layer.hatch_reveal_mode || (Number(layer.hatch_draw_s || 0) > 0 ? "staggered_draw" : "fade");
+          const hatchDrawS = layer.hatch_draw_s != null
+            ? Math.max(0, Number(layer.hatch_draw_s) || 0)
+            : (hatchRevealMode !== "fade" ? 0.75 : 0);
+          const hatchStartS = fillStartS + (layer.hatch_delay_s != null ? Number(layer.hatch_delay_s) : (hatchDrawS > 0 ? 0.08 : 0));
+          const hatchProgress = hatchDrawS > 0
+            ? seg(t, hatchStartS, hatchStartS + hatchDrawS)
+            : (t >= hatchStartS - 0.001 ? 1.0 : 0.0);
+
+          // Optional 2.5D tactile lift & inner bevel
+          const liftPx = Math.max(0, Number(layer.lift_px || 0));
+          const liftStartS = fillStartS + (layer.lift_delay_s ?? 0);
+          const liftDurS = layer.lift_duration_s ?? (liftPx > 0 ? 0.55 : 0);
+          const liftProgress = liftDurS > 0
+            ? evalEase(layer.lift_ease || "spring_tactile", seg(t, liftStartS, liftStartS + liftDurS))
+            : 1.0;
+          const bevelLight = layer.bevel_light === true ? 0.65 : clamp(Number(layer.bevel_light || 0), 0, 1);
+
+          // Optional diagonal specular light sweep (opt-in)
+          let lightSweep = null;
+          if (layer.light_sweep) {
+            const lsObj = typeof layer.light_sweep === "object" ? layer.light_sweep : {};
+            const lsAt = lsObj.at_s != null
+              ? Number(lsObj.at_s)
+              : (fillStartS + fillDrawS + Number(lsObj.delay_s ?? 0.08));
+            const lsDur = Math.max(0.08, Number(lsObj.duration_s ?? 0.65));
+            if (t >= lsAt && t <= lsAt + lsDur) {
+              lightSweep = {
+                progress: easeInOutCubic(seg(t, lsAt, lsAt + lsDur)),
+                angleDeg: lsObj.angle_deg ?? 32,
+                color: lsObj.color || "#FFFFFF",
+                intensity: lsObj.intensity ?? 0.55,
+                widthFrac: lsObj.width_frac ?? 0.24,
+              };
+            }
+          }
+
+          // Optional travelling perimeter rim glint (opt-in)
+          const rimGlint = layer.rim_glint === true
+            ? { speed: 0.22, span_frac: 0.14, color: "#FFFFFF", intensity: 0.85 }
+            : (layer.rim_glint && typeof layer.rim_glint === "object" ? layer.rim_glint : null);
+
           let flashHex = null;
           let flashIntensity = 0;
           for (const fl of layer.flashes || []) {
@@ -2337,6 +3120,7 @@ ${DRAW_MATH_SRC}
           }
           if (
             layer.dissolve ||
+            layer.dissolve_seams ||
             traced ||
             flagCode ||
             fillRevealMode !== "fade" ||
@@ -2346,11 +3130,17 @@ ${DRAW_MATH_SRC}
             Boolean(layer.reveal_axis) ||
             Boolean(layer.outline_only) ||
             Boolean(layer.hatch) ||
+            liftPx > 0 ||
+            Boolean(layer.cast_shadow) ||
+            bevelLight > 0 ||
+            Boolean(layer.light_sweep) ||
+            Boolean(rimGlint) ||
             (Array.isArray(layer.flashes) && layer.flashes.length > 0)
           ) {
             drawDissolvedPolygon(geom, {
               traced,
               traceProgress,
+              traceEndS,
               traceHeads: layer.border_trace_heads ?? 2,
               traceStart: layer.border_trace_start || null,
               traceDir: layer.border_trace_dir || "cw",
@@ -2363,7 +3153,16 @@ ${DRAW_MATH_SRC}
               fillRevealMode,
               fillRevealOrigin: layer.fill_reveal_origin || null,
               fillRevealOrganic: { roughness: layer.fill_reveal_roughness ?? 0.22, seed: layer.fill_reveal_seed ?? 1 },
+              fillBloomOvershoot,
               flagWave,
+              dissolveSeams: Boolean(layer.dissolve_seams),
+              liftPx,
+              liftProgress,
+              castShadow: layer.cast_shadow ?? null,
+              bevelLight,
+              lightSweep,
+              rimGlint,
+              geomKey: typeof layer.geom_ref === "string" ? layer.geom_ref : (layer.id || ""),
               time: t,
               fillHex,
               fillAlpha,
@@ -2382,8 +3181,19 @@ ${DRAW_MATH_SRC}
               featherPx: layer.feather_px ?? 0,
               hatch: Boolean(layer.hatch),
               hatchColor: layer.hatch_color || "rgba(255,255,255,0.24)",
-              hatchSpacing: layer.hatch_spacing ?? 22,
-              hatchWidth: layer.hatch_width ?? 6,
+              hatchSpacing: layer.hatch_spacing ?? 18,
+              hatchWidth: layer.hatch_width ?? 3.5,
+              hatchSpace: layer.hatch_space || "world",
+              hatchRevealMode,
+              hatchProgress,
+              hatchStagger: layer.hatch_stagger ?? 0.62,
+              hatchDirection: layer.hatch_direction || "ltr",
+              hatchAngleDeg: layer.hatch_angle_deg ?? 45,
+              hatchEase: layer.hatch_ease || "editorial_out",
+              hatchRefZoom: layer.hatch_ref_zoom ?? null,
+              hatchCross: Boolean(layer.hatch_cross),
+              hatchTipGlow: Boolean(layer.hatch_tip_glow),
+              hatchGlowHex: layer.hatch_glow_hex || null,
               flashHex,
               flashIntensity,
             });
@@ -2660,6 +3470,20 @@ ${DRAW_MATH_SRC}
           ctx.fillStyle = vg;
           ctx.fillRect(0, 0, W, H);
           ctx.restore();
+          applyMicroDither(ctx, 0.025 * baseAlpha);
+        } else if (layer.type === "focus_spotlight") {
+          const refs = Array.isArray(layer.geom_refs)
+            ? layer.geom_refs
+            : (layer.geom_ref ? [layer.geom_ref] : []);
+          const geoms = refs.map((r) => resolveGeom(r)).filter(Boolean);
+          drawFocusSpotlight(geoms, {
+            dimAlpha: layer.dim_alpha ?? 0.58,
+            dimHex: layer.dim_hex || "#04101A",
+            featherPx: layer.feather_px ?? 36,
+            rimGlowHex: layer.rim_glow_hex || null,
+            rimGlowAlpha: layer.rim_glow_alpha ?? 0.25,
+            alpha: baseAlpha,
+          });
         } else if (layer.type === "color_flash") {
           ctx.save();
           ctx.fillStyle = rgbaStr(layer.hex || "#D8A8F5", (layer.max_alpha ?? 0.82) * baseAlpha);
@@ -2696,10 +3520,11 @@ ${DRAW_MATH_SRC}
           const x = W * (layer.x_pct ?? 0.5);
           const y = H * (layer.y_pct ?? 0.21);
           const sc = lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.30)));
-          drawGlowingText(String(layer.text || "1928"), x, y, Math.round((layer.font_px || 96) * sc), {
+          drawGlowingText(String(layer.text || "1928"), x, y, layer.font_px || 96, {
             fill: layer.fill || "#FFFBEB",
             glowHex: layer.glow_hex || "#F5C542",
             glowStrength: layer.glow_strength || "intense",
+            scale: sc,
             alpha: baseAlpha,
           });
           if (layer.subtitle) {
@@ -2869,17 +3694,8 @@ ${DRAW_MATH_SRC}
             const bend = layer.arc_offset_px != null ? layer.arc_offset_px : len * (layer.arc_ratio ?? 0.26);
             const cx = (p1.x + p2.x) * 0.5 + nx * bend;
             const cy = (p1.y + p2.y) * 0.5 + ny * bend;
-            const steps = 40;
-            const maxI = Math.max(2, Math.round(steps * prog));
-            const pts = [];
-            for (let i = 0; i <= maxI; i++) {
-              const u = (i / steps);
-              const inv = 1 - u;
-              pts.push({
-                x: inv * inv * p1.x + 2 * inv * u * cx + u * u * p2.x,
-                y: inv * inv * p1.y + 2 * inv * u * cy + u * u * p2.y,
-              });
-            }
+            const bez = sampleQuadraticBezierTo(p1, { x: cx, y: cy }, p2, prog, 40);
+            const pts = bez.points;
             const col = layer.color || "#EF4444";
             const bloom = layer.bloom || col;
             const w = layer.width || 9;
@@ -2893,10 +3709,9 @@ ${DRAW_MATH_SRC}
             };
             ctx.strokeStyle = bloom; ctx.globalAlpha = baseAlpha * 0.38; ctx.lineWidth = w * 2.4; traceArc(); ctx.stroke();
             ctx.strokeStyle = col; ctx.globalAlpha = baseAlpha; ctx.lineWidth = w; traceArc(); ctx.stroke();
-            // Arrowhead at tip
-            const tip = pts[pts.length - 1];
-            const prev = pts[Math.max(0, pts.length - 2)];
-            const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+            // Arrowhead at exact Bezier tip using analytic tangent
+            const tip = bez.tip;
+            const ang = bez.angleRad;
             const ah = Math.max(20, w * 2.6);
             ctx.translate(tip.x, tip.y);
             ctx.rotate(ang);
@@ -2993,11 +3808,12 @@ ${DRAW_MATH_SRC}
               const frac = count > 1 ? i / (count - 1) - 0.5 : 0;
               const qx = pt.x + (layer.dx || 0) + frac * spread;
               const qy = pt.y + (layer.dy || -80) - Math.cos(frac * Math.PI) * lift;
-              drawGlowingText("?", qx, qy, Math.round((layer.font_px || 66) * clamp(pop, 0, 1.15)), {
+              drawGlowingText("?", qx, qy, layer.font_px || 66, {
                 fill: layer.fill || "#FDE047",
                 glowHex: layer.glow_hex || "#F59E0B",
                 glowStrength: "intense",
                 angle: frac * 0.35,
+                scale: clamp(pop, 0, 1.15),
                 alpha: baseAlpha,
                 family: "Rubik",
                 weight: 900,
@@ -3096,16 +3912,8 @@ ${DRAW_MATH_SRC}
               const bend = layer.arrow_bend_px ?? (len * 0.24);
               const cx = (sx + tp.x) * 0.5 + nx * bend;
               const cy = (sy + tp.y) * 0.5 + ny * bend;
-              const steps = 32;
-              const maxI = Math.max(2, Math.round(steps * arrowProg));
-              const pts = [];
-              for (let i = 0; i <= maxI; i++) {
-                const u = i / steps, inv = 1 - u;
-                pts.push({
-                  x: inv * inv * sx + 2 * inv * u * cx + u * u * tp.x,
-                  y: inv * inv * sy + 2 * inv * u * cy + u * u * tp.y,
-                });
-              }
+              const bez = sampleQuadraticBezierTo({ x: sx, y: sy }, { x: cx, y: cy }, tp, arrowProg, 36);
+              const pts = bez.points;
               ctx.save();
               ctx.globalAlpha = baseAlpha;
               ctx.strokeStyle = "#FFFFFF";
@@ -3118,10 +3926,9 @@ ${DRAW_MATH_SRC}
               ctx.moveTo(pts[0].x, pts[0].y);
               for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
               ctx.stroke();
-              // Open chevron V-head (hand-drawn style)
-              const tip = pts[pts.length - 1];
-              const prev = pts[Math.max(0, pts.length - 2)];
-              const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+              // Open chevron V-head at exact Bezier tip
+              const tip = bez.tip;
+              const ang = bez.angleRad;
               const ah = layer.arrow_head_px || 22;
               ctx.translate(tip.x, tip.y);
               ctx.rotate(ang);
@@ -3862,16 +4669,257 @@ ${DRAW_MATH_SRC}
       const camera = new THREE.PerspectiveCamera();
       camera.matrixAutoUpdate = false;
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-      scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.95));
-      const keySun = new THREE.DirectionalLight(0xfff5e0, 1.85);
-      keySun.position.set(1.2, -0.7, 2.2);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.22));
+      scene.add(new THREE.HemisphereLight(0xdbeafe, 0x162432, 0.52));
+      const keySun = new THREE.DirectionalLight(0xfff5e0, 1.25);
+      keySun.position.set(SUN_VEC.x * 1000, SUN_VEC.y * 1000, SUN_VEC.z * 1000);
+      keySun.castShadow = true;
+      keySun.shadow.mapSize.set(2048, 2048);
+      keySun.shadow.bias = -0.0005;
+      keySun.shadow.normalBias = 0.02;
       scene.add(keySun);
-      const rimSun = new THREE.DirectionalLight(0x7dd3fc, 0.72);
-      rimSun.position.set(-1.3, 1.1, 0.9);
+      scene.add(keySun.target);
+
+      const rimSun = new THREE.DirectionalLight(0x7dd3fc, 0.36);
+      rimSun.position.set(-SUN_VEC.x * 1000, -SUN_VEC.y * 1000, Math.max(0.45, SUN_VEC.z * 0.7) * 1000);
       scene.add(rimSun);
 
+      // Physical ground shadow receiver plane dynamically fitted to active 3D bounds
+      const shadowGroundMat = new THREE.ShadowMaterial({ opacity: 0.44, depthWrite: false });
+      const shadowGround = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), shadowGroundMat);
+      shadowGround.receiveShadow = true;
+      shadowGround.frustumCulled = false;
+      shadowGround.visible = false;
+      scene.add(shadowGround);
+
+      // Shared camera position vector in local scene meters (extracted each frame from projectionMatrix)
+      const camLocalPos = new THREE.Vector3(0, 0, 500000);
+      const invProjMat = new THREE.Matrix4();
+      function updateCameraLocalPos(projMat) {
+        invProjMat.copy(projMat).invert();
+        const e = invProjMat.elements;
+        if (Math.abs(e[11]) > 1e-9) {
+          camLocalPos.set(e[8] / e[11], e[9] / e[11], Math.abs(e[10] / e[11]));
+        }
+      }
+
+      // Native zero-addon Dual-Kawase HDR Bloom + ACESFilmic composite pipeline
       let renderer = null;
+      let bloomState = null;
+
+      function disposeBloomTargets(st) {
+        if (!st) return;
+        if (st.sceneRT) st.sceneRT.dispose();
+        for (const rt of st.downRTs || []) rt.dispose();
+        for (const rt of st.upRTs || []) rt.dispose();
+      }
+
+      function initDualKawaseBloom(gl) {
+        const fsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const fsGeo = new THREE.PlaneGeometry(2, 2);
+        const fsVert = [
+          "varying vec2 vUv;",
+          "void main() {",
+          "  vUv = uv;",
+          "  gl_Position = vec4(position.xy, 0.0, 1.0);",
+          "}",
+        ].join("\\n");
+
+        const brightMat = new THREE.ShaderMaterial({
+          vertexShader: fsVert,
+          fragmentShader: [
+            "uniform sampler2D tInput;",
+            "uniform float uThreshold;",
+            "uniform float uKnee;",
+            "varying vec2 vUv;",
+            "void main() {",
+            "  vec4 c = texture2D(tInput, vUv);",
+            "  vec3 col = c.rgb;",
+            "  float br = max(col.r, max(col.g, col.b));",
+            "  float soft = clamp(br - uThreshold + uKnee, 0.0, 2.0 * uKnee);",
+            "  soft = (soft * soft) / max(4.0 * uKnee, 1e-4);",
+            "  float contrib = max(soft, br - uThreshold) / max(br, 1e-4);",
+            "  gl_FragColor = vec4(col * max(contrib, 0.0), 1.0);",
+            "}",
+          ].join("\\n"),
+          uniforms: {
+            tInput: { value: null },
+            uThreshold: { value: 1.15 },
+            uKnee: { value: 0.22 },
+          },
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        // Dual-Kawase 5-tap downsample kernel (1/2 center + four 1/8 half-pixel corners)
+        const downMat = new THREE.ShaderMaterial({
+          vertexShader: fsVert,
+          fragmentShader: [
+            "uniform sampler2D tInput;",
+            "uniform vec2 uHalfPixel;",
+            "uniform float uOffset;",
+            "varying vec2 vUv;",
+            "void main() {",
+            "  vec2 d = uHalfPixel * uOffset;",
+            "  vec4 sum = texture2D(tInput, vUv) * 4.0;",
+            "  sum += texture2D(tInput, vUv - d);",
+            "  sum += texture2D(tInput, vUv + d);",
+            "  sum += texture2D(tInput, vUv + vec2(d.x, -d.y));",
+            "  sum += texture2D(tInput, vUv - vec2(d.x, -d.y));",
+            "  gl_FragColor = sum * 0.125;",
+            "}",
+          ].join("\\n"),
+          uniforms: {
+            tInput: { value: null },
+            uHalfPixel: { value: new THREE.Vector2(0.001, 0.001) },
+            uOffset: { value: 1.5 },
+          },
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        // Dual-Kawase 8-tap tent upsample kernel (four 1/6 inner diagonals + four 1/12 outer cardinals)
+        const upMat = new THREE.ShaderMaterial({
+          vertexShader: fsVert,
+          fragmentShader: [
+            "uniform sampler2D tInput;",
+            "uniform sampler2D tBlend;",
+            "uniform vec2 uHalfPixel;",
+            "uniform float uOffset;",
+            "uniform float uBlendWeight;",
+            "varying vec2 vUv;",
+            "void main() {",
+            "  vec2 d = uHalfPixel * uOffset;",
+            "  vec4 sum = texture2D(tInput, vUv + vec2(-d.x * 2.0, 0.0));",
+            "  sum += texture2D(tInput, vUv + vec2(-d.x, d.y)) * 2.0;",
+            "  sum += texture2D(tInput, vUv + vec2(0.0, d.y * 2.0));",
+            "  sum += texture2D(tInput, vUv + vec2(d.x, d.y)) * 2.0;",
+            "  sum += texture2D(tInput, vUv + vec2(d.x * 2.0, 0.0));",
+            "  sum += texture2D(tInput, vUv + vec2(d.x, -d.y)) * 2.0;",
+            "  sum += texture2D(tInput, vUv + vec2(0.0, -d.y * 2.0));",
+            "  sum += texture2D(tInput, vUv + vec2(-d.x, -d.y)) * 2.0;",
+            "  vec4 up = sum / 12.0;",
+            "  vec4 base = texture2D(tBlend, vUv);",
+            "  gl_FragColor = up + base * uBlendWeight;",
+            "}",
+          ].join("\\n"),
+          uniforms: {
+            tInput: { value: null },
+            tBlend: { value: null },
+            uHalfPixel: { value: new THREE.Vector2(0.001, 0.001) },
+            uOffset: { value: 1.5 },
+            uBlendWeight: { value: 0.45 },
+          },
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        // ACESFilmic HDR tone-mapping + premultiplied alpha composite onto MapLibre framebuffer
+        const compMat = new THREE.ShaderMaterial({
+          vertexShader: fsVert,
+          fragmentShader: [
+            "uniform sampler2D tScene;",
+            "uniform sampler2D tBloom;",
+            "uniform float uBloomStrength;",
+            "uniform float uExposure;",
+            "varying vec2 vUv;",
+            "vec3 acesFilmic(vec3 x) {",
+            "  const float a = 2.51;",
+            "  const float b = 0.03;",
+            "  const float c = 2.43;",
+            "  const float d = 0.59;",
+            "  const float e = 0.14;",
+            "  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);",
+            "}",
+            "vec3 linearToSRGB(vec3 c) {",
+            "  vec3 lo = c * 12.92;",
+            "  vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;",
+            "  return mix(lo, hi, step(vec3(0.0031308), c));",
+            "}",
+            "void main() {",
+            "  vec4 sc = texture2D(tScene, vUv);",
+            "  vec3 bl = texture2D(tBloom, vUv).rgb * uBloomStrength;",
+            "  float a = clamp(sc.a, 0.0, 1.0);",
+            "  vec3 unpremul = a > 1e-4 ? (sc.rgb / a) : vec3(0.0);",
+            "  vec3 sceneMapped = linearToSRGB(acesFilmic(unpremul * uExposure)) * a;",
+            "  vec3 bloomMapped = linearToSRGB(acesFilmic(bl * uExposure));",
+            "  vec3 outRgb = sceneMapped + bloomMapped;",
+            "  gl_FragColor = vec4(outRgb, a);",
+            "}",
+          ].join("\\n"),
+          uniforms: {
+            tScene: { value: null },
+            tBloom: { value: null },
+            uBloomStrength: { value: 0.28 },
+            uExposure: { value: 0.92 },
+          },
+          transparent: true,
+          blending: THREE.CustomBlending,
+          blendEquation: THREE.AddEquation,
+          blendSrc: THREE.OneFactor,
+          blendDst: THREE.OneMinusSrcAlphaFactor,
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        const quad = new THREE.Mesh(fsGeo, brightMat);
+        const fsScene = new THREE.Scene();
+        fsScene.add(quad);
+
+        const hasHalfFloat = Boolean(
+          gl.getExtension("EXT_color_buffer_float") ||
+          gl.getExtension("EXT_color_buffer_half_float")
+        );
+        return {
+          fsCam,
+          fsScene,
+          quad,
+          brightMat,
+          downMat,
+          upMat,
+          compMat,
+          texType: hasHalfFloat ? THREE.HalfFloatType : THREE.UnsignedByteType,
+          rtW: 0,
+          rtH: 0,
+          sceneRT: null,
+          downRTs: [],
+          upRTs: [],
+          rendered: false,
+        };
+      }
+
+      function ensureBloomTargets(st, widthPx, heightPx) {
+        const w = Math.max(64, Math.round(widthPx || W));
+        const h = Math.max(64, Math.round(heightPx || H));
+        if (st.rtW === w && st.rtH === h && st.sceneRT) return;
+        disposeBloomTargets(st);
+        const mkRT = (rw, rh, withDepth) => {
+          const rt = new THREE.WebGLRenderTarget(Math.max(16, rw), Math.max(16, rh), {
+            type: st.texType,
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            wrapS: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.ClampToEdgeWrapping,
+            depthBuffer: withDepth,
+            stencilBuffer: false,
+          });
+          return rt;
+        };
+        st.sceneRT = mkRT(w, h, true);
+        st.downRTs = [
+          mkRT(w >> 1, h >> 1, false),
+          mkRT(w >> 2, h >> 2, false),
+          mkRT(w >> 3, h >> 3, false),
+        ];
+        st.upRTs = [
+          mkRT(w >> 1, h >> 1, false),
+          mkRT(w >> 2, h >> 2, false),
+        ];
+        st.rtW = w;
+        st.rtH = h;
+      }
+
+      let hasActive3D = false;
       const customLayer = {
         id: "vedit-three-3d",
         type: "custom",
@@ -3879,21 +4927,107 @@ ${DRAW_MATH_SRC}
         onAdd(m, gl) {
           renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
           renderer.autoClear = false;
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
           if (window.THREE_ADDONS && window.THREE_ADDONS.RoomEnvironment && typeof THREE.PMREMGenerator === "function") {
             const pmrem = new THREE.PMREMGenerator(renderer);
             const envTex = pmrem.fromScene(new window.THREE_ADDONS.RoomEnvironment(), 0.04).texture;
             scene.environment = envTex;
-            if ("environmentIntensity" in scene) scene.environmentIntensity = 0.55;
+            if ("environmentIntensity" in scene) scene.environmentIntensity = 0.26;
             pmrem.dispose();
           }
+          if (HDR_BLOOM_ENABLED) {
+            try {
+              bloomState = initDualKawaseBloom(gl);
+            } catch {
+              bloomState = null;
+            }
+          }
+        },
+        prerender(gl, options) {
+          if (!renderer || !bloomState || !hasActive3D) {
+            if (bloomState) bloomState.rendered = false;
+            return;
+          }
+          const rawMat = (options && options.defaultProjectionData && options.defaultProjectionData.mainMatrix) || options;
+          if (!rawMat) return;
+          camera.projectionMatrix = new THREE.Matrix4().fromArray(rawMat).multiply(sceneOriginMat);
+          updateCameraLocalPos(camera.projectionMatrix);
+
+          const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+          const prevVp = gl.getParameter(gl.VIEWPORT);
+          ensureBloomTargets(bloomState, gl.drawingBufferWidth, gl.drawingBufferHeight);
+
+          renderer.resetState();
+          // 1. Render 3D HDR scene + PCF soft shadows into sceneRT
+          renderer.setRenderTarget(bloomState.sceneRT);
+          renderer.setClearColor(0x000000, 0);
+          renderer.clear(true, true, false);
+          renderer.render(scene, camera);
+
+          // 2. Bright-pass threshold -> downRTs[0] (1/2 res)
+          bloomState.brightMat.uniforms.tInput.value = bloomState.sceneRT.texture;
+          bloomState.quad.material = bloomState.brightMat;
+          renderer.setRenderTarget(bloomState.downRTs[0]);
+          renderer.clear(true, false, false);
+          renderer.render(bloomState.fsScene, bloomState.fsCam);
+
+          // 3. Dual-Kawase 5-tap downsample pyramid (1/2 -> 1/4 -> 1/8)
+          bloomState.quad.material = bloomState.downMat;
+          for (let i = 0; i < 2; i++) {
+            const src = bloomState.downRTs[i];
+            const dst = bloomState.downRTs[i + 1];
+            bloomState.downMat.uniforms.tInput.value = src.texture;
+            bloomState.downMat.uniforms.uHalfPixel.value.set(0.5 / src.width, 0.5 / src.height);
+            bloomState.downMat.uniforms.uOffset.value = 1.6;
+            renderer.setRenderTarget(dst);
+            renderer.render(bloomState.fsScene, bloomState.fsCam);
+          }
+
+          // 4. Dual-Kawase 8-tap tent upsample pyramid (1/8 -> 1/4 -> 1/2)
+          bloomState.quad.material = bloomState.upMat;
+          // 1/8 -> upRTs[1] (1/4) blended with downRTs[1]
+          bloomState.upMat.uniforms.tInput.value = bloomState.downRTs[2].texture;
+          bloomState.upMat.uniforms.tBlend.value = bloomState.downRTs[1].texture;
+          bloomState.upMat.uniforms.uHalfPixel.value.set(0.5 / bloomState.downRTs[2].width, 0.5 / bloomState.downRTs[2].height);
+          bloomState.upMat.uniforms.uOffset.value = 1.6;
+          bloomState.upMat.uniforms.uBlendWeight.value = 0.55;
+          renderer.setRenderTarget(bloomState.upRTs[1]);
+          renderer.render(bloomState.fsScene, bloomState.fsCam);
+
+          // upRTs[1] (1/4) -> upRTs[0] (1/2) blended with downRTs[0]
+          bloomState.upMat.uniforms.tInput.value = bloomState.upRTs[1].texture;
+          bloomState.upMat.uniforms.tBlend.value = bloomState.downRTs[0].texture;
+          bloomState.upMat.uniforms.uHalfPixel.value.set(0.5 / bloomState.upRTs[1].width, 0.5 / bloomState.upRTs[1].height);
+          bloomState.upMat.uniforms.uOffset.value = 1.6;
+          bloomState.upMat.uniforms.uBlendWeight.value = 0.42;
+          renderer.setRenderTarget(bloomState.upRTs[0]);
+          renderer.render(bloomState.fsScene, bloomState.fsCam);
+
+          bloomState.rendered = true;
+          renderer.setRenderTarget(null);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+          if (prevVp) gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+          renderer.resetState();
         },
         render(gl, options) {
-          if (!renderer) return;
+          if (!renderer || !hasActive3D) return;
           const rawMat = (options && options.defaultProjectionData && options.defaultProjectionData.mainMatrix) || options;
           camera.projectionMatrix = new THREE.Matrix4().fromArray(rawMat).multiply(sceneOriginMat);
-          renderer.resetState();
-          renderer.clearDepth();
-          renderer.render(scene, camera);
+          updateCameraLocalPos(camera.projectionMatrix);
+          if (bloomState && bloomState.rendered) {
+            renderer.resetState();
+            bloomState.compMat.uniforms.tScene.value = bloomState.sceneRT.texture;
+            bloomState.compMat.uniforms.tBloom.value = bloomState.upRTs[0].texture;
+            bloomState.quad.material = bloomState.compMat;
+            renderer.render(bloomState.fsScene, bloomState.fsCam);
+            renderer.resetState();
+          } else {
+            renderer.resetState();
+            renderer.clearDepth();
+            renderer.render(scene, camera);
+            renderer.resetState();
+          }
         },
       };
       map.addLayer(customLayer);
@@ -3901,6 +5035,328 @@ ${DRAW_MATH_SRC}
       const cableCache = new Map();
       const modelCache = new Map();
       const volumeCache = new Map();
+      const countryBlockCache = new Map();
+
+      function pointInLocalRing(px, py, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i].x, yi = ring[i].y;
+          const xj = ring[j].x, yj = ring[j].y;
+          const intersect = ((yi > py) !== (yj > py)) && (px < ((xj - xi) * (py - yi)) / (yj - yi + 1e-12) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      }
+
+      function smoothLocalRingCorners(pts, iters = 1) {
+        let cur = pts;
+        for (let it = 0; it < iters; it++) {
+          if (cur.length < 3 || cur.length > 900) break;
+          const next = [];
+          const n = cur.length;
+          for (let i = 0; i < n; i++) {
+            const a = cur[i];
+            const b = cur[(i + 1) % n];
+            next.push(
+              new THREE.Vector2(a.x * 0.78 + b.x * 0.22, a.y * 0.78 + b.y * 0.22),
+              new THREE.Vector2(a.x * 0.22 + b.x * 0.78, a.y * 0.22 + b.y * 0.78)
+            );
+          }
+          cur = next;
+        }
+        return cur;
+      }
+
+      function buildCountryBlock3DEntry(layer, idx) {
+        const geom = resolveGeom(layer.geom_ref);
+        const { outer, inner } = polygonRings(geom);
+        const grp = new THREE.Group();
+        if (!outer.length) {
+          scene.add(grp);
+          return { key: layer.id || ("cblock_" + idx), grp, empty: true };
+        }
+
+        const toLocal2D = (ringLL) => {
+          const pts = [];
+          for (const c of ringLL || []) {
+            if (!c || c.length < 2) continue;
+            const v = lngLatAltToLocal(c[0], c[1], 0);
+            if (!pts.length || Math.hypot(v.x - pts[pts.length - 1].x, v.y - pts[pts.length - 1].y) > 1e-3) {
+              pts.push(new THREE.Vector2(v.x, v.y));
+            }
+          }
+          if (pts.length > 1 && pts[0].distanceTo(pts[pts.length - 1]) < 1e-3) pts.pop();
+          return pts;
+        };
+
+        const smoothIters = layer.round_corners === false ? 0 : Math.max(0, Math.min(2, Number(layer.corner_smooth_iters ?? 1)));
+        const outerRings2D = [];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const r of outer) {
+          let pts = toLocal2D(r);
+          if (pts.length < 3) continue;
+          if (smoothIters > 0) pts = smoothLocalRingCorners(pts, smoothIters);
+          for (const p of pts) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+          }
+          outerRings2D.push(pts);
+        }
+        if (!outerRings2D.length) {
+          scene.add(grp);
+          return { key: layer.id || ("cblock_" + idx), grp, empty: true };
+        }
+
+        const holeRings2D = inner.map(toLocal2D).filter((h) => h.length >= 3);
+        const shapes = outerRings2D.map((pts) => {
+          const sh = new THREE.Shape(pts);
+          for (const hole of holeRings2D) {
+            if (pointInLocalRing(hole[0].x, hole[0].y, pts)) {
+              sh.holes.push(new THREE.Path(hole));
+            }
+          }
+          return sh;
+        });
+
+        const spanX = Math.max(100, maxX - minX);
+        const spanY = Math.max(100, maxY - minY);
+        const spanDiag = Math.hypot(spanX, spanY);
+        const extrudeHeightM = Math.max(100, Number(layer.extrude_height_m || Math.max(15000, spanDiag * 0.055)));
+        const bevelFrac = layer.bevel_px != null ? clamp(Number(layer.bevel_px) / 48, 0, 0.25) : 0.085;
+        const bevelThickness = bevelFrac > 0.001 ? clamp(extrudeHeightM * bevelFrac, 80, extrudeHeightM * 0.18) : 0;
+        const bevelSize = bevelFrac > 0.001 ? clamp(spanDiag * 0.0032 * (bevelFrac / 0.085), 50, spanDiag * 0.012) : 0;
+
+        const extrudeGeo = new THREE.ExtrudeGeometry(shapes, {
+          depth: extrudeHeightM,
+          bevelEnabled: bevelThickness > 0 && bevelSize > 0,
+          bevelThickness,
+          bevelSize,
+          bevelSegments: 3,
+          curveSegments: 6,
+        });
+
+        // Normalize planar UVs across polygon footprint so flag textures and shaders map cleanly
+        const posAttr = extrudeGeo.attributes.position;
+        const uvAttr = extrudeGeo.attributes.uv;
+        if (posAttr && uvAttr) {
+          for (let i = 0; i < posAttr.count; i++) {
+            const x = posAttr.getX(i);
+            const y = posAttr.getY(i);
+            uvAttr.setXY(i, (x - minX) / spanX, (y - minY) / spanY);
+          }
+          uvAttr.needsUpdate = true;
+        }
+        extrudeGeo.computeVertexNormals();
+
+        // Optional flag texture mapped onto 3D top face
+        let flagTex = null;
+        if (layer.flag_fill) {
+          const fImg = window.__imgCache[BASE_URL + "/flags/" + String(layer.flag_fill).toLowerCase() + ".svg"];
+          if (fImg) {
+            flagTex = new THREE.CanvasTexture(fImg);
+            flagTex.colorSpace = THREE.SRGBColorSpace;
+            flagTex.anisotropy = 4;
+          }
+        }
+
+        const fillCol = new THREE.Color(layer.fill_hex || "#1F9D55");
+        const sideCol = layer.side_hex
+          ? new THREE.Color(layer.side_hex)
+          : fillCol.clone().multiplyScalar(0.56);
+        const fresnelCol = new THREE.Color(layer.fresnel_hex || layer.rim_hex || "#BAE6FD");
+        const hatchCol = new THREE.Color(layer.hatch_color || "#FFFFFF");
+
+        const topUniforms = {
+          uCamPos: { value: camLocalPos },
+          uScaleZ: { value: 1.0 },
+          uFresnelColor: { value: fresnelCol },
+          uFresnelIntensity: { value: Number(layer.fresnel_intensity ?? 0.28) },
+          uHatchEnabled: { value: layer.hatch ? 1.0 : 0.0 },
+          uHatchSpacingM: { value: Math.max(500, spanDiag / Math.max(8, Number(layer.hatch_density ?? 36))) },
+          uHatchAngleRad: { value: ((Number(layer.hatch_angle_deg ?? 45)) * Math.PI) / 180 },
+          uHatchProgress: { value: 1.0 },
+          uHatchColor: { value: hatchCol },
+          uHatchAlpha: { value: Number(layer.hatch_alpha ?? 0.36) },
+          uBoundsMin: { value: new THREE.Vector2(minX, minY) },
+          uBoundsSpan: { value: new THREE.Vector2(spanX, spanY) },
+          uSweepProgress: { value: -1.0 },
+          uSweepIntensity: { value: 0.0 },
+          uSweepColor: { value: new THREE.Color("#FFFFFF") },
+        };
+
+        const topMat = new THREE.MeshStandardMaterial({
+          color: flagTex ? 0xffffff : fillCol,
+          map: flagTex,
+          roughness: layer.roughness ?? 0.62,
+          metalness: layer.metalness ?? 0.06,
+          transparent: true,
+          opacity: layer.fill_alpha ?? 0.96,
+        });
+        topMat.onBeforeCompile = (shader) => {
+          Object.assign(shader.uniforms, topUniforms);
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              "#include <common>",
+              "#include <common>\\nuniform vec3 uCamPos;\\nvarying vec3 vBlockLocalPos;\\nvarying vec3 vBlockLocalNorm;"
+            )
+            .replace(
+              "#include <begin_vertex>",
+              "#include <begin_vertex>\\nvBlockLocalPos = position;\\nvBlockLocalNorm = normal;"
+            )
+            .replace(
+              "vViewPosition = - mvPosition.xyz;",
+              "vViewPosition = uCamPos - (modelMatrix * vec4(transformed, 1.0)).xyz;"
+            );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              [
+                "#include <common>",
+                "uniform vec3 uCamPos;",
+                "uniform float uScaleZ;",
+                "uniform vec3 uFresnelColor;",
+                "uniform float uFresnelIntensity;",
+                "uniform float uHatchEnabled;",
+                "uniform float uHatchSpacingM;",
+                "uniform float uHatchAngleRad;",
+                "uniform float uHatchProgress;",
+                "uniform vec3 uHatchColor;",
+                "uniform float uHatchAlpha;",
+                "uniform vec2 uBoundsMin;",
+                "uniform vec2 uBoundsSpan;",
+                "uniform float uSweepProgress;",
+                "uniform float uSweepIntensity;",
+                "uniform vec3 uSweepColor;",
+                "varying vec3 vBlockLocalPos;",
+                "varying vec3 vBlockLocalNorm;",
+              ].join("\\n")
+            )
+            .replace(
+              "#include <emissivemap_fragment>",
+              [
+                "#include <emissivemap_fragment>",
+                "vec3 wPos = vec3(vBlockLocalPos.xy, vBlockLocalPos.z * max(uScaleZ, 0.005));",
+                "vec3 wNorm = normalize(vec3(vBlockLocalNorm.xy, vBlockLocalNorm.z / max(uScaleZ, 0.01)));",
+                "vec3 viewDirW = normalize(uCamPos - wPos);",
+                "float ndv = clamp(dot(wNorm, viewDirW), 0.0, 1.0);",
+                "float bevelMask = 1.0 - smoothstep(0.65, 0.96, wNorm.z);",
+                "float fresnel = pow(1.0 - ndv, 3.2) * mix(0.28, 1.0, bevelMask);",
+                "totalEmissiveRadiance += uFresnelColor * fresnel * uFresnelIntensity;",
+                "if (uHatchEnabled > 0.5 && uHatchProgress > 0.001 && wNorm.z > 0.72) {",
+                "  float ca = cos(uHatchAngleRad);",
+                "  float sa = sin(uHatchAngleRad);",
+                "  float nCoord = vBlockLocalPos.x * sa + vBlockLocalPos.y * ca;",
+                "  float cell = nCoord / max(uHatchSpacingM, 1.0);",
+                "  float fw = max(fwidth(cell), 1e-4);",
+                "  float distLine = abs(fract(cell + 0.5) - 0.5);",
+                "  float lineMask = 1.0 - smoothstep(0.045 - fw, 0.045 + fw, distLine);",
+                "  vec2 uvNorm = (vBlockLocalPos.xy - uBoundsMin) / max(uBoundsSpan, vec2(1.0));",
+                "  float rank = clamp(uvNorm.x * 0.65 + (1.0 - uvNorm.y) * 0.35, 0.0, 1.0);",
+                "  float localP = clamp((uHatchProgress - rank * 0.55) / 0.45, 0.0, 1.0);",
+                "  float uFrac = clamp((uvNorm.x * ca + (1.0 - uvNorm.y) * sa), 0.0, 1.0);",
+                "  float sweepReveal = smoothstep(localP + 0.04, localP - 0.04, uFrac * 0.85);",
+                "  float hMask = lineMask * sweepReveal * uHatchAlpha * step(0.002, localP);",
+                "  diffuseColor.rgb = mix(diffuseColor.rgb, uHatchColor, clamp(hMask, 0.0, 0.75));",
+                "  totalEmissiveRadiance += uHatchColor * hMask * 0.08;",
+                "}",
+                "if (uSweepIntensity > 0.005 && uSweepProgress >= 0.0 && uSweepProgress <= 1.0) {",
+                "  vec2 uvNormS = (vBlockLocalPos.xy - uBoundsMin) / max(uBoundsSpan, vec2(1.0));",
+                "  float diagS = (uvNormS.x * 0.72 + uvNormS.y * 0.28);",
+                "  float band = exp(-pow((diagS - mix(-0.25, 1.25, uSweepProgress)) / 0.11, 2.0));",
+                "  totalEmissiveRadiance += uSweepColor * band * uSweepIntensity * 0.65;",
+                "}",
+              ].join("\\n")
+            );
+        };
+
+        const sideUniforms = {
+          uExtrudeH: { value: Math.max(1, extrudeHeightM) },
+          uFresnelColor: { value: fresnelCol },
+          uCamPos: { value: camLocalPos },
+          uScaleZ: { value: 1.0 },
+        };
+        const sideMat = new THREE.MeshStandardMaterial({
+          color: sideCol,
+          roughness: layer.side_roughness ?? 0.68,
+          metalness: layer.side_metalness ?? 0.10,
+          transparent: true,
+          opacity: layer.fill_alpha ?? 0.96,
+        });
+        sideMat.onBeforeCompile = (shader) => {
+          Object.assign(shader.uniforms, sideUniforms);
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              "#include <common>",
+              "#include <common>\\nuniform vec3 uCamPos;\\nvarying vec3 vSideLocalPos;"
+            )
+            .replace(
+              "#include <begin_vertex>",
+              "#include <begin_vertex>\\nvSideLocalPos = position;"
+            )
+            .replace(
+              "vViewPosition = - mvPosition.xyz;",
+              "vViewPosition = uCamPos - (modelMatrix * vec4(transformed, 1.0)).xyz;"
+            );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              "#include <common>\\nuniform float uExtrudeH;\\nvarying vec3 vSideLocalPos;"
+            )
+            .replace(
+              "#include <dithering_fragment>",
+              [
+                "float baseAO = mix(0.38, 1.0, smoothstep(0.0, 0.55, vSideLocalPos.z / max(uExtrudeH, 1.0)));",
+                "gl_FragColor.rgb *= baseAO;",
+                "#include <dithering_fragment>",
+              ].join("\\n")
+            );
+        };
+
+        const blockMesh = new THREE.Mesh(extrudeGeo, [topMat, sideMat]);
+        blockMesh.castShadow = true;
+        blockMesh.receiveShadow = true;
+        blockMesh.frustumCulled = false;
+        grp.add(blockMesh);
+
+        // Crisp HDR emissive top perimeter rim for sharp figure-ground separation
+        const rimLines = [];
+        const rimCol = new THREE.Color(layer.rim_hex || "#F8FAFC");
+        const rimIntensity = Number(layer.rim_emissive ?? 1.35);
+        const rimMat = new THREE.LineBasicMaterial({
+          color: rimCol.clone().multiplyScalar(rimIntensity),
+          transparent: true,
+          opacity: 0.95,
+        });
+        const rimZ = extrudeHeightM + bevelThickness + Math.max(40, extrudeHeightM * 0.008);
+        for (const pts of outerRings2D) {
+          const verts = pts.map((p) => new THREE.Vector3(p.x, p.y, rimZ));
+          const lGeo = new THREE.BufferGeometry().setFromPoints(verts);
+          const loop = new THREE.LineLoop(lGeo, rimMat);
+          loop.frustumCulled = false;
+          grp.add(loop);
+          rimLines.push(loop);
+        }
+
+        scene.add(grp);
+        return {
+          key: layer.id || ("cblock_" + idx),
+          grp,
+          blockMesh,
+          topMat,
+          sideMat,
+          rimMat,
+          topUniforms,
+          sideUniforms,
+          baseFillAlpha: layer.fill_alpha ?? 0.96,
+          boundsBox: new THREE.Box3(
+            new THREE.Vector3(minX, minY, 0),
+            new THREE.Vector3(maxX, maxY, extrudeHeightM + bevelThickness)
+          ),
+          empty: false,
+        };
+      }
 
       function buildCableEntry(layer, idx) {
         const rawCoords = resolveGeom(layer.coords_ref) || layer.coords || [];
@@ -4071,6 +5527,10 @@ ${DRAW_MATH_SRC}
         const activeCables = new Set();
         const activeModels = new Set();
         const activeVolumes = new Set();
+        const activeBlocks = new Set();
+        const activeShadowBox = new THREE.Box3();
+        let anyVisible3D = false;
+        let anyShadowCaster = false;
 
         for (let idx = 0; idx < (layers || []).length; idx++) {
           const layer = layers[idx];
@@ -4078,7 +5538,7 @@ ${DRAW_MATH_SRC}
           const tEnd = layer.end_s ?? 1e9;
           const visible = t >= tStart - 0.001 && t <= tEnd + 0.001;
           const fadeIn = layer.fade_in_s ? easeOutCubic(seg(t, tStart, tStart + layer.fade_in_s)) : 1;
-          const fadeOut = layer.fade_out_s ? 1 - seg(t, tEnd - layer.fade_out_s, tEnd) : 1;
+          const fadeOut = layer.fade_out_s ? 1 - easeInCubic(seg(t, tEnd - layer.fade_out_s, tEnd)) : 1;
           const alpha = clamp(fadeIn * fadeOut * (layer.opacity ?? 1), 0, 1);
 
           if (layer.type === "cable_3d") {
@@ -4091,6 +5551,7 @@ ${DRAW_MATH_SRC}
             activeCables.add(key);
             entry.group.visible = visible && alpha > 0.01 && entry.centerPts.length >= 2;
             if (!entry.group.visible) continue;
+            anyVisible3D = true;
 
             const midLat = entry.coords.length ? entry.coords[Math.floor(entry.coords.length / 2)][1] : originLat;
             const rawRMeters = metersForScreenPx(
@@ -4113,9 +5574,13 @@ ${DRAW_MATH_SRC}
 
             const drawS = layer.instant === true ? 0 : (layer.draw_duration_s ?? 1.2);
             const drawFrom = tStart + (layer.draw_delay_s ?? 0);
-            const drawEase = layer.draw_ease === "linear" ? (x) => x : layer.draw_ease === "in_out" ? easeInOutCubic : easeOutCubic;
-            const prog = drawS > 0 ? drawEase(seg(t, drawFrom, drawFrom + drawS)) : (t >= drawFrom - 0.001 ? 1 : 0);
-            const activeSegs = clamp(Math.floor(entry.baseSegs * prog), 0, entry.baseSegs);
+            const drawEase = layer.draw_ease || "editorial_out";
+            const prog = drawS > 0 ? evalEase(drawEase, seg(t, drawFrom, drawFrom + drawS)) : (t >= drawFrom - 0.001 ? 1 : 0);
+            const exactSegPos = clamp(entry.baseSegs * prog, 0, entry.baseSegs);
+            const fullSegs = Math.floor(exactSegPos);
+            const segFrac = exactSegPos - fullSegs;
+            const hasTipFrac = segFrac > 1e-4 && fullSegs < entry.baseSegs;
+            const drawSegs = hasTipFrac ? fullSegs + 1 : fullSegs;
 
             const repU = clamp(entry.totalLenM / Math.max(1, rMeters * 4.5), 6, 420);
             entry.colorTex.repeat.set(repU, 1);
@@ -4125,6 +5590,16 @@ ${DRAW_MATH_SRC}
             const B = entry.frames.binormals;
             const T = entry.frames.tangents;
             const rSeg = entry.radialSegs;
+            const sampleCenterAt = (fIdx) => {
+              const i0 = clamp(Math.floor(fIdx), 0, entry.baseSegs);
+              const i1 = Math.min(entry.baseSegs, i0 + 1);
+              const f = clamp(fIdx - i0, 0, 1);
+              const cp = entry.centerPts[i0].clone().lerp(entry.centerPts[i1], f);
+              const tan = T[i0].clone().lerp(T[i1], f).normalize();
+              const nVec = N[i0].clone().lerp(N[i1], f).normalize();
+              const bVec = B[i0].clone().lerp(B[i1], f).normalize();
+              return { cp, tan, nVec, bVec, u: fIdx / entry.baseSegs };
+            };
 
             for (const st of entry.strands) {
               const latShiftM = st.offPx
@@ -4133,24 +5608,32 @@ ${DRAW_MATH_SRC}
               st.mat.opacity = alpha;
               st.shMat.opacity = alpha * (entry.catenary ? 0.30 : 0.48);
 
-              for (let i = 0; i <= activeSegs; i++) {
-                const u = i / entry.baseSegs;
+              for (let i = 0; i <= drawSegs; i++) {
+                const isFracTip = hasTipFrac && i === drawSegs;
+                const sData = isFracTip ? sampleCenterAt(exactSegPos) : {
+                  cp: entry.centerPts[i],
+                  tan: T[i],
+                  nVec: N[i],
+                  bVec: B[i],
+                  u: i / entry.baseSegs,
+                };
+                const u = sData.u;
                 let sagOff = 0;
                 if (entry.catenary) {
                   const nSpans = Math.max(1, (entry.coords.length || 2) - 1);
                   const spanPhase = (u * nSpans) % 1;
                   sagOff = -Math.sin(spanPhase * Math.PI) * sagMeters;
                 }
-                const cp = entry.centerPts[i];
-                const tan = T[i];
+                const cp = sData.cp;
+                const tan = sData.tan;
                 const sideDir = new THREE.Vector3(-tan.y, tan.x, 0).normalize();
                 if (sideDir.lengthSq() < 0.01) sideDir.set(1, 0, 0);
                 const cx = cp.x + sideDir.x * latShiftM;
                 const cy = cp.y + sideDir.y * latShiftM;
                 const cz = cp.z + altMeters + sagOff;
 
-                const nVec = N[i];
-                const bVec = B[i];
+                const nVec = sData.nVec;
+                const bVec = sData.bVec;
                 let localRad = rMeters;
                 if (endTaperM > 0) {
                   const distFromStart = u * entry.totalLenM;
@@ -4183,33 +5666,31 @@ ${DRAW_MATH_SRC}
               }
               st.tubeGeo.attributes.position.needsUpdate = true;
               st.tubeGeo.attributes.normal.needsUpdate = true;
-              st.tubeGeo.setDrawRange(0, activeSegs * rSeg * 6);
+              st.tubeGeo.setDrawRange(0, drawSegs * rSeg * 6);
               st.shGeo.attributes.position.needsUpdate = true;
-              st.shGeo.setDrawRange(0, activeSegs * 6);
+              st.shGeo.setDrawRange(0, drawSegs * 6);
             }
 
-            // Animate pulse rings along sheath
+            // Animate pulse rings continuously along sheath
             const pSpeed = Number(layer.pulse_speed || 0);
             entry.ringMat.opacity = alpha;
-            if (pSpeed > 0 && activeSegs >= 4) {
+            if (pSpeed > 0 && exactSegPos >= 2) {
               const pLen = entry.pulseRings.length;
               for (let p = 0; p < pLen; p++) {
                 const rm = entry.pulseRings[p];
                 const ph = (((t - tStart) * pSpeed + p / Math.max(1, pLen)) % 1 + 1) % 1;
-                const si = Math.round(ph * activeSegs);
-                const cp = entry.centerPts[si];
-                const tan = T[si];
+                const sData = sampleCenterAt(ph * exactSegPos);
                 rm.visible = true;
-                rm.position.set(cp.x, cp.y, cp.z + altMeters);
+                rm.position.set(sData.cp.x, sData.cp.y, sData.cp.z + altMeters);
                 rm.scale.setScalar(rMeters * 1.18);
-                rm.lookAt(cp.x + tan.x, cp.y + tan.y, cp.z + altMeters + tan.z);
+                rm.lookAt(sData.cp.x + sData.tan.x, sData.cp.y + sData.tan.y, sData.cp.z + altMeters + sData.tan.z);
               }
             } else {
               for (const rm of entry.pulseRings) rm.visible = false;
             }
             if (entry.startCollar && entry.endCollar) {
               const sp0 = entry.centerPts[0];
-              entry.startCollar.visible = activeSegs >= 1;
+              entry.startCollar.visible = exactSegPos >= 0.5;
               entry.startCollar.position.set(sp0.x, sp0.y, sp0.z + altMeters * 0.55);
               entry.startCollar.scale.set(rMeters, rMeters, Math.max(rMeters, altMeters));
               const spEnd = entry.centerPts[entry.baseSegs];
@@ -4217,14 +5698,65 @@ ${DRAW_MATH_SRC}
               entry.endCollar.position.set(spEnd.x, spEnd.y, spEnd.z + altMeters * 0.55);
               entry.endCollar.scale.set(rMeters, rMeters, Math.max(rMeters, altMeters));
             }
-            if (prog > 0.02 && prog < 0.995 && activeSegs > 0) {
-              const tp = entry.centerPts[activeSegs];
+            if (prog > 0.01 && prog < 0.995 && exactSegPos > 0.1) {
+              const tipData = sampleCenterAt(exactSegPos);
               entry.tipSpark.visible = true;
-              entry.tipSpark.position.set(tp.x, tp.y, tp.z + altMeters);
+              entry.tipSpark.position.set(tipData.cp.x, tipData.cp.y, tipData.cp.z + altMeters);
               entry.tipSpark.scale.setScalar(rMeters * 1.8);
             } else {
               entry.tipSpark.visible = false;
             }
+          } else if (layer.type === "country_block_3d") {
+            const key = layer.id || ("cblock_" + idx);
+            let entry = countryBlockCache.get(key);
+            if (!entry) {
+              entry = buildCountryBlock3DEntry(layer, idx);
+              countryBlockCache.set(key, entry);
+            }
+            activeBlocks.add(key);
+            entry.grp.visible = visible && alpha > 0.01 && !entry.empty;
+            if (!entry.grp.visible) continue;
+            anyVisible3D = true;
+            anyShadowCaster = true;
+
+            const riseDelay = Number(layer.rise_delay_s ?? 0);
+            const riseDur = layer.rise_duration_s != null ? Math.max(0, Number(layer.rise_duration_s)) : 0.72;
+            const riseEase = layer.rise_ease || "spring_tactile";
+            const riseRaw = riseDur > 0 ? evalEase(riseEase, seg(t, tStart + riseDelay, tStart + riseDelay + riseDur)) : 1.0;
+            const scaleZ = Math.max(0.005, riseRaw);
+            entry.grp.scale.set(1, 1, scaleZ);
+            entry.topUniforms.uScaleZ.value = scaleZ;
+            entry.sideUniforms.uScaleZ.value = scaleZ;
+            entry.topMat.opacity = entry.baseFillAlpha * alpha;
+            entry.sideMat.opacity = entry.baseFillAlpha * alpha;
+            entry.rimMat.opacity = 0.95 * alpha;
+
+            if (layer.hatch) {
+              const hDelay = Number(layer.hatch_delay_s ?? (riseDelay + riseDur * 0.45));
+              const hDur = layer.hatch_draw_s != null ? Math.max(0, Number(layer.hatch_draw_s)) : 0.85;
+              entry.topUniforms.uHatchEnabled.value = 1.0;
+              entry.topUniforms.uHatchProgress.value = hDur > 0 ? evalEase("editorial_out", seg(t, tStart + hDelay, tStart + hDelay + hDur)) : 1.0;
+            } else {
+              entry.topUniforms.uHatchEnabled.value = 0.0;
+            }
+
+            if (layer.light_sweep) {
+              const lsObj = typeof layer.light_sweep === "object" ? layer.light_sweep : {};
+              const lsAt = lsObj.at_s != null ? Number(lsObj.at_s) : (tStart + riseDelay + riseDur + Number(lsObj.delay_s ?? 0.1));
+              const lsDur = Math.max(0.08, Number(lsObj.duration_s ?? 0.75));
+              if (t >= lsAt && t <= lsAt + lsDur) {
+                const u = easeInOutCubic(seg(t, lsAt, lsAt + lsDur));
+                entry.topUniforms.uSweepProgress.value = u;
+                entry.topUniforms.uSweepIntensity.value = Math.sin(u * Math.PI) * Number(lsObj.intensity ?? 0.65);
+                if (lsObj.color) entry.topUniforms.uSweepColor.value.set(lsObj.color);
+              } else {
+                entry.topUniforms.uSweepIntensity.value = 0.0;
+              }
+            } else {
+              entry.topUniforms.uSweepIntensity.value = 0.0;
+            }
+
+            activeShadowBox.union(entry.boundsBox);
           } else if (layer.type === "model_3d") {
             const key = layer.id || ("model_" + idx);
             let entry = modelCache.get(key);
@@ -4267,6 +5799,12 @@ ${DRAW_MATH_SRC}
               else if (layer.model === "solar_farm") grp = buildSolarFarmModel(layer);
               else if (layer.model === "survey_vessel") grp = buildSurveyVesselModel(layer);
               else grp = buildTransmissionTowerModel(layer);
+              grp.traverse((ch) => {
+                if (ch.isMesh) {
+                  ch.castShadow = true;
+                  ch.receiveShadow = true;
+                }
+              });
               scene.add(grp);
               entry = { key, grp };
               modelCache.set(key, entry);
@@ -4274,6 +5812,8 @@ ${DRAW_MATH_SRC}
             activeModels.add(key);
             entry.grp.visible = visible && alpha > 0.01;
             if (!entry.grp.visible) continue;
+            anyVisible3D = true;
+            anyShadowCaster = true;
 
             let curCoord = layer.coord || [originLng, originLat];
             let headingDeg = layer.heading_deg || 0;
@@ -4314,6 +5854,8 @@ ${DRAW_MATH_SRC}
             entry.grp.position.copy(pos);
             entry.grp.rotation.set(0, 0, (headingDeg * Math.PI) / 180);
             entry.grp.scale.set(scXY, scXY, scZ);
+            activeShadowBox.expandByPoint(new THREE.Vector3(pos.x - scXY, pos.y - scXY, pos.z));
+            activeShadowBox.expandByPoint(new THREE.Vector3(pos.x + scXY, pos.y + scXY, pos.z + scZ));
           } else if (layer.type === "volume_3d") {
             const key = layer.id || ("vol_" + idx);
             let entry = volumeCache.get(key);
@@ -4365,6 +5907,7 @@ ${DRAW_MATH_SRC}
             activeVolumes.add(key);
             entry.grp.visible = visible && alpha > 0.01;
             if (!entry.grp.visible) continue;
+            anyVisible3D = true;
             const c = layer.coord || [originLng, originLat];
             const pos = lngLatAltToLocal(c[0], c[1], groundElevM(c[0], c[1]));
             const riseP = layer.rise_duration_s ? easeOutCubic(seg(t, tStart, tStart + layer.rise_duration_s)) : 1.0;
@@ -4379,6 +5922,35 @@ ${DRAW_MATH_SRC}
         for (const [k, v] of cableCache.entries()) if (!activeCables.has(k)) v.group.visible = false;
         for (const [k, v] of modelCache.entries()) if (!activeModels.has(k)) v.grp.visible = false;
         for (const [k, v] of volumeCache.entries()) if (!activeVolumes.has(k)) v.grp.visible = false;
+        for (const [k, v] of countryBlockCache.entries()) if (!activeBlocks.has(k)) v.grp.visible = false;
+
+        hasActive3D = anyVisible3D;
+        if (anyShadowCaster && !activeShadowBox.isEmpty()) {
+          const boxCenter = new THREE.Vector3();
+          const boxSize = new THREE.Vector3();
+          activeShadowBox.getCenter(boxCenter);
+          activeShadowBox.getSize(boxSize);
+          const rad = Math.max(100, boxSize.length() * 0.68);
+          keySun.target.position.set(boxCenter.x, boxCenter.y, 0);
+          keySun.position.set(
+            boxCenter.x + SUN_VEC.x * rad * 2.2,
+            boxCenter.y + SUN_VEC.y * rad * 2.2,
+            Math.max(rad * 0.6, SUN_VEC.z * rad * 2.2)
+          );
+          keySun.shadow.camera.left = -rad;
+          keySun.shadow.camera.right = rad;
+          keySun.shadow.camera.top = rad;
+          keySun.shadow.camera.bottom = -rad;
+          keySun.shadow.camera.near = rad * 0.1;
+          keySun.shadow.camera.far = rad * 6.0;
+          keySun.shadow.camera.updateProjectionMatrix();
+          keySun.shadow.normalBias = Math.max(0.02, rad * 0.0005);
+          shadowGround.position.set(boxCenter.x, boxCenter.y, 0.02);
+          shadowGround.scale.set(rad * 4.5, rad * 4.5, 1);
+          shadowGround.visible = true;
+        } else {
+          shadowGround.visible = false;
+        }
       }
 
       return update3DScene;
@@ -4395,14 +5967,17 @@ ${DRAW_MATH_SRC}
       }
     };
 
-    // Optical sub-frame shutter accumulator (blends MapLibre WebGL canvas + overlay canvas with roll overscan)
+    // Optical sub-frame shutter accumulator with arbitrary per-sample weights (cosine/trapezoid window).
     window.__beginShutterAccum = function() {
       compCanvas.style.display = "block";
       compCtx.clearRect(0, 0, W, H);
     };
-    window.__accumSubframe = function(subIdx) {
+    window.__accumSubframe = function(weightOrIdx, cumWeight) {
       compCtx.save();
-      compCtx.globalAlpha = 1 / (subIdx + 1);
+      const blendAlpha = (cumWeight != null && cumWeight > 0)
+        ? clamp(Number(weightOrIdx) / Number(cumWeight), 0, 1)
+        : (1 / (Number(weightOrIdx) + 1));
+      compCtx.globalAlpha = blendAlpha;
       if (Math.abs(window.__currentRoll) > 0.01) {
         const sc = computeRollOverscan(window.__currentRoll);
         compCtx.translate(W * 0.5, H * 0.5);
@@ -4714,8 +6289,22 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   const page = await browser.newPage();
   page.on("pageerror", (err) => console.error(`  [${act.act_id} pageerror]`, err));
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
-  const shotter = await createCdpScreenshotter(page, width, height, { quality: 92 });
-  const encoder = isPreview ? null : spawnMjpegPipeEncoder(outMp4, { fps, crf: 15, gop: 1, preset: "fast", useVideoToolbox: false });
+  const captureFormat = act.capture_format || opts.captureFormat || "jpeg";
+  const captureQuality = act.capture_quality ?? opts.captureQuality ?? 95;
+  const shotter = await createCdpScreenshotter(page, width, height, {
+    format: captureFormat,
+    quality: captureQuality,
+  });
+  const encoder = isPreview
+    ? null
+    : spawnFramePipeEncoder(outMp4, {
+        codec: captureFormat === "png" ? "png" : "mjpeg",
+        fps,
+        crf: 15,
+        gop: 1,
+        preset: "fast",
+        useVideoToolbox: false,
+      });
   const t0 = Date.now();
   const trackLog = [];
   const previewFrames = [];
@@ -4747,8 +6336,14 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         }
       }
     } else {
-      const has3d = (act.layers || []).some((l) => l && (l.type === "cable_3d" || l.type === "model_3d" || l.type === "volume_3d"));
+      const has3d = (act.layers || []).some(
+        (l) => l && (l.type === "cable_3d" || l.type === "model_3d" || l.type === "volume_3d" || l.type === "country_block_3d")
+      );
       const initialCam = sampleCameraAt(act.camera_samples || [], 0, 0);
+      const maxPitch = Math.max(
+        Number(initialCam.pitch || 0),
+        ...(act.camera_samples || []).map((s) => Number(s?.pitch || 0))
+      );
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
           tile_source: act.tile_source || "hybrid",
@@ -4760,6 +6355,12 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           has_3d: has3d,
           origin_coord: act.origin_coord || initialCam.center,
           initial_camera: initialCam,
+          max_pitch: maxPitch,
+          ov_scale: act.ov_scale ?? opts.ovScale ?? 1.5,
+          sun_azimuth_deg: act.sun_azimuth_deg ?? opts.sunAzimuthDeg ?? 335,
+          sun_elevation_deg: act.sun_elevation_deg ?? opts.sunElevationDeg ?? 42,
+          atmosphere: act.atmosphere ?? null,
+          hdr_bloom: act.hdr_bloom ?? opts.hdrBloom ?? true,
         }),
         { waitUntil: "load" }
       );
@@ -4773,7 +6374,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         if (layer.type === "flag_pin" && layer.code) {
           preloadUrls.push(`${baseUrl}/flags/${String(layer.code).toLowerCase()}.svg`);
         }
-        if (layer.type === "polygon" && layer.flag_fill) {
+        if ((layer.type === "polygon" || layer.type === "country_block_3d") && layer.flag_fill) {
           preloadUrls.push(`${baseUrl}/flags/${String(layer.flag_fill).toLowerCase()}.svg`);
         }
         if (layer.type === "model_3d" && layer.gltf_url) {
@@ -4823,26 +6424,29 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         };
         if (subN > 1 && f > 0) {
           let pending = false;
+          const schedule = shutterSubframeSchedule(subN, act.shutter_angle_deg ?? 180, act.shutter_profile || "cosine");
+          let cumWeight = 0;
           await page.evaluate(() => window.__beginShutterAccum());
-          for (let k = 0; k < subN; k++) {
-            const subOff = -0.5 + (k / (subN - 1)) * 0.5;
+          for (const entry of schedule) {
+            const subOff = entry.offset;
+            cumWeight += entry.weight;
             const subCam = sampleCameraAt(samples, f, subOff);
             const subT = Math.max(0, (f + subOff) / fps);
             await page.evaluate((c) => window.__setSceneCamera(c), subCam);
             pending = (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) || pending;
             await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, subT]);
-            await page.evaluate((idx) => window.__accumSubframe(idx), k);
+            await page.evaluate(([w, cw]) => window.__accumSubframe(w, cw), [entry.weight, cumWeight]);
           }
           if (pending) pendingFrames++;
           await applyCutBlur();
-          await encoder.writeFrame(await shotter.captureJpegBuffer());
+          await encoder.writeFrame(await shotter.captureBuffer());
           await page.evaluate(() => window.__endShutterAccum());
         } else {
           await page.evaluate((c) => window.__setSceneCamera(c), cam);
           if (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) pendingFrames++;
           await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, f / fps]);
           await applyCutBlur();
-          const buf = await shotter.captureJpegBuffer();
+          const buf = await shotter.captureBuffer();
           if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
           else await encoder.writeFrame(buf);
           if (blurAmt > 0.002) await page.evaluate(() => window.__endShutterAccum());
@@ -4952,15 +6556,20 @@ async function main() {
   if (spec.inline_vectors && typeof spec.inline_vectors === "object") {
     vectorsObj = { ...vectorsObj, ...spec.inline_vectors };
   }
-  // Fail loud if any layer geom_ref is missing from the loaded vectors bundle.
+  // Fail loud if any layer geom_ref or geom_refs entry is missing from the loaded vectors bundle.
+  const checkGeomRef = (actId, ref) => {
+    if (typeof ref !== "string") return;
+    let cur = vectorsObj;
+    for (const p of ref.split(".")) cur = cur && typeof cur === "object" ? cur[p] : undefined;
+    if (!cur) {
+      throw new Error(`Act '${actId}' references missing geom_ref '${ref}' (loaded keys: ${Object.keys(vectorsObj).join(", ")})`);
+    }
+  };
   for (const act of spec.acts || []) {
     for (const layer of act.layers || []) {
-      if (typeof layer.geom_ref === "string") {
-        let cur = vectorsObj;
-        for (const p of layer.geom_ref.split(".")) cur = cur && typeof cur === "object" ? cur[p] : undefined;
-        if (!cur) {
-          throw new Error(`Act '${act.act_id}' references missing geom_ref '${layer.geom_ref}' (loaded keys: ${Object.keys(vectorsObj).join(", ")})`);
-        }
+      if (typeof layer.geom_ref === "string") checkGeomRef(act.act_id, layer.geom_ref);
+      if (Array.isArray(layer.geom_refs)) {
+        for (const r of layer.geom_refs) checkGeomRef(act.act_id, r);
       }
     }
   }
@@ -5011,6 +6620,12 @@ async function main() {
         const perActPreview = previewTotal > 0 ? Math.max(2, Math.ceil(previewTotal / Math.max(1, selectedActs.length))) : 0;
         const pFrames = await bakeAct(browser, url, vectorsJson, width, height, fps, act, outDir, {
           previewKeyframes: perActPreview,
+          ovScale: spec.ov_scale,
+          captureFormat: spec.capture_format,
+          captureQuality: spec.capture_quality,
+          sunAzimuthDeg: spec.sun_azimuth_deg,
+          sunElevationDeg: spec.sun_elevation_deg,
+          hdrBloom: spec.hdr_bloom,
         });
         if (perActPreview > 0 && Array.isArray(pFrames)) allPreviewFrames.push(...pFrames);
       }

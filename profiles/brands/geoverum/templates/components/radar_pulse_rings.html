@@ -24,9 +24,9 @@
     <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
       <svg id="{{SCENE_ID}}-svg" class="gv-radar-svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" xmlns="http://www.w3.org/2000/svg">
         <g id="{{SCENE_ID}}-hub">
-          <circle id="{{SCENE_ID}}-r1" cx="540" cy="880" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
-          <circle id="{{SCENE_ID}}-r2" cx="540" cy="880" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
-          <circle id="{{SCENE_ID}}-r3" cx="540" cy="880" r="32" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" opacity="0" />
+          <circle id="{{SCENE_ID}}-r1" cx="540" cy="880" r="180" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" vector-effect="non-scaling-stroke" opacity="0" />
+          <circle id="{{SCENE_ID}}-r2" cx="540" cy="880" r="180" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" vector-effect="non-scaling-stroke" opacity="0" />
+          <circle id="{{SCENE_ID}}-r3" cx="540" cy="880" r="180" fill="none" stroke="{{VAR_RING_COLOR|#EF4444}}" stroke-width="9" vector-effect="non-scaling-stroke" opacity="0" />
           <circle id="{{SCENE_ID}}-core" cx="540" cy="880" r="18" fill="{{VAR_RING_COLOR|#EF4444}}" />
         </g>
       </svg>
@@ -40,12 +40,16 @@
       const cx = (Math.max(12, Math.min(88, Number("{{VAR_CENTER_X_PCT|50}}") || 50)) / 100) * W;
       const cy = (Math.max(15, Math.min(78, Number("{{VAR_CENTER_Y_PCT|46}}") || 46)) / 100) * H;
       const maxR = Math.max(70, Math.min(340, Number("{{VAR_MAX_RADIUS|180}}") || 180)) * S;
+      const startScale = Math.max(0.05, Math.min(0.6, (22 * S) / maxR));
 
       for (const suffix of ["r1", "r2", "r3", "core"]) {
         const el = document.getElementById("{{SCENE_ID}}-" + suffix);
         if (el) {
           el.setAttribute("cx", String(cx));
           el.setAttribute("cy", String(cy));
+          if (suffix !== "core") {
+            el.setAttribute("r", String(maxR));
+          }
         }
       }
 
@@ -67,8 +71,8 @@
           const span = Math.min(pulseDur, dur - t);
           tl.fromTo(
             sel,
-            { attr: { r: 22 }, opacity: 0.92 },
-            { attr: { r: maxR }, opacity: 0.0, duration: span, ease: "power2.out" },
+            { scale: startScale, opacity: 0.92, transformOrigin: "50% 50%" },
+            { scale: 1, opacity: 0.0, duration: span, ease: "expo.out", transformOrigin: "50% 50%" },
             t
           );
         }
