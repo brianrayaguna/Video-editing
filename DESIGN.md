@@ -2,7 +2,7 @@
 
 Permanent visual and motion-engineering rules for compositions and overlays compiled or rendered in this repository. Brand-specific cartography, tokens, and narrative craft live under `profiles/brands/<brand_id>/` (for example [`profiles/brands/geoverum/CRAFT.md`](profiles/brands/geoverum/CRAFT.md)).
 
-Read this file with [`.agents/rules/engineering-standards.md`](.agents/rules/engineering-standards.md) and [`.agents/rules/editing-system.md`](.agents/rules/editing-system.md) before changing engine-facing compositions or contracts.
+Read this file with [`AGENTS.md`](AGENTS.md) and [`.agents/rules/editing-system.md`](.agents/rules/editing-system.md) before changing engine-facing compositions or contracts.
 
 ---
 

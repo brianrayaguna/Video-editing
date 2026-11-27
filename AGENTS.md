@@ -1,7 +1,6 @@
 # Repository Agent Instructions
 
 All automated pipelines and AI directing clients operating in this repository must follow the permanent standards in:
-- [`.agents/rules/engineering-standards.md`](.agents/rules/engineering-standards.md)
 - [`.agents/rules/editing-system.md`](.agents/rules/editing-system.md)
 - [`DESIGN.md`](DESIGN.md) — Engine-wide composition, motion, and repository boundary rules. Brand craft lives under `profiles/brands/<brand_id>/`.
 - [`profiles/README.md`](profiles/README.md) — `platforms/` vs `brands/` separation.
@@ -11,13 +10,12 @@ All automated pipelines and AI directing clients operating in this repository mu
 - [`.agents/skills/brand-profiling/SKILL.md`](.agents/skills/brand-profiling/SKILL.md)
 - [`tools/geo-assets/README.md`](tools/geo-assets/README.md) — Offline geospatial tile grading and MapLibre basemap capture contract.
 
-## Permanent Writing & Neutrality Rules (Always On)
+## Repository Engineering Standards
 
-Apply these rules unconditionally to every code file, brand profile (`profiles/brands/<brand_id>/*`), schema, test, and Markdown document committed in this repository. The full text lives in [`.agents/rules/engineering-standards.md`](.agents/rules/engineering-standards.md); this summary is binding on its own.
-1. **Objective Technical English & Zero Chat Leakage**: Write every repository artifact for an external engineer reading cold. Never include session history, rollout/batch/corpus counters (`Batch 1`, `Batches 1-2`, `Phase 1`, `v2`, `N/20`, `50-video corpus`, `preserved baseline`, `fixed from earlier`), or reactive/defensive wording.
-2. **Domain-Based Naming Only**: Name modules, tests, and exemplar IDs strictly after their technical domain or topic (`ref_<topic>`, e.g., `ref_gibraltar_strait`), never sequential download numbers or platform prefixes (`yt_01`). Keep `CRAFT.md`, `README.md`, and `grammar_triggers` standalone without parenthetical video-ID lists.
-3. **Zero Third-Party Brand Leakage**: Never embed third-party product/app names, commercial software names, reference channel names, consumer brands, or social platform brand names into permanent brand profiles, rules, or schemas—use neutral technical terminology instead (keep open-data license credits only in designated provenance sections). Never embed user-specific local paths (`/Users/...`).
-4. **Mandatory Pre-Completion Audit**: Before claiming work is done, run a hygiene check over modified repository files for leaked batch/chat history, third-party names, and local paths alongside the verification commands below.
+- **Timeless, neutral technical English**: Write all repository artifacts for an external engineer reading cold—use domain-based naming (`ref_<topic>`), neutral technical terms (keep open-data credits in provenance sections only), and zero local paths or session/batch counters.
+- **Decoupled providers**: Route external providers strictly through `vedit.ports` and `ProviderRegistry`; core modules never import vendor modules directly.
+- **Strict typing & modular code**: Keep modules small and strictly typed (Pydantic v2 + Draft 2020-12 JSON Schema in Python, strict ESM TypeScript, zero-unsafe pure Rust).
+- **Pre-completion audit**: Audit modified files for leaked session history, third-party brand names, and local paths alongside the verification commands below.
 
 ## Autonomous Production Protocol (Zero-CLI User Experience)
 
