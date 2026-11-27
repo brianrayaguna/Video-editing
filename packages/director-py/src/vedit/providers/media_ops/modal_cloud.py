@@ -187,3 +187,53 @@ class ModalCloudMediaOpsProvider:
             "Modal CPU media_ops handles `clean_audio` (DeepFilterNet) and `reframe`. "
             "Use `--provider veed` with OpenEdit OAuth for cloud background matting.",
         )
+
+    def trim(
+        self,
+        video_input: Path,
+        output_path: Path,
+        *,
+        start_s: float,
+        end_s: float,
+        accurate: bool = False,
+    ) -> MediaOpResult:
+        raise ProviderAPIError(
+            self.provider_name,
+            None,
+            "Modal CPU media_ops handles `clean_audio` and `reframe`. "
+            "Use `--provider ffmpeg` for deterministic local clipping (`trim`).",
+        )
+
+    def remove_silence(
+        self,
+        speech_input: Path,
+        output_path: Path,
+        *,
+        threshold_db: float = -40.0,
+        min_silence_s: float = 0.45,
+        padding_s: float = 0.12,
+        crossfade_ms: int = 12,
+        room_tone_db: float | None = None,
+    ) -> MediaOpResult:
+        raise ProviderAPIError(
+            self.provider_name,
+            None,
+            "Modal CPU media_ops handles `clean_audio` and `reframe`. "
+            "Use `--provider ffmpeg` for deterministic local silence removal.",
+        )
+
+    def restore_footage(
+        self,
+        video_input: Path,
+        output_path: Path,
+        *,
+        stabilize: bool = True,
+        denoise: bool = True,
+        deinterlace: bool = False,
+    ) -> MediaOpResult:
+        raise ProviderAPIError(
+            self.provider_name,
+            None,
+            "Modal CPU media_ops handles `clean_audio` and `reframe`. "
+            "Use `--provider ffmpeg` for deterministic local footage restoration.",
+        )

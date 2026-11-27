@@ -22,7 +22,6 @@ from vedit.contracts import (
 from vedit.providers.config import load_providers_config
 from vedit.providers.env import upsert_env_var
 from vedit.providers.registry import build_default_registry
-from vedit.providers.veed_oauth import has_openedit_oauth_login, resolve_openedit_token_path
 
 contracts_app = typer.Typer(help="Validate JSON Schemas and platform mastering presets.")
 platforms_app = typer.Typer(help="List validated platform mastering targets.")
@@ -110,8 +109,8 @@ def providers_auth(
     seen_envs: set[str] = set()
     for capability, cap_cfg in cfg.defaults.items():
         if cap_cfg.auth_type == "openedit_oauth":
-            token_path = resolve_openedit_token_path()
-            if has_openedit_oauth_login():
+            token_path = cap_cfg.oauth_token_path()
+            if cap_cfg.has_credentials():
                 typer.echo(
                     f"  {capability} ({cap_cfg.primary}): OpenEdit OAuth READY ({token_path})"
                 )

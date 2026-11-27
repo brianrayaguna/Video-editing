@@ -624,3 +624,43 @@ test("study_runner asset server rejects NUL byte URLs cleanly without crashing",
     server.close();
   }
 });
+
+test("geo scripts use neutral episode-agnostic defaults and validate BBOX/CENTER cleanly", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const {
+    DEFAULT_MAP_CENTER,
+    DEFAULT_DEM_ZOOMS,
+    DEFAULT_DEM_BOUNDS,
+    parseCenterEnv,
+    parseBboxEnv,
+  } = await import("./geo_defaults.mjs");
+
+  assert.deepEqual(DEFAULT_MAP_CENTER, [0, 0]);
+  assert.deepEqual(DEFAULT_DEM_ZOOMS, [4, 5, 6, 7]);
+  assert.deepEqual(DEFAULT_DEM_BOUNDS, [-180, -85, 180, 85]);
+  assert.deepEqual(parseCenterEnv(undefined), [0, 0]);
+  assert.deepEqual(parseCenterEnv("12.5, -4.25"), [12.5, -4.25]);
+  assert.throws(() => parseCenterEnv("999,0"), /Invalid CENTER/);
+  assert.throws(() => parseBboxEnv(""), /Missing required BBOX/);
+  assert.throws(() => parseBboxEnv("10,10,5,20"), /Invalid BBOX/);
+  assert.deepEqual(parseBboxEnv("-10,35,5,45"), [-10, 35, 5, 45]);
+
+  for (const script of ["render_map_scene.mjs", "bake_vertical_basemap.mjs", "fetch_dem_tiles.mjs"]) {
+    const src = readFileSync(new URL(`./${script}`, import.meta.url), "utf8");
+    assert.doesNotMatch(src, /-77\.55/, `${script} must not hardcode episode-specific longitude`);
+    assert.doesNotMatch(src, /121\.2,-1\.6/, `${script} must not hardcode episode-specific center`);
+    assert.doesNotMatch(src, /107\.5,-6\.0,125\.5,7\.5/, `${script} must not hardcode regional BBOX`);
+    assert.doesNotMatch(src, /Kalimantan|Sulawesi/i, `${script} must stay episode-agnostic`);
+  }
+
+  const fetchScript = fileURLToPath(new URL("./fetch_dem_tiles.mjs", import.meta.url));
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.BBOX;
+  const missingRes = spawnSync(process.execPath, [fetchScript], {
+    env: cleanEnv,
+    encoding: "utf8",
+  });
+  assert.notEqual(missingRes.status, 0, "fetch_dem_tiles.mjs must fail cleanly when BBOX is unset");
+  assert.match(missingRes.stderr, /BBOX/i);
+});

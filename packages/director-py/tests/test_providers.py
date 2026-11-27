@@ -634,3 +634,125 @@ def test_dotenv_round_trip_unescapes_quotes_and_backslashes(tmp_path: Path) -> N
     parsed = _parse_dotenv_lines(env_path.read_text(encoding="utf-8"))
     assert parsed["TEST_ROUNDTRIP_KEY"] == secret
     assert "ModalCloudMediaOpsProvider" in media_ops_all
+
+
+def test_all_registered_media_ops_providers_implement_full_media_ops_port(
+    tmp_path: Path,
+) -> None:
+    from vedit.ports.media_ops import MediaOpsPort
+    from vedit.providers.media_ops.modal_cloud import ModalCloudMediaOpsProvider
+
+    registry = build_default_registry()
+    for name in ("ffmpeg", "modal_cloud", "veed"):
+        provider = registry.resolve("media_ops", provider_name=name)
+        assert isinstance(provider, MediaOpsPort), (
+            f"media_ops provider {name!r} must satisfy MediaOpsPort"
+        )
+
+    src = tmp_path / "sample.mp4"
+    src.write_bytes(b"fake")
+    out = tmp_path / "out.mp4"
+
+    for remote_provider in (ModalCloudMediaOpsProvider(), VeedMediaOpsProvider()):
+        with pytest.raises(ProviderAPIError, match="ffmpeg"):
+            remote_provider.trim(src, out, start_s=0.0, end_s=1.0)
+        with pytest.raises(ProviderAPIError, match="ffmpeg"):
+            remote_provider.remove_silence(src, out)
+        with pytest.raises(ProviderAPIError, match="ffmpeg"):
+            remote_provider.restore_footage(src, out)
+
+
+def test_cli_modules_route_strictly_through_registry_and_config_ports() -> None:
+    import ast
+
+    cli_dir = Path(__file__).resolve().parents[1] / "src" / "vedit" / "cli"
+    forbidden_prefixes = (
+        "vedit.providers.media_ops",
+        "vedit.providers.veed_oauth",
+        "vedit.providers.transcription",
+        "vedit.providers.decision",
+        "vedit.providers.audio_catalog",
+        "vedit.providers.video_breakdown",
+    )
+    for py_file in sorted(cli_dir.glob("*.py")):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                for prefix in forbidden_prefixes:
+                    assert not (
+                        node.module == prefix or node.module.startswith(f"{prefix}.")
+                    ), f"{py_file.name} imports concrete provider module {node.module!r}"
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    for prefix in forbidden_prefixes:
+                        assert not (
+                            alias.name == prefix or alias.name.startswith(f"{prefix}.")
+                        ), f"{py_file.name} imports concrete provider module {alias.name!r}"
+
+
+def test_cli_media_local_ops_and_auth_use_ports_without_direct_vendor_imports(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from vedit.cli import app
+    from vedit.ports.media_ops import MediaOpResult
+    from vedit.providers.config import CapabilityProviderConfig
+
+    calls: list[tuple[str, str | None]] = []
+
+    class _FakeMediaOps:
+        provider_name = "fake_ops"
+
+        def trim(self, video_input: Path, output_path: Path, **kwargs) -> MediaOpResult:
+            calls.append(("trim", kwargs.get("mode")))
+            return MediaOpResult(provider="fake_ops", operation="trim", output_path=output_path)
+
+        def remove_silence(self, speech_input: Path, output_path: Path, **kwargs) -> MediaOpResult:
+            calls.append(("remove_silence", None))
+            return MediaOpResult(
+                provider="fake_ops", operation="remove_silence", output_path=output_path
+            )
+
+        def restore_footage(self, video_input: Path, output_path: Path, **kwargs) -> MediaOpResult:
+            calls.append(("restore_footage", None))
+            return MediaOpResult(
+                provider="fake_ops", operation="restore_footage", output_path=output_path
+            )
+
+    class _FakeRegistry:
+        def resolve(self, capability: str, provider_name: str | None = None):
+            assert capability == "media_ops"
+            calls.append(("resolve", provider_name))
+            return _FakeMediaOps()
+
+    monkeypatch.setattr("vedit.cli.media.build_default_registry", lambda: _FakeRegistry())
+    src = tmp_path / "clip.mp4"
+    src.write_bytes(b"data")
+    out = tmp_path / "out.mp4"
+
+    runner = CliRunner()
+    res_trim = runner.invoke(app, ["trim", str(src), str(out), "--start", "0", "--end", "2"])
+    assert res_trim.exit_code == 0, res_trim.output
+    res_sil = runner.invoke(app, ["remove-silence", str(src), str(out)])
+    assert res_sil.exit_code == 0, res_sil.output
+    res_rest = runner.invoke(
+        app, ["restore-footage", str(src), str(out), "--provider", "custom_local"]
+    )
+    assert res_rest.exit_code == 0, res_rest.output
+
+    assert ("resolve", "ffmpeg") in calls
+    assert ("resolve", "custom_local") in calls
+    assert [c[0] for c in calls if c[0] != "resolve"] == [
+        "trim",
+        "remove_silence",
+        "restore_footage",
+    ]
+
+    oauth_cfg = CapabilityProviderConfig(
+        primary="veed",
+        options={"auth_type": "openedit_oauth"},
+    )
+    assert isinstance(oauth_cfg.oauth_token_path(), Path)
+    local_cfg = CapabilityProviderConfig(primary="ffmpeg", options={"auth_type": "local"})
+    assert local_cfg.oauth_token_path() is None

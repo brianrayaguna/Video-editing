@@ -33,6 +33,7 @@ import {
 } from "./fast_capture.mjs";
 import { coverageReport, startTileServer } from "./serve_tiles.mjs";
 import { cutBlurAmount, shutterSubframeSchedule } from "./map_draw_math.mjs";
+import { DEFAULT_MAP_CENTER } from "./geo_defaults.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -6565,8 +6566,8 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
       return cur;
     }
 
-    const cLng = SPEC.center?.[0] ?? -77.55;
-    const cLat = SPEC.center?.[1] ?? 8.15;
+    const cLng = SPEC.center?.[0] ?? ${DEFAULT_MAP_CENTER[0]};
+    const cLat = SPEC.center?.[1] ?? ${DEFAULT_MAP_CENTER[1]};
     function projLocal(lng, lat) {
       return [(lng - cLng) * 235, -(lat - cLat) * 245];
     }

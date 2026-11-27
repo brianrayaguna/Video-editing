@@ -45,7 +45,15 @@ def test_registry_resolves_custom_capability_provider_without_core_changes() -> 
 
 def test_media_ops_port_excludes_generative_video_methods() -> None:
     public_methods = {m for m in dir(MediaOpsPort) if not m.startswith("_")}
-    assert public_methods == {"provider_name", "clean_audio", "reframe", "remove_background"}
+    assert public_methods == {
+        "provider_name",
+        "clean_audio",
+        "reframe",
+        "remove_background",
+        "trim",
+        "remove_silence",
+        "restore_footage",
+    }
 
 
 def test_decision_batch_bounds_enforce_one_image_for_box_questions() -> None:

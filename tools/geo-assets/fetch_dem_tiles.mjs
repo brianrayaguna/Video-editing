@@ -4,7 +4,7 @@
  * into `assets/geo/dem/{z}/{x}/{y}.png` for offline MapLibre GL 3D terrain & hillshade.
  *
  * Env:
- *   BBOX="minLon,minLat,maxLon,maxLat" (default: Kalimantan + Sulawesi "107.5,-6.0,125.5,7.5")
+ *   BBOX="minLon,minLat,maxLon,maxLat" (required)
  *   ZOOMS="4,5,6,7" (default: "4,5,6,7")
  *   CONCURRENCY="6"
  */
@@ -12,13 +12,13 @@
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_DEM_ZOOMS, parseBboxEnv } from "./geo_defaults.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
 const DEM_ROOT = join(REPO_ROOT, "assets/geo/dem");
 
-const BBOX = (process.env.BBOX || "107.5,-6.0,125.5,7.5").split(",").map(Number);
-const ZOOMS = (process.env.ZOOMS || "4,5,6,7").split(",").map(Number);
+const ZOOMS = (process.env.ZOOMS || DEFAULT_DEM_ZOOMS.join(",")).split(",").map(Number);
 const CONCURRENCY = Math.max(1, Number(process.env.CONCURRENCY || 6));
 
 function lon2x(lon, z) {
@@ -32,7 +32,10 @@ function lat2y(lat, z) {
 }
 
 async function main() {
-  const [minLon, minLat, maxLon, maxLat] = BBOX;
+  const [minLon, minLat, maxLon, maxLat] = parseBboxEnv(process.env.BBOX);
+  if (!ZOOMS.length || !ZOOMS.every((z) => Number.isInteger(z) && z >= 0 && z <= 15)) {
+    throw new Error(`Invalid ZOOMS "${process.env.ZOOMS}": expected comma-separated integers in [0, 15].`);
+  }
   const jobs = [];
   for (const z of ZOOMS) {
     const x0 = Math.max(0, lon2x(minLon, z));

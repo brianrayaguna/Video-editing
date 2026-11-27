@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from vedit.contracts import find_repo_root
 from vedit.providers.env import load_dotenv_safe
-from vedit.providers.veed_oauth import has_openedit_oauth_login
+from vedit.providers.veed_oauth import has_openedit_oauth_login, resolve_openedit_token_path
 
 
 class CapabilityProviderConfig(BaseModel):
@@ -53,6 +53,11 @@ class CapabilityProviderConfig(BaseModel):
 
     def has_api_key(self) -> bool:
         return self.has_credentials()
+
+    def oauth_token_path(self) -> Path | None:
+        if self.auth_type == "openedit_oauth":
+            return resolve_openedit_token_path()
+        return None
 
 
 class ProvidersConfig(BaseModel):

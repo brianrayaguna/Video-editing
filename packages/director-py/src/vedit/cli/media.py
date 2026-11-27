@@ -14,7 +14,6 @@ from vedit.mastering.qc_audit import audit_production_sound
 from vedit.ports.audio_catalog import AudioKind, VocalPolicy
 from vedit.ports.decision import DecisionQuestion, ImageInput
 from vedit.ports.transcription import TranscriptionOptions
-from vedit.providers.media_ops.ffmpeg_local import FfmpegMediaOpsProvider
 from vedit.providers.registry import build_default_registry
 
 
@@ -181,9 +180,13 @@ def trim_cmd(
         bool,
         typer.Option("--accurate", help="Re-encode for a frame-exact start instead of copy."),
     ] = False,
+    provider: Annotated[
+        str, typer.Option("--provider", help="MediaOpsPort provider.")
+    ] = "ffmpeg",
 ) -> None:
-    """Trim a clip locally (lossless stream copy by default)."""
-    result = FfmpegMediaOpsProvider().trim(
+    """Trim a clip using the configured MediaOpsPort (lossless stream copy by default)."""
+    ops = build_default_registry().resolve("media_ops", provider_name=provider)
+    result = ops.trim(
         video_input, output_path, start_s=start, end_s=end, accurate=accurate
     )
     typer.echo(json.dumps(asdict(result), indent=2, default=str))
@@ -206,9 +209,13 @@ def remove_silence_cmd(
         float | None,
         typer.Option("--room-tone-db", help="Optional room-tone floor level in dBFS (e.g. -48)."),
     ] = None,
+    provider: Annotated[
+        str, typer.Option("--provider", help="MediaOpsPort provider.")
+    ] = "ffmpeg",
 ) -> None:
-    """Cut long pauses from a voiceover locally; run before `transcribe`."""
-    result = FfmpegMediaOpsProvider().remove_silence(
+    """Cut long pauses from a voiceover via MediaOpsPort; run before `transcribe`."""
+    ops = build_default_registry().resolve("media_ops", provider_name=provider)
+    result = ops.remove_silence(
         speech_input,
         output_path,
         threshold_db=threshold_db,
@@ -247,9 +254,13 @@ def restore_footage_cmd(
     stabilize: Annotated[bool, typer.Option("--stabilize/--no-stabilize")] = True,
     denoise: Annotated[bool, typer.Option("--denoise/--no-denoise")] = True,
     deinterlace: Annotated[bool, typer.Option("--deinterlace/--no-deinterlace")] = False,
+    provider: Annotated[
+        str, typer.Option("--provider", help="MediaOpsPort provider.")
+    ] = "ffmpeg",
 ) -> None:
-    """Stabilize, denoise, and optionally deinterlace raw footage locally."""
-    result = FfmpegMediaOpsProvider().restore_footage(
+    """Stabilize, denoise, and optionally deinterlace raw footage via MediaOpsPort."""
+    ops = build_default_registry().resolve("media_ops", provider_name=provider)
+    result = ops.restore_footage(
         video_input,
         output_path,
         stabilize=stabilize,

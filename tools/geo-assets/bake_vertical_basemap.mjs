@@ -33,6 +33,7 @@ import {
   spawnMjpegPipeEncoder,
 } from "./fast_capture.mjs";
 import { startTileServer } from "./serve_tiles.mjs";
+import { DEFAULT_DEM_BOUNDS, parseCenterEnv } from "./geo_defaults.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -81,7 +82,7 @@ const FPS = Number(process.env.FPS || 30);
 const DUR = Number(process.env.DUR || 5);
 const N = Math.max(1, Math.round(FPS * DUR));
 const PROJECTION = process.env.PROJECTION === "mercator" ? "mercator" : "globe";
-const CENTER = (process.env.CENTER || "121.2,-1.6").split(",").map(Number);
+const CENTER = parseCenterEnv(process.env.CENTER);
 const FROM = process.env.FROM ? process.env.FROM.split(",").map(Number) : null;
 const ZSTART = Number(process.env.ZSTART || 1.85);
 const ZEND = Number(process.env.ZEND || 6.0);
@@ -100,7 +101,7 @@ const REGIONS_GEOJSON = process.env.REGIONS_GEOJSON || "";
 const TECTONICS_GEOJSON = process.env.TECTONICS_GEOJSON || "";
 const TERRAIN = process.env.TERRAIN === "1";
 const TERRAIN_EXAG = Number(process.env.TERRAIN_EXAG || 2.2);
-const DEM_BOUNDS = (process.env.DEM_BOUNDS || "-180,-85,180,85").split(",").map(Number);
+const DEM_BOUNDS = (process.env.DEM_BOUNDS || DEFAULT_DEM_BOUNDS.join(",")).split(",").map(Number);
 const HIGHLIGHT_PROP = process.env.HIGHLIGHT_PROP || "highlight";
 const WORKERS = Math.max(
   1,
