@@ -1371,3 +1371,191 @@ def test_geo_captions_16x9_scaling_and_back_to_back_scene_labels() -> None:
         }
     )
     assert rep["ok"] is True, rep["errors"]
+
+
+def test_validate_scene_rejects_small_flag_pin_and_validates_3d_waving_flag(tmp_path: Path) -> None:
+    from vedit.cli.geo import validate_map_scene
+
+    flags_dir = tmp_path / "assets" / "geo" / "flags"
+    flags_dir.mkdir(parents=True)
+    (flags_dir / "au.svg").write_text("<svg/>", encoding="utf-8")
+
+    # Reject small flag_pin in favor of full-territory waving+glowing flag_fill.
+    bad_pin = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "pin_reject",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {"type": "flag_pin", "code": "au", "coord": [134.0, -25.0]},
+                    ],
+                }
+            ]
+        },
+        repo_root=tmp_path,
+    )
+    assert not bad_pin["ok"]
+    assert any("flag_pin" in e and "flag_fill" in e for e in bad_pin["errors"]), bad_pin["errors"]
+
+    # Valid country_block_3d with waving + glowing flag must pass.
+    good_3d = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "waving_3d_flag",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "country_block_3d",
+                            "geom_ref": "countries.AUS",
+                            "flag_fill": "au",
+                            "flag_wave": 0.25,
+                            "flag_wave_speed": 0.7,
+                            "flag_wave_cycles": 2.6,
+                            "flag_wave_angle_deg": 24,
+                            "flag_glow": True,
+                            "flag_glow_intensity": 0.85,
+                        }
+                    ],
+                }
+            ]
+        },
+        repo_root=tmp_path,
+    )
+    assert good_3d["ok"] is True, good_3d["errors"]
+
+    # Invalid country_block_3d flag_fill / flag_wave / flag_glow_intensity must fail.
+    bad_3d = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "bad_3d_flag",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "country_block_3d",
+                            "geom_ref": "countries.AUS",
+                            "flag_fill": "zz",
+                            "flag_wave": 1.8,
+                            "flag_glow_intensity": -0.4,
+                        }
+                    ],
+                }
+            ]
+        },
+        repo_root=tmp_path,
+    )
+    assert not bad_3d["ok"]
+    joined = "\n".join(bad_3d["errors"])
+    for token in ("flag_fill", "flag_wave", "flag_glow_intensity"):
+        assert token in joined, f"Expected error for {token!r}, got:\n{joined}"
+
+
+def test_validate_scene_validates_3d_aircraft_flight_and_anti_stacking() -> None:
+    from vedit.cli.geo import validate_map_scene
+
+    good_flight = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "flight_ok",
+                    "duration_s": 6.0,
+                    "layers": [
+                        {
+                            "type": "model_3d",
+                            "model": "aircraft",
+                            "path": [[179.2, -8.5], [151.2, -33.8]],
+                            "altitude_arc_m": 420000,
+                            "bank_deg": 18,
+                            "contrail": True,
+                            "spin_rps": 0.0,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert good_flight["ok"] is True, good_flight["errors"]
+
+    # Overlapping static 3D models stacked on the same coordinates at the same time must error.
+    stacked = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "stacked_models",
+                    "duration_s": 6.0,
+                    "camera_keyframes": [
+                        {"t": 0.0, "center": [179.2, -8.5], "zoom": 6.0},
+                        {"t": 6.0, "center": [179.2, -8.5], "zoom": 6.0},
+                    ],
+                    "layers": [
+                        {
+                            "type": "model_3d",
+                            "model": "substation",
+                            "coord": [179.2, -8.5],
+                            "start_s": 0.0,
+                            "end_s": 5.0,
+                        },
+                        {
+                            "type": "model_3d",
+                            "model": "transmission_tower",
+                            "coord": [179.22, -8.51],
+                            "start_s": 1.0,
+                            "end_s": 5.0,
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    assert any(
+        "overlap" in w.lower() or "stack" in w.lower() for w in stacked["warnings"]
+    ), stacked["warnings"]
+
+
+def test_validate_scene_validates_contextual_crimson_x_slash() -> None:
+    from vedit.cli.geo import validate_map_scene
+
+    good_x = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "x_ok",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "crimson_x",
+                            "coord": [179.2, -8.5],
+                            "slash_duration_s": 0.24,
+                            "gap_s": 0.12,
+                            "shockwave": True,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert good_x["ok"] is True, good_x["errors"]
+
+    bad_x = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "x_bad",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {
+                            "type": "crimson_x",
+                            "coord": [179.2, -8.5],
+                            "slash_duration_s": -0.2,
+                            "gap_s": -1.0,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert not bad_x["ok"]
+    joined = "\n".join(bad_x["errors"])
+    assert "slash_duration_s" in joined and "gap_s" in joined, joined

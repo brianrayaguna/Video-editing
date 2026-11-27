@@ -2993,25 +2993,94 @@ ${DRAW_MATH_SRC}
       ctx.restore();
     }
 
-    function drawCrimsonX(x, y, size, alpha) {
+    function drawCrimsonX(x, y, size, alpha, opts = {}) {
       if (alpha <= 0.005 || size <= 1) return;
+      const s1 = opts.stroke1 != null ? clamp(opts.stroke1, 0, 1) : 1;
+      const s2 = opts.stroke2 != null ? clamp(opts.stroke2, 0, 1) : 1;
+      const impact = opts.impactPulse != null ? clamp(opts.impactPulse, 0, 1) : 0;
+      const showShockwave = opts.shockwave !== false;
+      const strokeHex = opts.strokeHex || "#DC2626";
+      const glowHex = opts.glowHex || "#EF4444";
+      const coreHex = opts.coreHex || "#FFFFFF";
+      const angleRad = ((Number(opts.strikeAngleDeg) || 0) * Math.PI) / 180;
+      if (s1 <= 0.001 && s2 <= 0.001) return;
+
       ctx.save();
       ctx.translate(x, y);
+      if (angleRad !== 0) ctx.rotate(angleRad);
       ctx.globalAlpha = alpha;
-      const g = ctx.createRadialGradient(0, 0, size * 0.1, 0, 0, size * 2.0);
-      g.addColorStop(0, "rgba(239, 44, 44, 0.9)");
-      g.addColorStop(0.45, "rgba(220, 38, 38, 0.45)");
-      g.addColorStop(1, "rgba(220, 38, 38, 0)");
+
+      // Ambient crimson impact bloom behind the crossing point
+      const bloomScale = 1.0 + impact * 0.45;
+      const g = ctx.createRadialGradient(0, 0, size * 0.08, 0, 0, size * 2.1 * bloomScale);
+      g.addColorStop(0, rgbaStr(glowHex, 0.72 + impact * 0.25));
+      g.addColorStop(0.45, rgbaStr(strokeHex, 0.34 + impact * 0.16));
+      g.addColorStop(1, rgbaStr(strokeHex, 0));
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, size * 2.0, 0, Math.PI * 2); ctx.fill();
-      ctx.lineCap = "round";
-      for (const [col, w, a] of [["#DC2626", size * 0.36, 0.9], ["#FFFFFF", size * 0.2, 1.0]]) {
-        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.globalAlpha = alpha * a;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 2.1 * bloomScale, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Expanding diagonal-intersection shockwave ring on second slash impact
+      if (showShockwave && impact > 0.01) {
+        const ringR = size * (0.45 + (1 - impact) * 1.65);
+        ctx.save();
+        ctx.strokeStyle = rgbaStr(glowHex, impact * 0.9);
+        ctx.lineWidth = Math.max(2.5, size * 0.085 * impact);
         ctx.beginPath();
-        ctx.moveTo(-size * 0.48, -size * 0.48); ctx.lineTo(size * 0.48, size * 0.48);
-        ctx.moveTo(size * 0.48, -size * 0.48); ctx.lineTo(-size * 0.48, size * 0.48);
+        ctx.arc(0, 0, ringR, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.strokeStyle = rgbaStr(coreHex, impact * 0.75);
+        ctx.lineWidth = Math.max(1.5, size * 0.032 * impact);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringR * 0.88, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
+
+      const half = size * 0.52;
+      const drawSlash = (x0, y0, x1, y1, prog) => {
+        if (prog <= 0.002) return;
+        const ex = lerp(x0, x1, prog);
+        const ey = lerp(y0, y1, prog);
+        ctx.lineCap = "round";
+        for (const [col, w, a, blur] of [
+          [glowHex, size * 0.36, 0.42, size * 0.28],
+          [strokeHex, size * 0.24, 0.94, size * 0.12],
+          [coreHex, size * 0.11, 1.0, 0],
+        ]) {
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = w;
+          ctx.globalAlpha = alpha * a;
+          if (blur > 0) {
+            ctx.shadowColor = glowHex;
+            ctx.shadowBlur = blur;
+          }
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.restore();
+        }
+        // Leading slash spark head while stroke is actively carving
+        if (prog > 0.02 && prog < 0.98) {
+          ctx.save();
+          const sg = ctx.createRadialGradient(ex, ey, 1, ex, ey, size * 0.34);
+          sg.addColorStop(0, coreHex);
+          sg.addColorStop(0.45, rgbaStr("#FDE047", 0.85));
+          sg.addColorStop(1, rgbaStr(glowHex, 0));
+          ctx.fillStyle = sg;
+          ctx.beginPath();
+          ctx.arc(ex, ey, size * 0.34, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      };
+
+      // Stroke 1: top-left -> bottom-right; Stroke 2: top-right -> bottom-left
+      drawSlash(-half, -half, half, half, s1);
+      drawSlash(half, -half, -half, half, s2);
       ctx.restore();
     }
 
@@ -3754,9 +3823,23 @@ ${DRAW_MATH_SRC}
         } else if (layer.type === "crimson_x") {
           const pt = projectPointSafe(layer.coord);
           if (pt) {
-            const pop = easeOutBack(seg(t, tStart, tStart + 0.32));
-            const sz = lerp(layer.size_start || 56, layer.size_end || 90, seg(t, tStart, tEnd)) * clamp(pop, 0, 1.25);
-            drawCrimsonX(pt.x, pt.y, sz, baseAlpha);
+            const slash = slashCrossProgress(tLoc, {
+              slashDurS: layer.slash_duration_s ?? 0.22,
+              gapS: layer.gap_s ?? 0.11,
+              impactDurS: layer.impact_duration_s ?? 0.36,
+            });
+            const szBase = lerp(layer.size_start || 84, layer.size_end || 118, seg(t, tStart, tEnd));
+            const sz = szBase * (1 + slash.impactPulse * 0.12);
+            drawCrimsonX(pt.x + (layer.dx || 0), pt.y + (layer.dy || 0), sz, baseAlpha, {
+              stroke1: slash.stroke1,
+              stroke2: slash.stroke2,
+              impactPulse: slash.impactPulse,
+              shockwave: layer.shockwave !== false,
+              strokeHex: layer.stroke_hex || "#DC2626",
+              glowHex: layer.glow_hex || "#EF4444",
+              coreHex: layer.core_hex || "#FFFFFF",
+              strikeAngleDeg: layer.strike_angle_deg || 0,
+            });
           }
         } else if (layer.type === "skull") {
           const pt = projectPointSafe(layer.coord);
@@ -5073,6 +5156,119 @@ ${DRAW_MATH_SRC}
         return root;
       }
 
+      function buildAircraftModel(layer) {
+        const root = new THREE.Group();
+        const bodyMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(layer.body_hex || "#F8FAFC"),
+          metalness: 0.32,
+          roughness: 0.24,
+        });
+        const wingMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(layer.wing_hex || "#CBD5E1"),
+          metalness: 0.42,
+          roughness: 0.30,
+        });
+        const accentMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(layer.accent_hex || "#0284C7"),
+          emissive: new THREE.Color(layer.accent_hex || "#0284C7"),
+          emissiveIntensity: 0.32,
+          metalness: 0.35,
+          roughness: 0.28,
+        });
+        const glassMat = new THREE.MeshStandardMaterial({
+          color: 0x0f172a,
+          emissive: 0x38bdf8,
+          emissiveIntensity: 0.45,
+          metalness: 0.85,
+          roughness: 0.12,
+        });
+        const engMat = new THREE.MeshStandardMaterial({
+          color: 0x334155,
+          metalness: 0.72,
+          roughness: 0.25,
+        });
+
+        // Sculpted fuselage aligned along +Y (nose at +Y, Z-up)
+        const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.088, 1.15, 20), bodyMat);
+        fuse.position.set(0, 0.02, 0.14);
+        root.add(fuse);
+
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.095, 20, 14), bodyMat);
+        nose.scale.set(1, 2.25, 0.94);
+        nose.position.set(0, 0.59, 0.13);
+        root.add(nose);
+
+        const tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.088, 0.46, 20), bodyMat);
+        tailCone.rotation.x = Math.PI;
+        tailCone.position.set(0, -0.78, 0.15);
+        root.add(tailCone);
+
+        // Cockpit visor
+        const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.078, 16, 10), glassMat);
+        cockpit.scale.set(1.02, 1.55, 0.65);
+        cockpit.position.set(0, 0.61, 0.18);
+        root.add(cockpit);
+
+        // Swept main wings with upturned winglets
+        for (const s of [-1, 1]) {
+          const wShape = new THREE.Shape();
+          wShape.moveTo(0, 0.26);
+          wShape.lineTo(s * 0.94, -0.22);
+          wShape.lineTo(s * 0.94, -0.34);
+          wShape.lineTo(0, -0.10);
+          wShape.closePath();
+          const wGeo = new THREE.ExtrudeGeometry(wShape, {
+            depth: 0.028,
+            bevelEnabled: true,
+            bevelThickness: 0.008,
+            bevelSize: 0.008,
+            bevelSegments: 2,
+          });
+          const wing = new THREE.Mesh(wGeo, wingMat);
+          wing.position.set(0, 0, 0.10);
+          root.add(wing);
+
+          // Upturned winglet + navigation light
+          const winglet = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.14, 0.14), accentMat);
+          winglet.position.set(s * 0.94, -0.28, 0.17);
+          winglet.rotation.y = s * 0.26;
+          root.add(winglet);
+
+          const navCol = s < 0 ? 0xef4444 : 0x22c55e;
+          const navMat = new THREE.MeshBasicMaterial({ color: navCol });
+          const nav = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), navMat);
+          nav.position.set(s * 0.96, -0.27, 0.22);
+          root.add(nav);
+
+          // Underwing turbofan engine nacelle
+          const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.044, 0.24, 16), engMat);
+          eng.position.set(s * 0.34, 0.06, 0.06);
+          root.add(eng);
+
+          // Horizontal tail stabilizer
+          const hShape = new THREE.Shape();
+          hShape.moveTo(0, -0.62);
+          hShape.lineTo(s * 0.34, -0.86);
+          hShape.lineTo(s * 0.34, -0.94);
+          hShape.lineTo(0, -0.82);
+          hShape.closePath();
+          const hTail = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(hShape, { depth: 0.018, bevelEnabled: false }),
+            wingMat
+          );
+          hTail.position.set(0, 0, 0.15);
+          root.add(hTail);
+        }
+
+        // Swept vertical tail fin
+        const vFin = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.28, 0.34), accentMat);
+        vFin.position.set(0, -0.78, 0.33);
+        vFin.rotation.x = -0.35;
+        root.add(vFin);
+
+        return root;
+      }
+
       function computeParallelFrames(pts) {
         const n = pts.length;
         const tangents = [];
@@ -5622,12 +5818,39 @@ ${DRAW_MATH_SRC}
           : fillCol.clone().multiplyScalar(0.56);
         const fresnelCol = new THREE.Color(layer.fresnel_hex || layer.rim_hex || "#BAE6FD");
         const hatchCol = new THREE.Color(layer.hatch_color || "#FFFFFF");
+        const hasFlag = Boolean(flagTex);
+        const flagWaveAmp = layer.flag_wave === false
+          ? 0.0
+          : (layer.flag_wave === true
+            ? 0.24
+            : (layer.flag_wave != null ? clamp(Number(layer.flag_wave) || 0, 0, 0.6) : (hasFlag ? 0.24 : 0.0)));
+        const flagWaveSpeed = Number(layer.flag_wave_speed ?? 0.72);
+        const flagWaveCycles = Number(layer.flag_wave_cycles ?? 2.6);
+        const flagWaveAngleRad = ((Number(layer.flag_wave_angle_deg ?? 22)) * Math.PI) / 180;
+        const flagGloss = layer.flag_gloss === false
+          ? 0.0
+          : (layer.flag_gloss === true
+            ? 0.65
+            : (layer.flag_gloss != null ? clamp(Number(layer.flag_gloss) || 0, 0, 1) : (hasFlag ? 0.65 : 0.0)));
+        const flagGlowEnabled = layer.flag_glow === false ? false : (Boolean(layer.flag_glow) || hasFlag);
+        const flagGlowCol = new THREE.Color(layer.flag_glow_hex || layer.rim_hex || "#F8FAFC");
+        const flagGlowIntensity = flagGlowEnabled ? Number(layer.flag_glow_intensity ?? 0.82) : 0.0;
 
         const topUniforms = {
           uCamPos: { value: camLocalPos },
+          uTime: { value: 0.0 },
           uScaleZ: { value: 1.0 },
+          uHasFlag: { value: hasFlag ? 1.0 : 0.0 },
+          uFlagWaveAmp: { value: flagWaveAmp },
+          uFlagWaveSpeed: { value: flagWaveSpeed },
+          uFlagWaveCycles: { value: flagWaveCycles },
+          uFlagWaveAngleRad: { value: flagWaveAngleRad },
+          uFlagGloss: { value: flagGloss },
+          uFlagGlowEnabled: { value: flagGlowEnabled ? 1.0 : 0.0 },
+          uFlagGlowColor: { value: flagGlowCol },
+          uFlagGlowIntensity: { value: flagGlowIntensity },
           uFresnelColor: { value: fresnelCol },
-          uFresnelIntensity: { value: Number(layer.fresnel_intensity ?? 0.28) },
+          uFresnelIntensity: { value: Number(layer.fresnel_intensity ?? (flagGlowEnabled ? 0.55 : 0.28)) },
           uHatchEnabled: { value: layer.hatch ? 1.0 : 0.0 },
           uHatchSpacingM: { value: Math.max(500, spanDiag / Math.max(8, Number(layer.hatch_density ?? 36))) },
           uHatchAngleRad: { value: ((Number(layer.hatch_angle_deg ?? 45)) * Math.PI) / 180 },
@@ -5644,8 +5867,8 @@ ${DRAW_MATH_SRC}
         const topMat = new THREE.MeshStandardMaterial({
           color: flagTex ? 0xffffff : fillCol,
           map: flagTex,
-          roughness: layer.roughness ?? 0.62,
-          metalness: layer.metalness ?? 0.06,
+          roughness: layer.roughness ?? (hasFlag ? 0.44 : 0.62),
+          metalness: layer.metalness ?? (hasFlag ? 0.08 : 0.06),
           transparent: true,
           opacity: layer.fill_alpha ?? 0.96,
         });
@@ -5670,7 +5893,17 @@ ${DRAW_MATH_SRC}
               [
                 "#include <common>",
                 "uniform vec3 uCamPos;",
+                "uniform float uTime;",
                 "uniform float uScaleZ;",
+                "uniform float uHasFlag;",
+                "uniform float uFlagWaveAmp;",
+                "uniform float uFlagWaveSpeed;",
+                "uniform float uFlagWaveCycles;",
+                "uniform float uFlagWaveAngleRad;",
+                "uniform float uFlagGloss;",
+                "uniform float uFlagGlowEnabled;",
+                "uniform vec3 uFlagGlowColor;",
+                "uniform float uFlagGlowIntensity;",
                 "uniform vec3 uFresnelColor;",
                 "uniform float uFresnelIntensity;",
                 "uniform float uHatchEnabled;",
@@ -5689,6 +5922,32 @@ ${DRAW_MATH_SRC}
               ].join("\\n")
             )
             .replace(
+              "#include <map_fragment>",
+              [
+                "float flagWaveDh = 0.0;",
+                "#ifdef USE_MAP",
+                "  vec2 flagUv = vMapUv;",
+                "  if (uHasFlag > 0.5 && uFlagWaveAmp > 0.001) {",
+                "    float caW = cos(uFlagWaveAngleRad);",
+                "    float saW = sin(uFlagWaveAngleRad);",
+                "    float wCoord = flagUv.x * caW + flagUv.y * saW;",
+                "    float pCoord = -flagUv.x * saW + flagUv.y * caW;",
+                "    float ph1 = 6.2831853 * (uFlagWaveCycles * wCoord - uFlagWaveSpeed * uTime);",
+                "    float ph2 = 6.2831853 * (uFlagWaveCycles * 1.85 * wCoord - uFlagWaveSpeed * 1.48 * uTime + 0.36 * pCoord);",
+                "    float waveH = 0.68 * sin(ph1) + 0.32 * sin(ph2);",
+                "    flagWaveDh = 0.68 * cos(ph1) + 0.32 * 1.85 * cos(ph2);",
+                "    vec2 warpDir = vec2(-saW, caW);",
+                "    flagUv = clamp(flagUv + warpDir * waveH * (0.044 * (uFlagWaveAmp / 0.24)), vec2(0.002), vec2(0.998));",
+                "  }",
+                "  vec4 sampledDiffuseColor = texture2D( map, flagUv );",
+                "  diffuseColor *= sampledDiffuseColor;",
+                "  if (uHasFlag > 0.5 && uFlagWaveAmp > 0.001) {",
+                "    diffuseColor.rgb *= clamp(1.0 + flagWaveDh * uFlagWaveAmp * 0.96, 0.54, 1.46);",
+                "  }",
+                "#endif",
+              ].join("\\n")
+            )
+            .replace(
               "#include <emissivemap_fragment>",
               [
                 "#include <emissivemap_fragment>",
@@ -5697,8 +5956,18 @@ ${DRAW_MATH_SRC}
                 "vec3 viewDirW = normalize(uCamPos - wPos);",
                 "float ndv = clamp(dot(wNorm, viewDirW), 0.0, 1.0);",
                 "float bevelMask = 1.0 - smoothstep(0.65, 0.96, wNorm.z);",
-                "float fresnel = pow(1.0 - ndv, 3.2) * mix(0.28, 1.0, bevelMask);",
+                "float fresnel = pow(1.0 - ndv, 3.0) * mix(0.28, 1.0, bevelMask);",
                 "totalEmissiveRadiance += uFresnelColor * fresnel * uFresnelIntensity;",
+                "if (uHasFlag > 0.5 && uFlagWaveAmp > 0.001) {",
+                "  float crest = pow(max(0.0, flagWaveDh), 2.1);",
+                "  totalEmissiveRadiance += vec3(1.0, 0.99, 0.95) * crest * uFlagWaveAmp * 0.65 * uFlagGloss;",
+                "}",
+                "if (uFlagGlowEnabled > 0.5 && uFlagGlowIntensity > 0.001) {",
+                "  float glowPulse = 0.86 + 0.14 * sin(uTime * 2.8);",
+                "  totalEmissiveRadiance += diffuseColor.rgb * (0.24 * uFlagGlowIntensity * glowPulse);",
+                "  float edgeGlow = pow(1.0 - ndv, 2.0) * mix(0.30, 1.35, bevelMask);",
+                "  totalEmissiveRadiance += uFlagGlowColor * edgeGlow * (0.85 * uFlagGlowIntensity * glowPulse);",
+                "}",
                 "if (uHatchEnabled > 0.5 && uHatchProgress > 0.001 && wNorm.z > 0.72) {",
                 "  float ca = cos(uHatchAngleRad);",
                 "  float sa = sin(uHatchAngleRad);",
@@ -5775,14 +6044,14 @@ ${DRAW_MATH_SRC}
         blockMesh.frustumCulled = false;
         grp.add(blockMesh);
 
-        // Crisp HDR emissive top perimeter rim for sharp figure-ground separation
+        // Crisp HDR emissive top perimeter rim + luminous outer glow ribbon when flag_glow is active
         const rimLines = [];
         const rimCol = new THREE.Color(layer.rim_hex || "#F8FAFC");
-        const rimIntensity = Number(layer.rim_emissive ?? 1.35);
+        const rimIntensity = Number(layer.rim_emissive ?? (flagGlowEnabled ? 2.15 : 1.35));
         const rimMat = new THREE.LineBasicMaterial({
           color: rimCol.clone().multiplyScalar(rimIntensity),
           transparent: true,
-          opacity: 0.95,
+          opacity: 0.96,
         });
         const rimZ = extrudeHeightM + bevelThickness + Math.max(40, extrudeHeightM * 0.008);
         for (const pts of outerRings2D) {
@@ -5792,6 +6061,25 @@ ${DRAW_MATH_SRC}
           loop.frustumCulled = false;
           grp.add(loop);
           rimLines.push(loop);
+          if (flagGlowEnabled && pts.length >= 3) {
+            const haloVerts = pts.map((p) => new THREE.Vector3(p.x, p.y, rimZ));
+            haloVerts.push(haloVerts[0].clone());
+            const haloCurve = new THREE.CatmullRomCurve3(haloVerts, true, "catmullrom", 0.12);
+            const haloRad = clamp(spanDiag * 0.0055, 80, spanDiag * 0.012);
+            const haloSegs = clamp(pts.length * 2, 48, 260);
+            const haloGeo = new THREE.TubeGeometry(haloCurve, haloSegs, haloRad, 6, true);
+            const haloMat = new THREE.MeshBasicMaterial({
+              color: flagGlowCol.clone().multiplyScalar(1.95),
+              transparent: true,
+              opacity: 0.58,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+            });
+            const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+            haloMesh.frustumCulled = false;
+            grp.add(haloMesh);
+            rimLines.push(haloMesh);
+          }
         }
 
         scene.add(grp);
@@ -5802,6 +6090,9 @@ ${DRAW_MATH_SRC}
           topMat,
           sideMat,
           rimMat,
+          rimBaseCol: rimCol,
+          rimBaseIntensity: rimIntensity,
+          flagGlowEnabled,
           topUniforms,
           sideUniforms,
           baseFillAlpha: layer.fill_alpha ?? 0.96,
@@ -6195,11 +6486,16 @@ ${DRAW_MATH_SRC}
             const riseRaw = riseDur > 0 ? evalEase(riseEase, seg(t, tStart + riseDelay, tStart + riseDelay + riseDur)) : 1.0;
             const scaleZ = Math.max(0.005, riseRaw);
             entry.grp.scale.set(1, 1, scaleZ);
+            entry.topUniforms.uTime.value = t;
             entry.topUniforms.uScaleZ.value = scaleZ;
             entry.sideUniforms.uScaleZ.value = scaleZ;
             entry.topMat.opacity = entry.baseFillAlpha * alpha;
             entry.sideMat.opacity = entry.baseFillAlpha * alpha;
-            entry.rimMat.opacity = 0.95 * alpha;
+            entry.rimMat.opacity = 0.96 * alpha;
+            if (entry.flagGlowEnabled && entry.rimBaseCol) {
+              const pulse = 0.88 + 0.16 * Math.sin(t * 2.8);
+              entry.rimMat.color.copy(entry.rimBaseCol).multiplyScalar(entry.rimBaseIntensity * pulse);
+            }
 
             if (layer.hatch) {
               const hDelay = Number(layer.hatch_delay_s ?? (riseDelay + riseDur * 0.45));
@@ -6262,9 +6558,14 @@ ${DRAW_MATH_SRC}
                     }
                   });
                 }
-                addGroundShadow(grp, 0.72);
+                if (layer.altitude_arc_m > 0) {
+                  // Elevated aircraft casts detached ground shadow directly on terrain below
+                } else {
+                  addGroundShadow(grp, 0.72);
+                }
                 grp.add(holder);
-              } else if (layer.model === "transmission_tower") grp = buildTransmissionTowerModel(layer);
+              } else if (layer.model === "aircraft") grp = buildAircraftModel(layer);
+              else if (layer.model === "transmission_tower") grp = buildTransmissionTowerModel(layer);
               else if (layer.model === "substation") grp = buildSubstationModel(layer);
               else if (layer.model === "solar_farm") grp = buildSolarFarmModel(layer);
               else if (layer.model === "survey_vessel") grp = buildSurveyVesselModel(layer);
@@ -6289,12 +6590,81 @@ ${DRAW_MATH_SRC}
                 }
               });
               scene.add(grp);
-              entry = { key, grp, mats };
+
+              // Detached ground shadow disk & glowing 3D parabolic contrail for airborne paths
+              let flightShadow = null;
+              if (Number(layer.altitude_arc_m || 0) > 0) {
+                const sGeo = new THREE.CircleGeometry(0.85, 24);
+                const sMat = new THREE.MeshBasicMaterial({
+                  color: 0x020617,
+                  transparent: true,
+                  opacity: 0.36,
+                  depthWrite: false,
+                });
+                flightShadow = new THREE.Mesh(sGeo, sMat);
+                flightShadow.frustumCulled = false;
+                flightShadow.visible = false;
+                scene.add(flightShadow);
+              }
+              let contrailObj = null;
+              if (layer.contrail === true && Array.isArray(layer.path) && layer.path.length >= 2) {
+                const cSamples = 64;
+                const arcM = Number(layer.altitude_arc_m || 0);
+                const cPts = [];
+                for (let ci = 0; ci <= cSamples; ci++) {
+                  const cu = ci / cSamples;
+                  const cp = sampleParabolicArcPose(layer.path, cu, { altitudeArcM: arcM, bankMaxDeg: 0 });
+                  cPts.push(lngLatAltToLocal(cp.lng, cp.lat, groundElevM(cp.lng, cp.lat) + cp.altM));
+                }
+                const cCurve = new THREE.CatmullRomCurve3(cPts, false, "catmullrom", 0.25);
+                const cLen = cCurve.getLength();
+                const coreR = clamp(cLen * 0.0042, 450, 26000);
+                const glowR = coreR * 2.6;
+                const coreGeo = new THREE.TubeGeometry(cCurve, 96, coreR, 8, false);
+                const glowGeo = new THREE.TubeGeometry(cCurve, 96, glowR, 8, false);
+                const cHex = new THREE.Color(layer.contrail_hex || "#7CE0F9");
+                const coreMat = new THREE.MeshBasicMaterial({
+                  color: new THREE.Color("#FFFFFF").lerp(cHex, 0.35).multiplyScalar(1.65),
+                  transparent: true,
+                  opacity: 0.92,
+                  depthWrite: false,
+                });
+                const glowMat = new THREE.MeshBasicMaterial({
+                  color: cHex.clone().multiplyScalar(1.55),
+                  transparent: true,
+                  opacity: 0.36,
+                  blending: THREE.AdditiveBlending,
+                  depthWrite: false,
+                });
+                const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+                const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+                coreMesh.frustumCulled = false;
+                glowMesh.frustumCulled = false;
+                const cGrp = new THREE.Group();
+                cGrp.add(glowMesh, coreMesh);
+                cGrp.visible = false;
+                scene.add(cGrp);
+                contrailObj = {
+                  group: cGrp,
+                  coreGeo,
+                  glowGeo,
+                  coreMat,
+                  glowMat,
+                  totalCoreIdx: coreGeo.index ? coreGeo.index.count : 0,
+                  totalGlowIdx: glowGeo.index ? glowGeo.index.count : 0,
+                };
+              }
+
+              entry = { key, grp, mats, flightShadow, contrailObj };
               modelCache.set(key, entry);
             }
             activeModels.add(key);
             entry.grp.visible = visible && alpha > 0.01;
-            if (!entry.grp.visible) continue;
+            if (!entry.grp.visible) {
+              if (entry.flightShadow) entry.flightShadow.visible = false;
+              if (entry.contrailObj) entry.contrailObj.group.visible = false;
+              continue;
+            }
             for (const item of entry.mats || []) {
               item.mat.opacity = item.baseOpacity * alpha;
               item.mat.transparent = item.baseTransparent || alpha < 0.999;
@@ -6304,23 +6674,44 @@ ${DRAW_MATH_SRC}
 
             let curCoord = layer.coord || [originLng, originLat];
             let headingDeg = layer.heading_deg || 0;
+            let pitchDeg = 0;
+            let rollDeg = 0;
+            let extraAltM = Number(layer.altitude_m || 0);
+            let pathU = 0;
             if (Array.isArray(layer.path) && layer.path.length >= 2) {
               const moveDur = layer.move_duration_s ?? Math.max(0.1, tEnd - tStart);
-              const u = clamp(seg(t, tStart, tStart + moveDur), 0, 1);
-              curCoord = samplePolylineCoord(layer.path, u);
-              if (layer.auto_heading !== false) {
-                const cA = samplePolylineCoord(layer.path, Math.max(0, u - 0.02));
-                const cB = samplePolylineCoord(layer.path, Math.min(1, u + 0.02));
-                const pA = lngLatAltToLocal(cA[0], cA[1], 0);
-                const pB = lngLatAltToLocal(cB[0], cB[1], 0);
-                const dx = pB.x - pA.x, dy = pB.y - pA.y;
-                if (Math.hypot(dx, dy) > 1e-3) {
-                  headingDeg = (Math.atan2(-dx, dy) * 180) / Math.PI;
+              pathU = clamp(seg(t, tStart, tStart + moveDur), 0, 1);
+              if (Number(layer.altitude_arc_m || 0) > 0) {
+                const pose = sampleParabolicArcPose(layer.path, pathU, {
+                  altitudeArcM: Number(layer.altitude_arc_m),
+                  bankMaxDeg: Number(layer.bank_deg ?? 20),
+                });
+                curCoord = [pose.lng, pose.lat];
+                extraAltM += pose.altM;
+                if (layer.auto_heading !== false) {
+                  headingDeg = pose.headingDeg + Number(layer.heading_offset_deg || 0);
+                  pitchDeg = pose.pitchDeg;
+                  rollDeg = pose.rollDeg;
+                }
+              } else {
+                curCoord = samplePolylineCoord(layer.path, pathU);
+                if (layer.auto_heading !== false) {
+                  const cA = samplePolylineCoord(layer.path, Math.max(0, pathU - 0.02));
+                  const cB = samplePolylineCoord(layer.path, Math.min(1, pathU + 0.02));
+                  const pA = lngLatAltToLocal(cA[0], cA[1], 0);
+                  const pB = lngLatAltToLocal(cB[0], cB[1], 0);
+                  const dx = pB.x - pA.x, dy = pB.y - pA.y;
+                  if (Math.hypot(dx, dy) > 1e-3) {
+                    headingDeg = (Math.atan2(-dx, dy) * 180) / Math.PI + Number(layer.heading_offset_deg || 0);
+                  }
                 }
               }
             }
-            const elev = layer.model === "survey_vessel" ? 0 : groundElevM(curCoord[0], curCoord[1]);
-            const pos = lngLatAltToLocal(curCoord[0], curCoord[1], elev);
+            if (Number(layer.spin_rps || 0) !== 0) {
+              headingDeg += Math.max(0, t - tStart) * Number(layer.spin_rps) * 360;
+            }
+            const groundElev = layer.model === "survey_vessel" ? 0 : groundElevM(curCoord[0], curCoord[1]);
+            const pos = lngLatAltToLocal(curCoord[0], curCoord[1], groundElev + extraAltM);
             const hMeters = metersForScreenPx(
               layer.height_px ?? 95,
               curCoord[1],
@@ -6339,9 +6730,30 @@ ${DRAW_MATH_SRC}
             const scXY = hMeters * clamp(exitSc, 0.01, 1.5);
             const scZ = hMeters * clamp(riseP, 0.02, 1.15) * clamp(exitSc, 0.01, 1.5);
             entry.grp.position.copy(pos);
-            entry.grp.rotation.set(0, 0, (headingDeg * Math.PI) / 180);
+            entry.grp.rotation.order = "ZXY";
+            entry.grp.rotation.set(
+              (pitchDeg * Math.PI) / 180,
+              (rollDeg * Math.PI) / 180,
+              (headingDeg * Math.PI) / 180
+            );
             entry.grp.scale.set(scXY, scXY, scZ);
-            activeShadowBox.expandByPoint(new THREE.Vector3(pos.x - scXY, pos.y - scXY, pos.z));
+            if (entry.flightShadow) {
+              const gPos = lngLatAltToLocal(curCoord[0], curCoord[1], groundElev + 25);
+              entry.flightShadow.position.copy(gPos);
+              entry.flightShadow.scale.setScalar(scXY * 0.78);
+              entry.flightShadow.material.opacity = 0.34 * alpha;
+              entry.flightShadow.visible = true;
+            }
+            if (entry.contrailObj) {
+              const cObj = entry.contrailObj;
+              const drawFrac = clamp(pathU, 0, 1);
+              cObj.coreGeo.setDrawRange(0, Math.floor((cObj.totalCoreIdx * drawFrac) / 3) * 3);
+              cObj.glowGeo.setDrawRange(0, Math.floor((cObj.totalGlowIdx * drawFrac) / 3) * 3);
+              cObj.coreMat.opacity = 0.90 * alpha;
+              cObj.glowMat.opacity = 0.36 * alpha;
+              cObj.group.visible = drawFrac > 0.005;
+            }
+            activeShadowBox.expandByPoint(new THREE.Vector3(pos.x - scXY, pos.y - scXY, Math.min(pos.z, groundElev)));
             activeShadowBox.expandByPoint(new THREE.Vector3(pos.x + scXY, pos.y + scXY, pos.z + scZ));
           } else if (layer.type === "volume_3d") {
             const key = layer.id || ("vol_" + idx);
@@ -6407,7 +6819,13 @@ ${DRAW_MATH_SRC}
         }
 
         for (const [k, v] of cableCache.entries()) if (!activeCables.has(k)) v.group.visible = false;
-        for (const [k, v] of modelCache.entries()) if (!activeModels.has(k)) v.grp.visible = false;
+        for (const [k, v] of modelCache.entries()) {
+          if (!activeModels.has(k)) {
+            v.grp.visible = false;
+            if (v.flightShadow) v.flightShadow.visible = false;
+            if (v.contrailObj) v.contrailObj.group.visible = false;
+          }
+        }
         for (const [k, v] of volumeCache.entries()) if (!activeVolumes.has(k)) v.grp.visible = false;
         for (const [k, v] of countryBlockCache.entries()) if (!activeBlocks.has(k)) v.grp.visible = false;
 

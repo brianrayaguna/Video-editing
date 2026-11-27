@@ -26,10 +26,12 @@ import {
   perimeterWindowPathsLngLat,
   polygonRings,
   ringClusters,
+  sampleParabolicArcPose,
   sampleQuadraticBezierTo,
   scaledWidth,
   shutterSubframeSchedule,
   signedArea,
+  slashCrossProgress,
   slicePolylineFraction,
   springClosedForm,
   sunDirectionFromAzimuthElevation,
@@ -663,4 +665,43 @@ test("geo scripts use neutral episode-agnostic defaults and validate BBOX/CENTER
   });
   assert.notEqual(missingRes.status, 0, "fetch_dem_tiles.mjs must fail cleanly when BBOX is unset");
   assert.match(missingRes.stderr, /BBOX/i);
+});
+
+test("sampleParabolicArcPose climbs, banks, peaks mid-flight, and descends cleanly", () => {
+  const path = [
+    [179.2, -8.5],
+    [165.0, -18.0],
+    [151.2, -33.8],
+  ];
+  const p0 = sampleParabolicArcPose(path, 0, { altitudeArcM: 400000, bankMaxDeg: 20 });
+  const pMid = sampleParabolicArcPose(path, 0.5, { altitudeArcM: 400000, bankMaxDeg: 20 });
+  const pEnd = sampleParabolicArcPose(path, 1, { altitudeArcM: 400000, bankMaxDeg: 20 });
+  assert.equal(p0.altM, 0);
+  assert.ok(Math.abs(pMid.altM - 400000) < 1e-3, `Expected peak 400000, got ${pMid.altM}`);
+  assert.equal(pEnd.altM, 0);
+  assert.ok(p0.pitchDeg > 0, "Aircraft must pitch up during climb");
+  assert.ok(Math.abs(pMid.pitchDeg) < 2.0, "Aircraft must level near cruise apex");
+  assert.ok(pEnd.pitchDeg < 0, "Aircraft must pitch down during descent");
+  assert.ok(Math.abs(pMid.rollDeg) <= 20.001, "Bank roll must stay within bankMaxDeg");
+});
+
+test("slashCrossProgress draws two sequential strokes with impact pulse and clamps bounds", () => {
+  const pre = slashCrossProgress(-0.1, { slashDurS: 0.24, gapS: 0.12, impactDurS: 0.35 });
+  assert.equal(pre.stroke1, 0);
+  assert.equal(pre.stroke2, 0);
+  assert.equal(pre.impactPulse, 0);
+
+  const mid1 = slashCrossProgress(0.12, { slashDurS: 0.24, gapS: 0.12, impactDurS: 0.35 });
+  assert.ok(mid1.stroke1 > 0.2 && mid1.stroke1 < 1.0);
+  assert.equal(mid1.stroke2, 0);
+
+  const mid2 = slashCrossProgress(0.48, { slashDurS: 0.24, gapS: 0.12, impactDurS: 0.35 });
+  assert.equal(mid2.stroke1, 1);
+  assert.ok(mid2.stroke2 > 0.2 && mid2.stroke2 < 1.0);
+  assert.ok(mid2.impactPulse > 0, "Impact pulse must fire as stroke 2 crosses center");
+
+  const done = slashCrossProgress(2.0, { slashDurS: 0.24, gapS: 0.12, impactDurS: 0.35 });
+  assert.equal(done.stroke1, 1);
+  assert.equal(done.stroke2, 1);
+  assert.equal(done.impactPulse, 0);
 });

@@ -1099,3 +1099,105 @@ export function sunDirectionFromAzimuthElevation(azimuthDeg = 335, elevationDeg 
     elevationDeg: elDeg,
   };
 }
+
+/**
+ * Sample a 3D parabolic flight pose along a `[lng, lat]` polyline for `u` in `[0, 1]`.
+ * Produces elevated altitude (`4*u*(1-u)*altitudeArcM`), forward heading (degrees CCW from +Y),
+ * climb/descent pitch, and turn-coupled bank roll bounded by `bankMaxDeg`.
+ */
+export function sampleParabolicArcPose(
+  path,
+  uRaw,
+  { altitudeArcM = 0, bankMaxDeg = 22 } = {}
+) {
+  const pts = Array.isArray(path) && path.length >= 2 ? path : [[0, 0], [1, 0]];
+  const u = Math.max(0, Math.min(1, Number(uRaw) || 0));
+  const segLens = [];
+  let totalDeg = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = Math.hypot((pts[i + 1][0] - pts[i][0]), (pts[i + 1][1] - pts[i][1]));
+    segLens.push(d);
+    totalDeg += d;
+  }
+  const sampleAt = (t) => {
+    const tc = Math.max(0, Math.min(1, t));
+    if (totalDeg <= 1e-9) return [pts[0][0], pts[0][1]];
+    let target = tc * totalDeg;
+    for (let i = 0; i < segLens.length; i++) {
+      if (target <= segLens[i] || i === segLens.length - 1) {
+        const f = segLens[i] > 1e-9 ? Math.max(0, Math.min(1, target / segLens[i])) : 0;
+        return [
+          pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f,
+          pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f,
+        ];
+      }
+      target -= segLens[i];
+    }
+    return [pts[pts.length - 1][0], pts[pts.length - 1][1]];
+  };
+
+  const cur = sampleAt(u);
+  const eps = 0.025;
+  const pPrev = sampleAt(Math.max(0, u - eps));
+  const pNext = sampleAt(Math.min(1, u + eps));
+  const cosLat = Math.max(0.15, Math.cos((cur[1] * Math.PI) / 180));
+  const dx = (pNext[0] - pPrev[0]) * cosLat;
+  const dy = pNext[1] - pPrev[1];
+  const headingDeg = Math.hypot(dx, dy) > 1e-7 ? (Math.atan2(-dx, dy) * 180) / Math.PI : 0;
+
+  const arcH = Math.max(0, Number(altitudeArcM) || 0);
+  const altM = 4 * u * (1 - u) * arcH;
+  // Derivative d(alt)/du = 4*(1-2u)*arcH; map cleanly to realistic nose climb/descent angle
+  const horizM = Math.max(1000, totalDeg * 111320 * cosLat);
+  const dAltDu = 4 * (1 - 2 * u) * arcH;
+  const rawPitchDeg = (Math.atan2(dAltDu, horizM) * 180) / Math.PI;
+  const pitchDeg = Math.max(-28, Math.min(28, rawPitchDeg * 1.35));
+
+  // Turn curvature roll (bank into turns) clamped within [-bankMaxDeg, bankMaxDeg]
+  const pBack = sampleAt(Math.max(0, u - eps * 2));
+  const pFwd = sampleAt(Math.min(1, u + eps * 2));
+  const h1 = Math.atan2(-(cur[0] - pBack[0]) * cosLat, cur[1] - pBack[1]);
+  const h2 = Math.atan2(-(pFwd[0] - cur[0]) * cosLat, pFwd[1] - cur[1]);
+  let dh = h2 - h1;
+  while (dh > Math.PI) dh -= Math.PI * 2;
+  while (dh < -Math.PI) dh += Math.PI * 2;
+  const maxBank = Math.max(0, Math.min(60, Number(bankMaxDeg) || 0));
+  const env = Math.sin(Math.PI * u);
+  const rawRoll = (dh * 180) / Math.PI * 1.45;
+  const rollDeg = Math.max(-maxBank, Math.min(maxBank, rawRoll * env));
+
+  return {
+    lng: cur[0],
+    lat: cur[1],
+    altM,
+    headingDeg,
+    pitchDeg,
+    rollDeg,
+  };
+}
+
+/**
+ * Compute sequential two-stroke diagonal slash progress and crossing shockwave pulse for
+ * contextual `crimson_x` animations.
+ */
+export function slashCrossProgress(
+  elapsedS,
+  { slashDurS = 0.22, gapS = 0.11, impactDurS = 0.35 } = {}
+) {
+  const t = Number(elapsedS);
+  if (!Number.isFinite(t) || t <= 0) {
+    return { stroke1: 0, stroke2: 0, impactPulse: 0 };
+  }
+  const sd = Math.max(0.02, Number(slashDurS) || 0.22);
+  const gap = Math.max(0, Number(gapS) || 0);
+  const impD = Math.max(0.05, Number(impactDurS) || 0.35);
+  const stroke1 = easeOutQuint(Math.max(0, Math.min(1, t / sd)));
+  const s2Start = sd + gap;
+  const stroke2 = t <= s2Start ? 0 : easeOutQuint(Math.max(0, Math.min(1, (t - s2Start) / sd)));
+  const impactStart = s2Start + sd * 0.4;
+  let impactPulse = 0;
+  if (t >= impactStart && t <= impactStart + impD) {
+    impactPulse = Math.sin(Math.PI * ((t - impactStart) / impD));
+  }
+  return { stroke1, stroke2, impactPulse };
+}

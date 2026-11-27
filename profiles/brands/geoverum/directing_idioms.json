@@ -1074,6 +1074,7 @@
         "outline appearing whole in one frame",
         "fill or flag visible before the outline closes",
         "flag rendered sideways, cropped to one edge, or spilling past the coast without intent",
+        "small floating rectangular flag sticker used instead of full-territory waving glowing flag fill",
         "rim jumping in width or colour when the trace completes"
       ]
     }

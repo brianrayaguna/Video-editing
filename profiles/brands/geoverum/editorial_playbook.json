@@ -95,11 +95,11 @@
       "rationale": "Highlight amber initial letters during acronym expansion or display a bold amber etymology header in the upper safe band."
     },
     {
-      "trigger_id": "compact_population_pill_and_flag_cluster",
+      "trigger_id": "compact_population_pill_and_coordinate_pin",
       "condition": "speech.cites_settlement_population_or_multi_party_presence",
-      "action": "overlay.spawn(kind='white_vertical_pin_plus_amber_pop_pill_or_circular_flag_tokens')",
+      "action": "overlay.spawn(kind='white_vertical_pin_plus_amber_pop_pill_or_portrait_tokens')",
       "weight": 0.88,
-      "rationale": "Anchor compact dark-and-amber population pills above vertical white coordinate pins or connect circular flag and portrait tokens with thin white leader lines."
+      "rationale": "Anchor compact dark-and-amber population pills above vertical white coordinate pins or connect portrait tokens with thin white leader lines without floating small flag boxes."
     },
     {
       "trigger_id": "rapid_broll_sensory_proof_burst",
@@ -116,11 +116,11 @@
       "rationale": "Use left-anchored altitude or depth ticks and alternating translucent longitude columns with a single active spotlight strip."
     },
     {
-      "trigger_id": "flag_masked_territory_or_coordinate_pin",
+      "trigger_id": "flag_masked_territory_sovereignty",
       "condition": "speech.establishes_national_sovereignty_or_border_split",
-      "action": "overlay.apply_flag_mask_or_rectangular_flag_leader(clean_white_leader=True)",
-      "weight": 0.86,
-      "rationale": "Clip national flags cleanly inside exterior territory coastlines or attach rectangular flag markers with thin white leader lines on high-resolution ortho imagery."
+      "action": "scene.country_block_3d_or_polygon(flag_fill=<code>, flag_wave=0.22-0.28, flag_glow=true, flag_gloss=true, rim_width=3)",
+      "weight": 0.88,
+      "rationale": "Cover the full exterior territory coastline with an animated waving, luminous-rimmed national flag fill (2D polygon or 3D extruded country block); never use small floating rectangular flag pins to represent a country."
     },
     {
       "trigger_id": "clause_pause_cut_anchor",
@@ -461,9 +461,9 @@
     {
       "trigger_id": "nationality_flag_fill",
       "condition": "narration.contrasts_nationality_or_ownership_of_territories",
-      "action": "scene.polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.15-0.25, flag_wave_warp=true, flag_gloss=true, flag_blend='normal' on satellite relief with calibrated flag_alpha, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
-      "weight": 0.82,
-      "rationale": "A glossy waving flag clipped to the coast under source-over alpha states ownership clearly even over dark ocean or forest terrain while preserving luminous specular motion."
+      "action": "scene.country_block_3d_or_polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.20-0.28, flag_wave_warp=true, flag_gloss=true, flag_glow=true, flag_blend='normal' on satellite relief with calibrated flag_alpha, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
+      "weight": 0.86,
+      "rationale": "A full-territory waving cloth flag with animated wind ripples and luminous rim glow clipped cleanly to the coastline states sovereignty unmistakably over dark ocean or terrain, replacing small rectangular flag pins."
     },
     {
       "trigger_id": "border_line_single_head_draw",

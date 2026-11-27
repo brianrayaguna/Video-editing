@@ -169,8 +169,8 @@ The *story need* column is mandatory. A visual answer without a stated need is d
 | :--- | :--- |
 | Locate a place | Dive-zoom from a recognisable parent; fill in mention order; pin 0–0.25 s before the name |
 | Introduce a territory or border | Trace the outline from the story anchor, then fill; one-headed north-to-south line for a border shared by two filled countries |
-| Show nationality or ownership | Flag clipped to the territory, revealed from an irregular seed (`organic`) or a bottom-up wipe, rendered `source-over` with wind-gust cloth warp and satin sheen |
-| Show infrastructure, energy, or subsea links | Pitched 3D map geometry (`cable_3d` physical armored/catenary link, `model_3d` towers/substations/solar farms/vessels, `.glb` assets) fused into terrain |
+| Show nationality or ownership | Full-territory waving and glowing flag clipped to the coastline (`country_block_3d` or `polygon` with `flag_fill`, `flag_wave`, `flag_glow`, `flag_gloss`), revealed from an organic seed, bottom-up wipe, or 3D rise; never small floating rectangular flag pins |
+| Show infrastructure, travel, or maritime links | Pitched 3D map geometry matched to the real subject (`model_3d` aircraft with parabolic contrails for air/visa corridors, detailed 3D vessels for fleets, `cable_3d` strictly for physical cables/pipelines, well-spaced `.glb` structures) fused cleanly into terrain without stacking |
 | Prove scale or spatial impossibility | True-meter `volume_3d` prism on terrain; familiar silhouette tiling; shape transplant; pull-out until the subject is a pinhead |
 | Show negation, bypass, or shortage | Spatial proof on the map (`powered: false` unlit grid, route bypassing an isolated hub, `volume_3d` exceeding landmass bounds); reserve prohibition slashes for literal legal bans |
 | Prove distance | Measurement line with count-up and dual units; glowing travel line for non-contiguous links |

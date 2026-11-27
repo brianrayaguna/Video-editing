@@ -691,7 +691,9 @@ REJECTED_SCENE_LAYER_TYPES = frozenset(
 _TEXT_LAYER_TYPES = frozenset(
     {"glow_label", "pin_label", "curved_pointer_label", "year_badge", "curved_label"}
 )
-_THREE_D_MODELS = frozenset({"transmission_tower", "solar_farm", "substation", "survey_vessel"})
+_THREE_D_MODELS = frozenset(
+    {"aircraft", "transmission_tower", "solar_farm", "substation", "survey_vessel"}
+)
 
 _REVEAL_MODES = frozenset(
     {"fade", "radial", "organic", "wipe_left", "wipe_right", "wipe_down", "wipe_up"}
@@ -1148,10 +1150,37 @@ def validate_map_scene(
                         "(countries.<ISO>) or reveal multi-part regions with border_draw_s."
                     )
 
-        # 6. 3D scene layers (cable_3d, model_3d, volume_3d)
+        # 6. 3D scene layers, contextual crimson_x, and disallowed small flag_pin checks
         for idx, layer in enumerate(layers):
             ltype = str(layer.get("type") or "")
-            if ltype == "cable_3d":
+            if ltype == "flag_pin":
+                errors.append(
+                    f"[{act_id}] layer #{idx} flag_pin is disallowed for national territories; "
+                    "cover the full coastline with country_block_3d or polygon using "
+                    "flag_fill, flag_wave, and flag_glow."
+                )
+            elif ltype == "crimson_x":
+                if "slash_duration_s" in layer and layer["slash_duration_s"] is not None:
+                    sd = _as_finite_float(layer["slash_duration_s"])
+                    if sd is None or sd <= 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} crimson_x slash_duration_s must be > 0, "
+                            f"got {layer['slash_duration_s']!r}."
+                        )
+                if "gap_s" in layer and layer["gap_s"] is not None:
+                    gs = _as_finite_float(layer["gap_s"])
+                    if gs is None or gs < 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} crimson_x gap_s must be >= 0, "
+                            f"got {layer['gap_s']!r}."
+                        )
+                if "shockwave" in layer and layer["shockwave"] is not None:
+                    if not isinstance(layer["shockwave"], bool):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} crimson_x shockwave must be boolean, "
+                            f"got {layer['shockwave']!r}."
+                        )
+            elif ltype == "cable_3d":
                 coords = layer.get("coords")
                 coords_ref = layer.get("coords_ref")
                 if not coords_ref and (not isinstance(coords, list) or len(coords) < 2):
@@ -1208,6 +1237,33 @@ def validate_map_scene(
                     errors.append(
                         f"[{act_id}] layer #{idx} model_3d requires coord [lng, lat] or path."
                     )
+                if "altitude_arc_m" in layer and layer["altitude_arc_m"] is not None:
+                    aa = _as_finite_float(layer["altitude_arc_m"])
+                    if aa is None or aa < 0:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} model_3d altitude_arc_m must be >= 0, "
+                            f"got {layer['altitude_arc_m']!r}."
+                        )
+                if "bank_deg" in layer and layer["bank_deg"] is not None:
+                    bd = _as_finite_float(layer["bank_deg"])
+                    if bd is None or not (-60.0 <= bd <= 60.0):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} model_3d bank_deg must be "
+                            f"between -60 and 60, got {layer['bank_deg']!r}."
+                        )
+                if "spin_rps" in layer and layer["spin_rps"] is not None:
+                    sr = _as_finite_float(layer["spin_rps"])
+                    if sr is None or not (-10.0 <= sr <= 10.0):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} model_3d spin_rps must be "
+                            f"between -10 and 10, got {layer['spin_rps']!r}."
+                        )
+                if "contrail" in layer and layer["contrail"] is not None:
+                    if not isinstance(layer["contrail"], bool):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} model_3d contrail must be boolean, "
+                            f"got {layer['contrail']!r}."
+                        )
             elif ltype == "volume_3d":
                 coord = layer.get("coord")
                 if not (isinstance(coord, list) and len(coord) >= 2):
@@ -1252,6 +1308,48 @@ def validate_map_scene(
                         errors.append(
                             f"[{act_id}] layer #{idx} country_block_3d light_sweep must be "
                             f"boolean or object, got {layer['light_sweep']!r}."
+                        )
+                cb_flag = layer.get("flag_fill")
+                if cb_flag:
+                    cb_code = str(cb_flag).lower()
+                    if not _FLAG_CODE_RE.fullmatch(cb_code):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d flag_fill {cb_flag!r} "
+                            "is not a valid flag code."
+                        )
+                    elif flags_dir is not None and not (flags_dir / f"{cb_code}.svg").is_file():
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d flag_fill '{cb_code}' "
+                            f"has no assets/geo/flags/{cb_code}.svg."
+                        )
+                if "flag_wave" in layer and layer["flag_wave"] is not None:
+                    cb_wave = layer["flag_wave"]
+                    if not isinstance(cb_wave, bool):
+                        cb_wf = _as_finite_float(cb_wave)
+                        if cb_wf is None or not (0.0 <= cb_wf <= 0.6):
+                            errors.append(
+                                f"[{act_id}] layer #{idx} country_block_3d flag_wave must be "
+                                f"boolean or between 0 and 0.6, got {cb_wave!r}."
+                            )
+                for fkey, (lo, hi) in (
+                    ("flag_wave_speed", (0.0, None)),
+                    ("flag_wave_cycles", (0.0, None)),
+                    ("flag_wave_angle_deg", (-360.0, 360.0)),
+                    ("flag_glow_intensity", (0.0, 3.0)),
+                ):
+                    if fkey in layer and layer[fkey] is not None:
+                        fval = _as_finite_float(layer[fkey])
+                        if fval is None or fval < lo or (hi is not None and fval > hi):
+                            bound = f"between {lo:g} and {hi:g}" if hi is not None else f">= {lo:g}"
+                            errors.append(
+                                f"[{act_id}] layer #{idx} country_block_3d {fkey} must be "
+                                f"a number {bound}, got {layer[fkey]!r}."
+                            )
+                if "flag_glow" in layer and layer["flag_glow"] is not None:
+                    if not isinstance(layer["flag_glow"], bool):
+                        errors.append(
+                            f"[{act_id}] layer #{idx} country_block_3d flag_glow must be "
+                            f"boolean, got {layer['flag_glow']!r}."
                         )
             elif ltype == "focus_spotlight":
                 gref = layer.get("geom_ref")
@@ -1358,6 +1456,60 @@ def validate_map_scene(
                                     "route clear of structure roof."
                                 )
                                 break
+
+        # Static 3D model anti-stacking check: warn when time-overlapping models collide on screen
+        static_models: list[tuple[int, list[float], float, float]] = []
+        for idx, layer in enumerate(layers):
+            if str(layer.get("type") or "") != "model_3d":
+                continue
+            coord = layer.get("coord")
+            if layer.get("path") or not (isinstance(coord, list) and len(coord) >= 2):
+                continue
+            t0 = float(0.0 if layer.get("start_s") is None else layer["start_s"])
+            raw_end = layer.get("end_s")
+            t1 = float((dur if dur > 0 else t0 + 1.0) if raw_end is None else raw_end)
+            static_models.append((idx, [float(coord[0]), float(coord[1])], t0, t1))
+        for i in range(len(static_models)):
+            idx_a, coord_a, a0, a1 = static_models[i]
+            for j in range(i + 1, len(static_models)):
+                idx_b, coord_b, b0, b1 = static_models[j]
+                ov_start = max(a0, b0)
+                ov_end = min(a1, b1)
+                if ov_end <= ov_start + 1e-6:
+                    continue
+                if cam_points:
+                    t_mid = 0.5 * (ov_start + ov_end)
+                    nearest_cam = min(cam_points, key=lambda item: abs(item[0] - t_mid))
+                    xa, ya = _approx_viewport_pct(
+                        coord_a[0],
+                        coord_a[1],
+                        nearest_cam[1],
+                        nearest_cam[2],
+                        nearest_cam[3],
+                        width,
+                        height,
+                    )
+                    xb, yb = _approx_viewport_pct(
+                        coord_b[0],
+                        coord_b[1],
+                        nearest_cam[1],
+                        nearest_cam[2],
+                        nearest_cam[3],
+                        width,
+                        height,
+                    )
+                    dist_px = math.hypot((xa - xb) * width, (ya - yb) * height)
+                    if dist_px < 52.0:
+                        warnings.append(
+                            f"[{act_id}] model_3d layers #{idx_a} and #{idx_b} stack/overlap "
+                            f"spatially ({dist_px:.0f} px apart at t={t_mid:.2f}s); separate "
+                            "coordinates or stagger timing."
+                        )
+                elif _haversine_m(coord_a[0], coord_a[1], coord_b[0], coord_b[1]) < 100.0:
+                    warnings.append(
+                        f"[{act_id}] model_3d layers #{idx_a} and #{idx_b} stack/overlap at "
+                        "nearly identical coordinates; separate coordinates or stagger timing."
+                    )
 
     return {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
 
