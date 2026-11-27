@@ -131,3 +131,11 @@ def test_multimodal_tension_curve_and_editorial_cli(tmp_path: Path) -> None:
     assert res.exit_code == 0, res.output
     parsed = json.loads(res.output)
     assert parsed["continuity"]["cuts_analyzed"] == 1
+
+
+def test_classify_color_harmony_reaches_split_complementary() -> None:
+    from vedit.analyzers.editorial_forensics import _classify_color_harmony
+
+    # Bin centers at 15, 165 (diff=150), and 225 (d02=150) form a split-complementary triad.
+    hues = [15.0] * 10 + [165.0] * 6 + [225.0] * 6
+    assert _classify_color_harmony(hues) == "split_complementary"

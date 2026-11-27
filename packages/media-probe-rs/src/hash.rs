@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{ErrorKind, Read};
 use std::path::Path;
 use std::time::Instant;
 
@@ -12,18 +12,18 @@ const BUFFER_SIZE: usize = 64 * 1024;
 
 pub fn hash_file(path: &Path) -> Result<HashReport> {
     let start = Instant::now();
-    let file = File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut file = File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
     let file_bytes = file.metadata()?.len();
-    let mut reader = BufReader::with_capacity(BUFFER_SIZE, file);
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; BUFFER_SIZE];
 
     loop {
-        let n = reader.read(&mut buf)?;
-        if n == 0 {
-            break;
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buf[..n]),
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
         }
-        hasher.update(&buf[..n]);
     }
 
     let digest = hasher.finalize();

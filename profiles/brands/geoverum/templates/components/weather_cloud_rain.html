@@ -45,11 +45,17 @@
     (function () {
       const W = Number({{WIDTH}});
       const H = Number({{HEIGHT}});
-      const cx = ((Number("{{VAR_CENTER_X_PCT|50}}") || 50) / 100) * W - 500;
-      const cy = ((Number("{{VAR_CENTER_Y_PCT|44}}") || 44) / 100) * H - 440;
+      const S = Number({{SCALE_FACTOR}});
+      const centerX = ((Number("{{VAR_CENTER_X_PCT|50}}") || 50) / 100) * W;
+      const centerY = ((Number("{{VAR_CENTER_Y_PCT|44}}") || 44) / 100) * H;
       const group = document.getElementById("{{SCENE_ID}}-group");
       const rain = document.getElementById("{{SCENE_ID}}-rain");
-      if (group) group.setAttribute("transform", "translate(" + cx + "," + cy + ")");
+      if (group) {
+        group.setAttribute(
+          "transform",
+          "translate(" + centerX + "," + centerY + ") scale(" + S + ") translate(-500,-440)"
+        );
+      }
 
       const ns = "http://www.w3.org/2000/svg";
       const dur = Number({{DURATION_S}});
@@ -69,10 +75,18 @@
         const startOff = (i % 5) * 0.1;
         for (let t = startOff; t < dur; t += cycle) {
           const span = Math.min(cycle, dur - t);
+          const frac = span / cycle;
           tl.fromTo(
             line,
             { y: -15, x: 0, opacity: 0.78 },
-            { y: 155, x: -58, opacity: 0.0, duration: span, ease: "none" },
+            {
+              y: -15 + 170 * frac,
+              x: -58 * frac,
+              opacity: 0.78 * (1 - frac),
+              duration: span,
+              ease: "none",
+              immediateRender: false,
+            },
             t
           );
         }

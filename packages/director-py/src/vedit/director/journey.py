@@ -86,9 +86,10 @@ def head_index_at(keys: list[list[float]], t: float) -> float:
 
 
 def path_point(path: list[list[float]], index: float) -> tuple[float, float]:
-    i = max(0, min(int(math.floor(index)), len(path) - 1))
+    clamped = max(0.0, min(float(index), float(len(path) - 1)))
+    i = int(math.floor(clamped))
     j = min(i + 1, len(path) - 1)
-    u = index - i
+    u = max(0.0, min(1.0, clamped - i))
     return path[i][0] + (path[j][0] - path[i][0]) * u, path[i][1] + (path[j][1] - path[i][1]) * u
 
 
@@ -151,6 +152,8 @@ def route_width_keys(
 ) -> list[list[float]]:
     """Stroke width per camera key, interpolated in zoom between the brand's regime widths."""
     table = sorted((r["zoom"], r["route_width_px"]) for r in regimes.values())
+    if not table:
+        return []
     out = []
     for k in cam_keys:
         z = k[3]
@@ -159,9 +162,10 @@ def route_width_keys(
         elif z >= table[-1][0]:
             w = table[-1][1]
         else:
+            w = table[-1][1]
             for (z0, w0), (z1, w1) in zip(table, table[1:], strict=False):
                 if z0 <= z <= z1:
-                    w = w0 + (w1 - w0) * (z - z0) / (z1 - z0)
+                    w = w0 if z1 == z0 else w0 + (w1 - w0) * (z - z0) / (z1 - z0)
                     break
         out.append([k[0], round(w, 2)])
     return out
@@ -178,6 +182,7 @@ def place_callout(
     distance_px: tuple[float, float] = (200.0, 320.0),
     clear_radius_px: float = 120.0,
     side_margin_px: float = 60.0,
+    safe_bounds_pct: tuple[float, float, float, float] | None = None,
 ) -> tuple[float, float]:
     """Choose a callout centre that trails the route head.
 
@@ -194,6 +199,10 @@ def place_callout(
     occupied = occupied or []
     band = (caption_band_pct[0] * frame[1], caption_band_pct[1] * frame[1])
     half = size_px / 2
+    min_x_px = safe_bounds_pct[0] * frame[0] if safe_bounds_pct else side_margin_px
+    max_x_px = safe_bounds_pct[1] * frame[0] if safe_bounds_pct else frame[0] - side_margin_px
+    min_y_px = safe_bounds_pct[2] * frame[1] if safe_bounds_pct else side_margin_px
+    max_y_px = safe_bounds_pct[3] * frame[1] if safe_bounds_pct else frame[1] - side_margin_px
     best, best_cost = (hx, hy - distance_px[0]), math.inf
     for da in range(-120, 121, 15):
         for dist in (distance_px[0], sum(distance_px) / 2, distance_px[1]):
@@ -203,6 +212,8 @@ def place_callout(
             if x - half < side_margin_px or x + half > frame[0] - side_margin_px:
                 cost += 50
             if y - half < side_margin_px or y + half > frame[1] - side_margin_px:
+                cost += 50
+            if safe_bounds_pct and (x < min_x_px or x > max_x_px or y < min_y_px or y > max_y_px):
                 cost += 50
             if y + half > band[0] and y - half < band[1]:
                 cost += 40
@@ -232,8 +243,31 @@ def compile_journey(
     """
     import copy
 
+    from vedit.director.storyboard import merged_idioms
+
     regimes = idioms.get("camera_regimes") or {}
     sb = copy.deepcopy(storyboard)
+    active_idioms = {
+        str(i.get("idiom_id")): (i.get("params") or {})
+        for i in merged_idioms(idioms, sb)
+    }
+    cap_params = active_idioms.get("caption_band_clear") or {}
+    margin_params = active_idioms.get("callout_safe_margins") or {}
+    raw_frame = cap_params.get("frame_px") or margin_params.get("frame_px") or list(FRAME)
+    frame = (float(raw_frame[0]), float(raw_frame[1]))
+    raw_band = cap_params.get("band_y_pct") or [0.66, 0.76]
+    caption_band_pct = (float(raw_band[0]), float(raw_band[1]))
+    safe_bounds_pct: tuple[float, float, float, float] | None = (
+        (
+            float(margin_params.get("min_x_pct", 0.08)),
+            float(margin_params.get("max_x_pct", 0.92)),
+            float(margin_params.get("min_y_pct", 0.12)),
+            float(margin_params.get("max_y_pct", 0.88)),
+        )
+        if margin_params
+        else None
+    )
+
     path = (sb.get("route") or {}).get("path") or []
     hk = head_keys(sb) if path else []
     cams = camera_keys(sb, regimes, cuts=cuts)
@@ -262,12 +296,18 @@ def compile_journey(
             idx = head_index_at(hk, t)
             here = path_point(path, idx)
             before = path_point(path, max(0.0, idx - 1.0))
-            hx, hy = project(*here, cam)
-            bx, by = project(*before, cam)
+            hx, hy = project(*here, cam, frame=frame)
+            bx, by = project(*before, cam, frame=frame)
             live = [o for o in live if o[0] > t]
             size = float(c.get("size_px", 200.0))
             xy = place_callout(
-                (hx, hy), (hx - bx, hy - by), size, occupied=[(x, y, s) for _, x, y, s in live]
+                (hx, hy),
+                (hx - bx, hy - by),
+                size,
+                occupied=[(x, y, s) for _, x, y, s in live],
+                frame=frame,
+                caption_band_pct=caption_band_pct,
+                safe_bounds_pct=safe_bounds_pct,
             )
             c["xy"] = list(xy)
             live.append((c.get("end_s", beat["end_s"]), xy[0], xy[1], size))

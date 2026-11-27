@@ -61,7 +61,8 @@ def group_sparse_hf_windows(
     for ov in ordered[1:]:
         ov_start = max(0.0, ov.timeline_start_s - pad_s)
         ov_end = min(plan.duration_s, ov.timeline_start_s + ov.timeline_duration_s + pad_s)
-        if ov_start <= cur_end + merge_gap_s:
+        same_blend = (ov.blend_mode or "normal") == (cur_items[0].blend_mode or "normal")
+        if ov_start <= cur_end + merge_gap_s and same_blend:
             cur_end = max(cur_end, ov_end)
             cur_items.append(ov)
         else:

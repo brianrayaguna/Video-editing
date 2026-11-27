@@ -73,7 +73,7 @@
       const mode = ("{{VAR_MODE|sweep}}").trim().toLowerCase();
       const isZoom = mode === "zoom_through";
       const dir = ("{{VAR_DIRECTION|left}}").trim().toLowerCase() === "right" ? -1 : 1;
-      const accentWord = ("{{VAR_ACCENT_WORD|}}").trim().toUpperCase();
+      const accentWord = ("{{VAR_ACCENT_WORD|}}").replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
       const titleEl = document.getElementById("{{SCENE_ID}}-title");
 

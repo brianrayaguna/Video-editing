@@ -525,13 +525,51 @@ def synthesize_narrative_bgm(
     two_pi = 2.0 * math.pi
     fade_in_n = max(1, int(min(1.2, dur * 0.08) * sample_rate))
     fade_out_n = max(1, int(min(1.6, dur * 0.12) * sample_rate))
-    dropouts = [(float(a), float(b)) for a, b in (silence_dropouts or []) if b > a]
+    dropouts = sorted((float(a), float(b)) for a, b in (silence_dropouts or []) if b > a)
     ramp_s = 0.020
+    sorted_sections: list[tuple[float, float, str]] = (
+        sorted(
+            (
+                float(sec.get("start_s", 0.0)),
+                float(sec.get("end_s", dur)),
+                str(sec.get("section", "body")).lower(),
+            )
+            for sec in section_timeline
+        )
+        if section_timeline
+        else []
+    )
+    sec_idx = 0
+    drop_idx = 0
 
     buf = array.array("h", [0] * (n_samples * 2))
     for i in range(n_samples):
         t = i / sample_rate
-        pad_scale, ost_scale = _section_intensity_at(t, dur, section_timeline)
+        if sorted_sections:
+            while sec_idx < len(sorted_sections) and t > sorted_sections[sec_idx][1]:
+                sec_idx += 1
+            if (
+                sec_idx < len(sorted_sections)
+                and sorted_sections[sec_idx][0] <= t <= sorted_sections[sec_idx][1]
+            ):
+                s0, s1, kind = sorted_sections[sec_idx]
+                if kind == "hook":
+                    pad_scale, ost_scale = (0.90, 0.85)
+                elif kind == "setup":
+                    pad_scale, ost_scale = (0.72, 0.45)
+                elif kind == "escalation":
+                    frac = (t - s0) / max(s1 - s0, 1e-6)
+                    pad_scale, ost_scale = (0.85 + 0.25 * frac, 0.70 + 0.45 * frac)
+                elif kind == "climax":
+                    pad_scale, ost_scale = (1.15, 1.20)
+                elif kind == "outro":
+                    pad_scale, ost_scale = (0.65, 0.35)
+                else:
+                    pad_scale, ost_scale = (0.82, 0.62)
+            else:
+                pad_scale, ost_scale = _section_intensity_at(t, dur, None)
+        else:
+            pad_scale, ost_scale = _section_intensity_at(t, dur, None)
 
         bar_idx = int(t / bar_s) % len(chords)
         bar_pos = (t % bar_s) / bar_s
@@ -564,7 +602,10 @@ def synthesize_narrative_bgm(
             env *= max(0.0, (n_samples - i) / fade_out_n)
 
         # Strategic silence drop-outs right before climax/reveal impacts.
-        for d0, d1 in dropouts:
+        while drop_idx < len(dropouts) and t > dropouts[drop_idx][1]:
+            drop_idx += 1
+        if drop_idx < len(dropouts):
+            d0, d1 = dropouts[drop_idx]
             if d0 <= t <= d1:
                 if t < d0 + ramp_s:
                     env *= max(0.0, 1.0 - (t - d0) / ramp_s)
@@ -572,21 +613,19 @@ def synthesize_narrative_bgm(
                     env *= max(0.0, 1.0 - (d1 - t) / ramp_s)
                 else:
                     env = 0.0
-                break
 
         val_l = max(-0.92, min(0.92, (sub + pad_l + ostinato) * env))
         val_r = max(-0.92, min(0.92, (sub + pad_r + ostinato) * env))
         buf[i * 2] = int(val_l * 32767.0)
         buf[i * 2 + 1] = int(val_r * 32767.0)
 
-    samples = [
-        (
-            max(-0.92, min(0.92, (buf[i * 2] / 32767.0))),
-            max(-0.92, min(0.92, (buf[i * 2 + 1] / 32767.0))),
-        )
-        for i in range(n_samples)
-    ]
-    return _write_stereo_wav(out_wav, samples, sample_rate=sample_rate)
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(out_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(buf.tobytes())
+    return out_wav
 
 
 def pan_to_ffmpeg_filter(pan: float) -> str:

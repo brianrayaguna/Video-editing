@@ -709,7 +709,9 @@ def camera_jitter_report(
             zac = abs(c[3] - 2 * b[3] + a[3])
             bac = abs(c[4] - 2 * b[4] + a[4])
             t = f / fps
-            if flip("x", vel_cur[0], 0.05, t) or flip("y", vel_cur[1], 0.05, t):
+            fx_flip = flip("x", vel_cur[0], 0.05, t)
+            fy_flip = flip("y", vel_cur[1], 0.05, t)
+            if fx_flip or fy_flip:
                 reversals += 1
             if flip("z", c[3] - b[3], 0.0005, t):
                 zoom_reversals += 1
@@ -1043,7 +1045,10 @@ def build_cinema_camera_track(
                     my = k1["my"] + (k2["my"] - k1["my"]) * u_pan
 
             orbit_t = k2["orbit_target"] or k1["orbit_target"]
-            orbit_r = max(k1["orbit_radius_deg"], k2["orbit_radius_deg"])
+            orbit_r = (
+                k1["orbit_radius_deg"]
+                + (k2["orbit_radius_deg"] - k1["orbit_radius_deg"]) * u
+            )
 
         # Optional circular orbit trucking offset around an explicit landmark
         if orbit_t and orbit_r > 0.0:
@@ -1182,7 +1187,9 @@ def project_world_anchor_to_track(
     end_s = start_s + duration_s
     ax, ay = _mercator_norm(lng, lat)
     unpacked = [_unpack_camera_row(row) for row in camera_keys]
-    window = [r for r in unpacked if start_s - 0.05 <= r[0] <= end_s + 0.05]
+    window = [r for r in unpacked if start_s - 1e-6 <= r[0] <= end_s + 1e-6]
+    if not window:
+        window = [r for r in unpacked if start_s - 0.05 <= r[0] <= end_s + 0.05]
     if not window:
         return []
     ref_z = reference_zoom if reference_zoom is not None else window[0][3]
@@ -1200,7 +1207,8 @@ def project_world_anchor_to_track(
         ry = dx_px * sin_b + dy_px * cos_b
 
         # Apply 3D pinhole perspective foreshortening along camera pitch
-        pitch_rad = math.radians(max(0.0, min(72.0, pitch)))
+        clamped_pitch = max(0.0, min(72.0, pitch))
+        pitch_rad = math.radians(clamped_pitch)
         cos_p, sin_p = math.cos(pitch_rad), math.sin(pitch_rad)
         raw_depth = focal_px - ry * sin_p
         behind_camera = raw_depth <= 0.1 * focal_px
@@ -1226,8 +1234,9 @@ def project_world_anchor_to_track(
             else overscan
         )
         scale = max(0.05, min(8.0, round(raw_scale, 4)))
+        t_rel = round(max(0.0, t_abs - start_s), 3)
         kf: dict[str, float] = {
-            "t_s": round(max(0.0, t_abs - start_s), 3),
+            "t_s": t_rel,
             "x_pct": x_pct,
             "y_pct": y_pct,
             "scale": scale,
@@ -1235,8 +1244,11 @@ def project_world_anchor_to_track(
         }
         if behind_camera:
             kf["opacity"] = 0.0
-        if space == "map_plane" and pitch > 0.1:
-            kf["rotateX_deg"] = round(pitch, 2)
+        if space == "map_plane" and clamped_pitch > 0.1:
+            kf["rotateX_deg"] = round(clamped_pitch, 2)
             kf["perspective_px"] = round(focal_px, 1)
-        out.append(kf)
+        if out and out[-1]["t_s"] == t_rel:
+            out[-1] = kf
+        else:
+            out.append(kf)
     return out

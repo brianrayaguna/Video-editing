@@ -108,7 +108,49 @@
       }
     },
     "auto_director": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "device_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "function": {
+                "enum": [
+                  "hook",
+                  "setup",
+                  "proof",
+                  "obstacle",
+                  "hinge",
+                  "climax",
+                  "data_callout",
+                  "broll_bridge",
+                  "recap",
+                  "outro"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "readiness_phrases": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "throat_clearing": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "trailing_bloat": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "telling_exposition": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
     },
     "critique_rubric": {
       "type": "array",

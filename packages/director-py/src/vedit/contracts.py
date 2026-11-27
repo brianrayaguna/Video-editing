@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 from pathlib import Path
@@ -31,13 +32,30 @@ def find_repo_root(start: Path | None = None) -> Path:
     raise FileNotFoundError("Could not locate `contracts/` directory in parent hierarchy.")
 
 
-def load_schema(schema_filename: str, repo_root: Path | None = None) -> dict[str, Any]:
+@functools.lru_cache(maxsize=64)
+def _load_cached_schema_and_validator(
+    schema_path_str: str,
+    mtime_ns: int,
+) -> tuple[dict[str, Any], Draft202012Validator]:
+    del mtime_ns
+    schema = json.loads(Path(schema_path_str).read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return schema, Draft202012Validator(schema)
+
+
+def _schema_entry(
+    schema_filename: str,
+    repo_root: Path | None = None,
+) -> tuple[dict[str, Any], Draft202012Validator]:
     root = repo_root or find_repo_root()
-    schema_path = root / "contracts" / schema_filename
+    schema_path = (root / "contracts" / schema_filename).resolve()
     if not schema_path.is_file():
         raise FileNotFoundError(f"Missing contract schema: {schema_path}")
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(schema)
+    return _load_cached_schema_and_validator(str(schema_path), schema_path.stat().st_mtime_ns)
+
+
+def load_schema(schema_filename: str, repo_root: Path | None = None) -> dict[str, Any]:
+    schema, _ = _schema_entry(schema_filename, repo_root=repo_root)
     return schema
 
 
@@ -56,9 +74,7 @@ def validate_against_contract(
     repo_root: Path | None = None,
 ) -> list[str]:
     """Validate a JSON-compatible payload against a contract schema. Returns error messages."""
-    schema = load_schema(schema_filename, repo_root=repo_root)
-    Draft202012Validator.check_schema(schema)
-    validator = Draft202012Validator(schema)
+    _, validator = _schema_entry(schema_filename, repo_root=repo_root)
     return [f"{list(err.path)}: {err.message}" for err in validator.iter_errors(payload)]
 
 
@@ -166,6 +182,7 @@ def validate_brand_tree(
     }
 
     idioms_path = brand_dir / "directing_idioms.json"
+    idioms: dict[str, Any] | None = None
     if idioms_path.is_file():
         idioms = json.loads(idioms_path.read_text(encoding="utf-8"))
         idiom_errors = validate_against_contract(
@@ -229,13 +246,12 @@ def validate_brand_tree(
                             f"Template {tid!r} variable {var.get('id')!r} references "
                             f"unresolved policy token_ref: {token_ref!r}"
                         )
-        idioms_file = brand_dir / "directing_idioms.json"
-        if idioms_file.is_file():
+        if idioms is not None:
             from vedit.director.storyboard_plan import check_realization_catalog
             from vedit.models import BrandTemplateCatalog
 
             realization_errors = check_realization_catalog(
-                json.loads(idioms_file.read_text(encoding="utf-8")),
+                idioms,
                 BrandTemplateCatalog.model_validate(catalog),
             )
             if realization_errors:

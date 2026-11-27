@@ -53,6 +53,21 @@
           "type": "object",
           "additionalProperties": true
         },
+        "typography_contrast": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "aaa_passed"],
+          "properties": {
+            "median_wcag_contrast": { "type": ["number", "null"], "minimum": 1 },
+            "min_wcag_contrast": { "type": ["number", "null"], "minimum": 1 },
+            "small_text_min_wcag_contrast": { "type": ["number", "null"], "minimum": 1 },
+            "aaa_pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "estimated_line_height_ratio": { "type": ["number", "null"], "minimum": 0 },
+            "max_text_width_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "passed": { "type": "boolean" },
+            "aaa_passed": { "type": "boolean" }
+          }
+        },
         "temporal": {
           "type": "object",
           "additionalProperties": false,

@@ -155,7 +155,7 @@ def _contains_css_blur(value: Any, *, key_name: str = "") -> bool:
 def _first_hex(props: dict[str, Any], keys: tuple[str, ...]) -> str | None:
     for key in keys:
         val = props.get(key)
-        if isinstance(val, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", val.strip()):
+        if isinstance(val, str) and _HEX_COLOR_RE.fullmatch(val.strip()):
             return val.strip().upper()
     return None
 
@@ -356,7 +356,7 @@ def _check_assets_and_video_tracks(
                     ov.timeline_start_s,
                     ov.timeline_duration_s,
                 )
-                and (ov.transparent or ov.safe_band != "fullscreen")
+                and (ov.safe_band != "fullscreen" or isinstance(ov.props.get("box"), dict))
                 for ov in plan.overlay_compositions
             )
         ):
@@ -370,13 +370,16 @@ def _check_assets_and_video_tracks(
             )
 
 
+_ALNUM_STRIP_RE = re.compile(r"[^a-z0-9]")
+
+
 def _check_keyword_cut_windows(
     plan: EditPlan,
     policy: BrandStylePolicy,
     transcript: NormalizedTranscript | None,
     errors: list[VerificationIssue],
 ) -> None:
-    if transcript is None or len(plan.video_tracks) < 2:
+    if len(plan.video_tracks) < 2:
         return
 
     ordered = sorted(plan.video_tracks, key=lambda c: c.timeline_start_s)
@@ -386,28 +389,39 @@ def _check_keyword_cut_windows(
     ]
     margin_s = policy.hard_guardrails.no_cut_within_keyword_ms / 1000.0
 
-    for clip_id, cut_t in cut_boundaries:
+    content_words: list[tuple[float, float, float, float, str]] = []
+    if transcript is not None:
         for word in transcript.words:
             if word.is_filler:
                 continue
-            cleaned_tok = re.sub(r"[^a-z0-9]", "", word.text.lower())
+            cleaned_tok = _ALNUM_STRIP_RE.sub("", word.text.lower())
             if cleaned_tok in _FUNCTION_WORDS:
                 continue
             word_len = max(0.0, word.end_s - word.start_s)
             if word_len <= 0.0:
                 continue
-            # Strictly interior content-word cut (allow brief J-cut onset/offset edge tolerance).
             edge_tol = min(0.045, word_len * 0.22)
-            in_core = (word.start_s + edge_tol) < cut_t < (word.end_s - edge_tol)
-            if in_core:
+            content_words.append(
+                (
+                    word.start_s + edge_tol,
+                    word.end_s - edge_tol,
+                    word.start_s,
+                    word.end_s,
+                    word.text,
+                )
+            )
+
+    for clip_id, cut_t in cut_boundaries:
+        for core_start, core_end, w_start, w_end, w_text in content_words:
+            if core_start < cut_t < core_end:
                 errors.append(
                     VerificationIssue(
                         severity="error",
                         code="CUT_WITHIN_KEYWORD_WINDOW",
                         target_id=clip_id,
                         message=(
-                            f"Cut at {cut_t:.3f}s splits spoken word {word.text!r} "
-                            f"[{word.start_s:.3f}s, {word.end_s:.3f}s]."
+                            f"Cut at {cut_t:.3f}s splits spoken word {w_text!r} "
+                            f"[{w_start:.3f}s, {w_end:.3f}s]."
                         ),
                     )
                 )
@@ -718,7 +732,9 @@ def _check_overlays_and_spatial_grounding(
                     )
                 )
 
-        if guard.never_overlap_subject_boxes and (ov.transparent or ov.safe_band != "fullscreen"):
+        if guard.never_overlap_subject_boxes and (
+            ov.safe_band != "fullscreen" or explicit_box is not None
+        ):
             for clip in plan.video_tracks:
                 if not intervals_overlap(
                     ov.timeline_start_s,

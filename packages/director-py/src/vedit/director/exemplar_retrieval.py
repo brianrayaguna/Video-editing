@@ -140,12 +140,14 @@ def _bm25_score(
     doc_tokens: list[str],
     idf: dict[str, float],
     avg_len: float,
+    *,
+    doc_counts: Counter[str] | None = None,
 ) -> float:
     if not query_tokens or not doc_tokens:
         return 0.0
     k1 = 1.2
     b = 0.75
-    counts = Counter(doc_tokens)
+    counts = doc_counts if doc_counts is not None else Counter(doc_tokens)
     dl = len(doc_tokens)
     denom_norm = k1 * (1.0 - b + b * (dl / max(avg_len, 1.0)))
     total = 0.0
@@ -268,6 +270,21 @@ def retrieve_directing_context(
             )
     failure_warnings.sort(key=lambda h: (-h.score, h.item_id))
 
+    ex_counters = [Counter(doc) for doc in ex_docs]
+    wb_token_sets = [
+        set(
+            _tokenize(
+                f"{wb.get('clause', '')} {wb.get('story_need', '')} {wb.get('device', '')}"
+            )
+        )
+        for wb in winning_beats
+    ]
+    fp_by_device: dict[str, list[dict[str, Any]]] = {}
+    for fp in failure_patterns:
+        fp_dev = fp.get("device")
+        if fp_dev:
+            fp_by_device.setdefault(str(fp_dev), []).append(fp)
+
     beat_hints: dict[str, list[RetrievedHint]] = {}
     for beat in beats:
         bid = str(beat["beat_id"])
@@ -277,10 +294,10 @@ def retrieve_directing_context(
         q_tokens = _beat_query_tokens(beat, story_shape)
         q_set = set(q_tokens)
 
-        candidates: list[RetrievedHint] = []
+        candidates: list[tuple[float, str, str, str, dict[str, Any]]] = []
         raw_ex_scores: list[tuple[dict[str, Any], float, float, float]] = []
         max_lex = 0.0
-        for ex, doc_toks in zip(exemplars, ex_docs, strict=False):
+        for ex, doc_toks, doc_cnt in zip(exemplars, ex_docs, ex_counters, strict=False):
             ex_role = str(ex.get("role") or "")
             role_boost = 0.0
             if ex_role == fn:
@@ -290,7 +307,7 @@ def retrieve_directing_context(
 
             ex_dur = max(0.25, float(ex.get("end_s", 0.0)) - float(ex.get("start_s", 0.0)))
             dur_prox = max(0.0, 1.0 - abs(beat_dur - ex_dur) / max(beat_dur, ex_dur, 1.0))
-            lex = _bm25_score(q_tokens, doc_toks, ex_idf, ex_avg)
+            lex = _bm25_score(q_tokens, doc_toks, ex_idf, ex_avg, doc_counts=doc_cnt)
             max_lex = max(max_lex, lex)
             raw_ex_scores.append((ex, role_boost, lex, dur_prox))
 
@@ -298,21 +315,16 @@ def retrieve_directing_context(
             norm_lex = (2.0 * lex / max_lex) if max_lex > 0.0 else 0.0
             score = round(role_boost + norm_lex + 0.2 * dur_prox, 4)
             candidates.append(
-                RetrievedHint(
-                    kind="exemplar",
-                    item_id=str(ex["exemplar_id"]),
-                    score=score,
-                    summary=str(ex.get("notes") or ex.get("hyperframes_pattern") or ""),
-                    payload=copy.deepcopy(ex),
+                (
+                    score,
+                    str(ex["exemplar_id"]),
+                    "exemplar",
+                    str(ex.get("notes") or ex.get("hyperframes_pattern") or ""),
+                    ex,
                 )
             )
 
-        for wb in winning_beats:
-            wb_tokens = set(
-                _tokenize(
-                    f"{wb.get('clause', '')} {wb.get('story_need', '')} {wb.get('device', '')}"
-                )
-            )
+        for wb, wb_tokens in zip(winning_beats, wb_token_sets, strict=False):
             overlap = len(q_set & wb_tokens)
             fn_match = 1.6 if wb.get("function") == fn else 0.0
             dev_match = 1.0 if wb.get("device") == dev else 0.0
@@ -325,32 +337,39 @@ def retrieve_directing_context(
                     4,
                 )
                 candidates.append(
-                    RetrievedHint(
-                        kind="winning_beat",
-                        item_id=f"{wb.get('project_id', 'ep')}:{wb.get('beat_id', 'beat')}",
-                        score=wb_score,
-                        summary=str(wb.get("story_need") or wb.get("clause") or ""),
-                        payload=copy.deepcopy(wb),
+                    (
+                        wb_score,
+                        f"{wb.get('project_id', 'ep')}:{wb.get('beat_id', 'beat')}",
+                        "winning_beat",
+                        str(wb.get("story_need") or wb.get("clause") or ""),
+                        wb,
                     )
                 )
 
-        for fp in failure_patterns:
-            fp_dev = fp.get("device")
-            if fp_dev and fp_dev == dev:
-                occ = int(fp.get("occurrences", 1))
-                fp_score = round(3.8 + 0.25 * occ, 4)
-                candidates.append(
-                    RetrievedHint(
-                        kind="failure_pattern",
-                        item_id=str(fp.get("pattern_id") or "failure"),
-                        score=fp_score,
-                        summary=str(fp.get("description") or ""),
-                        payload=copy.deepcopy(fp),
-                    )
+        for fp in fp_by_device.get(dev, ()):
+            occ = int(fp.get("occurrences", 1))
+            fp_score = round(3.8 + 0.25 * occ, 4)
+            candidates.append(
+                (
+                    fp_score,
+                    str(fp.get("pattern_id") or "failure"),
+                    "failure_pattern",
+                    str(fp.get("description") or ""),
+                    fp,
                 )
+            )
 
-        candidates.sort(key=lambda h: (-h.score, h.item_id))
-        beat_hints[bid] = candidates[: max(0, top_k_per_beat)]
+        candidates.sort(key=lambda h: (-h[0], h[1]))
+        beat_hints[bid] = [
+            RetrievedHint(
+                kind=kind,
+                item_id=item_id,
+                score=score,
+                summary=summary,
+                payload=copy.deepcopy(payload),
+            )
+            for score, item_id, kind, summary, payload in candidates[: max(0, top_k_per_beat)]
+        ]
 
     return DirectingContext(
         brand_id=brand_id,

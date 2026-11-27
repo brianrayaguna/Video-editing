@@ -241,6 +241,7 @@ def director_verify_cmd(
         raise typer.BadParameter(f"Unknown platform target: {platform_id}")
     platform_target = PlatformTarget.model_validate(platforms[platform_id])
     plan = EditPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    resolved_plan = resolve_plan_asset_paths(plan, base_dir=plan_file.expanduser().resolve().parent)
     policy = BrandStylePolicy.model_validate_json(policy_file.read_text(encoding="utf-8"))
     transcript = (
         NormalizedTranscript.model_validate_json(transcript_file.read_text(encoding="utf-8"))
@@ -254,7 +255,7 @@ def director_verify_cmd(
             effective_brand_dir = policy_file.parent
     catalog = _load_optional_template_catalog(template_catalog, effective_brand_dir)
     report = verify_edit_plan(
-        plan,
+        resolved_plan,
         policy,
         platform_target,
         transcript=transcript,
@@ -586,6 +587,8 @@ def audit_cmd(
         reference_path=reference,
         loudness_profile=loudness_profile,
     )
+    if diff_sheet is not None and reference is None:
+        raise typer.BadParameter("--diff-sheet requires --reference.")
     if diff_sheet is not None and reference is not None:
         sheet = generate_diff_contact_sheet(media_file, reference, diff_sheet)
         if sheet is not None:

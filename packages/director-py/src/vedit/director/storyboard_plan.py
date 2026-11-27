@@ -180,6 +180,8 @@ def storyboard_overlays(
         if box is not None:
             props["box"] = box
         reg_raw = str(beat.get("register") or "").strip().lower()
+        if reg_raw == "investigative":
+            reg_raw = "documentary"
         motion_reg = reg_raw if reg_raw in {"documentary", "wry", "comic"} else None
         bmode_raw = str(beat.get("blend_mode") or "").strip().lower()
         allowed_blends = {"normal", "screen", "multiply", "overlay", "lighten"}
@@ -359,9 +361,9 @@ def apply_storyboard_to_clips(
         if isinstance(se, dict):
             off = float(se.get("offset_s", 0.0))
             kind = str(se.get("kind") or "")
-            if kind == "j_cut" and idx > 0 and clip.j_cut_lead_s is None:
-                patch["j_cut_lead_s"] = round(min(off, clip.timeline_start_s), 3)
-            elif kind == "l_cut" and clip.l_cut_trail_s is None:
+            if kind == "j_cut" and idx > 0:
+                patch["j_cut_lead_s"] = round(min(4.0, max(0.0, off), clip.timeline_start_s), 3)
+            elif kind == "l_cut":
                 patch["l_cut_trail_s"] = round(min(4.0, max(0.0, off)), 3)
 
         cmood = str(beat.get("color_mood") or "").strip().lower()

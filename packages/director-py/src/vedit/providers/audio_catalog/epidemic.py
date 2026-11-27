@@ -121,20 +121,26 @@ class EpidemicAudioCatalogProvider:
         if self._mcp_session_id:
             call_headers["Mcp-Session-Id"] = self._mcp_session_id
 
-        resp = request_with_retry(
-            client,
-            "POST",
-            self._mcp_url,
-            provider=self.provider_name,
-            secret_to_redact=api_key,
-            headers=call_headers,
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": tool_name, "arguments": arguments},
-            },
-        )
+        try:
+            resp = request_with_retry(
+                client,
+                "POST",
+                self._mcp_url,
+                provider=self.provider_name,
+                secret_to_redact=api_key,
+                headers=call_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": tool_name, "arguments": arguments},
+                },
+            )
+        except ProviderAPIError as exc:
+            if exc.status_code in (400, 404) and self._mcp_session_id:
+                self._mcp_session_id = None
+                return self._call_mcp_tool(client, api_key, tool_name, arguments)
+            raise
         rpc_payload = _parse_mcp_sse_json(resp, self.provider_name)
         if "error" in rpc_payload:
             raise ProviderAPIError(

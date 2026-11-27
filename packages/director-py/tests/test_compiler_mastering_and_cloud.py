@@ -267,7 +267,7 @@ def test_modal_worker_image_spec_and_cas_staging(tmp_path: Path) -> None:
     img = build_worker_image()
     assert img is not None
     assert WORKER_CHROMIUM_FLAGS == "--no-browser-gpu --use-gl=swiftshader"
-    assert PINNED_CHROME_HEADLESS_VERSION == "152.0.7977.30"
+    assert PINNED_CHROME_HEADLESS_VERSION == "158.0.8127.36"
     assert CAS_VOLUME_NAME == "vedit-cas-cache-v2"
     usd = estimate_modal_render_cost(10_000, cpus=4.0, memory_mb=8192)
     assert usd > 0.0
@@ -356,6 +356,48 @@ def test_modal_worker_image_spec_and_cas_staging(tmp_path: Path) -> None:
     out_dl = tmp_path / "downloaded.mp4"
     download_cas_file(vol, "/jobs/j_1/out.mp4", out_dl)
     assert out_dl.read_bytes() == b"hello-mp4"
+
+    # LUT files referenced on clips must also be staged to Modal CAS and rewritten.
+    from vedit_cloud.app import _plan_has_split_audio
+
+    from vedit.models import ColorGradeSpec
+
+    lut_file = tmp_path / "film.cube"
+    lut_file.write_text("LUT_3D_SIZE 2\n0 0 0\n1 1 1\n", encoding="utf-8")
+    plan_with_lut = plan.model_copy(
+        update={
+            "video_tracks": [
+                VideoClipOp(
+                    clip_id="c_lut",
+                    asset_id="a1",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=2.0,
+                    source_start_s=0.0,
+                    role="a_roll",
+                    j_cut_lead_s=0.35,
+                    color_grade=ColorGradeSpec(lut_path=str(lut_file)),
+                )
+            ]
+        }
+    )
+    staged_lut = stage_local_assets_for_cloud(plan_with_lut, vol)
+    staged_lut_path = staged_lut.video_tracks[0].color_grade.lut_path
+    assert staged_lut_path is not None
+    assert staged_lut_path.startswith("/vol/cas/sources/")
+    assert staged_lut_path.endswith(".cube")
+    assert any(dst.endswith(".cube") for _, dst in vol.uploaded)
+
+    # Split-audio detection must ignore J/L-cut clips whose video asset has_audio=False.
+    assert _plan_has_split_audio(plan_with_lut) is False
+    plan_with_audio_clip = plan_with_lut.model_copy(
+        update={
+            "assets": [
+                plan_with_lut.assets[0].model_copy(update={"has_audio": True}),
+                *plan_with_lut.assets[1:],
+            ]
+        }
+    )
+    assert _plan_has_split_audio(plan_with_audio_clip) is True
 
 
 def test_libass_fastpath_partition_and_e2e_master_9x16_and_16x9(tmp_path: Path) -> None:
@@ -1272,3 +1314,242 @@ def test_single_pass_mastering_with_external_captions_ass_and_source_credit_styl
     assert res.output_path.is_file()
     qc = audit_mastered_deliverable(out_mp4, target, require_audio=False, check_visual=False)
     assert qc.passed is True, qc.errors
+
+
+def test_ass_readability_short_chunks_blend_gbrp_sparse_modes_and_fonts_stage(
+    tmp_path: Path,
+) -> None:
+    from vedit.mastering.ass_captions import (
+        build_ass_from_transcript,
+        validate_ass_captions_readability,
+        write_ass_overlays_file,
+    )
+    from vedit.mastering.ffmpeg_master import _stage_plan_fonts_dir
+    from vedit.mastering.sparse_hf import group_sparse_hf_windows
+
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+
+    # H3: glow layer 0 duplicate must not trigger false overlap warnings in readability audit.
+    glow_path = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="c1",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.8,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    "text": "Clean glow caption",
+                    "caption_glow_color": "#F5C542",
+                    "caption_glow_px": 10,
+                },
+            )
+        ],
+        target,
+        tmp_path / "glow_audit.ass",
+    )
+    assert validate_ass_captions_readability(glow_path.read_text(encoding="utf-8")) == []
+
+    # H4: short multi-chunk segment must never emit 0.00s cue, and overlapping segments clamp.
+    ass_short = build_ass_from_transcript(
+        [
+            {"start": 0.0, "end": 0.35, "text": "one two three four five six seven eight nine"},
+            {"start": 0.25, "end": 1.4, "text": "overlapping follow up"},
+        ],
+        max_words=3,
+    )
+    dialogues = [ln for ln in ass_short.splitlines() if ln.startswith("Dialogue:")]
+    assert len(dialogues) >= 4
+    for ln in dialogues:
+        parts = ln.split(",", 9)
+        assert parts[1] != parts[2], f"Zero-duration cue emitted: {ln}"
+    assert not any("overlaps" in w for w in validate_ass_captions_readability(ass_short))
+
+    # H5: caption_transition_ms=0 (with fade_out_ms unset) must still apply caption_gap_ms.
+    gap_path = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="g1",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={"text": "First cue", "caption_transition_ms": 0, "caption_gap_ms": 100},
+            ),
+            OverlayCompositionOp(
+                overlay_id="g2",
+                kind="caption_rail",
+                template_id="caption_rail",
+                timeline_start_s=1.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={"text": "Second cue", "caption_transition_ms": 0, "caption_gap_ms": 100},
+            ),
+        ],
+        target,
+        tmp_path / "gap.ass",
+    )
+    gap_lines = [
+        ln for ln in gap_path.read_text(encoding="utf-8").splitlines() if ln.startswith("Dialogue:")
+    ]
+    assert "0:00:00.90" in gap_lines[0]
+
+    # Section 3.4: empty broadcast_bug text must not hardcode a brand name.
+    bug_path = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="bug_empty",
+                kind="lower_third",
+                template_id="broadcast_bug",
+                timeline_start_s=0.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="upper_safe",
+                props={"text": ""},
+            )
+        ],
+        target,
+        tmp_path / "bug_empty.ass",
+    )
+    assert "geoverum" not in bug_path.read_text(encoding="utf-8").lower()
+
+    # M3: group_sparse_hf_windows must not merge overlays with different blend_mode.
+    base_plan = EditPlan(
+        job_id="blend_split",
+        project_id="p_blend",
+        brand_id="geoverum",
+        platform_target_id=target.platform_id,
+        render_strategy="hybrid",
+        duration_s=10.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[],
+    )
+    win_split = group_sparse_hf_windows(
+        base_plan,
+        [
+            OverlayCompositionOp(
+                overlay_id="ov_norm",
+                kind="data_card",
+                timeline_start_s=1.0,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="upper_safe",
+                blend_mode="normal",
+            ),
+            OverlayCompositionOp(
+                overlay_id="ov_scr",
+                kind="data_card",
+                timeline_start_s=2.1,
+                timeline_duration_s=1.0,
+                transparent=True,
+                safe_band="upper_safe",
+                blend_mode="screen",
+            ),
+        ],
+    )
+    assert len(win_split) == 2
+
+    # H2: extra_fonts_dir must respect variable-font exclusion when static weight exists.
+    extra_f = tmp_path / "extra_fonts"
+    extra_f.mkdir()
+    (extra_f / "TestFam-Bold.ttf").write_bytes(b"static")
+    (extra_f / "TestFam-Variable.ttf").write_bytes(b"var")
+    staged_dir = _stage_plan_fonts_dir(base_plan, tmp_path / "staged_f", extra_fonts_dir=extra_f)
+    assert staged_dir is not None
+    assert (staged_dir / "TestFam-Bold.ttf").is_file()
+    assert not (staged_dir / "TestFam-Variable.ttf").exists()
+
+    # H1: screen blend mode must run in planar RGB (gbrp), not YUV (yuva420p).
+    black_base = tmp_path / "black.mp4"
+    green_ov = tmp_path / "green.mov"
+    _synth_video(black_base, duration_s=1.0, color="0x000000")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=0x00FF00:s=1080x1920:r=30:d=1.0",
+            "-c:v",
+            "prores_ks",
+            "-profile:v",
+            "4444",
+            "-pix_fmt",
+            "yuva444p10le",
+            str(green_ov),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    blend_plan = base_plan.model_copy(
+        update={
+            "duration_s": 1.0,
+            "assets": [
+                AssetRef(
+                    asset_id="vb",
+                    sha256=hash_media(black_base)["sha256"],
+                    kind="video",
+                    path=str(black_base),
+                    duration_s=1.0,
+                )
+            ],
+            "video_tracks": [
+                VideoClipOp(
+                    clip_id="cb",
+                    asset_id="vb",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=1.0,
+                    source_start_s=0.0,
+                    role="a_roll",
+                    reframed_to_target=True,
+                )
+            ],
+        }
+    )
+    blended_mp4 = tmp_path / "blended_screen.mp4"
+    assemble_hybrid_deliverable(
+        blend_plan,
+        target,
+        blended_mp4,
+        overlay_segments=[(0.0, 1.0, green_ov)],
+        overlay_blend_modes=["screen"],
+        use_ass_fastpath=False,
+        encode_preset="ultrafast",
+    )
+    raw_px = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(blended_mp4),
+            "-vf",
+            "scale=1:1",
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    r, g, b = raw_px[0], raw_px[1], raw_px[2]
+    assert g > 200 and r < 20 and b < 20, (
+        f"Expected pure green from screen blend, got RGB={(r, g, b)}"
+    )

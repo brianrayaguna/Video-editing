@@ -311,9 +311,14 @@ def write_ass_overlays_file(
     for ov in sorted_overlays:
         merged = _merge_overlay_props(ov)
         end_s = ov.timeline_start_s + ov.timeline_duration_s
+        raw_trans = merged.get("caption_transition_ms")
+        trans_ms = max(0, min(200, int(120 if raw_trans is None else raw_trans)))
+        raw_in = merged.get("caption_fade_in_ms")
+        raw_out = merged.get("caption_fade_out_ms")
+        fade_in_ms = max(0, min(200, int(trans_ms if raw_in is None else raw_in)))
+        fade_out_ms = max(0, min(200, int(trans_ms if raw_out is None else raw_out)))
         if ov.kind == "caption_rail" and cap_style["gap_ms"] > 0:
-            raw_out_check = merged.get("caption_fade_out_ms")
-            if raw_out_check == 0 and ov.overlay_id in next_caption_start:
+            if fade_out_ms == 0 and ov.overlay_id in next_caption_start:
                 nxt_start = next_caption_start[ov.overlay_id]
                 gap_s = cap_style["gap_ms"] / 1000.0
                 if nxt_start - end_s < gap_s and (nxt_start - gap_s) >= ov.timeline_start_s + 0.2:
@@ -322,10 +327,11 @@ def write_ass_overlays_file(
         end_ts = _format_ass_time(end_s)
 
         if ov.template_id == "broadcast_bug":
-            text = _escape_ass_text(str(merged.get("text") or "geoverum"))
-            lines.append(
-                f"Dialogue: 2,{start_ts},{end_ts},Watermark,,0,0,0,,{{\\fad(180,140)}}{text}"
-            )
+            text = _escape_ass_text(str(merged.get("text") or "").strip())
+            if text:
+                lines.append(
+                    f"Dialogue: 2,{start_ts},{end_ts},Watermark,,0,0,0,,{{\\fad(180,140)}}{text}"
+                )
             continue
 
         if ov.template_id == "source_credit":
@@ -344,12 +350,6 @@ def write_ass_overlays_file(
             style_name = "CaptionCenter"
         elif ov.safe_band == "upper_safe":
             style_name = "CaptionUpper"
-        raw_trans = merged.get("caption_transition_ms")
-        trans_ms = max(0, min(200, int(120 if raw_trans is None else raw_trans)))
-        raw_in = merged.get("caption_fade_in_ms")
-        raw_out = merged.get("caption_fade_out_ms")
-        fade_in_ms = max(0, min(200, int(trans_ms if raw_in is None else raw_in)))
-        fade_out_ms = max(0, min(200, int(trans_ms if raw_out is None else raw_out)))
         fade = (
             f"\\fad({fade_in_ms},{fade_out_ms})" if (fade_in_ms or fade_out_ms) else ""
         )
@@ -373,7 +373,7 @@ def write_ass_overlays_file(
                 f"Dialogue: 0,{start_ts},{end_ts},{style_name},,0,0,0,,{glow_tags}{escaped_text}"
             )
         elif soft_shadow:
-            # Soft drop shadow: a blurred dark copy on a lower layer, offset by the shadow distance.
+            # Soft drop shadow: a blurred dark copy on a lower layer with identical wrap width.
             dx = round(soft_shadow_px)
             margin_v = {"CaptionLower": cap_margin_v, "CaptionUpper": upper_margin_v}.get(
                 style_name, 0
@@ -384,8 +384,8 @@ def write_ass_overlays_file(
                 f"\\blur{cap_style['shadow_blur_px']:g}}}"
             )
             lines.append(
-                f"Dialogue: 0,{start_ts},{end_ts},{style_name},,{sym_x_px + 2 * dx},{sym_x_px},"
-                f"{max(shadow_margin_v, 0)},,{shadow_tags}{escaped_text}"
+                f"Dialogue: 0,{start_ts},{end_ts},{style_name},,{sym_x_px + dx},"
+                f"{max(sym_x_px - dx, 0)},{max(shadow_margin_v, 0)},,{shadow_tags}{escaped_text}"
             )
         lines.append(
             f"Dialogue: 1,{start_ts},{end_ts},{style_name},,0,0,0,,{fade_tag}{escaped_text}"
@@ -538,16 +538,24 @@ def build_ass_from_transcript(
                 chunks.append(words[pos : pos + take])
                 pos += take
         total_chars = max(1, sum(len(" ".join(c)) for c in chunks))
+        min_chunk_dur = min(0.18, (t1 - t0) / max(1, len(chunks)))
         cur_t = t0
         for ci, chunk in enumerate(chunks):
             txt = " ".join(chunk)
             if txt.endswith((",", ".")):
                 txt = txt[:-1]
+            rem_chunks = len(chunks) - ci - 1
             dur_c = (t1 - t0) * (len(txt) / total_chars)
-            end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
-            cues.append((cur_t, end_t, txt))
+            max_end = t1 - rem_chunks * min_chunk_dur
+            end_t = (
+                t1
+                if rem_chunks == 0
+                else min(max_end, max(cur_t + min_chunk_dur, cur_t + dur_c))
+            )
+            cues.append((cur_t, max(end_t, cur_t + 0.01), txt))
             cur_t = end_t
 
+    cues.sort(key=lambda item: item[0])
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -570,10 +578,15 @@ def build_ass_from_transcript(
 
     for idx, (c_start, c_end, txt) in enumerate(cues):
         adj_end = c_end
-        if eff_gap_s > 0 and fade_out == 0 and idx + 1 < len(cues):
+        if idx + 1 < len(cues):
             nxt_start = cues[idx + 1][0]
-            if nxt_start - adj_end < eff_gap_s and (nxt_start - eff_gap_s) >= c_start + 0.18:
-                adj_end = nxt_start - eff_gap_s
+            if nxt_start > c_start:
+                adj_end = min(adj_end, nxt_start)
+            if eff_gap_s > 0 and fade_out == 0:
+                if nxt_start - adj_end < eff_gap_s and (nxt_start - eff_gap_s) >= c_start + 0.18:
+                    adj_end = nxt_start - eff_gap_s
+        if adj_end <= c_start:
+            continue
         lines.append(
             f"Dialogue: 0,{_format_ass_time(c_start)},{_format_ass_time(adj_end)},"
             f"Default,,0,0,0,,{tag_prefix}{_escape_ass_text(txt)}"
@@ -600,13 +613,17 @@ def validate_ass_captions_readability(
 ) -> list[str]:
     """Audit generated ASS captions for reading speed (CPS), brief flashes, and overlaps."""
     warnings: list[str] = []
-    parsed: list[tuple[float, float, str]] = []
+    raw_entries: list[tuple[int, float, float, str]] = []
     for line in ass_text.splitlines():
         if not line.startswith("Dialogue:"):
             continue
         parts = line.split(",", 9)
         if len(parts) < 10:
             continue
+        try:
+            layer = int(parts[0].split(":", 1)[1].strip())
+        except (IndexError, ValueError):
+            layer = 0
         style = parts[3].strip()
         if style in {"Watermark", "SourceCredit"}:
             continue
@@ -617,7 +634,13 @@ def validate_ass_captions_readability(
         visible = _ASS_TAG_STRIP_RE.sub("", parts[9]).replace(r"\N", " ").strip()
         if not visible:
             continue
-        parsed.append((t0, t1, visible))
+        raw_entries.append((layer, t0, t1, visible))
+    foreground_keys = {(t0, t1, vis) for layer, t0, t1, vis in raw_entries if layer > 0}
+    parsed: list[tuple[float, float, str]] = [
+        (t0, t1, vis)
+        for layer, t0, t1, vis in raw_entries
+        if not (layer == 0 and (t0, t1, vis) in foreground_keys)
+    ]
     parsed.sort(key=lambda item: item[0])
     for idx, (t0, t1, txt) in enumerate(parsed):
         dur = t1 - t0

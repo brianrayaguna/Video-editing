@@ -18,7 +18,10 @@ def _parse_dotenv_lines(content: str) -> dict[str, str]:
         key = key.strip()
         val = val.strip()
         if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+            quote = val[0]
             val = val[1:-1]
+            if quote == '"':
+                val = val.replace('\\"', '"').replace("\\\\", "\\")
         if key:
             parsed[key] = val
     return parsed

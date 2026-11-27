@@ -17,9 +17,9 @@ export interface ProjectValidationSummary {
   hyperframesFindings: Array<HyperframeLintFinding & { file: string }>;
 }
 
-const CSS_BLUR_RE = /(backdrop-filter\s*:|filter\s*:[^;"'}]*blur\s*\(|blur\s*\()/i;
+const CSS_BLUR_RE = /(backdrop-filter\s*:|backdropFilter\s*[:=]|filter\s*[:=][^;"'}]*\bblur\s*\()/i;
 const MICRO_FONT_RE = /font-size\s*:\s*(?:calc\(\s*)?(\d+(?:\.\d+)?)px/gi;
-const NON_FATAL_WARNING_CODES = new Set([
+export const NON_FATAL_WARNING_CODES: ReadonlySet<string> = new Set([
   "KINETIC_LEGIBILITY_DURATION",
   "CAPTION_CPS_TOO_FAST",
   "CAPTION_DURATION_SHORT",
@@ -62,7 +62,7 @@ function parseStagedFontWeightMap(indexHtml: string): Map<string, FontWeightBoun
   while ((match = ffRe.exec(indexHtml)) !== null) {
     const body = match[1] ?? "";
     const famM = body.match(/font-family\s*:\s*['"]?([^'";,}]+)['"]?/i);
-    const wtM = body.match(/font-weight\s*:\s*(\d{3})(?:\s+(\d{3}))?/i);
+    const wtM = body.match(/font-weight\s*:\s*(\d{3,4})(?:\s+(\d{3,4}))?/i);
     if (!famM || !wtM) continue;
     const fam = famM[1]!.trim().toLowerCase();
     const w1 = Number(wtM[1]);
@@ -114,7 +114,7 @@ function scanCssTypographyRules(
         : null;
       const sizeM = body.match(/font-size\s*:\s*(?:calc\(\s*)?(\d+(?:\.\d+)?)px/i);
       const sizePx = sizeM ? Number(sizeM[1]) : null;
-      const wtM = body.match(/font-weight\s*:\s*(\d{3})\b/i);
+      const wtM = body.match(/font-weight\s*:\s*(\d{3,4})\b/i);
       const weight = wtM ? Number(wtM[1]) : null;
       const lhM = body.match(/line-height\s*:\s*(\d+(?:\.\d+)?)\s*(?:;|$)/im);
       const lineHeight = lhM ? Number(lhM[1]) : null;
@@ -245,9 +245,19 @@ export function lintPlanPerformance(plan: EditPlan): PerformanceFinding[] {
     if (ov.variables) {
       scanValueForCssBlur(ov.variables, `overlay[${ov.overlay_id}].variables`, findings);
     }
-    const txtRaw = String(
-      ov.props.text ?? ov.props.headline ?? (ov.variables?.text ?? ov.variables?.headline ?? "")
-    ).trim();
+    const txtCandidates = [
+      ov.props.text,
+      ov.props.headline,
+      ov.variables?.text,
+      ov.variables?.headline,
+    ];
+    let txtRaw = "";
+    for (const candidate of txtCandidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        txtRaw = candidate.trim();
+        break;
+      }
+    }
     const words = txtRaw ? txtRaw.split(/\s+/).length : 0;
     if (
       ov.timeline_duration_s < 0.45 &&
@@ -281,35 +291,60 @@ export function lintPlanPerformance(plan: EditPlan): PerformanceFinding[] {
   return findings;
 }
 
+function hasDisallowedCssBlurInHtml(html: string): boolean {
+  const blockRe = /<(style|script)[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(html)) !== null) {
+    if (CSS_BLUR_RE.test(m[2] ?? "")) {
+      return true;
+    }
+  }
+  const inlineStyleRe = /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  while ((m = inlineStyleRe.exec(html)) !== null) {
+    if (CSS_BLUR_RE.test(m[1] ?? m[2] ?? "")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rootClipIgnoresLayout(html: string): boolean {
+  return (
+    /<div[^>]*\bclass="[^"]*\bclip\b[^"]*"[^>]*\bdata-layout-ignore="true"/i.test(html) ||
+    /<div[^>]*\bdata-layout-ignore="true"[^>]*\bclass="[^"]*\bclip\b[^"]*"/i.test(html)
+  );
+}
+
 function scanHtmlFilesForPerformance(projectDir: string): PerformanceFinding[] {
   const findings: PerformanceFinding[] = [];
-  const candidates: string[] = [];
+  const candidates: Array<{ filePath: string; html?: string }> = [];
   const rootHtml = path.join(projectDir, "index.html");
   let fontBounds: ReadonlyMap<string, FontWeightBounds> = parseStagedFontWeightMap("");
   if (fs.existsSync(rootHtml)) {
-    candidates.push(rootHtml);
-    fontBounds = parseStagedFontWeightMap(fs.readFileSync(rootHtml, "utf8"));
+    const rootContent = fs.readFileSync(rootHtml, "utf8");
+    candidates.push({ filePath: rootHtml, html: rootContent });
+    fontBounds = parseStagedFontWeightMap(rootContent);
   }
   const compDir = path.join(projectDir, "compositions");
   if (fs.existsSync(compDir) && fs.statSync(compDir).isDirectory()) {
     for (const entry of fs.readdirSync(compDir)) {
       if (entry.endsWith(".html")) {
-        candidates.push(path.join(compDir, entry));
+        candidates.push({ filePath: path.join(compDir, entry) });
       }
     }
   }
 
-  for (const filePath of candidates) {
-    const html = fs.readFileSync(filePath, "utf8");
-    const rel = path.relative(projectDir, filePath);
-    if (CSS_BLUR_RE.test(html)) {
+  for (const item of candidates) {
+    const html = item.html ?? fs.readFileSync(item.filePath, "utf8");
+    const rel = path.relative(projectDir, item.filePath);
+    if (hasDisallowedCssBlurInHtml(html)) {
       findings.push({
         code: "FORBIDDEN_CSS_BLUR",
         message: "HTML/CSS output contains disallowed CSS blur or backdrop-filter.",
         location: rel,
       });
     }
-    if (rel !== "index.html" && !html.includes('data-layout-ignore="true"')) {
+    if (rel !== "index.html" && !rootClipIgnoresLayout(html)) {
       MICRO_FONT_RE.lastIndex = 0;
       let m: RegExpExecArray | null;
       while ((m = MICRO_FONT_RE.exec(html)) !== null) {

@@ -115,9 +115,9 @@
           <circle id="{{SCENE_ID}}-bulb" cx="40" cy="158" r="20" fill="#38BDF8" />
         </svg>
         <div class="gv-pg-copy">
-          <div id="{{SCENE_ID}}-t-lbl" class="gv-pg-loc" data-var-text="label">{{VAR_LABEL|NEW YORK}}</div>
+          <div id="{{SCENE_ID}}-t-lbl" class="gv-pg-loc" data-var-text="label">{{VAR_LABEL|}}</div>
           <div id="{{SCENE_ID}}-t-pri" class="gv-pg-pri" data-var-text="end_value">{{VAR_END_VALUE|-2}}°C</div>
-          <div id="{{SCENE_ID}}-t-sec" class="gv-pg-sec" data-var-text="secondary_readout">{{VAR_SECONDARY_READOUT|(28°F)}}</div>
+          <div id="{{SCENE_ID}}-t-sec" class="gv-pg-sec" data-var-text="secondary_readout">{{VAR_SECONDARY_READOUT|}}</div>
         </div>
       </div>
 
@@ -154,10 +154,10 @@
       const tPri = document.getElementById("{{SCENE_ID}}-t-pri");
       const dbVal = document.getElementById("{{SCENE_ID}}-db-val");
       const customSecText = tSec ? tSec.textContent.trim() : "";
-      const autoSecF = !customSecText || customSecText === "(28°F)";
+      const autoSecF = !customSecText && unit === "°C";
 
       if (tLbl && !tLbl.textContent.trim()) tLbl.classList.add("gv-empty");
-      if (tSec && !customSecText) tSec.classList.add("gv-empty");
+      if (tSec && !customSecText && !autoSecF) tSec.classList.add("gv-empty");
       if (dbLbl && !dbLbl.textContent.trim()) dbLbl.classList.add("gv-empty");
 
       const dur = Number({{DURATION_S}});

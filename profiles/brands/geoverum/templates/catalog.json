@@ -14,10 +14,12 @@
         { "id": "text", "type": "string", "label": "Caption phrase (2-4 words)" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
+        { "id": "highlight_text", "type": "string", "default": "" },
         {
           "id": "caption_style",
           "type": "enum",
-          "enum_values": ["plain", "chip"],
+          "enum_values": ["plain", "chip", "bar"],
           "default": "plain"
         }
       ]
@@ -127,13 +129,13 @@
         { "id": "unit_lower", "type": "string", "default": "km" },
         { "id": "bar1_label", "type": "string", "default": "Item 1" },
         { "id": "bar1_value", "type": "number", "default": 100 },
-        { "id": "bar1_text", "type": "string", "default": "100 km" },
+        { "id": "bar1_text", "type": "string", "default": "" },
         { "id": "bar2_label", "type": "string", "default": "Item 2" },
         { "id": "bar2_value", "type": "number", "default": 85 },
-        { "id": "bar2_text", "type": "string", "default": "85 km" },
+        { "id": "bar2_text", "type": "string", "default": "" },
         { "id": "bar3_label", "type": "string", "default": "Item 3" },
         { "id": "bar3_value", "type": "number", "default": 70 },
-        { "id": "bar3_text", "type": "string", "default": "70 km" },
+        { "id": "bar3_text", "type": "string", "default": "" },
         { "id": "source", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
@@ -216,7 +218,7 @@
       "safe_band": "center_safe",
       "variables": [
         { "id": "primary_distance", "type": "string", "default": "2.4 mi" },
-        { "id": "secondary_distance", "type": "string", "default": "(3.8 km)" },
+        { "id": "secondary_distance", "type": "string", "default": "" },
         { "id": "center_x_pct", "type": "number", "min": 15, "max": 85, "default": 50 },
         { "id": "center_y_pct", "type": "number", "min": 20, "max": 68, "default": 44 },
         { "id": "span_px", "type": "number", "min": 180, "max": 920, "default": 480 },
@@ -296,7 +298,7 @@
           "default": "era_stamp"
         },
         { "id": "year", "type": "string", "default": "1803" },
-        { "id": "title", "type": "string", "default": "LOUISIANA PURCHASE" },
+        { "id": "title", "type": "string", "default": "" },
         { "id": "excerpt", "type": "string", "default": "" },
         { "id": "image_src", "type": "string", "default": "" },
         { "id": "tilt_deg", "type": "number", "min": -8, "max": 8, "default": 0 }
@@ -388,8 +390,8 @@
         { "id": "start_value", "type": "number", "min": -100, "max": 500, "default": 20 },
         { "id": "end_value", "type": "number", "min": -100, "max": 500, "default": -2 },
         { "id": "unit", "type": "string", "default": "°C" },
-        { "id": "secondary_readout", "type": "string", "default": "(28°F)" },
-        { "id": "label", "type": "string", "default": "NEW YORK" },
+        { "id": "secondary_readout", "type": "string", "default": "" },
+        { "id": "label", "type": "string", "default": "" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
       ]
@@ -669,9 +671,9 @@
       "variables": [
         { "id": "title", "type": "string", "default": "CRUISING ALTITUDE" },
         { "id": "reading_value", "type": "string", "default": "4,500 m" },
-        { "id": "secondary_value", "type": "string", "default": "14,760 ft" },
-        { "id": "axis_top_label", "type": "string", "default": "40,000 ft" },
-        { "id": "axis_bottom_label", "type": "string", "default": "0 m" },
+        { "id": "secondary_value", "type": "string", "default": "" },
+        { "id": "axis_top_label", "type": "string", "default": "" },
+        { "id": "axis_bottom_label", "type": "string", "default": "" },
         { "id": "fill_pct", "type": "number", "min": 10, "max": 95, "default": 68 },
         { "id": "side", "type": "enum", "enum_values": ["right", "left"], "default": "right" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },

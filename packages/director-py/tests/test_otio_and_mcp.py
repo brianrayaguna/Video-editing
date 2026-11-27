@@ -199,6 +199,45 @@ def test_export_otio_preserves_program_mix_and_splits_overlapping_sfx(tmp_path: 
 
 
 @pytest.mark.skipif(
+    importlib.util.find_spec("opentimelineio") is None,
+    reason="Optional opentimelineio extra not installed.",
+)
+def test_export_otio_preserves_ambience_and_room_tone(tmp_path: Path) -> None:
+    import opentimelineio as otio
+
+    plan = _sample_edit_plan().model_copy(
+        update={
+            "audio_tracks": [
+                AudioTrackOp(
+                    track_id="amb_1",
+                    asset_id="a_bgm",
+                    audio_group="ambience",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=4.0,
+                    source_start_s=0.0,
+                    gain_db=-24.0,
+                ),
+                AudioTrackOp(
+                    track_id="rt_1",
+                    asset_id="a_bgm",
+                    audio_group="room_tone",
+                    timeline_start_s=0.0,
+                    timeline_duration_s=8.0,
+                    source_start_s=0.0,
+                    gain_db=-45.0,
+                ),
+            ]
+        }
+    )
+    out_otio = tmp_path / "ambience_room_tone.otio"
+    export_edit_plan_to_otio(plan, out_otio)
+    loaded = otio.adapters.read_from_file(str(out_otio))
+    track_names = [t.name for t in loaded.tracks]
+    assert "Audio_ambience" in track_names
+    assert "Audio_room_tone" in track_names
+
+
+@pytest.mark.skipif(
     importlib.util.find_spec("fastmcp") is None,
     reason="Optional fastmcp extra not installed.",
 )

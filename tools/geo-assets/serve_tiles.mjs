@@ -412,12 +412,7 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
         noteGap(routeName, z, x, y, projectTilesDir ? hasProjectTile : noTile, 0);
         let buf = null;
         if (projectTilesDir) {
-          const pick = pickTileSource(z, x, y, hasProjectTile, hasRegularTile, 0);
-          if (pick?.source === "hq") {
-            buf = await resolveHqOrRegularTile(tilesDir, projectTilesDir, caches, z, x, y, 0, 90, gradeProject);
-          } else {
-            buf = await resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
-          }
+          buf = await resolveHqOrRegularTile(tilesDir, projectTilesDir, caches, z, x, y, 0, 90, gradeProject);
         } else {
           buf = await resolveTileBuffer(tilesDir, caches.fallbackCache, z, x, y);
         }

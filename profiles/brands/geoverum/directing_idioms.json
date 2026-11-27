@@ -820,7 +820,7 @@
           "panjang"
         ],
         "device": "measurement_line",
-        "function": "scale_compare",
+        "function": "data_callout",
         "need": "measure real-world extent or width directly across the map frame"
       },
       {

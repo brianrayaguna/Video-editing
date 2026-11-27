@@ -9,7 +9,7 @@
  *   CONCURRENCY="6"
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,11 +63,22 @@ async function main() {
       const { z, x, y, dest } = jobs[idx];
       const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
       try {
-        const resp = await fetch(url);
+        const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const buf = Buffer.from(await resp.arrayBuffer());
         mkdirSync(dirname(dest), { recursive: true });
-        writeFileSync(dest, buf);
+        const part = `${dest}.part`;
+        try {
+          writeFileSync(part, buf);
+          renameSync(part, dest);
+        } catch (writeErr) {
+          try {
+            if (existsSync(part)) unlinkSync(part);
+          } catch {
+            // ignore cleanup errors
+          }
+          throw writeErr;
+        }
         ok++;
       } catch (err) {
         failed++;
@@ -79,6 +90,9 @@ async function main() {
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, worker));
   const dt = ((Date.now() - t0) / 1000).toFixed(2);
   console.log(`[dem] fetched ${ok} tiles (${failed} failed) in ${dt}s`);
+  if (failed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {

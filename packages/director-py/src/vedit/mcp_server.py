@@ -155,8 +155,9 @@ def create_mcp_server() -> Any:
             cat_path = sibling if sibling.is_file() else repo_cat
         if cat_path.is_file():
             catalog = BrandTemplateCatalog.model_validate(load_brand_template_catalog(cat_path))
+        resolved_plan = resolve_plan_asset_paths(plan, base_dir=plan_path.parent)
         report = verify_edit_plan(
-            plan,
+            resolved_plan,
             policy,
             platform_target,
             transcript=transcript,

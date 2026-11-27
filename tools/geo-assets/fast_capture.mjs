@@ -150,27 +150,47 @@ export function spawnFramePipeEncoder(
 
   return {
     async writeFrame(frameBuffer) {
-      if (exited) {
+      if (exited || proc.stdin.destroyed || proc.stdin.writableEnded) {
         throw exitError || new Error(`FFmpeg pipe encoder exited early for ${outMp4}`);
       }
       if (!proc.stdin.write(frameBuffer)) {
         await new Promise((resolve, reject) => {
+          const cleanup = () => {
+            proc.stdin.off("drain", onDrain);
+            proc.stdin.off("error", onError);
+            proc.stdin.off("close", onPipeClose);
+            proc.off("close", onProcClose);
+          };
           const onDrain = () => {
             cleanup();
             resolve();
           };
-          const onFail = (err) => {
+          const onError = (err) => {
             cleanup();
-            reject(err || exitError || new Error(`FFmpeg pipe closed early for ${outMp4}`));
+            reject(
+              err instanceof Error
+                ? err
+                : exitError || new Error(`FFmpeg pipe write error for ${outMp4}: ${String(err)}`)
+            );
           };
-          const cleanup = () => {
-            proc.stdin.off("drain", onDrain);
-            proc.stdin.off("error", onFail);
-            proc.off("close", onFail);
+          const onPipeClose = () => {
+            cleanup();
+            reject(exitError || new Error(`FFmpeg stdin closed early for ${outMp4}`));
+          };
+          const onProcClose = (code) => {
+            cleanup();
+            reject(
+              exitError ||
+                new Error(`FFmpeg pipe process closed early (code ${code}) for ${outMp4}`)
+            );
           };
           proc.stdin.once("drain", onDrain);
-          proc.stdin.once("error", onFail);
-          proc.once("close", onFail);
+          proc.stdin.once("error", onError);
+          proc.stdin.once("close", onPipeClose);
+          proc.once("close", onProcClose);
+          if (exited || proc.stdin.destroyed) {
+            onPipeClose();
+          }
         });
       }
     },

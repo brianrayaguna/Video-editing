@@ -1338,3 +1338,36 @@ def test_validate_scene_smooth_hatch_lighting_country_block_3d_and_sfx(tmp_path:
         "focus_spotlight",
     ):
         assert token in joined, f"Expected error mentioning {token!r}, got:\n{joined}"
+
+
+def test_geo_captions_16x9_scaling_and_back_to_back_scene_labels() -> None:
+    from vedit.cli.geo import build_geoverum_ass_captions, validate_map_scene
+
+    ass_16x9 = build_geoverum_ass_captions(
+        [{"start": 0.0, "end": 2.0, "text": "Wide frame caption"}],
+        width=1920,
+        height=1080,
+    )
+    assert "Style: Default,Rubik,46," in ass_16x9
+    assert ",103,1" in ass_16x9
+
+    # Back-to-back non-overlapping labels ([0,2] and [2,4]) must not sum to 5 concurrent at t=2.0,
+    # and explicit `"end_s": None` must not crash validation.
+    rep = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "a1",
+                    "duration_s": 4.0,
+                    "layers": [
+                        {"type": "glow_label", "text": "L1", "start_s": 0.0, "end_s": 2.0},
+                        {"type": "glow_label", "text": "L2", "start_s": 0.0, "end_s": 2.0},
+                        {"type": "glow_label", "text": "L3", "start_s": 0.0, "end_s": 2.0},
+                        {"type": "glow_label", "text": "L4", "start_s": 2.0, "end_s": 4.0},
+                        {"type": "glow_label", "text": "L5", "start_s": 2.0, "end_s": None},
+                    ],
+                }
+            ]
+        }
+    )
+    assert rep["ok"] is True, rep["errors"]

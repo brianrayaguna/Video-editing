@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -66,9 +68,19 @@ class JobCheckpoint(BaseModel):
 
     def save(self, state_path: Path) -> None:
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
-        tmp_path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
-        tmp_path.replace(state_path)
+        payload = self.model_dump_json(indent=2)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(state_path.parent),
+            prefix=f".{state_path.name}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                fp.write(payload)
+            os.replace(tmp_name, state_path)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
 
     def is_stage_done(self, stage: str, idempotency_key: str) -> bool:
         metric = self.completed_stages.get(stage)

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
@@ -23,14 +24,78 @@ pub struct LabBinAcc {
     pub sum_b: f64,
 }
 
+#[derive(Debug, Default)]
+pub struct VisualAccumulator {
+    pub frame_count: usize,
+    mean_luma_sum: f64,
+    upper_sum: f64,
+    center_sum: f64,
+    lower_third_sum: f64,
+    sharpness_sum: f64,
+    total_samples: u64,
+    global_bins: HashMap<(i32, i32, i32), LabBinAcc>,
+}
+
+impl VisualAccumulator {
+    pub fn push(&mut self, frame: FrameVisionMetrics) {
+        self.frame_count += 1;
+        self.mean_luma_sum += frame.mean_luma;
+        self.upper_sum += frame.upper_luma;
+        self.center_sum += frame.center_luma;
+        self.lower_third_sum += frame.lower_third_luma;
+        self.sharpness_sum += frame.sharpness;
+        for (k, v) in frame.lab_bins {
+            self.total_samples += v.count;
+            let acc = self.global_bins.entry(k).or_default();
+            acc.count += v.count;
+            acc.sum_l += v.sum_l;
+            acc.sum_a += v.sum_a;
+            acc.sum_b += v.sum_b;
+        }
+    }
+
+    pub fn finish(self, top_k: usize) -> (Vec<PaletteColor>, f64, f64, BandLuminance, f64) {
+        if self.frame_count == 0 {
+            return (
+                Vec::new(),
+                0.0,
+                0.0,
+                BandLuminance {
+                    upper: 0.0,
+                    center: 0.0,
+                    lower_third: 0.0,
+                },
+                0.0,
+            );
+        }
+        let n = self.frame_count as f64;
+        finalize_palette_and_visual(
+            self.global_bins,
+            self.total_samples,
+            self.mean_luma_sum / n,
+            self.upper_sum / n,
+            self.center_sum / n,
+            self.lower_third_sum / n,
+            self.sharpness_sum / n,
+            top_k,
+        )
+    }
+}
+
 #[inline]
 fn srgb_channel_to_linear(c: u8) -> f64 {
-    let v = c as f64 / 255.0;
-    if v <= 0.04045 {
-        v / 12.92
-    } else {
-        ((v + 0.055) / 1.055).powf(2.4)
-    }
+    static LUT: OnceLock<[f64; 256]> = OnceLock::new();
+    let table = LUT.get_or_init(|| {
+        std::array::from_fn(|i| {
+            let v = i as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        })
+    });
+    table[c as usize]
 }
 
 #[inline]
@@ -121,51 +186,19 @@ pub fn analyze_rgb24_frame(rgb: &[u8], width: usize, height: usize) -> FrameVisi
     let upper_end = height / 4;
     let lower_start = (height * 72) / 100;
 
-    // Parallel luminance & CIELAB histogram accumulation per row.
-    type RowLumaLab = (f64, usize, f64, usize, f64, usize, HashMap<(i32, i32, i32), LabBinAcc>);
-    let row_results: Vec<RowLumaLab> =
-        (0..height)
-            .into_par_iter()
-            .map(|y| {
-                let row = &rgb[y * stride..(y + 1) * stride];
-                let mut row_luma_sum = 0.0;
-                let mut bins: HashMap<(i32, i32, i32), LabBinAcc> = HashMap::new();
-
-                // Sample every pixel for luma; stride by 2 on x/y for Lab quantization speed.
-                let sample_lab_row = y % 2 == 0;
-                for x in 0..width {
-                    let off = x * 3;
-                    let r = row[off];
-                    let g = row[off + 1];
-                    let b = row[off + 2];
-                    let luma = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
-                    row_luma_sum += luma;
-
-                    if sample_lab_row && x % 2 == 0 {
-                        let (l, a, b_lab) = srgb_to_lab(r, g, b);
-                        let key = (
-                            (l / 10.0).round() as i32,
-                            (a / 14.0).round() as i32,
-                            (b_lab / 14.0).round() as i32,
-                        );
-                        let acc = bins.entry(key).or_default();
-                        acc.count += 1;
-                        acc.sum_l += l;
-                        acc.sum_a += a;
-                        acc.sum_b += b_lab;
-                    }
-                }
-
-                let (up, up_n, ctr, ctr_n, low, low_n) = if y < upper_end {
-                    (row_luma_sum, width, 0.0, 0, 0.0, 0)
-                } else if y < lower_start {
-                    (0.0, 0, row_luma_sum, width, 0.0, 0)
-                } else {
-                    (0.0, 0, 0.0, 0, row_luma_sum, width)
-                };
-                (up, up_n, ctr, ctr_n, low, low_n, bins)
-            })
-            .collect();
+    // Precompute a flat luminance plane once (reused for band averages and Sobel sharpness).
+    let mut luma_plane = vec![0.0f64; width * height];
+    luma_plane
+        .par_chunks_mut(width)
+        .enumerate()
+        .for_each(|(y, luma_row)| {
+            let row = &rgb[y * stride..(y + 1) * stride];
+            for x in 0..width {
+                let off = x * 3;
+                luma_row[x] =
+                    0.2126 * row[off] as f64 + 0.7152 * row[off + 1] as f64 + 0.0722 * row[off + 2] as f64;
+            }
+        });
 
     let mut up_sum = 0.0;
     let mut up_cnt = 0usize;
@@ -173,47 +206,72 @@ pub fn analyze_rgb24_frame(rgb: &[u8], width: usize, height: usize) -> FrameVisi
     let mut ctr_cnt = 0usize;
     let mut low_sum = 0.0;
     let mut low_cnt = 0usize;
-    let mut merged_bins: HashMap<(i32, i32, i32), LabBinAcc> = HashMap::new();
-
-    for (up, up_n, ctr, ctr_n, low, low_n, bins) in row_results {
-        up_sum += up;
-        up_cnt += up_n;
-        ctr_sum += ctr;
-        ctr_cnt += ctr_n;
-        low_sum += low;
-        low_cnt += low_n;
-        for (k, v) in bins {
-            let acc = merged_bins.entry(k).or_default();
-            acc.count += v.count;
-            acc.sum_l += v.sum_l;
-            acc.sum_a += v.sum_a;
-            acc.sum_b += v.sum_b;
+    for y in 0..height {
+        let row_sum: f64 = luma_plane[y * width..(y + 1) * width].iter().sum();
+        if y < upper_end {
+            up_sum += row_sum;
+            up_cnt += width;
+        } else if y < lower_start {
+            ctr_sum += row_sum;
+            ctr_cnt += width;
+        } else {
+            low_sum += row_sum;
+            low_cnt += width;
         }
     }
 
-    // Parallel Sobel gradient magnitude mean as sharpness estimator.
+    // Parallel CIELAB histogram accumulation via per-thread fold/reduce (stride 2 on x/y).
+    let merged_bins: HashMap<(i32, i32, i32), LabBinAcc> = (0..height)
+        .into_par_iter()
+        .step_by(2)
+        .fold(HashMap::<(i32, i32, i32), LabBinAcc>::new, |mut bins, y| {
+            let row = &rgb[y * stride..(y + 1) * stride];
+            let mut x = 0;
+            while x < width {
+                let off = x * 3;
+                let (l, a, b_lab) = srgb_to_lab(row[off], row[off + 1], row[off + 2]);
+                let key = (
+                    (l / 10.0).round() as i32,
+                    (a / 14.0).round() as i32,
+                    (b_lab / 14.0).round() as i32,
+                );
+                let acc = bins.entry(key).or_default();
+                acc.count += 1;
+                acc.sum_l += l;
+                acc.sum_a += a;
+                acc.sum_b += b_lab;
+                x += 2;
+            }
+            bins
+        })
+        .reduce(HashMap::new, |mut a, b| {
+            for (k, v) in b {
+                let acc = a.entry(k).or_default();
+                acc.count += v.count;
+                acc.sum_l += v.sum_l;
+                acc.sum_a += v.sum_a;
+                acc.sum_b += v.sum_b;
+            }
+            a
+        });
+
+    // Parallel Sobel gradient magnitude mean over the precomputed luma plane.
     let grad_sum: f64 = (1..(height - 1))
         .into_par_iter()
         .map(|y| {
-            let prev = &rgb[(y - 1) * stride..y * stride];
-            let curr = &rgb[y * stride..(y + 1) * stride];
-            let next = &rgb[(y + 1) * stride..(y + 2) * stride];
+            let prev = &luma_plane[(y - 1) * width..y * width];
+            let curr = &luma_plane[y * width..(y + 1) * width];
+            let next = &luma_plane[(y + 1) * width..(y + 2) * width];
             let mut sum = 0.0;
             for x in 1..(width - 1) {
-                let luma_at = |row: &[u8], ix: usize| -> f64 {
-                    let o = ix * 3;
-                    0.2126 * row[o] as f64 + 0.7152 * row[o + 1] as f64 + 0.0722 * row[o + 2] as f64
-                };
-                let gx = -luma_at(prev, x - 1)
-                    + luma_at(prev, x + 1)
-                    - 2.0 * luma_at(curr, x - 1)
-                    + 2.0 * luma_at(curr, x + 1)
-                    - luma_at(next, x - 1)
-                    + luma_at(next, x + 1);
-                let gy = -luma_at(prev, x - 1) - 2.0 * luma_at(prev, x) - luma_at(prev, x + 1)
-                    + luma_at(next, x - 1)
-                    + 2.0 * luma_at(next, x)
-                    + luma_at(next, x + 1);
+                let tl = prev[x - 1];
+                let tc = prev[x];
+                let tr = prev[x + 1];
+                let bl = next[x - 1];
+                let bc = next[x];
+                let br = next[x + 1];
+                let gx = -tl + tr - 2.0 * curr[x - 1] + 2.0 * curr[x + 1] - bl + br;
+                let gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;
                 sum += (gx * gx + gy * gy).sqrt();
             }
             sum
@@ -272,6 +330,29 @@ pub fn aggregate_palette_and_visual(
         }
     }
 
+    finalize_palette_and_visual(
+        global_bins,
+        total_samples,
+        mean_luma,
+        upper,
+        center,
+        lower_third,
+        mean_sharpness,
+        top_k,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_palette_and_visual(
+    global_bins: HashMap<(i32, i32, i32), LabBinAcc>,
+    total_samples: u64,
+    mean_luma: f64,
+    upper: f64,
+    center: f64,
+    lower_third: f64,
+    mean_sharpness: f64,
+    top_k: usize,
+) -> (Vec<PaletteColor>, f64, f64, BandLuminance, f64) {
     let total_f = total_samples.max(1) as f64;
     let mut entropy = 0.0;
     for acc in global_bins.values() {

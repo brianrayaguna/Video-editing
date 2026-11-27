@@ -402,3 +402,89 @@ def test_auto_director_routes_wind_and_altitude_clauses_to_new_devices(idioms: d
     )
     assert sb_era["beats"][0]["device"] == "era_marker"
 
+
+def test_scale_dimension_scaffold_critique_wcag_and_journey_invariants(idioms: dict) -> None:
+    from vedit.contracts import validate_against_contract
+    from vedit.director.critique import _frange, build_critique_packet, gate_review
+    from vedit.director.journey import compile_journey, path_point, route_width_keys
+
+    # H1: scale_dimension clause in middle beat must produce a valid storyboard function.
+    words = [
+        {"text": "Intro.", "start_s": 0.0, "end_s": 0.6},
+        {"text": "The", "start_s": 1.0, "end_s": 1.2},
+        {"text": "strait", "start_s": 1.25, "end_s": 1.6},
+        {"text": "is", "start_s": 1.65, "end_s": 1.8},
+        {"text": "wide.", "start_s": 1.85, "end_s": 2.3},
+        {"text": "End.", "start_s": 3.0, "end_s": 3.5},
+    ]
+    sb = scaffold_storyboard(
+        {
+            "source_hash": "h1",
+            "provider": "test",
+            "language": "en",
+            "duration_s": 3.5,
+            "text": "Intro. The strait is wide. End.",
+            "words": words,
+        },
+        idioms,
+        project_id="scale_check",
+    )
+    rep = check_storyboard(sb, idioms)
+    assert rep.passed is True, rep.issues
+
+    # H2 + M1: typography_contrast validates against schema, gates WCAG failures, rejects bools.
+    packet = build_critique_packet(
+        idioms=idioms,
+        storyboard=sb,
+        spatial_forensics={"summary": {"typography": {"min_wcag_contrast": 2.1}}},
+    )
+    assert validate_against_contract(packet, "critique_packet.schema.json") == []
+    packet["review"]["scores"] = {k: 0.95 for k in packet["review"]["scores"]}
+    gate = gate_review(packet)
+    assert gate["passed"] is False
+    assert any("contrast" in r.lower() for r in gate["reasons"])
+
+    packet_bool = copy.deepcopy(packet)
+    packet_bool["deterministic"]["typography_contrast"]["passed"] = True
+    first_key = next(iter(packet_bool["review"]["scores"]))
+    packet_bool["review"]["scores"][first_key] = True
+    gate_bool = gate_review(packet_bool)
+    assert gate_bool["passed"] is False
+
+    # M7: _frange must reject non-positive steps.
+    with pytest.raises(ValueError):
+        _frange(0.0, 2.0, 0.0)
+
+    # H8 + M8: route_width_keys and path_point boundary safety + journey idiom margins.
+    assert route_width_keys([[0.0, 0.0, 0.0, 5.0, 0.0]], {}) == []
+    assert route_width_keys(
+        [[0.0, 0.0, 0.0, 5.0, 0.0]],
+        {"a": {"zoom": 5.0, "route_width_px": 4.0}, "b": {"zoom": 5.0, "route_width_px": 6.0}},
+    ) == [[0.0, 4.0]]
+    assert path_point([[10.0, 20.0], [30.0, 40.0]], -2.0) == (10.0, 20.0)
+    compiled = compile_journey(_journey(), idioms)
+    assert check_storyboard(compiled["storyboard"], idioms).passed is True
+
+    # M8: all-filler transcript raises ValueError; banning camera_drift does not keep camera_drift.
+    with pytest.raises(ValueError):
+        scaffold_storyboard(
+            {
+                "source_hash": "h2",
+                "provider": "test",
+                "language": "en",
+                "duration_s": 1.0,
+                "text": "um",
+                "words": [{"text": "um", "start_s": 0.0, "end_s": 0.5, "is_filler": True}],
+            },
+            idioms,
+            project_id="fillers",
+        )
+    directed = {
+        "overrides": {"banned_devices": ["camera_drift"]},
+        "beats": [],
+    }
+    sb_drift = copy.deepcopy(sb)
+    sb_drift["beats"][0]["device"] = "camera_drift"
+    merged = apply_director_storyboard(sb_drift, directed)
+    assert merged["beats"][0]["device"] != "camera_drift"
+

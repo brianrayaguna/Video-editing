@@ -261,6 +261,10 @@ function buildPageHtml(baseUrl) {
       return b <= a ? 1 : Math.min(1, Math.max(0, (p - a) / (b - a)));
     }
 
+    function wrapDelta(fromDeg, toDeg) {
+      return ((((toDeg - fromDeg) + 180) % 360) + 360) % 360 - 180;
+    }
+
     function camAtFrame(frameIndex, totalFrames) {
       if (KEYFRAMES && KEYFRAMES.length >= 2) {
         if (frameIndex <= KEYFRAMES[0].frame) return KEYFRAMES[0];
@@ -275,12 +279,12 @@ function buildPageHtml(baseUrl) {
             const panT = k1.panEase ? applyEase(k1.panEase, rawT) : eT;
             return {
               center: [
-                k0.center[0] + (k1.center[0] - k0.center[0]) * panT,
+                k0.center[0] + wrapDelta(k0.center[0], k1.center[0]) * panT,
                 k0.center[1] + (k1.center[1] - k0.center[1]) * panT,
               ],
               zoom: k0.zoom + (k1.zoom - k0.zoom) * eT,
               pitch: (k0.pitch || 0) + ((k1.pitch || 0) - (k0.pitch || 0)) * eT,
-              bearing: (k0.bearing || 0) + ((k1.bearing || 0) - (k0.bearing || 0)) * eT,
+              bearing: (k0.bearing || 0) + wrapDelta(k0.bearing || 0, k1.bearing || 0) * eT,
             };
           }
         }
@@ -291,11 +295,11 @@ function buildPageHtml(baseUrl) {
       const t = EASE_STRONG_IN_OUT(seg(p, FROM ? PAN * 0.4 : 0, HOLD));
       const holdProgress = p > HOLD ? seg(p, HOLD, 1.0) : 0;
       const center = FROM
-        ? [FROM[0] + (CENTER[0] - FROM[0]) * s, FROM[1] + (CENTER[1] - FROM[1]) * s]
+        ? [FROM[0] + wrapDelta(FROM[0], CENTER[0]) * s, FROM[1] + (CENTER[1] - FROM[1]) * s]
         : CENTER;
       const zoom = ZSTART + (ZEND - ZSTART) * t + DRIFT_ZOOM * holdProgress;
       const pitch = PITCH_START + (PITCH - PITCH_START) * t;
-      const bearing = BEARING_START + (BEARING - BEARING_START) * t;
+      const bearing = BEARING_START + wrapDelta(BEARING_START, BEARING) * t;
       return { center, zoom, pitch, bearing };
     }
 
@@ -307,15 +311,19 @@ function buildPageHtml(baseUrl) {
       return resp.json();
     }
 
-    window.__ready = new Promise((res) => {
+    window.__ready = new Promise((res, rej) => {
       map.on("load", async () => {
-        const [r1, r3] = await Promise.all([
-          fetchOptionalGeoJson(REGIONS_GEOJSON),
-          fetchOptionalGeoJson(TECTONICS_GEOJSON),
-        ]);
-        regionsData = r1;
-        tectonicsData = r3;
-        res();
+        try {
+          const [r1, r3] = await Promise.all([
+            fetchOptionalGeoJson(REGIONS_GEOJSON),
+            fetchOptionalGeoJson(TECTONICS_GEOJSON),
+          ]);
+          regionsData = r1;
+          tectonicsData = r3;
+          res();
+        } catch (err) {
+          rej(err);
+        }
       });
     });
 
@@ -527,9 +535,10 @@ async function main() {
   const mp4 = join(OUT, `${NAME}.mp4`);
   const coordsTargetFrame = Math.min(N - 1, Math.round(N * HOLD));
 
-  const port = Number(process.env.TILE_PORT || 8767);
+  const port = process.env.TILE_PORT != null ? Number(process.env.TILE_PORT) : 8767;
   const server = await startTileServer(port, "127.0.0.1");
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const boundPort = server.address()?.port ?? port;
+  const baseUrl = `http://127.0.0.1:${boundPort}`;
 
   try {
     let coords = null;
@@ -598,32 +607,35 @@ async function main() {
           partMp4: join(OUT, `.${NAME}_part_${w}.mp4`),
         });
       }
-      const results = await Promise.all(
-        slices.map((sl) =>
-          renderRangeToPipe({
-            baseUrl,
-            startFrame: sl.startFrame,
-            endFrame: sl.endFrame,
-            outMp4: sl.partMp4,
-            coordsTargetFrame,
-            workerId: sl.workerId,
-          })
-        )
-      );
-      coords = results.find((c) => c !== null) || null;
       const listPath = join(OUT, `.${NAME}_concat.txt`);
-      writeFileSync(
-        listPath,
-        slices.map((sl) => `file '${sl.partMp4.replace(/'/g, "'\\''")}'`).join("\n") + "\n"
-      );
-      concatMp4Slices(
-        slices.map((sl) => sl.partMp4),
-        mp4,
-        listPath
-      );
-      rmSync(listPath, { force: true });
-      for (const sl of slices) {
-        rmSync(sl.partMp4, { force: true });
+      try {
+        const results = await Promise.all(
+          slices.map((sl) =>
+            renderRangeToPipe({
+              baseUrl,
+              startFrame: sl.startFrame,
+              endFrame: sl.endFrame,
+              outMp4: sl.partMp4,
+              coordsTargetFrame,
+              workerId: sl.workerId,
+            })
+          )
+        );
+        coords = results.find((c) => c !== null) || null;
+        writeFileSync(
+          listPath,
+          slices.map((sl) => `file '${sl.partMp4.replace(/'/g, "'\\''")}'`).join("\n") + "\n"
+        );
+        concatMp4Slices(
+          slices.map((sl) => sl.partMp4),
+          mp4,
+          listPath
+        );
+      } finally {
+        rmSync(listPath, { force: true });
+        for (const sl of slices) {
+          rmSync(sl.partMp4, { force: true });
+        }
       }
     }
 

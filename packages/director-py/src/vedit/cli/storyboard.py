@@ -375,6 +375,10 @@ def critique_packet_cmd(
         Path | None,
         typer.Option("--previous-packet", help="Prior critique packet for frozen beats."),
     ] = None,
+    spatial_forensics: Annotated[
+        Path | None,
+        typer.Option("--spatial-forensics", help="Spatial forensics JSON for WCAG contrast check."),
+    ] = None,
     iteration: Annotated[int, typer.Option("--iteration", min=1)] = 1,
     max_iterations: Annotated[int, typer.Option("--max-iterations", min=1)] = 3,
 ) -> None:
@@ -399,6 +403,7 @@ def critique_packet_cmd(
         audio_events_s=_read(audio_events) if audio_events else None,
         motion_energy_series=energy_series,
         previous_packet=_read(previous_packet) if previous_packet else None,
+        spatial_forensics=spatial_forensics.expanduser() if spatial_forensics else None,
         iteration=iteration,
         max_iterations=max_iterations,
     )

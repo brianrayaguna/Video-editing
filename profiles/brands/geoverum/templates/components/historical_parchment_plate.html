@@ -152,12 +152,12 @@
       color: #2A1E12;
       text-align: center;
     }
-    /* Variant 4: timeline_bar (horizontal golden historical era bar in upper safe band + compass rose) */
+    /* Variant 4: timeline_bar (positioned inside #clip safe band + vintage open-water compass rose) */
     #{{SCENE_ID}}-timeline {
       position: absolute;
-      top: calc({{SAFE_TOP_PCT}}% + calc(36px * {{SCALE_FACTOR}}));
-      left: {{SYM_X_PCT}}%;
-      right: {{SYM_X_PCT}}%;
+      top: calc(24px * {{SCALE_FACTOR}});
+      left: 0;
+      right: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -199,8 +199,8 @@
     }
     #{{SCENE_ID}}-compass {
       position: absolute;
-      left: calc(14% * 1);
-      bottom: calc({{CAPTION_BOTTOM_PCT}}% + calc(70px * {{SCALE_FACTOR}}));
+      left: 0;
+      bottom: calc(24px * {{SCALE_FACTOR}});
       width: calc(150px * {{SCALE_FACTOR}});
       height: calc(150px * {{SCALE_FACTOR}});
       opacity: 0.58;
@@ -217,21 +217,21 @@
       <!-- Variant 1: era_stamp -->
       <div id="{{SCENE_ID}}-era">
         <div id="{{SCENE_ID}}-e-year" class="gv-era-year" data-var-text="year">{{VAR_YEAR|1803}}</div>
-        <div id="{{SCENE_ID}}-e-title" class="gv-era-title" data-var-text="title">{{VAR_TITLE|LOUISIANA PURCHASE}}</div>
+        <div id="{{SCENE_ID}}-e-title" class="gv-era-title" data-var-text="title">{{VAR_TITLE|}}</div>
         <div id="{{SCENE_ID}}-e-ex" class="gv-era-excerpt" data-var-text="excerpt">{{VAR_EXCERPT|}}</div>
       </div>
 
       <!-- Variant 2: parchment_canvas -->
       <div id="{{SCENE_ID}}-parch">
         <div id="{{SCENE_ID}}-p-year" class="gv-parch-year" data-var-text="year">{{VAR_YEAR|1803}}</div>
-        <div id="{{SCENE_ID}}-p-title" class="gv-parch-title" data-var-text="title">{{VAR_TITLE|LOUISIANA PURCHASE}}</div>
+        <div id="{{SCENE_ID}}-p-title" class="gv-parch-title" data-var-text="title">{{VAR_TITLE|}}</div>
         <div id="{{SCENE_ID}}-p-ex" class="gv-parch-excerpt" data-var-text="excerpt">{{VAR_EXCERPT|}}</div>
       </div>
 
       <!-- Variant 3: archival_sheet -->
       <div id="{{SCENE_ID}}-sheet">
         <img id="{{SCENE_ID}}-sheet-img" alt="" data-src="{{VAR_IMAGE_SRC|}}" data-var-src="image_src" />
-        <div id="{{SCENE_ID}}-sheet-cap" data-var-text="title">{{VAR_YEAR|1803}} · {{VAR_TITLE|HISTORICAL ARCHIVE}}</div>
+        <div id="{{SCENE_ID}}-sheet-cap" data-var-text="title">{{VAR_YEAR|1803}} · {{VAR_TITLE|}}</div>
       </div>
 
       <!-- Variant 4: timeline_bar (positioned in upper safe band + vintage open-water compass rose) -->
@@ -271,10 +271,15 @@
       const compassEl = document.getElementById("{{SCENE_ID}}-compass");
       if (sheetImgEl && imgSrc) sheetImgEl.setAttribute("src", imgSrc);
 
-      ["{{SCENE_ID}}-e-year", "{{SCENE_ID}}-p-year", "{{SCENE_ID}}-e-ex", "{{SCENE_ID}}-p-ex"].forEach((id) => {
+      ["{{SCENE_ID}}-e-year", "{{SCENE_ID}}-p-year", "{{SCENE_ID}}-e-title", "{{SCENE_ID}}-p-title", "{{SCENE_ID}}-e-ex", "{{SCENE_ID}}-p-ex"].forEach((id) => {
         const el = document.getElementById(id);
         if (el && !el.textContent.trim()) el.classList.add("gv-empty");
       });
+      const sheetCapEl = document.getElementById("{{SCENE_ID}}-sheet-cap");
+      if (sheetCapEl) {
+        sheetCapEl.textContent = sheetCapEl.textContent.replace(/\s*·\s*$/, "").trim();
+        if (!sheetCapEl.textContent) sheetCapEl.classList.add("gv-empty");
+      }
       if (tlTitleEl && !tlTitleEl.textContent.trim()) tlTitleEl.classList.add("gv-empty");
 
       let activeSel = "#{{SCENE_ID}}-era";

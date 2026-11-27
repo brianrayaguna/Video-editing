@@ -84,9 +84,10 @@ def _saliency_centroid(sal: np.ndarray) -> tuple[float, float]:
     total = float(mask.sum())
     if total <= 1e-8:
         return (0.5, 0.5)
-    ys, xs = np.indices((h, w))
-    cx = float((xs * mask).sum() / total) / max(w, 1)
-    cy = float((ys * mask).sum() / total) / max(h, 1)
+    col_sums = mask.sum(axis=0, dtype=np.float64)
+    row_sums = mask.sum(axis=1, dtype=np.float64)
+    cx = float(np.dot(np.arange(w, dtype=np.float64), col_sums) / total) / max(w, 1)
+    cy = float(np.dot(np.arange(h, dtype=np.float64), row_sums) / total) / max(h, 1)
     return (round(min(1.0, max(0.0, cx)), 4), round(min(1.0, max(0.0, cy)), 4))
 
 
@@ -144,11 +145,13 @@ def _detect_faces_and_eyeline(
         return ([], None)
 
 
-def _detect_structural_dividers(bgr: np.ndarray) -> tuple[list[float], list[float]]:
+def _detect_structural_dividers(
+    bgr: np.ndarray, *, gray: np.ndarray | None = None
+) -> tuple[list[float], list[float]]:
     """Detect strong full/half-span horizontal and vertical divider lines via HoughLinesP."""
     h, w = bgr.shape[:2]
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 60, 160)
+    gray_img = gray if gray is not None else cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray_img, 60, 160)
     min_len = int(round(min(w, h) * 0.30))
     lines = cv2.HoughLinesP(
         edges,
@@ -214,12 +217,10 @@ def _sample_text_contrast_and_style(
     bg_luma = _srgb_to_rel_luma(bg_rgb)
 
     crop_rgb = crop.reshape(-1, 3)[:, ::-1].astype(np.float64)
-    # Pick foreground pixels as those furthest in luminance from the background ring.
-    crop_luma = (
-        0.2126 * (crop_rgb[:, 0] / 255.0)
-        + 0.7152 * (crop_rgb[:, 1] / 255.0)
-        + 0.0722 * (crop_rgb[:, 2] / 255.0)
-    )
+    # Pick foreground pixels furthest in linearized WCAG relative luminance from the background ring.
+    c_norm = np.clip(crop_rgb / 255.0, 0.0, 1.0)
+    c_lin = np.where(c_norm <= 0.04045, c_norm / 12.92, ((c_norm + 0.055) / 1.055) ** 2.4)
+    crop_luma = 0.2126 * c_lin[:, 0] + 0.7152 * c_lin[:, 1] + 0.0722 * c_lin[:, 2]
     diff = np.abs(crop_luma - bg_luma)
     top_k = crop_rgb[diff >= np.percentile(diff, 80)]
     fg_rgb = np.median(top_k, axis=0) if len(top_k) > 0 else np.median(crop_rgb, axis=0)
@@ -247,13 +248,16 @@ def _sample_text_contrast_and_style(
 
 
 def _detect_graphic_containers(
-    bgr: np.ndarray, text_boxes: list[tuple[int, int, int, int]]
+    bgr: np.ndarray,
+    text_boxes: list[tuple[int, int, int, int]],
+    *,
+    gray: np.ndarray | None = None,
 ) -> list[tuple[int, int, int, int]]:
     """Detect prominent rectangular UI cards, callout panels, or graphic boxes."""
     h, w = bgr.shape[:2]
     frame_area = float(w * h)
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    gray_img = gray if gray is not None else cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray_img, (5, 5), 0)
     edges = cv2.Canny(blur, 50, 150)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
@@ -546,10 +550,13 @@ def _analyze_motion_window(
                     cx, cy = (min(xs) + max(xs)) * 0.5, (min(ys) + max(ys)) * 0.5
                     bw, bh = max(xs) - min(xs), max(ys) - min(ys)
                     dets.append((cx, cy, bw, bh, str(txt).strip()))
+            used_tids: set[int] = set()
             for cx, cy, bw, bh, txt in dets:
                 matched_id: int | None = None
                 best_dist = 120.0
                 for tid, hist in tracks.items():
+                    if tid in used_tids:
+                        continue
                     last = hist[-1]
                     dist = math.hypot(cx - last[1], cy - last[2])
                     if dist < best_dist:
@@ -559,6 +566,7 @@ def _analyze_motion_window(
                     matched_id = next_tid
                     next_tid += 1
                     tracks[matched_id] = []
+                used_tids.add(matched_id)
                 tracks[matched_id].append((t_rel, cx, cy, bw, bh, txt))
 
         for tid, hist in tracks.items():
@@ -791,414 +799,415 @@ def analyze_video(
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video: {video_path}")
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if width <= 0 or height <= 0:
-        cap.release()
-        raise RuntimeError(f"Video reported invalid dimensions ({width}x{height}): {video_path}")
-    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    duration_s = round(frame_count / fps, 3) if fps > 0 and frame_count > 0 else 0.0
-
-    ocr = RapidOCR()
-
-    rembg_session = None
-    if use_subject_mask:
-        try:
-            os.environ.setdefault("U2NET_HOME", str(DEFAULT_MODELS_DIR))
-            model_file = Path(os.environ["U2NET_HOME"]) / "u2netp.onnx"
-            if model_file.is_file():
-                from rembg import new_session
-
-                rembg_session = new_session("u2netp", providers=["CPUExecutionProvider"])
-        except Exception:
-            rembg_session = None
-
     face_detector = None
-    if use_face_detection:
-        try:
-            import mediapipe as mp
+    try:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if width <= 0 or height <= 0:
+            raise RuntimeError(f"Video reported invalid dimensions ({width}x{height}): {video_path}")
+        raw_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        fps = raw_fps if (math.isfinite(raw_fps) and raw_fps > 0.0) else 30.0
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        duration_s = round(frame_count / fps, 3) if fps > 0 and frame_count > 0 else 0.0
 
-            if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_detection"):
-                face_detector = mp.solutions.face_detection.FaceDetection(
-                    model_selection=1, min_detection_confidence=0.5
-                )
-        except Exception:
-            face_detector = None
+        ocr = RapidOCR()
 
-    samples = _load_sample_timestamps(shots_json, duration_s, max_frames)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    spatial_dir = out_dir / "spatial"
-    spatial_dir.mkdir(parents=True, exist_ok=True)
+        rembg_session = None
+        if use_subject_mask:
+            try:
+                os.environ.setdefault("U2NET_HOME", str(DEFAULT_MODELS_DIR))
+                model_file = Path(os.environ["U2NET_HOME"]) / "u2netp.onnx"
+                if model_file.is_file():
+                    from rembg import new_session
 
-    frame_results: list[dict[str, Any]] = []
-    all_lefts: list[float] = []
-    all_rights: list[float] = []
-    all_tops: list[float] = []
-    all_bottoms: list[float] = []
-    all_x_edges: list[float] = []
-    align_votes: dict[str, int] = {"left": 0, "center": 0, "right": 0}
-    total_dividers = 0
+                    rembg_session = new_session("u2netp", providers=["CPUExecutionProvider"])
+            except Exception:
+                rembg_session = None
 
-    display_h: list[float] = []
-    body_h: list[float] = []
-    caption_h: list[float] = []
-    wcag_vals: list[float] = []
-    small_wcag_vals: list[float] = []
-    aaa_pass_flags: list[bool] = []
-    line_height_ratios: list[float] = []
-    text_width_pcts: list[float] = []
-    tilted_count = 0
-    boxed_count = 0
-    total_text_blocks = 0
-    eye_lines: list[float] = []
-    face_frames = 0
-    fg_bg_deltas: list[float] = []
-    shot_scales: list[str] = []
-    rot_scores: list[float] = []
-    lighting_keys: list[str] = []
+        if use_face_detection:
+            try:
+                import mediapipe as mp
 
-    for f_idx, (t_mid, shot_idx, _st, _en) in enumerate(samples):
-        cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, t_mid) * 1000.0)
-        ok, bgr = cap.read()
-        if not ok or bgr is None:
-            continue
+                if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_detection"):
+                    face_detector = mp.solutions.face_detection.FaceDetection(
+                        model_selection=1, min_detection_confidence=0.5
+                    )
+            except Exception:
+                face_detector = None
 
-        sal_map = _spectral_residual_saliency(bgr)
-        sal_centroid = _saliency_centroid(sal_map)
-        div_x, div_y = _detect_structural_dividers(bgr)
-        total_dividers += len(div_x) + len(div_y)
+        samples = _load_sample_timestamps(shots_json, duration_s, max_frames)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spatial_dir = out_dir / "spatial"
+        spatial_dir.mkdir(parents=True, exist_ok=True)
 
-        elements: list[dict[str, Any]] = []
-        text_boxes_px: list[tuple[int, int, int, int]] = []
-        frame_x_edges: list[float] = list(div_x)
-        frame_y_edges: list[float] = list(div_y)
-        violations: list[str] = []
+        frame_results: list[dict[str, Any]] = []
+        all_lefts: list[float] = []
+        all_rights: list[float] = []
+        all_tops: list[float] = []
+        all_bottoms: list[float] = []
+        all_x_edges: list[float] = []
+        align_votes: dict[str, int] = {"left": 0, "center": 0, "right": 0}
+        total_dividers = 0
 
-        # 1. Micro-typography via RapidOCR.
-        ocr_res, _ = ocr(bgr)
-        t_counter = 1
-        if ocr_res:
-            for poly, txt, score in ocr_res:
-                clean_txt = str(txt).strip()
-                if float(score) < 0.55 or not clean_txt:
-                    continue
-                pts = np.array(poly, dtype=np.float64)
-                x1, y1 = int(np.floor(pts[:, 0].min())), int(np.floor(pts[:, 1].min()))
-                x2, y2 = int(np.ceil(pts[:, 0].max())), int(np.ceil(pts[:, 1].max()))
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(width, x2), min(height, y2)
-                if x2 - x1 < 6 or y2 - y1 < 6:
-                    continue
+        display_h: list[float] = []
+        body_h: list[float] = []
+        caption_h: list[float] = []
+        wcag_vals: list[float] = []
+        small_wcag_vals: list[float] = []
+        aaa_pass_flags: list[bool] = []
+        line_height_ratios: list[float] = []
+        text_width_pcts: list[float] = []
+        tilted_count = 0
+        boxed_count = 0
+        total_text_blocks = 0
+        eye_lines: list[float] = []
+        face_frames = 0
+        fg_bg_deltas: list[float] = []
+        shot_scales: list[str] = []
+        rot_scores: list[float] = []
+        lighting_keys: list[str] = []
 
-                # Top edge angle in degrees.
-                dx = float(pts[1, 0] - pts[0, 0])
-                dy = float(pts[1, 1] - pts[0, 1])
-                tilt_deg = round(math.degrees(math.atan2(dy, dx)), 2) if abs(dx) > 1e-3 else 0.0
-                if abs(tilt_deg) >= 1.5:
-                    tilted_count += 1
+        for f_idx, (t_mid, shot_idx, _st, _en) in enumerate(samples):
+            cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, t_mid) * 1000.0)
+            ok, bgr = cap.read()
+            if not ok or bgr is None:
+                continue
 
+            gray_u8 = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+            sal_map = _spectral_residual_saliency(bgr)
+            sal_centroid = _saliency_centroid(sal_map)
+            div_x, div_y = _detect_structural_dividers(bgr, gray=gray_u8)
+            total_dividers += len(div_x) + len(div_y)
+
+            elements: list[dict[str, Any]] = []
+            text_boxes_px: list[tuple[int, int, int, int]] = []
+            frame_x_edges: list[float] = list(div_x)
+            frame_y_edges: list[float] = list(div_y)
+            violations: list[str] = []
+
+            # 1. Micro-typography via RapidOCR.
+            ocr_res, _ = ocr(bgr)
+            t_counter = 1
+            if ocr_res:
+                for poly, txt, score in ocr_res:
+                    clean_txt = str(txt).strip()
+                    if float(score) < 0.55 or not clean_txt:
+                        continue
+                    pts = np.array(poly, dtype=np.float64)
+                    x1, y1 = int(np.floor(pts[:, 0].min())), int(np.floor(pts[:, 1].min()))
+                    x2, y2 = int(np.ceil(pts[:, 0].max())), int(np.ceil(pts[:, 1].max()))
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(width, x2), min(height, y2)
+                    if x2 - x1 < 6 or y2 - y1 < 6:
+                        continue
+
+                    # Top edge angle in degrees.
+                    dx = float(pts[1, 0] - pts[0, 0])
+                    dy = float(pts[1, 1] - pts[0, 1])
+                    tilt_deg = round(math.degrees(math.atan2(dy, dx)), 2) if abs(dx) > 1e-3 else 0.0
+                    if abs(tilt_deg) >= 1.5:
+                        tilted_count += 1
+
+                    bbox_norm = (
+                        round(x1 / width, 4),
+                        round(y1 / height, 4),
+                        round(x2 / width, 4),
+                        round(y2 / height, 4),
+                    )
+                    h_pct = (y2 - y1) / height
+                    yc = (bbox_norm[1] + bbox_norm[3]) * 0.5
+                    xc = (bbox_norm[0] + bbox_norm[2]) * 0.5
+                    role = _classify_text_role(h_pct, yc)
+                    if role == "display":
+                        display_h.append(h_pct)
+                    elif role == "caption":
+                        caption_h.append(h_pct)
+                    elif role == "body":
+                        body_h.append(h_pct)
+
+                    contrast, fg_hex, bg_hex, container_style = _sample_text_contrast_and_style(
+                        bgr, (x1, y1, x2, y2)
+                    )
+                    wcag_vals.append(contrast)
+                    aaa_threshold = 4.5 if role == "display" else 7.0
+                    aaa_pass_flags.append(contrast >= aaa_threshold)
+                    if role != "display":
+                        small_wcag_vals.append(contrast)
+                    text_width_pcts.append(round((x2 - x1) / max(width, 1), 4))
+                    total_text_blocks += 1
+                    if container_style != "boxless":
+                        boxed_count += 1
+
+                    viol = _check_safe_zone(bbox_norm, safe_zone)
+                    el_id = f"T{t_counter}"
+                    t_counter += 1
+                    if viol:
+                        violations.append(el_id)
+
+                    text_boxes_px.append((x1, y1, x2, y2))
+                    all_lefts.append(bbox_norm[0])
+                    all_rights.append(1.0 - bbox_norm[2])
+                    all_tops.append(bbox_norm[1])
+                    all_bottoms.append(1.0 - bbox_norm[3])
+                    frame_x_edges.extend([bbox_norm[0], bbox_norm[2]])
+                    frame_y_edges.extend([bbox_norm[1], bbox_norm[3]])
+                    all_x_edges.extend([bbox_norm[0], xc, bbox_norm[2]])
+
+                    if abs(xc - 0.5) <= 0.06:
+                        align_votes["center"] += 1
+                    elif bbox_norm[0] < (1.0 - bbox_norm[2]):
+                        align_votes["left"] += 1
+                    else:
+                        align_votes["right"] += 1
+
+                    elements.append(
+                        {
+                            "element_id": el_id,
+                            "kind": "text",
+                            "bbox_px": [x1, y1, x2, y2],
+                            "bbox_norm": list(bbox_norm),
+                            "hierarchy_tier": 2,
+                            "visual_weight": _compute_visual_weight(
+                                bbox_norm, sal_map, contrast, "text"
+                            ),
+                            "text": clean_txt[:80],
+                            "text_role": role,
+                            "container_style": container_style,
+                            "tilt_deg": tilt_deg,
+                            "wcag_contrast": contrast,
+                            "fg_hex": fg_hex,
+                            "bg_hex": bg_hex,
+                            "safe_zone_violation": viol,
+                        }
+                    )
+
+            # Estimate stacked line-height ratios between horizontally overlapping adjacent text lines.
+            if len(text_boxes_px) >= 2:
+                sorted_tb = sorted(text_boxes_px, key=lambda b: (b[1], b[0]))
+                for idx_a in range(len(sorted_tb) - 1):
+                    ax1, ay1, ax2, ay2 = sorted_tb[idx_a]
+                    ah = max(1.0, float(ay2 - ay1))
+                    aw = max(1.0, float(ax2 - ax1))
+                    ayc = (ay1 + ay2) * 0.5
+                    for idx_b in range(idx_a + 1, len(sorted_tb)):
+                        bx1, by1, bx2, by2 = sorted_tb[idx_b]
+                        bh = max(1.0, float(by2 - by1))
+                        bw = max(1.0, float(bx2 - bx1))
+                        byc = (by1 + by2) * 0.5
+                        overlap_w = max(0.0, float(min(ax2, bx2) - max(ax1, bx1)))
+                        if overlap_w / min(aw, bw) < 0.40:
+                            continue
+                        if max(ah, bh) / min(ah, bh) > 1.45:
+                            continue
+                        mean_h = (ah + bh) * 0.5
+                        ratio = (byc - ayc) / mean_h
+                        if 0.85 <= ratio <= 2.60:
+                            line_height_ratios.append(ratio)
+                        break
+
+            # 2. Graphic containers.
+            g_boxes = _detect_graphic_containers(bgr, text_boxes_px, gray=gray_u8)
+            for g_idx, (x1, y1, x2, y2) in enumerate(g_boxes, start=1):
                 bbox_norm = (
                     round(x1 / width, 4),
                     round(y1 / height, 4),
                     round(x2 / width, 4),
                     round(y2 / height, 4),
                 )
-                h_pct = (y2 - y1) / height
-                yc = (bbox_norm[1] + bbox_norm[3]) * 0.5
-                xc = (bbox_norm[0] + bbox_norm[2]) * 0.5
-                role = _classify_text_role(h_pct, yc)
-                if role == "display":
-                    display_h.append(h_pct)
-                elif role == "caption":
-                    caption_h.append(h_pct)
-                elif role == "body":
-                    body_h.append(h_pct)
-
-                contrast, fg_hex, bg_hex, container_style = _sample_text_contrast_and_style(
-                    bgr, (x1, y1, x2, y2)
-                )
-                wcag_vals.append(contrast)
-                aaa_threshold = 4.5 if role == "display" else 7.0
-                aaa_pass_flags.append(contrast >= aaa_threshold)
-                if role != "display":
-                    small_wcag_vals.append(contrast)
-                text_width_pcts.append(round((x2 - x1) / max(width, 1), 4))
-                total_text_blocks += 1
-                if container_style != "boxless":
-                    boxed_count += 1
-
                 viol = _check_safe_zone(bbox_norm, safe_zone)
-                el_id = f"T{t_counter}"
-                t_counter += 1
+                el_id = f"G{g_idx}"
                 if viol:
                     violations.append(el_id)
-
-                text_boxes_px.append((x1, y1, x2, y2))
-                all_lefts.append(bbox_norm[0])
-                all_rights.append(1.0 - bbox_norm[2])
-                all_tops.append(bbox_norm[1])
-                all_bottoms.append(1.0 - bbox_norm[3])
                 frame_x_edges.extend([bbox_norm[0], bbox_norm[2]])
                 frame_y_edges.extend([bbox_norm[1], bbox_norm[3]])
-                all_x_edges.extend([bbox_norm[0], xc, bbox_norm[2]])
-
-                if abs(xc - 0.5) <= 0.06:
-                    align_votes["center"] += 1
-                elif bbox_norm[0] < (1.0 - bbox_norm[2]):
-                    align_votes["left"] += 1
-                else:
-                    align_votes["right"] += 1
-
                 elements.append(
                     {
                         "element_id": el_id,
-                        "kind": "text",
+                        "kind": "graphic_container",
                         "bbox_px": [x1, y1, x2, y2],
                         "bbox_norm": list(bbox_norm),
                         "hierarchy_tier": 2,
                         "visual_weight": _compute_visual_weight(
-                            bbox_norm, sal_map, contrast, "text"
+                            bbox_norm, sal_map, None, "graphic_container"
                         ),
-                        "text": clean_txt[:80],
-                        "text_role": role,
-                        "container_style": container_style,
-                        "tilt_deg": tilt_deg,
-                        "wcag_contrast": contrast,
-                        "fg_hex": fg_hex,
-                        "bg_hex": bg_hex,
+                        "text": None,
+                        "text_role": None,
+                        "container_style": "card",
+                        "tilt_deg": 0.0,
+                        "wcag_contrast": None,
+                        "fg_hex": None,
+                        "bg_hex": None,
                         "safe_zone_violation": viol,
                     }
                 )
 
-        # Estimate stacked line-height ratios between horizontally overlapping adjacent text lines.
-        if len(text_boxes_px) >= 2:
-            sorted_tb = sorted(text_boxes_px, key=lambda b: (b[1], b[0]))
-            for idx_a in range(len(sorted_tb) - 1):
-                ax1, ay1, ax2, ay2 = sorted_tb[idx_a]
-                ah = max(1.0, float(ay2 - ay1))
-                aw = max(1.0, float(ax2 - ax1))
-                ayc = (ay1 + ay2) * 0.5
-                for idx_b in range(idx_a + 1, len(sorted_tb)):
-                    bx1, by1, bx2, by2 = sorted_tb[idx_b]
-                    bh = max(1.0, float(by2 - by1))
-                    bw = max(1.0, float(bx2 - bx1))
-                    byc = (by1 + by2) * 0.5
-                    overlap_w = max(0.0, float(min(ax2, bx2) - max(ax1, bx1)))
-                    if overlap_w / min(aw, bw) < 0.40:
-                        continue
-                    if max(ah, bh) / min(ah, bh) > 1.45:
-                        continue
-                    mean_h = (ah + bh) * 0.5
-                    ratio = (byc - ayc) / mean_h
-                    if 0.85 <= ratio <= 2.60:
-                        line_height_ratios.append(ratio)
-                    break
-
-        # 2. Graphic containers.
-        g_boxes = _detect_graphic_containers(bgr, text_boxes_px)
-        for g_idx, (x1, y1, x2, y2) in enumerate(g_boxes, start=1):
-            bbox_norm = (
-                round(x1 / width, 4),
-                round(y1 / height, 4),
-                round(x2 / width, 4),
-                round(y2 / height, 4),
-            )
-            viol = _check_safe_zone(bbox_norm, safe_zone)
-            el_id = f"G{g_idx}"
-            if viol:
-                violations.append(el_id)
-            frame_x_edges.extend([bbox_norm[0], bbox_norm[2]])
-            frame_y_edges.extend([bbox_norm[1], bbox_norm[3]])
-            elements.append(
-                {
-                    "element_id": el_id,
-                    "kind": "graphic_container",
-                    "bbox_px": [x1, y1, x2, y2],
-                    "bbox_norm": list(bbox_norm),
-                    "hierarchy_tier": 2,
-                    "visual_weight": _compute_visual_weight(
-                        bbox_norm, sal_map, None, "graphic_container"
-                    ),
-                    "text": None,
-                    "text_role": None,
-                    "container_style": "card",
-                    "tilt_deg": 0.0,
-                    "wcag_contrast": None,
-                    "fg_hex": None,
-                    "bg_hex": None,
-                    "safe_zone_violation": viol,
-                }
-            )
-
-        # 3. Subject foreground mask (u2netp) & whitespace/calm ratio.
-        subj_mask = _detect_subject_mask(bgr, rembg_session)
-        if subj_mask is not None and subj_mask.sum() > (width * height * 0.02):
-            ys, xs = np.where(subj_mask > 0)
-            sx1, sy1, sx2, sy2 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-            s_norm = (
-                round(sx1 / width, 4),
-                round(sy1 / height, 4),
-                round(sx2 / width, 4),
-                round(sy2 / height, 4),
-            )
-            elements.append(
-                {
-                    "element_id": "S1",
-                    "kind": "subject_foreground",
-                    "bbox_px": [sx1, sy1, sx2, sy2],
-                    "bbox_norm": list(s_norm),
-                    "hierarchy_tier": 1,
-                    "visual_weight": _compute_visual_weight(
-                        s_norm, sal_map, None, "subject_foreground"
-                    ),
-                    "text": None,
-                    "text_role": None,
-                    "container_style": None,
-                    "tilt_deg": None,
-                    "wcag_contrast": None,
-                    "fg_hex": None,
-                    "bg_hex": None,
-                    "safe_zone_violation": False,
-                }
-            )
-            occupied = subj_mask.astype(bool)
-        else:
-            occupied = sal_map >= max(0.30, float(np.percentile(sal_map, 75)))
-
-        for el in elements:
-            if el["kind"] in ("text", "graphic_container"):
-                bx1, by1, bx2, by2 = el["bbox_px"]
-                occupied[by1:by2, bx1:bx2] = True
-        whitespace_ratio = round(float(1.0 - occupied.mean()), 4)
-
-        # 4. Face & eye-line detection.
-        face_boxes, eye_line = _detect_faces_and_eyeline(bgr, face_detector)
-        if face_boxes:
-            face_frames += 1
-        if eye_line is not None:
-            eye_lines.append(eye_line)
-        for fi, (fx1, fy1, fx2, fy2) in enumerate(face_boxes, start=1):
-            f_norm = (
-                round(fx1 / width, 4),
-                round(fy1 / height, 4),
-                round(fx2 / width, 4),
-                round(fy2 / height, 4),
-            )
-            elements.append(
-                {
-                    "element_id": f"F{fi}",
-                    "kind": "face",
-                    "bbox_px": [fx1, fy1, fx2, fy2],
-                    "bbox_norm": list(f_norm),
-                    "hierarchy_tier": 1,
-                    "visual_weight": _compute_visual_weight(f_norm, sal_map, None, "face"),
-                    "text": None,
-                    "text_role": None,
-                    "container_style": None,
-                    "tilt_deg": None,
-                    "wcag_contrast": None,
-                    "fg_hex": None,
-                    "bg_hex": None,
-                    "safe_zone_violation": False,
-                }
-            )
-
-        _assign_hierarchy_tiers(elements)
-        competing = sum(1 for el in elements if el["hierarchy_tier"] == 1)
-
-        # Estimate shot scale, headroom, and figure-ground luminance separation.
-        fg_luma_delta: float | None = None
-        if subj_mask is not None and subj_mask.any() and (~subj_mask.astype(bool)).any():
-            gray_f = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-            fg_m = float(gray_f[subj_mask > 0].mean())
-            bg_m = float(gray_f[subj_mask == 0].mean())
-            fg_luma_delta = round(abs(fg_m - bg_m), 2)
-            fg_bg_deltas.append(fg_luma_delta)
-
-        headroom_pct: float | None = None
-        shot_scale_est: str = "graphic"
-        if face_boxes:
-            tallest = max(face_boxes, key=lambda b: b[3] - b[1])
-            face_h_ratio = (tallest[3] - tallest[1]) / max(height, 1)
-            headroom_pct = round(max(0.0, min(1.0, tallest[1] / max(height, 1))), 4)
-            if face_h_ratio >= 0.45:
-                shot_scale_est = "ecu"
-            elif face_h_ratio >= 0.28:
-                shot_scale_est = "cu"
-            elif face_h_ratio >= 0.18:
-                shot_scale_est = "mcu"
-            elif face_h_ratio >= 0.10:
-                shot_scale_est = "ms"
+            # 3. Subject foreground mask (u2netp) & whitespace/calm ratio.
+            subj_mask = _detect_subject_mask(bgr, rembg_session)
+            if subj_mask is not None and subj_mask.sum() > (width * height * 0.02):
+                ys, xs = np.where(subj_mask > 0)
+                sx1, sy1, sx2, sy2 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+                s_norm = (
+                    round(sx1 / width, 4),
+                    round(sy1 / height, 4),
+                    round(sx2 / width, 4),
+                    round(sy2 / height, 4),
+                )
+                elements.append(
+                    {
+                        "element_id": "S1",
+                        "kind": "subject_foreground",
+                        "bbox_px": [sx1, sy1, sx2, sy2],
+                        "bbox_norm": list(s_norm),
+                        "hierarchy_tier": 1,
+                        "visual_weight": _compute_visual_weight(
+                            s_norm, sal_map, None, "subject_foreground"
+                        ),
+                        "text": None,
+                        "text_role": None,
+                        "container_style": None,
+                        "tilt_deg": None,
+                        "wcag_contrast": None,
+                        "fg_hex": None,
+                        "bg_hex": None,
+                        "safe_zone_violation": False,
+                    }
+                )
+                occupied = subj_mask.astype(bool)
             else:
+                occupied = sal_map >= max(0.30, float(np.percentile(sal_map, 75)))
+
+            for el in elements:
+                if el["kind"] in ("text", "graphic_container"):
+                    bx1, by1, bx2, by2 = el["bbox_px"]
+                    occupied[by1:by2, bx1:bx2] = True
+            whitespace_ratio = round(float(1.0 - occupied.mean()), 4)
+
+            # 4. Face & eye-line detection.
+            face_boxes, eye_line = _detect_faces_and_eyeline(bgr, face_detector)
+            if face_boxes:
+                face_frames += 1
+            if eye_line is not None:
+                eye_lines.append(eye_line)
+            for fi, (fx1, fy1, fx2, fy2) in enumerate(face_boxes, start=1):
+                f_norm = (
+                    round(fx1 / width, 4),
+                    round(fy1 / height, 4),
+                    round(fx2 / width, 4),
+                    round(fy2 / height, 4),
+                )
+                elements.append(
+                    {
+                        "element_id": f"F{fi}",
+                        "kind": "face",
+                        "bbox_px": [fx1, fy1, fx2, fy2],
+                        "bbox_norm": list(f_norm),
+                        "hierarchy_tier": 1,
+                        "visual_weight": _compute_visual_weight(f_norm, sal_map, None, "face"),
+                        "text": None,
+                        "text_role": None,
+                        "container_style": None,
+                        "tilt_deg": None,
+                        "wcag_contrast": None,
+                        "fg_hex": None,
+                        "bg_hex": None,
+                        "safe_zone_violation": False,
+                    }
+                )
+
+            _assign_hierarchy_tiers(elements)
+            competing = sum(1 for el in elements if el["hierarchy_tier"] == 1)
+
+            gray_f = gray_u8.astype(np.float32)
+            # Estimate shot scale, headroom, and figure-ground luminance separation.
+            fg_luma_delta: float | None = None
+            if subj_mask is not None and subj_mask.any() and (~subj_mask.astype(bool)).any():
+                fg_m = float(gray_f[subj_mask > 0].mean())
+                bg_m = float(gray_f[subj_mask == 0].mean())
+                fg_luma_delta = round(abs(fg_m - bg_m), 2)
+                fg_bg_deltas.append(fg_luma_delta)
+
+            headroom_pct: float | None = None
+            shot_scale_est: str = "graphic"
+            if face_boxes:
+                tallest = max(face_boxes, key=lambda b: b[3] - b[1])
+                face_h_ratio = (tallest[3] - tallest[1]) / max(height, 1)
+                headroom_pct = round(max(0.0, min(1.0, tallest[1] / max(height, 1))), 4)
+                if face_h_ratio >= 0.45:
+                    shot_scale_est = "ecu"
+                elif face_h_ratio >= 0.28:
+                    shot_scale_est = "cu"
+                elif face_h_ratio >= 0.18:
+                    shot_scale_est = "mcu"
+                elif face_h_ratio >= 0.10:
+                    shot_scale_est = "ms"
+                else:
+                    shot_scale_est = "ws"
+            elif subj_mask is not None and subj_mask.sum() > (width * height * 0.04):
                 shot_scale_est = "ws"
-        elif subj_mask is not None and subj_mask.sum() > (width * height * 0.04):
-            shot_scale_est = "ws"
-        shot_scales.append(shot_scale_est)
+            shot_scales.append(shot_scale_est)
 
-        # Computational cinematography frame cues (lighting key, thirds, symmetry, warm/cool).
-        gray_c = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-        mean_y = float(gray_c.mean())
-        rms_c = float(gray_c.std())
-        dark_f = float((gray_c < 52.0).mean())
-        bright_f = float((gray_c > 195.0).mean())
-        if dark_f > 0.35 and bright_f > 0.12 and rms_c >= 58.0:
-            lighting_key = "chiaroscuro"
-        elif mean_y >= 158.0 and dark_f < 0.18:
-            lighting_key = "high_key"
-        elif mean_y <= 82.0:
-            lighting_key = "low_key"
-        else:
-            lighting_key = "normal_key"
-        lighting_keys.append(lighting_key)
+            # Computational cinematography frame cues (lighting key, thirds, symmetry, warm/cool).
+            mean_y = float(gray_f.mean())
+            rms_c = float(gray_f.std())
+            dark_f = float((gray_f < 52.0).mean())
+            bright_f = float((gray_f > 195.0).mean())
+            if dark_f > 0.35 and bright_f > 0.12 and rms_c >= 58.0:
+                lighting_key = "chiaroscuro"
+            elif mean_y >= 158.0 and dark_f < 0.18:
+                lighting_key = "high_key"
+            elif mean_y <= 82.0:
+                lighting_key = "low_key"
+            else:
+                lighting_key = "normal_key"
+            lighting_keys.append(lighting_key)
 
-        thirds_pts = ((1.0 / 3.0, 1.0 / 3.0), (2.0 / 3.0, 1.0 / 3.0), (1.0 / 3.0, 2.0 / 3.0), (2.0 / 3.0, 2.0 / 3.0))
-        min_d = min(math.hypot(sal_centroid[0] - px, sal_centroid[1] - py) for px, py in thirds_pts)
-        rot_score = round(max(0.0, min(1.0, 1.0 - (min_d / 0.38))), 4)
-        rot_scores.append(rot_score)
+            thirds_pts = ((1.0 / 3.0, 1.0 / 3.0), (2.0 / 3.0, 1.0 / 3.0), (1.0 / 3.0, 2.0 / 3.0), (2.0 / 3.0, 2.0 / 3.0))
+            min_d = min(math.hypot(sal_centroid[0] - px, sal_centroid[1] - py) for px, py in thirds_pts)
+            rot_score = round(max(0.0, min(1.0, 1.0 - (min_d / 0.38))), 4)
+            rot_scores.append(rot_score)
 
-        flipped_y = cv2.flip(gray_c, 1)
-        sym_index = round(max(0.0, min(1.0, 1.0 - float(np.abs(gray_c - flipped_y).mean()) / 255.0)), 4)
-        b_ch = bgr[:, :, 0].astype(np.float32)
-        r_ch = bgr[:, :, 2].astype(np.float32)
-        wb_balance = round(max(-1.0, min(1.0, float(((r_ch - b_ch) / 255.0).mean()))), 4)
+            flipped_y = cv2.flip(gray_f, 1)
+            sym_index = round(max(0.0, min(1.0, 1.0 - float(np.abs(gray_f - flipped_y).mean()) / 255.0)), 4)
+            b_ch = bgr[:, :, 0].astype(np.float32)
+            r_ch = bgr[:, :, 2].astype(np.float32)
+            wb_balance = round(max(-1.0, min(1.0, float(((r_ch - b_ch) / 255.0).mean()))), 4)
 
-        bp_path = spatial_dir / f"frame_{f_idx:03d}_blueprint.jpg"
-        frame_entry: dict[str, Any] = {
-            "frame_index": f_idx,
-            "shot_index": shot_idx,
-            "timestamp_s": round(max(0.0, t_mid), 3),
-            "blueprint_path": str(bp_path),
-            "saliency_centroid_norm": list(sal_centroid),
-            "whitespace_ratio": whitespace_ratio,
-            "competing_signals": competing,
-            "eye_line_y_norm": eye_line,
-            "shot_scale_est": shot_scale_est,
-            "headroom_pct": headroom_pct,
-            "figure_ground_luma_delta": fg_luma_delta,
-            "lighting_key": lighting_key,
-            "rule_of_thirds_score": rot_score,
-            "symmetry_index": sym_index,
-            "warm_cool_balance": wb_balance,
-            "grid_lines_x_norm": _cluster_1d(frame_x_edges, eps=0.025),
-            "grid_lines_y_norm": _cluster_1d(frame_y_edges, eps=0.025),
-            "safe_zone_violations": violations,
-            "elements": elements,
-        }
-        _render_blueprint(bgr, frame_entry, safe_zone, sal_map, bp_path)
-        frame_results.append(frame_entry)
+            bp_path = spatial_dir / f"frame_{f_idx:03d}_blueprint.jpg"
+            frame_entry: dict[str, Any] = {
+                "frame_index": f_idx,
+                "shot_index": shot_idx,
+                "timestamp_s": round(max(0.0, t_mid), 3),
+                "blueprint_path": str(bp_path),
+                "saliency_centroid_norm": list(sal_centroid),
+                "whitespace_ratio": whitespace_ratio,
+                "competing_signals": competing,
+                "eye_line_y_norm": eye_line,
+                "shot_scale_est": shot_scale_est,
+                "headroom_pct": headroom_pct,
+                "figure_ground_luma_delta": fg_luma_delta,
+                "lighting_key": lighting_key,
+                "rule_of_thirds_score": rot_score,
+                "symmetry_index": sym_index,
+                "warm_cool_balance": wb_balance,
+                "grid_lines_x_norm": _cluster_1d(frame_x_edges, eps=0.025),
+                "grid_lines_y_norm": _cluster_1d(frame_y_edges, eps=0.025),
+                "safe_zone_violations": violations,
+                "elements": elements,
+            }
+            _render_blueprint(bgr, frame_entry, safe_zone, sal_map, bp_path)
+            frame_results.append(frame_entry)
 
-    # 5. Motion & easing windows at shot onsets.
-    motion_windows: list[dict[str, Any]] = []
-    win_samples = samples[:max_motion_windows]
-    for w_idx, (_mid, shot_idx, st, en) in enumerate(win_samples):
-        motion_windows.append(
-            _analyze_motion_window(cap, fps, st, en, w_idx, shot_idx, ocr)
-        )
-
-    cap.release()
-    if face_detector is not None:
-        face_detector.close()
+        # 5. Motion & easing windows at shot onsets.
+        motion_windows: list[dict[str, Any]] = []
+        win_samples = samples[:max_motion_windows]
+        for w_idx, (_mid, shot_idx, st, en) in enumerate(win_samples):
+            motion_windows.append(
+                _analyze_motion_window(cap, fps, st, en, w_idx, shot_idx, ocr)
+            )
+    finally:
+        cap.release()
+        if face_detector is not None:
+            face_detector.close()
 
     # Aggregate video-level summaries.
     grid_clusters_x = _cluster_1d(all_x_edges, eps=0.03)

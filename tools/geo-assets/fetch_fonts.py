@@ -538,7 +538,13 @@ def _download_candidate(urls: list[str], dest: Path) -> tuple[str, str, str]:
             if not is_valid_font_bytes(data):
                 last_err = f"invalid font header from {url} ({len(data)} bytes)"
                 continue
-            dest.write_bytes(data)
+            tmp = dest.with_suffix(dest.suffix + ".part")
+            try:
+                tmp.write_bytes(data)
+                tmp.replace(dest)
+            except Exception:
+                tmp.unlink(missing_ok=True)
+                raise
             return (dest.name, "downloaded", url)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_err = f"{url}: {exc}"
@@ -568,14 +574,48 @@ def _derive_static_instances(fonts_dir: Path, allowed_families: set[str] | None)
         font = TTFont(str(src))
         if "fvar" not in font:
             continue
-        axes = {a.axisTag for a in font["fvar"].axes}
-        loc: dict[str, float] = {}
-        if "wght" in axes:
-            loc["wght"] = float(wght)
-        if not loc:
+        # Pin every variable axis (e.g. opsz, wdth, wght) so libass receives a true static TTF.
+        loc: dict[str, float] = {a.axisTag: float(a.defaultValue) for a in font["fvar"].axes}
+        if "wght" not in loc:
             continue
-        static_font = instantiateVariableFont(font, loc, inplace=False)
-        static_font.save(str(dst))
+        loc["wght"] = float(wght)
+        static_font = instantiateVariableFont(font, loc, inplace=False, updateFontNames=False)
+        is_italic = "italic" in dst_name.lower()
+        is_bold = wght >= 700
+        subfamily = (
+            "Bold Italic"
+            if (is_bold and is_italic)
+            else ("Bold" if is_bold else ("Italic" if is_italic else "Regular"))
+        )
+        names = static_font["name"]
+        for name_id in (2, 4, 6, 16, 17, 21, 22, 25):
+            names.removeNames(nameID=name_id)
+        names.setName(family, 1, 3, 1, 0x409)
+        names.setName(subfamily, 2, 3, 1, 0x409)
+        names.setName(f"{family} {subfamily}", 4, 3, 1, 0x409)
+        names.setName(Path(dst_name).stem, 6, 3, 1, 0x409)
+        static_font["OS/2"].usWeightClass = int(wght)
+        fs_sel = static_font["OS/2"].fsSelection & ~0b1100001
+        if is_italic:
+            fs_sel |= 0b0000001
+        if is_bold:
+            fs_sel |= 0b0100000
+        if not is_bold and not is_italic:
+            fs_sel |= 0b1000000
+        static_font["OS/2"].fsSelection = fs_sel
+        mac_style = static_font["head"].macStyle & ~0b11
+        if is_bold:
+            mac_style |= 0b01
+        if is_italic:
+            mac_style |= 0b10
+        static_font["head"].macStyle = mac_style
+        tmp = dst.with_suffix(dst.suffix + ".part")
+        try:
+            static_font.save(str(tmp))
+            tmp.replace(dst)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
         derived.append(dst_name)
     return derived
 

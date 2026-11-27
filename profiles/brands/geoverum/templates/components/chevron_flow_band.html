@@ -148,18 +148,20 @@
       );
       nodes.forEach((node, idx) => {
         const t0 = idx * 0.055;
+        const stepIn = Math.min(0.24, enterS);
         tl.fromTo(
           node,
           { x: -16, opacity: 0 },
-          { x: 0, opacity: 0.95, duration: Math.min(0.24, enterS), ease: "power2.out" },
+          { x: 0, opacity: 0.95, duration: stepIn, ease: "power2.out" },
           t0
         );
-        const shiftEnd = Math.max(t0 + 0.24, exitAt);
-        if (shiftEnd > t0 + 0.26) {
+        const driftStart = t0 + stepIn;
+        const shiftEnd = Math.max(driftStart, exitAt);
+        if (shiftEnd > driftStart + 0.04) {
           tl.to(
             node,
-            { x: 26, duration: shiftEnd - (t0 + 0.22), ease: "none" },
-            t0 + 0.22
+            { x: 26, duration: shiftEnd - driftStart, ease: "none" },
+            driftStart
           );
         }
       });

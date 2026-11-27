@@ -17,7 +17,7 @@ impl Drop for TempDirGuard {
 }
 
 use anyhow::{Context, Result, anyhow, bail};
-use image::{RgbImage, codecs::jpeg::JpegEncoder};
+use image::{ExtendedColorType, codecs::jpeg::JpegEncoder};
 
 use crate::ffmpeg_parse::{
     FRAME_STAT_KEYS, build_shots_and_stats, gate_cut_candidates, parse_ffmpeg_stderr, round3,
@@ -25,7 +25,7 @@ use crate::ffmpeg_parse::{
 use crate::ffprobe::run_ffprobe;
 use crate::hash::hash_file;
 use crate::types::{KeyframeInfo, MediaProbeReport, ShotStats, TimingBreakdown, VisualInfo};
-use crate::vision::{FrameVisionMetrics, aggregate_palette_and_visual, analyze_rgb24_frame};
+use crate::vision::{VisualAccumulator, analyze_rgb24_frame};
 
 pub struct AnalyzeOptions {
     /// `scdet` score at or above which a candidate is a cut without further evidence.
@@ -70,11 +70,16 @@ fn even_scaled_height(src_w: u32, src_h: u32, target_w: u32) -> u32 {
 }
 
 fn encode_jpeg_bytes(rgb: &[u8], w: u32, h: u32) -> Result<Vec<u8>> {
+    let expected = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(3))
+        .context("Target RGB24 dimensions overflow")?;
+    if rgb.len() != expected {
+        bail!("Frame byte count did not match target RGB24 dimensions");
+    }
     let mut out = Vec::new();
-    let img = RgbImage::from_raw(w, h, rgb.to_vec())
-        .context("Frame byte count did not match target RGB24 dimensions")?;
     let mut encoder = JpegEncoder::new_with_quality(&mut out, 85);
-    encoder.encode_image(&img)?;
+    encoder.encode(rgb, w, h, ExtendedColorType::Rgb8)?;
     Ok(out)
 }
 
@@ -107,14 +112,23 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
     })?;
 
     let hash_report = hash_res?;
-    let meta = probe_res?;
-    let duration_s = meta.container.duration_s;
+    let mut meta = probe_res?;
+    let mut duration_s = meta.container.duration_s;
 
     let stream_t0 = Instant::now();
     let mut audio = meta.audio_base;
     let video = meta.video;
+    let v_spec = meta
+        .video_stream_index
+        .map(|i| format!("0:{i}"))
+        .unwrap_or_else(|| "0:V:0".to_string());
+    let a_spec = meta
+        .audio_stream_index
+        .map(|i| format!("0:{i}"))
+        .unwrap_or_else(|| "0:a:0".to_string());
 
-    let mut frame_metrics: Vec<FrameVisionMetrics> = Vec::new();
+    let mut visual_acc = VisualAccumulator::default();
+    let mut sampled_effective_fps = opts.analysis_fps.max(0.2);
     let mut staged_frames: Vec<(f64, std::path::PathBuf, f64, f64)> = Vec::new();
     let tmp_kf_guard = if let Some(ref kf_dir) = opts.extract_keyframes_dir {
         let seq = TMP_KF_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -138,6 +152,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         } else {
             opts.analysis_fps.max(0.2)
         };
+        sampled_effective_fps = effective_fps;
 
         let stats_print: String = FRAME_STAT_KEYS
             .iter()
@@ -152,20 +167,20 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
 
         let filter_complex = if audio.present {
             format!(
-                "[0:v]scale={target_w}:{target_h}:flags=fast_bilinear,\
-                 signalstats,{stats_print}\
+                "[{v_spec}]setpts=PTS-STARTPTS,scale={target_w}:{target_h}:flags=fast_bilinear,\
+                 format=yuv420p,signalstats,{stats_print}\
                  scdet=threshold={thr}:sc_pass=0,\
                  blackdetect=d=0.2:pix_th=0.10,\
                  fps={effective_fps},format=rgb24[vout];\
-                 [0:a]silencedetect=n={sil_db}dB:d={sil_d},{ebur_filter}[aout]",
+                 [{a_spec}]asetpts=PTS-STARTPTS,silencedetect=n={sil_db}dB:d={sil_d},{ebur_filter}[aout]",
                 thr = opts.cut_candidate_floor.min(opts.scene_threshold),
                 sil_db = opts.silence_db,
                 sil_d = opts.silence_min_s,
             )
         } else {
             format!(
-                "[0:v]scale={target_w}:{target_h}:flags=fast_bilinear,\
-                 signalstats,{stats_print}\
+                "[{v_spec}]setpts=PTS-STARTPTS,scale={target_w}:{target_h}:flags=fast_bilinear,\
+                 format=yuv420p,signalstats,{stats_print}\
                  scdet=threshold={thr}:sc_pass=0,\
                  blackdetect=d=0.2:pix_th=0.10,\
                  fps={effective_fps},format=rgb24[vout]",
@@ -174,7 +189,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         };
 
         let mut cmd = Command::new("ffmpeg");
-        cmd.args(["-hide_banner", "-nostdin", "-i"])
+        cmd.args(["-hide_banner", "-nostdin", "-nostats", "-i"])
             .arg(path)
             .args([
                 "-filter_complex",
@@ -225,7 +240,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
                             }
                             staged_frames.push((ts, tmp_path, m.lower_third_luma, m.sharpness));
                         }
-                        frame_metrics.push(m);
+                        visual_acc.push(m);
                         idx += 1;
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break Ok(()),
@@ -253,13 +268,13 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
             "ebur128"
         };
         let af = format!(
-            "silencedetect=n={}dB:d={},{}",
+            "asetpts=PTS-STARTPTS,silencedetect=n={}dB:d={},{}",
             opts.silence_db, opts.silence_min_s, ebur_filter
         );
         let out = Command::new("ffmpeg")
-            .args(["-hide_banner", "-nostdin", "-i"])
+            .args(["-hide_banner", "-nostdin", "-nostats", "-i"])
             .arg(path)
-            .args(["-af", &af, "-f", "null", "-"])
+            .args(["-vn", "-map", &a_spec, "-af", &af, "-f", "null", "-"])
             .output()
             .context("Failed to execute ffmpeg audio probe")?;
         if !out.status.success() {
@@ -274,6 +289,23 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
     };
 
     let parsed = parse_ffmpeg_stderr(&stderr_text, duration_s);
+    if duration_s <= 0.0 {
+        let frame_step = if video.fps > 0.0 { 1.0 / video.fps } else { 0.0 };
+        let inferred = parsed
+            .frame_stats
+            .last()
+            .map(|(t, _)| *t + frame_step)
+            .filter(|d| d.is_finite() && *d > 0.0)
+            .or_else(|| {
+                (visual_acc.frame_count > 0)
+                    .then_some(visual_acc.frame_count as f64 / sampled_effective_fps)
+            })
+            .unwrap_or(0.0);
+        if inferred > 0.0 {
+            duration_s = round3(inferred);
+            meta.container.duration_s = duration_s;
+        }
+    }
 
     if audio.present {
         let silence_sum: f64 = parsed.silence_intervals.iter().map(|i| i.duration_s).sum();
@@ -309,8 +341,9 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         )
     };
 
+    let sampled_frames = visual_acc.frame_count;
     let (palette, palette_entropy, mean_luma, band_luma, mean_sharpness) =
-        aggregate_palette_and_visual(&frame_metrics, 5);
+        visual_acc.finish(5);
 
     let mut keyframes = Vec::new();
     if let Some(ref kf_dir) = opts.extract_keyframes_dir
@@ -352,7 +385,7 @@ pub fn analyze_media(path: &Path, opts: &AnalyzeOptions) -> Result<MediaProbeRep
         shots,
         shot_stats,
         visual: VisualInfo {
-            sampled_frames: frame_metrics.len(),
+            sampled_frames,
             palette,
             palette_entropy,
             mean_luminance: mean_luma,

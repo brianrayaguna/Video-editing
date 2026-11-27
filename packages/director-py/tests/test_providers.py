@@ -622,3 +622,15 @@ def test_registry_call_with_fallback_promotes_secondary_provider() -> None:
 
     value = reg.call_with_fallback("transcription", lambda p: p.ping())
     assert value == "recovered"
+
+
+def test_dotenv_round_trip_unescapes_quotes_and_backslashes(tmp_path: Path) -> None:
+    from vedit.providers.env import _parse_dotenv_lines, upsert_env_var
+    from vedit.providers.media_ops import __all__ as media_ops_all
+
+    env_path = tmp_path / ".env"
+    secret = 'abc"def\\ghi'
+    upsert_env_var(env_path, "TEST_ROUNDTRIP_KEY", secret)
+    parsed = _parse_dotenv_lines(env_path.read_text(encoding="utf-8"))
+    assert parsed["TEST_ROUNDTRIP_KEY"] == secret
+    assert "ModalCloudMediaOpsProvider" in media_ops_all

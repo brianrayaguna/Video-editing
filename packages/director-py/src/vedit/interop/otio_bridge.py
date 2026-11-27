@@ -189,7 +189,7 @@ def export_edit_plan_to_otio(
 
     _append_video_track(otio, timeline, effective_plan.video_tracks, assets_by_id, fps)
 
-    for group in ("voiceover", "music", "sfx", "program_mix"):
+    for group in ("voiceover", "music", "ambience", "room_tone", "sfx", "program_mix"):
         grouped = [t for t in effective_plan.audio_tracks if t.audio_group == group]
         _append_audio_group_track(otio, timeline, group, grouped, assets_by_id, fps)
 

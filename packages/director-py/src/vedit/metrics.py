@@ -51,7 +51,7 @@ def pick_accessible_ink(
                 return candidate.upper()
         except ValueError:
             continue
-    return "#FFFFFF" if relative_luminance(ground_hex) < 0.5 else "#000000"
+    return max(("#FFFFFF", "#000000"), key=lambda c: wcag_contrast_ratio(c, ground_hex))
 
 
 def hex_distance(color_a: str, color_b: str) -> float:

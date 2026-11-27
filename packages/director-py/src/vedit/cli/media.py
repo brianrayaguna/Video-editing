@@ -75,7 +75,7 @@ def decide_cmd(
             instructions=q["instructions"],
             criteria=q.get("criteria"),
             multiple=bool(q.get("multiple", False)),
-            value_range=tuple(q["range"]) if "range" in q else None,
+            value_range=tuple(q["range"]) if q.get("range") is not None else None,
             step=q.get("step"),
             unit=q.get("unit"),
             max_items=q.get("max"),

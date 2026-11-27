@@ -85,31 +85,56 @@ def _snap_cut_to_safe_gap(
     if transcript is None or not transcript.words:
         return round(target_t, 3)
 
-    best_t = target_t
-    best_dist = float("inf")
     words = [w for w in transcript.words if not w.is_filler]
     if not words:
         return round(target_t, 3)
 
-    candidates: list[float] = []
+    gap_candidates: list[float] = []
+    boundary_candidates: list[float] = []
+    for edge in (words[0].start_s, words[-1].end_s):
+        if min_t <= edge <= max_t:
+            boundary_candidates.append(edge)
     for idx in range(len(words) - 1):
         gap_start = words[idx].end_s
         gap_end = words[idx + 1].start_s
         if gap_end > gap_start:
             mid = (gap_start + gap_end) * 0.5
             if min_t <= mid <= max_t:
-                candidates.append(mid)
+                gap_candidates.append(mid)
+                boundary_candidates.append(mid)
+        elif gap_end >= gap_start - 1e-6:
+            edge = (gap_start + gap_end) * 0.5
+            if min_t <= edge <= max_t:
+                boundary_candidates.append(edge)
 
-    for cand in candidates:
-        pad = margin_s * 0.1
-        blocked = any((w.start_s - pad) < cand < (w.end_s + pad) for w in words)
-        if blocked:
+    best_t: float | None = None
+    best_dist = float("inf")
+    pad = margin_s * 0.1
+    for cand in gap_candidates:
+        if any((w.start_s - pad) < cand < (w.end_s + pad) for w in words):
             continue
         dist = abs(cand - target_t)
         if dist < best_dist:
             best_dist = dist
             best_t = cand
-    return round(best_t, 3)
+
+    if best_t is None:
+        for cand in boundary_candidates:
+            in_core = any(
+                (w.start_s + min(0.045, max(0.0, w.end_s - w.start_s) * 0.22))
+                < cand
+                < (w.end_s - min(0.045, max(0.0, w.end_s - w.start_s) * 0.22))
+                for w in words
+                if w.end_s > w.start_s
+            )
+            if in_core:
+                continue
+            dist = abs(cand - target_t)
+            if dist < best_dist:
+                best_dist = dist
+                best_t = cand
+
+    return round(target_t if best_t is None else best_t, 3)
 
 
 def _plan_video_cuts(
@@ -238,11 +263,15 @@ def _ground_subject_boxes(
         return
 
     kf_list = probe.visual.keyframes
+    cached_by_kf: dict[Path, list[BoundingBox]] = {}
     for clip in clips:
         mid_t = clip.timeline_start_s + clip.timeline_duration_s * 0.5
         nearest = min(kf_list, key=lambda k: abs(k.timestamp_s - mid_t))
         kf_path = Path(nearest.path)
         if not kf_path.is_file():
+            continue
+        if kf_path in cached_by_kf:
+            clip.subject_safe_boxes = list(cached_by_kf[kf_path])
             continue
         question = DecisionQuestion(
             name="subject_boxes",
@@ -259,22 +288,33 @@ def _ground_subject_boxes(
         )
         ans = res.answers.get("subject_boxes")
         if not ans:
+            cached_by_kf[kf_path] = []
             continue
         raw_boxes = ans.raw.get("boxes") or []
         parsed: list[BoundingBox] = []
         for idx, b in enumerate(raw_boxes):
             if not isinstance(b, dict):
                 continue
-            parsed.append(
-                BoundingBox(
-                    top=min(max(float(b["top"]), 0.0), 1.0),
-                    bottom=min(max(float(b["bottom"]), 0.0), 1.0),
-                    left=min(max(float(b["left"]), 0.0), 1.0),
-                    right=min(max(float(b["right"]), 0.0), 1.0),
-                    label=str(b.get("label") or f"subject_{idx}"),
+            try:
+                top = min(max(float(b["top"]), 0.0), 1.0)
+                bottom = min(max(float(b["bottom"]), 0.0), 1.0)
+                left = min(max(float(b["left"]), 0.0), 1.0)
+                right = min(max(float(b["right"]), 0.0), 1.0)
+                if not (top < bottom and left < right):
+                    continue
+                parsed.append(
+                    BoundingBox(
+                        top=top,
+                        bottom=bottom,
+                        left=left,
+                        right=right,
+                        label=str(b.get("label") or f"subject_{idx}"),
+                    )
                 )
-            )
-        clip.subject_safe_boxes = parsed
+            except (KeyError, TypeError, ValueError):
+                continue
+        cached_by_kf[kf_path] = parsed
+        clip.subject_safe_boxes = list(parsed)
 
 
 def _choose_non_overlapping_band(
@@ -523,6 +563,12 @@ def _build_overlays(
                 card_path = None
                 if template_catalog is not None and card_template:
                     entry = catalog_map[card_template]
+                    declared_ids = {v.id for v in entry.variables}
+                    if "label" in declared_ids and not ({"number", "metric"} & declared_ids):
+                        card_vars = {
+                            "label": compact_metric,
+                            "subtitle": compact_label,
+                        }
                     card_vars = resolve_template_variables(entry, policy, card_vars)
                     card_path = entry.composition_path
                 card_props: dict[str, object] = {
@@ -619,7 +665,8 @@ def build_edit_plan(
     )
     if storyboard is not None:
         clips = apply_storyboard_to_clips(clips, storyboard)
-    _ground_subject_boxes(clips, probe, decision_port)
+    if (transcript and transcript.words) or extra_overlays:
+        _ground_subject_boxes(clips, probe, decision_port)
 
     overlays = _build_overlays(
         clips,

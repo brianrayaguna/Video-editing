@@ -406,6 +406,72 @@ def test_camera_math_handles_extreme_zoom_duplicate_cuts_antimeridian_and_track_
     assert all(0.0 <= kf["x_pct"] <= 100.0 for kf in projected)
 
 
+def test_project_world_anchor_dedupes_t0_and_clamps_rotate_x_and_smooth_orbit_exit() -> None:
+    from vedit.director.camera_moves import (
+        build_cinema_camera_track,
+        project_world_anchor_to_track,
+    )
+
+    cam = [
+        {
+            "t": round(i / 30.0, 5),
+            "center": [0.0 + i * 0.01, 10.0],
+            "zoom": 5.0,
+            "bearing": 0.0,
+            "pitch": 78.0,
+        }
+        for i in range(60)
+    ]
+    kfs = project_world_anchor_to_track(
+        cam,
+        lng=0.3,
+        lat=10.0,
+        width=1080,
+        height=1920,
+        start_s=1.0,
+        duration_s=0.5,
+        space="map_plane",
+    )
+    t0_rows = [k for k in kfs if k["t_s"] == 0.0]
+    assert len(t0_rows) == 1
+    assert all(k.get("rotateX_deg", 0.0) <= 72.0 for k in kfs)
+
+    # Exiting an orbiting keyframe to a non-orbiting keyframe must not teleport at the boundary.
+    samples = build_cinema_camera_track(
+        [
+            {
+                "t": 0.0,
+                "center": [0.0, 0.0],
+                "zoom": 5.0,
+                "bearing": 0.0,
+                "orbit_target": [0.0, 0.0],
+                "orbit_radius_deg": 1.0,
+            },
+            {
+                "t": 1.0,
+                "center": [0.0, 0.0],
+                "zoom": 5.0,
+                "bearing": 90.0,
+            },
+            {
+                "t": 2.0,
+                "center": [0.0, 0.0],
+                "zoom": 5.0,
+                "bearing": 90.0,
+            },
+        ],
+        duration_s=2.0,
+        fps=30.0,
+        smooth_s=0.0,
+    )
+    max_jump = max(
+        abs(samples[i]["center"][0] - samples[i - 1]["center"][0])
+        + abs(samples[i]["center"][1] - samples[i - 1]["center"][1])
+        for i in range(1, len(samples))
+    )
+    assert max_jump < 0.25
+
+
 def _zoom_velocity(samples: list[dict]) -> list[float]:
     """Central-difference zoom velocity (log2 per frame) for every sample."""
     zs = [s["zoom"] for s in samples]

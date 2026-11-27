@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import subprocess
 import sys
 import tarfile
@@ -349,6 +350,8 @@ def download_one(url: str, dest: Path, retries: int = 4) -> tuple[Path, int]:
 def extract_flag_icons(tarball_path: Path) -> int:
     """Extract 4x3 and 1x1 SVG flags from the flag-icons npm tarball."""
     FLAGS_DIR.mkdir(parents=True, exist_ok=True)
+    flags_root = FLAGS_DIR.resolve()
+    svg_name_re = re.compile(r"^[a-z0-9-]+\.svg$")
     extracted = 0
     with tarfile.open(tarball_path, "r:gz") as tar:
         for member in tar.getmembers():
@@ -356,15 +359,22 @@ def extract_flag_icons(tarball_path: Path) -> int:
                 continue
             # package/flags/4x3/id.svg or package/flags/1x1/id.svg or package/LICENSE
             parts = Path(member.name).parts
-            if len(parts) >= 3 and parts[1] == "flags" and parts[2] in ("4x3", "1x1"):
-                rel = Path(*parts[2:])
-                out_path = FLAGS_DIR / rel
+            if (
+                len(parts) == 4
+                and parts[0] == "package"
+                and parts[1] == "flags"
+                and parts[2] in ("4x3", "1x1")
+                and svg_name_re.match(parts[3])
+            ):
+                out_path = (FLAGS_DIR / parts[2] / parts[3]).resolve()
+                if not out_path.is_relative_to(flags_root):
+                    continue
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 fobj = tar.extractfile(member)
                 if fobj is not None:
                     out_path.write_bytes(fobj.read())
                     extracted += 1
-            elif parts[-1] == "LICENSE":
+            elif len(parts) == 2 and parts[0] == "package" and parts[1] == "LICENSE":
                 fobj = tar.extractfile(member)
                 if fobj is not None:
                     (FLAGS_DIR / "LICENSE").write_bytes(fobj.read())

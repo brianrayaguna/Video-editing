@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -102,9 +103,14 @@ def _extract_score(ans: DecisionAnswer | None) -> float | None:
         return None
     for key in ("score", "value"):
         if key in ans.raw and ans.raw[key] is not None:
+            raw_val = ans.raw[key]
+            if isinstance(raw_val, bool):
+                return None
             try:
-                num = float(ans.raw[key])
+                num = float(raw_val)
             except (TypeError, ValueError):
+                return None
+            if not math.isfinite(num):
                 return None
             # Normalize 0..1 calibrated probabilities onto 0..100 scale.
             if 0.0 <= num <= 1.0:
@@ -242,33 +248,35 @@ def enrich_storyboard_semantically(
                     )
                 continue
 
-            if not suggested_dev:
-                continue
-            if suggested_dev in banned:
-                rejected_suggestions.append(
-                    {
-                        "beat_id": bid,
-                        "suggested_device": suggested_dev,
-                        "reason": "banned_device",
-                    }
-                )
-                continue
-            if suggested_dev not in known:
-                rejected_suggestions.append(
-                    {
-                        "beat_id": bid,
-                        "suggested_device": suggested_dev,
-                        "reason": "unknown_device",
-                    }
-                )
-                continue
-
             changed = False
-            if beat["device"] != suggested_dev:
-                beat["device"] = suggested_dev
-                _recompute_beat_timing(beat, idioms, is_opening=(idx == 0))
-                changed = True
-            if len(suggested_need) >= 3 and beat.get("story_need") != suggested_need:
+            if suggested_dev:
+                if suggested_dev in banned:
+                    rejected_suggestions.append(
+                        {
+                            "beat_id": bid,
+                            "suggested_device": suggested_dev,
+                            "reason": "banned_device",
+                        }
+                    )
+                    continue
+                if suggested_dev not in known:
+                    rejected_suggestions.append(
+                        {
+                            "beat_id": bid,
+                            "suggested_device": suggested_dev,
+                            "reason": "unknown_device",
+                        }
+                    )
+                    continue
+                if beat["device"] != suggested_dev:
+                    beat["device"] = suggested_dev
+                    _recompute_beat_timing(beat, idioms, is_opening=(idx == 0))
+                    changed = True
+            if (
+                len(suggested_need) >= 3
+                and not _is_placeholder_need(suggested_need, placeholders)
+                and beat.get("story_need") != suggested_need
+            ):
                 beat["story_need"] = suggested_need
                 changed = True
             if changed:

@@ -318,20 +318,23 @@ def inspect_project_status(project_dir: Path) -> ProjectStatusReport:
         except json.JSONDecodeError:
             audit_passed = False
 
+    inputs_count = _count_files(resolved_dir / dirs.inputs)
+    probes_count = _count_files(resolved_dir / dirs.probes)
+    transcripts_count = _count_files(resolved_dir / dirs.transcripts)
     stages: dict[str, dict[str, Any]] = {
         "inputs": {
-            "ready": _count_files(resolved_dir / dirs.inputs) > 0,
-            "file_count": _count_files(resolved_dir / dirs.inputs),
+            "ready": inputs_count > 0,
+            "file_count": inputs_count,
             "path": dirs.inputs,
         },
         "probes": {
-            "ready": _count_files(resolved_dir / dirs.probes) > 0,
-            "file_count": _count_files(resolved_dir / dirs.probes),
+            "ready": probes_count > 0,
+            "file_count": probes_count,
             "path": dirs.probes,
         },
         "transcripts": {
-            "ready": _count_files(resolved_dir / dirs.transcripts) > 0,
-            "file_count": _count_files(resolved_dir / dirs.transcripts),
+            "ready": transcripts_count > 0,
+            "file_count": transcripts_count,
             "path": dirs.transcripts,
         },
         "edit_plan": {
@@ -559,29 +562,39 @@ def resolve_plan_asset_paths(
         if candidate is not None and candidate not in search_roots:
             search_roots.append(candidate)
 
-    rewritten = []
-    for asset in plan.assets:
-        raw_path = asset.path.strip()
-        if not raw_path or _URL_SCHEME_RE.match(raw_path):
-            rewritten.append(asset)
-            continue
-
-        p = Path(raw_path)
+    def _resolve_rel(raw_path: str, *, require_file: bool = False) -> str:
+        cleaned = raw_path.strip()
+        if not cleaned or _URL_SCHEME_RE.match(cleaned):
+            return raw_path
+        p = Path(cleaned)
         if p.is_absolute():
-            rewritten.append(asset)
-            continue
-
-        resolved_hit: Path | None = None
+            return raw_path
         for root in search_roots:
             root_resolved = root.resolve()
             cand = (root_resolved / p).resolve()
-            if _is_within(cand, root_resolved) and cand.exists():
-                resolved_hit = cand
-                break
+            ok = cand.is_file() if require_file else cand.exists()
+            if _is_within(cand, root_resolved) and ok:
+                return str(cand)
+        return raw_path
 
-        if resolved_hit is not None:
-            rewritten.append(asset.model_copy(update={"path": str(resolved_hit)}))
-        else:
-            rewritten.append(asset)
+    rewritten = [
+        asset.model_copy(update={"path": resolved_p})
+        if (resolved_p := _resolve_rel(asset.path)) != asset.path
+        else asset
+        for asset in plan.assets
+    ]
+    rewritten_clips = []
+    for clip in plan.video_tracks:
+        cg = clip.color_grade
+        if cg is not None and cg.lut_path:
+            resolved_lut = _resolve_rel(cg.lut_path, require_file=True)
+            if resolved_lut != cg.lut_path:
+                rewritten_clips.append(
+                    clip.model_copy(
+                        update={"color_grade": cg.model_copy(update={"lut_path": resolved_lut})}
+                    )
+                )
+                continue
+        rewritten_clips.append(clip)
 
-    return plan.model_copy(update={"assets": rewritten})
+    return plan.model_copy(update={"assets": rewritten, "video_tracks": rewritten_clips})

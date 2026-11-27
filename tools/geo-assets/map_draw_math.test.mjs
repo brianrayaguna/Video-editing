@@ -563,3 +563,64 @@ test("sunDirectionFromAzimuthElevation returns unit vector and matching 2D cast 
   assert.ok(sun.x < 0 && sun.y > 0 && sun.z > 0);
   assert.ok(sun.shadowDx > 0 && sun.shadowDy > 0);
 });
+
+test("cubicBezier preserves x2 = 0 and clipHomogeneousPolyline drops non-finite y/z vertices", () => {
+  const ease = cubicBezier(0, 0, 0, 1);
+  // With x1=0, x2=0: x(t) = t^3, so at x=0.5, t=0.5^(1/3) and y(t)=3t^2-2t^3 ~= 0.8899.
+  // If x2=0 were coerced to 1 via `|| 1`, ease(0.5) would incorrectly return 0.5.
+  assert.ok(ease(0.5) > 0.85, `expected cubicBezier(0,0,0,1)(0.5) > 0.85, got ${ease(0.5)}`);
+
+  const badPoly = [
+    { x: -1, y: 0, z: 0, w: 2 },
+    { x: 0, y: Number.NaN, z: 0, w: 2 },
+    { x: 1, y: 0, z: Number.POSITIVE_INFINITY, w: 2 },
+    { x: 2, y: 0, z: 0, w: 2 },
+  ];
+  const clipped = clipHomogeneousPolyline(badPoly);
+  assert.deepEqual(clipped, []);
+});
+
+test("render_map_scene and fast_capture satisfy WebGL, compositing, and pipe error invariants", async () => {
+  const renderSrc = readFileSync(new URL("./render_map_scene.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(
+    renderSrc,
+    /smoothstep\(\s*localP\s*\+\s*0\.04\s*,\s*localP\s*-\s*0\.04/,
+    "GLSL smoothstep(edge0, edge1, x) with edge0 > edge1 is undefined behavior"
+  );
+  assert.match(renderSrc, /shadowMap\.autoUpdate\s*=\s*false/);
+  assert.match(renderSrc, /spacingStep\.toPrecision\(8\)/);
+  assert.match(renderSrc, /if\s*\(\s*revealAxis\s*&&\s*revealProgress\s*<=\s*0\.001\s*\)\s*return;/);
+  assert.doesNotMatch(
+    renderSrc,
+    /compCtx\.globalAlpha\s*=\s*blendAlpha;[\s\S]{0,400}compCtx\.drawImage\(map\.getCanvas\(\)[\s\S]{0,120}compCtx\.drawImage\(ovCanvas/,
+    "__accumSubframe must composite map + ovCanvas at full alpha before blending once onto compCtx"
+  );
+
+  // fast_capture writeFrame must reject with an Error instance (never a raw numeric exit code).
+  const { spawnFramePipeEncoder } = await import("./fast_capture.mjs");
+  const enc = spawnFramePipeEncoder("/nonexistent_dir_vedit_test/out.mp4", { fps: 30 });
+  const bigBuf = Buffer.alloc(1024 * 1024, 0xff);
+  let caught = null;
+  try {
+    for (let i = 0; i < 64; i++) {
+      await enc.writeFrame(bigBuf);
+    }
+    await enc.finish();
+  } catch (err) {
+    caught = err;
+  } finally {
+    await enc.abort();
+  }
+  assert.ok(caught instanceof Error, `Expected Error rejection from failed encoder, got ${typeof caught}: ${caught}`);
+});
+
+test("study_runner asset server rejects NUL byte URLs cleanly without crashing", async () => {
+  const { startStudyAssetServer } = await import("./study_runner.mjs");
+  const { server, baseUrl } = await startStudyAssetServer(null, 0, "127.0.0.1");
+  try {
+    const resp = await fetch(`${baseUrl}/geo/fonts/foo%00bar.ttf`);
+    assert.ok(resp.status === 400 || resp.status === 404, `Unexpected status ${resp.status}`);
+  } finally {
+    server.close();
+  }
+});

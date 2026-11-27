@@ -911,3 +911,169 @@ def test_verifier_flags_small_text_aaa_contrast_and_typography_craft_warnings(
     assert tc["passed"] is True
     assert tc["aaa_passed"] is False
     assert tc["small_text_min_wcag_contrast"] == 5.1
+
+
+def test_planner_tabular_metric_touching_words_and_verifier_invariants(tmp_path: Path) -> None:
+    from vedit.contracts import find_repo_root, load_brand_template_catalog, load_platform_targets
+    from vedit.director.planner import _build_overlays, _snap_cut_to_safe_gap
+    from vedit.director.semantic_director import _extract_score
+    from vedit.director.storyboard_plan import apply_storyboard_to_clips
+    from vedit.metrics import pick_accessible_ink
+    from vedit.models import (
+        BoundingBox,
+        BrandTemplateCatalog,
+        ColorGradeSpec,
+        VideoClipOp,
+    )
+    from vedit.ports.decision import DecisionAnswer
+    from vedit.project_workspace import resolve_plan_asset_paths
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    policy = BrandStylePolicy.model_validate_json(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8")
+    )
+    catalog = BrandTemplateCatalog.model_validate(
+        load_brand_template_catalog(gv_dir / "templates" / "catalog.json", repo_root=root)
+    )
+    shorts = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+
+    # H3: tabular_metric auto card must preserve the extracted figure in `label`.
+    tr_num = NormalizedTranscript(
+        source_hash="a" * 64,
+        provider="test",
+        language="en",
+        duration_s=3.0,
+        text="Border is 20 km wide.",
+        words=[
+            TranscriptWord(text="Border", start_s=0.0, end_s=0.5),
+            TranscriptWord(text="is", start_s=0.5, end_s=0.7),
+            TranscriptWord(text="20", start_s=0.7, end_s=1.0),
+            TranscriptWord(text="km", start_s=1.0, end_s=1.3),
+            TranscriptWord(text="wide.", start_s=1.3, end_s=1.8),
+        ],
+    )
+    ovs = _build_overlays([], tr_num, policy, shorts, template_catalog=catalog)
+    cards = [o for o in ovs if o.template_id == "tabular_metric"]
+    assert cards and "20" in str(cards[0].variables.get("label", ""))
+
+    # H6: _snap_cut_to_safe_gap must snap to touching word boundary rather than cutting mid-word.
+    tr_touch = NormalizedTranscript(
+        source_hash="b" * 64,
+        provider="test",
+        language="en",
+        duration_s=4.5,
+        text="tectonic plate moves",
+        words=[
+            TranscriptWord(text="tectonic", start_s=0.0, end_s=1.2),
+            TranscriptWord(text="plate", start_s=1.2, end_s=2.4),
+            TranscriptWord(text="moves", start_s=2.4, end_s=3.6),
+        ],
+    )
+    snapped = _snap_cut_to_safe_gap(1.8, 0.75, 4.25, tr_touch, 0.18)
+    assert snapped in (1.2, 2.4)
+
+    # H4 + H7 + M3: relative LUT resolves, fullscreen title_scene does not trip SUBJECT_BOX_OVERLAP,
+    # and protected_spans are checked even when transcript is None.
+    lut_dir = tmp_path / "luts"
+    lut_dir.mkdir()
+    (lut_dir / "doc.cube").write_text("LUT_3D_SIZE 2\n0 0 0\n1 1 1\n", encoding="utf-8")
+    plan = EditPlan(
+        job_id="inv_test",
+        project_id="proj_inv",
+        brand_id="geoverum",
+        platform_target_id=shorts.platform_id,
+        render_strategy="hybrid",
+        duration_s=6.0,
+        fps=30.0,
+        width=1080,
+        height=1920,
+        assets=[
+            AssetRef(asset_id="v1", sha256="a" * 64, kind="video", path="a.mp4", duration_s=6.0),
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="v1",
+                timeline_start_s=0.0,
+                timeline_duration_s=3.0,
+                source_start_s=0.0,
+                role="a_roll",
+                reframed_to_target=True,
+                color_grade=ColorGradeSpec(lut_path="luts/doc.cube"),
+                subject_safe_boxes=[
+                    BoundingBox(top=0.2, bottom=0.6, left=0.2, right=0.8, label="speaker")
+                ],
+            ),
+            VideoClipOp(
+                clip_id="c2",
+                asset_id="v1",
+                timeline_start_s=3.0,
+                timeline_duration_s=3.0,
+                source_start_s=3.0,
+                role="b_roll",
+                reframed_to_target=True,
+            ),
+        ],
+        overlay_compositions=[
+            OverlayCompositionOp(
+                overlay_id="title_fs",
+                kind="title_scene",
+                timeline_start_s=0.5,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="fullscreen",
+                props={"protected_spans": [{"start_s": 2.95, "end_s": 3.1}]},
+            )
+        ],
+        audio_tracks=[],
+    )
+    resolved = resolve_plan_asset_paths(plan, base_dir=tmp_path)
+    report = verify_edit_plan(resolved, policy, shorts, transcript=None)
+    codes = {e.code for e in report.errors}
+    assert "MISSING_LUT_FILE" not in codes
+    assert "SUBJECT_BOX_OVERLAP" not in codes
+    assert "CUT_WITHIN_KEYWORD_WINDOW" in codes
+
+    # M4: apply_storyboard_to_clips clamps j_cut_lead_s <= 4.0 and honors storyboard override.
+    c_list = [
+        VideoClipOp(
+            clip_id="c1",
+            asset_id="v1",
+            timeline_start_s=0.0,
+            timeline_duration_s=5.0,
+            source_start_s=0.0,
+            role="a_roll",
+        ),
+        VideoClipOp(
+            clip_id="c2",
+            asset_id="v1",
+            timeline_start_s=5.0,
+            timeline_duration_s=3.0,
+            source_start_s=5.0,
+            role="a_roll",
+            j_cut_lead_s=0.35,
+        ),
+    ]
+    sb_se = {
+        "beats": [
+            {
+                "beat_id": "b1",
+                "start_s": 5.0,
+                "end_s": 8.0,
+                "split_edit": {"kind": "j_cut", "offset_s": 6.0},
+            }
+        ]
+    }
+    updated = apply_storyboard_to_clips(c_list, sb_se)
+    assert updated[1].j_cut_lead_s == 4.0
+
+    # M1 + M8: NaN/bool score rejection and WCAG crossover ink fallback.
+    assert (
+        _extract_score(DecisionAnswer(name="s", question_type="score", raw={"score": float("nan")}))
+        is None
+    )
+    assert (
+        _extract_score(DecisionAnswer(name="s", question_type="score", raw={"score": True})) is None
+    )
+    assert pick_accessible_ink("#909090", min_contrast=7.0) == "#000000"

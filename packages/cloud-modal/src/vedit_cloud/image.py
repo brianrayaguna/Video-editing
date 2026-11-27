@@ -8,7 +8,7 @@ import modal
 from vedit.contracts import find_repo_root
 
 WORKER_CHROMIUM_FLAGS = "--no-browser-gpu --use-gl=swiftshader"
-PINNED_CHROME_HEADLESS_VERSION = "152.0.7977.30"
+PINNED_CHROME_HEADLESS_VERSION = "158.0.8127.36"
 
 _DEBIAN_PACKAGES = [
     "ffmpeg",
@@ -80,7 +80,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
             "install -m 0755 "
             "/opt/vedit/packages/media-probe-rs/target/release/vedit-probe "
             "/usr/local/bin/vedit-probe",
-            "rm -rf /opt/vedit/packages/media-probe-rs/target",
+            "rm -rf /opt/vedit/packages/media-probe-rs/target /root/.rustup /root/.cargo",
         )
         .add_local_dir(
             root / "packages" / "hf-compiler-ts",
@@ -90,15 +90,24 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
         )
         .run_commands(
             "cd /opt/vedit/packages/hf-compiler-ts "
-            "&& npm ci "
+            "&& PUPPETEER_SKIP_DOWNLOAD=true npm ci "
             "&& npx tsc "
             "&& npm prune --omit=dev "
             "&& npx puppeteer browsers install "
             f"chrome-headless-shell@{PINNED_CHROME_HEADLESS_VERSION} "
-            "&& SHELL_BIN=$(find /root/.cache/puppeteer/chrome-headless-shell "
-            "-name chrome-headless-shell -type f | head -n 1) "
+            "&& SHELL_BIN="
+            f"'/root/.cache/puppeteer/chrome-headless-shell/linux-{PINNED_CHROME_HEADLESS_VERSION}/"
+            "chrome-headless-shell-linux64/chrome-headless-shell' "
             '&& test -x "$SHELL_BIN" '
             '&& ! ldd "$SHELL_BIN" | grep -q "not found"',
+        )
+        .pip_install(
+            "hatchling>=1.25.0",
+            "pydantic>=2.9.0",
+            "jsonschema>=4.23.0",
+            "pyyaml>=6.0.2",
+            "httpx>=0.27.2",
+            "typer>=0.12.5",
         )
         .add_local_dir(root / "contracts", "/opt/vedit/contracts", copy=True)
         .add_local_dir(root / "profiles", "/opt/vedit/profiles", copy=True)
@@ -119,14 +128,6 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
             "/opt/vedit/packages/cloud-modal",
             copy=True,
             ignore=ignore_build_dirs,
-        )
-        .pip_install(
-            "hatchling>=1.25.0",
-            "pydantic>=2.9.0",
-            "jsonschema>=4.23.0",
-            "pyyaml>=6.0.2",
-            "httpx>=0.27.2",
-            "typer>=0.12.5",
         )
         .run_commands(
             "pip install --no-deps --no-build-isolation /opt/vedit/packages/director-py",
@@ -152,7 +153,7 @@ def build_worker_image(repo_root: Path | None = None) -> modal.Image:
     if fonts_dir.is_dir():
         img = img.add_local_dir(
             fonts_dir,
-            "/usr/share/fonts/truetype/geoverum",
+            "/opt/vedit/assets/geo/fonts",
             copy=True,
-        ).run_commands("fc-cache -fv /usr/share/fonts/truetype/geoverum")
+        )
     return img

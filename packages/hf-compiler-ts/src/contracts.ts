@@ -162,7 +162,7 @@ export interface AudioTrackOp {
   carve_against_group?: string | null;
   carve_strength?: number;
   cleaned_speech_stem?: boolean;
-  diegetic?: boolean;
+  diegetic?: boolean | null;
   layer_role?:
     | "sub"
     | "body"
@@ -176,8 +176,8 @@ export interface AudioTrackOp {
     | null;
   pan?: number | null;
   reverb_preset?: "dry" | "close" | "medium" | "wide" | null;
-  fade_in_s?: number;
-  fade_out_s?: number;
+  fade_in_s?: number | null;
+  fade_out_s?: number | null;
   highpass_hz?: number | null;
   lowpass_hz?: number | null;
   split_edit_role?: "j_cut" | "l_cut" | null;

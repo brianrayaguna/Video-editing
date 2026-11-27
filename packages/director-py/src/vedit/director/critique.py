@@ -30,6 +30,7 @@ from vedit.director.camera_moves import camera_jitter_report
 from vedit.director.storyboard import (
     _device_lead_window,
     check_storyboard,
+    merged_idioms,
     validate_storyboard_contract,
 )
 from vedit.director.temporal_audit import audit_temporal_sync
@@ -106,10 +107,12 @@ def grid_contact_sheets(
         for s0 in range(0, len(samples), per_sheet):
             chunk = samples[s0 : s0 + per_sheet]
             cells = []
+            rendered_meta: list[tuple[float, str]] = []
             for k, (t, label) in enumerate(chunk):
                 cell = tmp / f"cell_{s0 + k:04d}.jpg"
                 if _render_cell(video, t, label, cell):
                     cells.append(cell)
+                    rendered_meta.append((t, label))
             if not cells:
                 continue
             # Pad the last sheet so the tile filter always receives a full grid.
@@ -142,11 +145,12 @@ def grid_contact_sheets(
                     str(sheet),
                 ],
                 check=True,
+                timeout=120,
             )
             sheets.append(
                 {
                     "path": str(sheet),
-                    "frames": [{"t": round(t, 3), "label": label} for t, label in chunk],
+                    "frames": [{"t": round(t, 3), "label": label} for t, label in rendered_meta],
                 }
             )
     return sheets
@@ -245,7 +249,8 @@ def build_critique_packet(
     if camera_track:
         shake = camera_jitter_report(camera_track, cuts=cuts or [])
         shake.pop("flagged", None)
-        span_s = max(camera_track[-1][0] - camera_track[0][0], 1e-6)
+        ts_vals = [float(r[0]) for r in camera_track]
+        span_s = max(max(ts_vals) - min(ts_vals), 1e-6)
         shake["pan_flips_per_15s"] = round(shake["reversals"] * 15.0 / span_s, 2)
         shake["zoom_flips_per_30s"] = round(shake["zoom_reversals"] * 30.0 / span_s, 2)
         shake["passed"] = shake["pan_flips_per_15s"] <= 1.0 and shake["zoom_flips_per_30s"] <= 1.0
@@ -308,8 +313,16 @@ def build_critique_packet(
     return packet
 
 
-def _caption_band_params(idioms: dict[str, Any]) -> tuple[float, float, float]:
-    for idiom in idioms.get("idioms") or []:
+def _caption_band_params(
+    idioms: dict[str, Any],
+    storyboard: dict[str, Any] | None = None,
+) -> tuple[float, float, float]:
+    active = (
+        merged_idioms(idioms, storyboard)
+        if storyboard is not None
+        else (idioms.get("idioms") or [])
+    )
+    for idiom in active:
         if idiom.get("idiom_id") == "caption_band_clear":
             p = idiom.get("params") or {}
             band = p.get("band_y_pct") or [0.66, 0.76]
@@ -333,29 +346,35 @@ def _apply_one_fix(
     *,
     banned_devices: set[str],
     known_devices: set[str],
+    storyboard: dict[str, Any] | None = None,
 ) -> bool:
     kind = str(fix.get("kind") or "")
     params = fix.get("params") if isinstance(fix.get("params"), dict) else {}
+    before_beat = copy.deepcopy(beat)
 
     if kind == "timing":
         explicit_start = fix.get("start_s", params.get("start_s"))
         explicit_end = fix.get("end_s", params.get("end_s"))
+        had_action = False
         if explicit_start is not None:
             beat["start_s"] = round(max(0.0, float(explicit_start)), 3)
+            had_action = True
         elif "sync_word_s" in beat:
             lead_info = _device_lead_window(idioms, beat["device"])
             if lead_info is not None:
                 lo, hi = float(lead_info[1][0]), float(lead_info[1][1])
                 mid = (lo + hi) / 2.0
                 beat["start_s"] = round(max(0.0, float(beat["sync_word_s"]) - mid), 3)
+                had_action = True
         if explicit_end is not None:
             beat["end_s"] = round(max(float(explicit_end), float(beat["start_s"]) + 0.25), 3)
-        else:
+            had_action = True
+        elif had_action:
             beat["end_s"] = round(max(float(beat["end_s"]), float(beat["start_s"]) + 0.25), 3)
-        return True
+        return had_action
 
     if kind == "layout":
-        y0_pct, y1_pct, frame_h = _caption_band_params(idioms)
+        y0_pct, y1_pct, frame_h = _caption_band_params(idioms, storyboard)
         band_top = y0_pct * frame_h
         band_bottom = y1_pct * frame_h
         explicit_xy = fix.get("xy", params.get("xy"))
@@ -376,7 +395,7 @@ def _apply_one_fix(
                         float(callout["xy"][0]),
                         round(max(half + 20.0, band_top - half - 20.0), 1),
                     ]
-        return True
+        return beat != before_beat
 
     if kind == "device":
         new_dev = str(fix.get("device") or params.get("device") or "").strip()
@@ -433,6 +452,7 @@ def apply_surgical_fixes(
     rolled_back: list[dict[str, Any]] = []
 
     raw_fixes = ((packet.get("review") or {}).get("fixes")) or []
+    before_report: dict[str, Any] | None = None
     for raw_fix in raw_fixes:
         if not isinstance(raw_fix, dict):
             deferred.append({"fix": raw_fix, "reason": "untyped_string_fix"})
@@ -450,7 +470,8 @@ def apply_surgical_fixes(
             deferred.append({"fix": raw_fix, "reason": f"requires_{kind}_intervention"})
             continue
 
-        before_report = check_storyboard(working, idioms).to_dict()
+        if before_report is None:
+            before_report = check_storyboard(working, idioms).to_dict()
         candidate = copy.deepcopy(working)
         target_beat = next(
             (b for b in candidate.get("beats") or [] if b.get("beat_id") == beat_id),
@@ -466,6 +487,7 @@ def apply_surgical_fixes(
             idioms,
             banned_devices=banned_devices,
             known_devices=known_devices,
+            storyboard=candidate,
         )
         if not mutated:
             deferred.append({"fix": raw_fix, "reason": "no_applicable_mutation"})
@@ -496,6 +518,7 @@ def apply_surgical_fixes(
             continue
 
         working = candidate
+        before_report = after_report
         applied.append(copy.deepcopy(raw_fix))
 
     return {
@@ -525,6 +548,9 @@ def gate_review(packet: dict[str, Any], *, threshold: float = 0.8) -> dict[str, 
         raw_v = scores.get(cid)
         if raw_v is None:
             continue
+        if isinstance(raw_v, bool):
+            out_of_range.append(cid)
+            continue
         try:
             fv = float(raw_v)
         except (TypeError, ValueError):
@@ -551,6 +577,8 @@ def gate_review(packet: dict[str, Any], *, threshold: float = 0.8) -> dict[str, 
         reasons.append("camera exceeds the shake budget")
     if det.get("temporal") and not det["temporal"]["passed"]:
         reasons.append("temporal audio-visual sync failed")
+    if det.get("typography_contrast") and not det["typography_contrast"].get("passed", True):
+        reasons.append("typography fails WCAG AA contrast minimum")
 
     iteration = int(packet.get("iteration", 1))
     max_iterations = int(packet.get("max_iterations", 3))
@@ -591,6 +619,8 @@ def _duration(video: Path) -> float:
 
 
 def _frange(start: float, stop: float, step: float) -> list[float]:
+    if not math.isfinite(step) or step <= 0.0:
+        raise ValueError(f"step must be positive and finite, got {step!r}")
     out, t = [], start
     while t < stop:
         out.append(round(t, 3))

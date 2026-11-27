@@ -314,8 +314,6 @@ def _classify_color_harmony(hue_samples: list[float]) -> HarmonyClass:
     diff = min(diff, 360.0 - diff)
     if diff <= 45.0:
         return "analogous"
-    if 150.0 <= diff <= 180.0:
-        return "complementary"
     if len(ranked) >= 3:
         h2 = ranked[2][1]
         d02 = min(abs(h2 - h0), 360.0 - abs(h2 - h0))
@@ -324,6 +322,8 @@ def _classify_color_harmony(hue_samples: list[float]) -> HarmonyClass:
             return "triadic"
         if 125.0 <= diff <= 165.0 and 125.0 <= d02 <= 165.0:
             return "split_complementary"
+    if 150.0 <= diff <= 180.0:
+        return "complementary"
     return "analogous" if diff <= 75.0 else "complementary"
 
 

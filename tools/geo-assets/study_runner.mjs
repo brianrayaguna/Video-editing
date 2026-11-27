@@ -4,7 +4,7 @@
  * standalone brand HyperFrames component studies.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
@@ -69,9 +69,22 @@ export function resolveChrome() {
  * resolve locally without external network calls.
  */
 function resolveContainedFile(rootDir, relPath) {
+  if (!relPath || relPath.includes("\0")) return null;
   const rootResolved = resolve(rootDir);
   const candidate = resolve(rootResolved, relPath.replace(/^\/+/, ""));
   if (candidate !== rootResolved && !candidate.startsWith(rootResolved + sep)) {
+    return null;
+  }
+  try {
+    if (existsSync(candidate)) {
+      const realRoot = realpathSync(rootResolved);
+      const realCand = realpathSync(candidate);
+      if (realCand !== realRoot && !realCand.startsWith(realRoot + sep)) {
+        return null;
+      }
+      return realCand;
+    }
+  } catch {
     return null;
   }
   return candidate;
@@ -89,6 +102,11 @@ export function startStudyAssetServer(studyDir, port = 0, host = "127.0.0.1") {
       res.end("Bad request");
       return;
     }
+    if (cleanUrl.includes("\0")) {
+      res.writeHead(400);
+      res.end("Bad request");
+      return;
+    }
     let filePath = null;
 
     if (cleanUrl === "/" || cleanUrl === "/host.html") {
@@ -97,23 +115,23 @@ export function startStudyAssetServer(studyDir, port = 0, host = "127.0.0.1") {
       return;
     }
 
-    if (cleanUrl.startsWith("/geo/")) {
-      filePath = resolveContainedFile(geoRoot, cleanUrl.slice(5));
-    } else if (resolvedStudyDir) {
-      filePath = resolveContainedFile(resolvedStudyDir, cleanUrl);
-      if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
-        // Fallback to assets/geo for shared fonts/flags/icons referenced inside study templates
-        const rel = cleanUrl.replace(/^\/+/, "");
-        if (rel.startsWith("assets/")) {
-          const geoCandidate = resolveContainedFile(geoRoot, rel.slice("assets/".length));
-          if (geoCandidate && existsSync(geoCandidate) && !statSync(geoCandidate).isDirectory()) {
-            filePath = geoCandidate;
+    try {
+      if (cleanUrl.startsWith("/geo/")) {
+        filePath = resolveContainedFile(geoRoot, cleanUrl.slice(5));
+      } else if (resolvedStudyDir) {
+        filePath = resolveContainedFile(resolvedStudyDir, cleanUrl);
+        if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
+          // Fallback to assets/geo for shared fonts/flags/icons referenced inside study templates
+          const rel = cleanUrl.replace(/^\/+/, "");
+          if (rel.startsWith("assets/")) {
+            const geoCandidate = resolveContainedFile(geoRoot, rel.slice("assets/".length));
+            if (geoCandidate && existsSync(geoCandidate) && !statSync(geoCandidate).isDirectory()) {
+              filePath = geoCandidate;
+            }
           }
         }
       }
-    }
 
-    try {
       if (!filePath || !existsSync(filePath) || statSync(filePath).isDirectory()) {
         res.writeHead(404);
         res.end("Not found");
@@ -250,65 +268,66 @@ export async function renderProjectFrames({
 }) {
   mkdirSync(framesDir, { recursive: true });
   const page = await browser.newPage();
-  await page.setViewport({ width, height, deviceScaleFactor: 1 });
+  try {
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
 
-  const gsapBytes = readFileSync(join(REPO_ROOT, "assets/geo/vendor/gsap.min.js"));
-  await page.setRequestInterception(true);
-  page.on("request", (req) => {
-    const u = req.url();
-    if (u.includes("gsap") && u.endsWith(".js")) {
-      req.respond({ status: 200, contentType: "application/javascript", body: gsapBytes });
-      return;
+    const gsapBytes = readFileSync(join(REPO_ROOT, "assets/geo/vendor/gsap.min.js"));
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const u = req.url();
+      if (u.includes("gsap") && u.endsWith(".js")) {
+        req.respond({ status: 200, contentType: "application/javascript", body: gsapBytes });
+        return;
+      }
+      req.continue();
+    });
+
+    const indexHtml = readFileSync(join(studyDir, "index.html"), "utf8");
+    const hostRe = /<div\b([^>]*\bdata-composition-src=["']([^"']+)["'][^>]*)>/gi;
+    const hosts = [];
+    for (const m of indexHtml.matchAll(hostRe)) {
+      const attrs = m[1];
+      const src = m[2];
+      const compId = (attrs.match(/\bdata-composition-id=["']([^"']+)["']/i) || [])[1];
+      const start = Number((attrs.match(/\bdata-start=["']([^"']+)["']/i) || [])[1] || 0);
+      const duration = Number((attrs.match(/\bdata-duration=["']([^"']+)["']/i) || [])[1] || 10);
+      const trackIndex = Number((attrs.match(/\bdata-track-index=["']([^"']+)["']/i) || [])[1] || 1);
+      if (!compId) continue;
+
+      const raw = readFileSync(join(studyDir, src), "utf8");
+      const tplInner = (raw.match(/<template>([\s\S]*?)<\/template>/i) || [])[1] || raw;
+      let bodyChunk = tplInner;
+
+      const styles = [];
+      bodyChunk = bodyChunk.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => {
+        styles.push(css.replace(/#root\b/g, `[data-composition-id="${compId}"]`));
+        return "";
+      });
+
+      const scripts = [];
+      bodyChunk = bodyChunk.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => {
+        scripts.push(`(() => {\n${js}\n})();`);
+        return "";
+      });
+
+      // Replace duplicate #root id inside sub-composition markup so each host stays unique
+      bodyChunk = bodyChunk.replace(/\bid=["']root["']/i, `id="host-${compId}"`);
+
+      hosts.push({
+        compId,
+        start,
+        duration,
+        trackIndex,
+        styles: styles.join("\n"),
+        html: bodyChunk,
+        scripts: scripts.join("\n"),
+      });
     }
-    req.continue();
-  });
 
-  const indexHtml = readFileSync(join(studyDir, "index.html"), "utf8");
-  const hostRe = /<div\b([^>]*\bdata-composition-src=["']([^"']+)["'][^>]*)>/gi;
-  const hosts = [];
-  for (const m of indexHtml.matchAll(hostRe)) {
-    const attrs = m[1];
-    const src = m[2];
-    const compId = (attrs.match(/\bdata-composition-id=["']([^"']+)["']/i) || [])[1];
-    const start = Number((attrs.match(/\bdata-start=["']([^"']+)["']/i) || [])[1] || 0);
-    const duration = Number((attrs.match(/\bdata-duration=["']([^"']+)["']/i) || [])[1] || 10);
-    const trackIndex = Number((attrs.match(/\bdata-track-index=["']([^"']+)["']/i) || [])[1] || 1);
-    if (!compId) continue;
-
-    const raw = readFileSync(join(studyDir, src), "utf8");
-    const tplInner = (raw.match(/<template>([\s\S]*?)<\/template>/i) || [])[1] || raw;
-    let bodyChunk = tplInner;
-
-    const styles = [];
-    bodyChunk = bodyChunk.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => {
-      styles.push(css.replace(/#root\b/g, `[data-composition-id="${compId}"]`));
-      return "";
-    });
-
-    const scripts = [];
-    bodyChunk = bodyChunk.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => {
-      scripts.push(`(() => {\n${js}\n})();`);
-      return "";
-    });
-
-    // Replace duplicate #root id inside sub-composition markup so each host stays unique
-    bodyChunk = bodyChunk.replace(/\bid=["']root["']/i, `id="host-${compId}"`);
-
-    hosts.push({
-      compId,
-      start,
-      duration,
-      trackIndex,
-      styles: styles.join("\n"),
-      html: bodyChunk,
-      scripts: scripts.join("\n"),
-    });
-  }
-
-  const combinedStyles = hosts.map((h) => h.styles).join("\n");
-  const combinedMarkup = hosts
-    .map(
-      (h) => `
+    const combinedStyles = hosts.map((h) => h.styles).join("\n");
+    const combinedMarkup = hosts
+      .map(
+        (h) => `
     <div
       class="hf-comp-host"
       data-comp-id="${h.compId}"
@@ -318,11 +337,11 @@ export async function renderProjectFrames({
     >
       ${h.html}
     </div>`
-    )
-    .join("\n");
-  const combinedScripts = hosts.map((h) => h.scripts).join("\n");
+      )
+      .join("\n");
+    const combinedScripts = hosts.map((h) => h.scripts).join("\n");
 
-  const hostHtml = `<!DOCTYPE html>
+    const hostHtml = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -360,24 +379,26 @@ export async function renderProjectFrames({
 </body>
 </html>`;
 
-  await page.setContent(hostHtml, { waitUntil: "networkidle0" });
-  await page.evaluate(() => document.fonts.ready);
+    await page.setContent(hostHtml, { waitUntil: "networkidle0" });
+    await page.evaluate(() => document.fonts.ready);
 
-  const t0 = Date.now();
-  for (let i = 0; i < totalFrames; i++) {
-    const tSec = i / fps;
-    await page.evaluate((t) => window.__seekProject(t), tSec);
-    await page.screenshot({
-      path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
-      clip: { x: 0, y: 0, width, height },
-      optimizeForSpeed: true,
-    });
-    if (i % 60 === 0 || i === totalFrames - 1) {
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(`  [project] rendered frame ${i + 1}/${totalFrames} (${elapsed}s)`);
+    const t0 = Date.now();
+    for (let i = 0; i < totalFrames; i++) {
+      const tSec = i / fps;
+      await page.evaluate((t) => window.__seekProject(t), tSec);
+      await page.screenshot({
+        path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
+        clip: { x: 0, y: 0, width, height },
+        optimizeForSpeed: true,
+      });
+      if (i % 60 === 0 || i === totalFrames - 1) {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        console.log(`  [project] rendered frame ${i + 1}/${totalFrames} (${elapsed}s)`);
+      }
     }
+  } finally {
+    await page.close();
   }
-  await page.close();
 }
 
 /** Generate clean unboxed broadcast watermark + attribution composition HTML. */

@@ -139,7 +139,11 @@ def _derive_split_edit_audio_tracks(
         covered_by_track = any(
             t.asset_id == clip.asset_id
             and (
-                t.split_edit_role in ("j_cut", "l_cut")
+                (
+                    t.split_edit_role in ("j_cut", "l_cut")
+                    and t.timeline_start_s < clip_end + 0.05
+                    and (t.timeline_start_s + t.timeline_duration_s) > clip.timeline_start_s - 0.05
+                )
                 or (
                     t.timeline_start_s <= clip.timeline_start_s + 0.05
                     and (t.timeline_start_s + t.timeline_duration_s) >= clip_end - 0.05
@@ -567,13 +571,18 @@ def _video_codec_args(
     return args
 
 
-def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
+def _stage_plan_fonts_dir(
+    plan: EditPlan,
+    dest_dir: Path,
+    *,
+    extra_fonts_dir: Path | None = None,
+) -> Path | None:
     """Copy plan font assets plus the engine font library into one directory for libass.
 
     Plan fonts win on filename collisions. For the shared engine font library
-    (`assets/geo/fonts`), families that bundle both static weight files and variable masters
-    stage static faces only so FreeType/libass deterministically resolves bold/regular weights
-    without falling back to light default variable instances.
+    (`assets/geo/fonts`) and any extra font directory, families that bundle both static weight
+    files and variable masters stage static faces only so FreeType/libass deterministically
+    resolves bold/regular weights without falling back to light default variable instances.
     """
     copied = 0
     plan_sources: list[Path] = [Path(a.path) for a in plan.assets if a.kind == "font"]
@@ -584,25 +593,40 @@ def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
         shutil.copy2(src, dest_dir / src.name)
         copied += 1
 
+    dir_candidates: list[Path] = []
+    if extra_fonts_dir is not None:
+        resolved_extra = extra_fonts_dir.expanduser().resolve()
+        if resolved_extra.is_dir():
+            dir_candidates.append(resolved_extra)
     try:
         library = find_repo_root() / "assets" / "geo" / "fonts"
+        if library.is_dir() and library.resolve() not in dir_candidates:
+            dir_candidates.append(library.resolve())
     except FileNotFoundError:
-        library = None
-    if library is not None and library.is_dir():
-        lib_fonts = sorted(p for p in library.iterdir() if p.suffix.lower() in {".ttf", ".otf"})
-        families_with_static: set[str] = set()
-        for fp in lib_fonts:
-            if "variable" not in fp.stem.lower():
-                families_with_static.add(fp.stem.split("-")[0].lower())
-        for src in lib_fonts:
-            if not src.is_file() or (dest_dir / src.name).exists():
-                continue
-            stem_key = src.stem.split("-")[0].lower()
-            if "variable" in src.stem.lower() and stem_key in families_with_static:
-                continue
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest_dir / src.name)
-            copied += 1
+        pass
+
+    dir_fonts: list[Path] = []
+    for fdir in dir_candidates:
+        dir_fonts.extend(
+            sorted(
+                p for p in fdir.iterdir()
+                if p.is_file() and p.suffix.lower() in {".ttf", ".otf"}
+            )
+        )
+    families_with_static: set[str] = {
+        fp.stem.split("-")[0].lower()
+        for fp in dir_fonts
+        if "variable" not in fp.stem.lower()
+    }
+    for src in dir_fonts:
+        if (dest_dir / src.name).exists():
+            continue
+        stem_key = src.stem.split("-")[0].lower()
+        if "variable" in src.stem.lower() and stem_key in families_with_static:
+            continue
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest_dir / src.name)
+        copied += 1
     return dest_dir if copied > 0 else None
 
 
@@ -1021,20 +1045,21 @@ def assemble_hybrid_deliverable(
             else None
         )
         if bmode and bmode in ("screen", "multiply", "overlay", "lighten"):
-            base_rgba = f"v_b_rgba_{seg_k}"
+            base_rgb = f"v_b_rgb_{seg_k}"
             blend_rgb = f"v_bl_rgb_{seg_k}"
             blend_rgba = f"v_bl_rgba_{seg_k}"
             chains.append(
-                f"{final_v_label}format=yuv420p,split[{base_rgba}_orig][{base_rgba}_prep];"
-                f"[{base_rgba}_prep]format=rgba[{base_rgba}];"
+                f"{final_v_label}format=yuv420p,split[{base_rgb}_orig][{base_rgb}_prep];"
+                f"[{base_rgb}_prep]format=gbrp[{base_rgb}];"
                 f"[{seg_idx}:v]fps={fps},scale={width}:{height},"
                 f"setpts=PTS-STARTPTS+{seg_start:.4f}/TB,format=rgba,"
-                f"split[{ov_lbl}_rgb][{ov_lbl}_a];"
+                f"split[{ov_lbl}_raw][{ov_lbl}_a];"
+                f"[{ov_lbl}_raw]format=gbrp[{ov_lbl}_rgb];"
                 f"[{ov_lbl}_a]alphaextract[{ov_lbl}_mask];"
-                f"[{base_rgba}][{ov_lbl}_rgb]blend=all_mode={bmode}:"
-                f"all_opacity=1:eof_action=pass[{blend_rgb}];"
+                f"[{base_rgb}][{ov_lbl}_rgb]blend=all_mode={bmode}:"
+                f"all_opacity=1:eof_action=pass,format=rgba[{blend_rgb}];"
                 f"[{blend_rgb}][{ov_lbl}_mask]alphamerge[{blend_rgba}];"
-                f"[{base_rgba}_orig][{blend_rgba}]overlay=0:0:"
+                f"[{base_rgb}_orig][{blend_rgba}]overlay=0:0:"
                 f"enable='between(t,{seg_start:.4f},{seg_end:.4f})':"
                 f"shortest=0:eof_action=pass,format=yuv420p[{comp_lbl}]"
             )
@@ -1059,17 +1084,11 @@ def assemble_hybrid_deliverable(
     audio_result: MasteredAudioResult | None = None
     with tempfile.TemporaryDirectory(prefix="vedit_master_") as tmp_dir:
         tmp_path = Path(tmp_dir)
-        staged_fonts = _stage_plan_fonts_dir(plan, tmp_path / "fonts")
-        if fonts_dir is not None:
-            extra_fonts_dir = fonts_dir.expanduser().resolve()
-            if extra_fonts_dir.is_dir():
-                fonts_dest = tmp_path / "fonts"
-                fonts_dest.mkdir(parents=True, exist_ok=True)
-                for src_f in sorted(extra_fonts_dir.iterdir()):
-                    if src_f.is_file() and src_f.suffix.lower() in {".ttf", ".otf"}:
-                        if not (fonts_dest / src_f.name).exists():
-                            shutil.copy2(src_f, fonts_dest / src_f.name)
-                        staged_fonts = fonts_dest
+        staged_fonts = (
+            _stage_plan_fonts_dir(plan, tmp_path / "fonts", extra_fonts_dir=fonts_dir)
+            if (ass_overlays or ext_captions_ass is not None)
+            else None
+        )
 
         if ass_overlays:
             ass_file = write_ass_overlays_file(
@@ -1105,6 +1124,10 @@ def assemble_hybrid_deliverable(
         final_v_label = "[v_tagged]"
 
         resolved_audio: Path | None = mastered_audio_path
+        if resolved_audio is not None:
+            resolved_audio = resolved_audio.expanduser().resolve()
+            if not resolved_audio.is_file():
+                raise MasteringError(f"Mastered audio file not found: {resolved_audio}")
         has_split_audio = bool(_derive_split_edit_audio_tracks(plan, assets_by_id))
         if resolved_audio is None and (plan.audio_tracks or has_split_audio):
             resolved_audio = tmp_path / "master_audio.wav"

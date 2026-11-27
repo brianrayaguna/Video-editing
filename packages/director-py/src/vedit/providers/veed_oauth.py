@@ -14,7 +14,6 @@ import httpx
 from vedit.providers.http import (
     ProviderAPIError,
     poll_until_complete,
-    redact_secret,
     request_with_retry,
 )
 
@@ -111,7 +110,15 @@ class VeedOAuthTokenStore:
 
         import json
 
-        stored: dict[str, Any] = json.loads(self._token_path.read_text(encoding="utf-8"))
+        try:
+            stored: dict[str, Any] = json.loads(self._token_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProviderAPIError(
+                "veed",
+                None,
+                f"Failed to parse OpenEdit VEED OAuth token at {self._token_path}: {exc}. "
+                "Re-run `npx @veedstudio/openedit-cli login`.",
+            ) from exc
         stored_origin = str(stored.get("origin") or "").rstrip("/")
         if stored_origin and stored_origin != self._expected_origin:
             raise ProviderAPIError(
@@ -163,10 +170,22 @@ class VeedOAuthTokenStore:
                 f"OpenEdit OAuth token refresh failed ({exc}). "
                 "Re-run `npx @veedstudio/openedit-cli login`.",
             ) from exc
+        except ValueError as exc:
+            raise ProviderAPIError(
+                "veed",
+                None,
+                f"OpenEdit OAuth token refresh returned invalid JSON: {exc}.",
+            ) from exc
         finally:
             if own_client:
                 client.close()
 
+        if not isinstance(refreshed, dict) or not refreshed.get("access_token"):
+            raise ProviderAPIError(
+                "veed",
+                None,
+                "OpenEdit OAuth token refresh response lacked `access_token`.",
+            )
         new_access = str(refreshed["access_token"])
         updated = {
             **stored,
@@ -220,14 +239,25 @@ class VeedEdgeClient:
         try:
             url = f"{self.api_base}{path}"
             if allow_404:
-                resp = client.get(url, headers=self._edge_headers(token))
-                if resp.status_code == 404:
-                    return None
-                if resp.status_code >= 400:
-                    raise ProviderAPIError(
-                        "veed", resp.status_code, redact_secret(resp.text[:500], token)
+                try:
+                    resp = request_with_retry(
+                        client,
+                        "GET",
+                        url,
+                        provider="veed",
+                        secret_to_redact=token,
+                        headers=self._edge_headers(token),
                     )
-                return unwrap_veed_data(resp.json())
+                except ProviderAPIError as exc:
+                    if exc.status_code == 404:
+                        return None
+                    raise
+                try:
+                    return unwrap_veed_data(resp.json())
+                except ValueError as exc:
+                    raise ProviderAPIError(
+                        "veed", resp.status_code, f"Invalid JSON: {exc}"
+                    ) from exc
 
             resp = request_with_retry(
                 client,
@@ -237,7 +267,10 @@ class VeedEdgeClient:
                 secret_to_redact=token,
                 headers=self._edge_headers(token),
             )
-            return unwrap_veed_data(resp.json())
+            try:
+                return unwrap_veed_data(resp.json())
+            except ValueError as exc:
+                raise ProviderAPIError("veed", resp.status_code, f"Invalid JSON: {exc}") from exc
         finally:
             if own:
                 client.close()

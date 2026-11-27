@@ -22,7 +22,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -180,61 +180,66 @@ function readTtfWeightAxis(filePath) {
   }
 }
 
+let __cachedDynamicFontFaces = null;
+
 function buildDynamicFontFaceCss(baseUrl) {
-  const fontsDir = join(REPO_ROOT, "assets", "geo", "fonts");
-  const faces = [];
-  if (existsSync(fontsDir)) {
-    const files = readdirSync(fontsDir)
-      .filter((fn) => /\.(?:ttf|otf)$/i.test(fn))
-      .sort();
-    for (const fn of files) {
-      const fullPath = join(fontsDir, fn);
-      const base = fn.replace(/\.(?:ttf|otf)$/i, "");
-      const style = /italic/i.test(base) ? "italic" : "normal";
-      const stem = base
-        .replace(
-          /[-_](Italic[-_])?(Variable|Regular|ExtraLight|Light|Medium|SemiBold|Bold|ExtraBold|Black|Italic)+$/i,
-          ""
-        )
-        .replace(/[-_](BoldItalic|BlackItalic|Italic)$/i, "");
-      const compact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const family =
-        __FONT_KNOWN_FAMILIES[compact] ||
-        stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim();
-      if (!family) continue;
-      const axis = readTtfWeightAxis(fullPath);
-      const isVariable = Boolean(axis?.isVariable || /variable/i.test(base));
-      let weight = "400";
-      if (axis?.isVariable) {
-        weight = `${axis.minWeight} ${axis.maxWeight}`;
-      } else if (/variable/i.test(base)) {
-        weight = "100 900";
-      } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
-        weight = "800";
-      } else if (/(?:^|[-_])(semi[-_]?bold|demibold)(?:italic)?$/i.test(base)) {
-        weight = "600";
-      } else if (/(?:^|[-_])black(?:italic)?$/i.test(base)) {
-        weight = "900";
-      } else if (compact === "archivoblack") {
-        weight = "400 900";
-      } else if (/(?:^|[-_])bold(?:italic)?$/i.test(base)) {
-        weight = "700";
-      } else if (/(?:^|[-_])medium(?:italic)?$/i.test(base)) {
-        weight = "500";
-      } else if (/(?:^|[-_])(extra[-_]?light|ultralight)(?:italic)?$/i.test(base)) {
-        weight = "200";
-      } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
-        weight = "300";
-      } else if (axis && !axis.isVariable) {
-        weight = String(axis.minWeight);
+  if (__cachedDynamicFontFaces === null) {
+    const fontsDir = join(REPO_ROOT, "assets", "geo", "fonts");
+    const faces = [];
+    if (existsSync(fontsDir)) {
+      const files = readdirSync(fontsDir)
+        .filter((fn) => /\.(?:ttf|otf)$/i.test(fn))
+        .sort();
+      for (const fn of files) {
+        const fullPath = join(fontsDir, fn);
+        const base = fn.replace(/\.(?:ttf|otf)$/i, "");
+        const style = /italic/i.test(base) ? "italic" : "normal";
+        const stem = base
+          .replace(
+            /[-_](Italic[-_])?(Variable|Regular|ExtraLight|Light|Medium|SemiBold|Bold|ExtraBold|Black|Italic)+$/i,
+            ""
+          )
+          .replace(/[-_](BoldItalic|BlackItalic|Italic)$/i, "");
+        const compact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const family =
+          __FONT_KNOWN_FAMILIES[compact] ||
+          stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim();
+        if (!family) continue;
+        const axis = readTtfWeightAxis(fullPath);
+        const isVariable = axis ? axis.isVariable : /variable/i.test(base);
+        let weight = "400";
+        if (axis?.isVariable) {
+          weight = `${axis.minWeight} ${axis.maxWeight}`;
+        } else if (axis && !axis.isVariable) {
+          weight = String(axis.minWeight);
+        } else if (/variable/i.test(base)) {
+          weight = "100 900";
+        } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
+          weight = "800";
+        } else if (/(?:^|[-_])(semi[-_]?bold|demibold)(?:italic)?$/i.test(base)) {
+          weight = "600";
+        } else if (/(?:^|[-_])black(?:italic)?$/i.test(base)) {
+          weight = "900";
+        } else if (/(?:^|[-_])bold(?:italic)?$/i.test(base)) {
+          weight = "700";
+        } else if (/(?:^|[-_])medium(?:italic)?$/i.test(base)) {
+          weight = "500";
+        } else if (/(?:^|[-_])(extra[-_]?light|ultralight)(?:italic)?$/i.test(base)) {
+          weight = "200";
+        } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
+          weight = "300";
+        }
+        const fmt = fn.toLowerCase().endsWith(".otf") ? "opentype" : "truetype";
+        faces.push({ fn, family, weight, style, fmt, isVariable });
       }
-      const fmt = fn.toLowerCase().endsWith(".otf") ? "opentype" : "truetype";
-      faces.push({ fn, family, weight, style, fmt, isVariable });
     }
+    // Deduplicate static vs variable collisions per (family, style) so Chromium resolves exact fvar axes cleanly.
+    const varKeys = new Set(faces.filter((f) => f.isVariable).map((f) => `${f.family.toLowerCase()}::${f.style}`));
+    __cachedDynamicFontFaces = faces.filter(
+      (f) => f.isVariable || !varKeys.has(`${f.family.toLowerCase()}::${f.style}`)
+    );
   }
-  // Deduplicate static vs variable collisions per (family, style) so Chromium resolves exact fvar axes cleanly.
-  const varKeys = new Set(faces.filter((f) => f.isVariable).map((f) => `${f.family.toLowerCase()}::${f.style}`));
-  const deduped = faces.filter((f) => f.isVariable || !varKeys.has(`${f.family.toLowerCase()}::${f.style}`));
+  const deduped = __cachedDynamicFontFaces;
   if (deduped.length > 0) {
     const rules = deduped.map(
       (f) =>
@@ -303,13 +308,18 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
   <script src="${baseUrl}/vendor/maplibre-gl.js"></script>${has3d ? `
   <script type="importmap">{"imports":{"three":"${baseUrl}/vendor/three/three.module.js","three/addons/":"${baseUrl}/vendor/three/jsm/"}}</script>
   <script type="module">
-    import * as THREE from "three";
-    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-    import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-    window.THREE = THREE;
-    window.THREE_ADDONS = { GLTFLoader, DRACOLoader, RoomEnvironment };
-    if (window.__resolveThreeReady) window.__resolveThreeReady();
+    try {
+      const THREE = await import("three");
+      const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+      const { DRACOLoader } = await import("three/addons/loaders/DRACOLoader.js");
+      const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+      window.THREE = THREE;
+      window.THREE_ADDONS = { GLTFLoader, DRACOLoader, RoomEnvironment };
+      if (window.__resolveThreeReady) window.__resolveThreeReady();
+    } catch (err) {
+      window.__threeReadyError = err;
+      if (window.__rejectThreeReady) window.__rejectThreeReady(err);
+    }
   </script>` : ""}
   <style>
 ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUrl) : ""}
@@ -329,8 +339,8 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
   </div>
   <canvas id="comp" width="${width}" height="${height}"></canvas>
   <script>
-    const BASE_URL = ${JSON.stringify(baseUrl)};
-    const VEC = ${vectorsJson};
+    const BASE_URL = ${JSON.stringify(baseUrl).replace(/</g, "\\u003c")};
+    const VEC = ${vectorsJson.replace(/</g, "\\u003c")};
     const W = ${width}, H = ${height};
     const OV_SCALE = ${ovScale};
     const OV_W = ${ovW}, OV_H = ${ovH};
@@ -466,9 +476,13 @@ ${DRAW_MATH_SRC}
     const ORIGIN_COORD = ${JSON.stringify(originCoord)};
     let __update3DScene = null;
     const __threeReadyPromise = HAS_3D
-      ? new Promise((resolve) => {
+      ? new Promise((resolve, reject) => {
           if (typeof window.THREE !== "undefined") resolve();
-          else window.__resolveThreeReady = resolve;
+          else if (window.__threeReadyError) reject(window.__threeReadyError);
+          else {
+            window.__resolveThreeReady = resolve;
+            window.__rejectThreeReady = reject;
+          }
         })
       : Promise.resolve();
 
@@ -697,7 +711,10 @@ ${DRAW_MATH_SRC}
           clamp(Math.round(Number(rgbMatch[3])), 0, 255),
         ];
       }
-      const h = raw.replace("#", "");
+      let h = raw.replace("#", "");
+      if (h.length === 3 || h.length === 4) {
+        h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      }
       return [
         parseInt(h.slice(0, 2), 16) || 0,
         parseInt(h.slice(2, 4), 16) || 0,
@@ -1148,6 +1165,7 @@ ${DRAW_MATH_SRC}
             ang.toFixed(1),
             oct.octave,
             useSubFlag ? "s" : "p",
+            spacingStep.toPrecision(8),
             hatchSpacing,
           ].join("|");
           let lines = __worldHatchCache.get(cacheKey);
@@ -1296,6 +1314,21 @@ ${DRAW_MATH_SRC}
       applyMicroDither(ctx, 0.025 * alpha);
     }
 
+    const __geomMetaCache = new WeakMap();
+    function getCachedGeomMeta(geom) {
+      if (geom && typeof geom === "object") {
+        let cached = __geomMetaCache.get(geom);
+        if (!cached) {
+          const rings = polygonRings(geom);
+          cached = { bounds: computeGeomBounds(geom), outer: rings.outer, inner: rings.inner };
+          __geomMetaCache.set(geom, cached);
+        }
+        return cached;
+      }
+      const rings = polygonRings(geom);
+      return { bounds: computeGeomBounds(geom), outer: rings.outer, inner: rings.inner };
+    }
+
     // Seamless exterior polygon dissolve + 2.5D lift/bevel/cast-shadow + 2-step pyramid screen bloom +
     // world-space border trace with comet head + world-space progressive hatch & optical lighting sweeps.
     function drawDissolvedPolygon(geom, {
@@ -1365,11 +1398,13 @@ ${DRAW_MATH_SRC}
         return;
       }
       if (traced && traceProgress <= 0.001 && fillReveal <= 0.005) return;
+      if (revealAxis && revealProgress <= 0.001) return;
 
-      const geomBounds = computeGeomBounds(geom);
+      const geomMeta = getCachedGeomMeta(geom);
+      const geomBounds = geomMeta.bounds;
       const isMultiPart = Boolean(dissolveSeams) || Array.isArray(geom) || (geom && (geom.type === "FeatureCollection" || geom.type === "GeometryCollection"));
       const needOuter = traced || Boolean(flagImg) || fillRevealMode !== "fade" || Boolean(rimGlint) || Boolean(lightSweep);
-      const ringsLL = needOuter ? outerRingsLngLat(geom) : [];
+      const ringsLL = needOuter ? geomMeta.outer : [];
       const ringsPx = needOuter ? ringsLL.map((r) => projectRingClipped(r)) : [];
 
       // 1. Build clean solid silhouette mask (seam-bridge stroke only on multi-part dissolved regions)
@@ -1459,7 +1494,7 @@ ${DRAW_MATH_SRC}
         : 0;
       if (traced) {
         if (traceProgress > 0.001) {
-          const holesLL = polygonRings(geom).inner;
+          const holesLL = geomMeta.inner;
           const outerRes = perimeterPartialPathsLngLat(ringsLL, traceProgress, {
             ...borderTraceOptions(ringsLL, traceHeads, traceStart, traceDir),
             cometFraction: 0.055,
@@ -2021,6 +2056,19 @@ ${DRAW_MATH_SRC}
       const [lng, lat] = coord;
       const p0 = map.project([lng, lat]);
       const curZoom = map.getZoom();
+      if (!p0 || !Number.isFinite(p0.x) || !Number.isFinite(p0.y) || Math.abs(p0.x) > W * 16 || Math.abs(p0.y) > H * 16) {
+        const s = Math.pow(2, curZoom - refZoom);
+        const rot = (-map.getBearing() * Math.PI) / 180;
+        const pitchCos = Math.max(0.25, Math.cos(((map.getPitch() || 0) * Math.PI) / 180));
+        return {
+          a: Math.cos(rot) * s,
+          b: Math.sin(rot) * s,
+          c: -Math.sin(rot) * s * pitchCos,
+          d: Math.cos(rot) * s * pitchCos,
+          e: Number.isFinite(p0?.x) ? p0.x : W * 0.5,
+          f: Number.isFinite(p0?.y) ? p0.y : H * 0.5,
+        };
+      }
       const cosLat = Math.max(0.15, Math.cos((lat * Math.PI) / 180));
       const stepZoom = Math.max(refZoom, curZoom);
       const stepPx = 4;
@@ -2034,7 +2082,7 @@ ${DRAW_MATH_SRC}
       let c = ((pSouth.x - p0.x) / stepPx) * relScale;
       let d = ((pSouth.y - p0.y) / stepPx) * relScale;
       const det = a * d - b * c;
-      if (!Number.isFinite(det) || det <= 1e-6) {
+      if (!Number.isFinite(det) || det <= 1e-6 || det > 1e8) {
         const mag = Math.hypot(a, b);
         const s = Number.isFinite(mag) && mag > 1e-4 ? mag : Math.pow(2, curZoom - refZoom);
         const rot = (-map.getBearing() * Math.PI) / 180;
@@ -5322,6 +5370,7 @@ ${DRAW_MATH_SRC}
           renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
           renderer.autoClear = false;
           renderer.shadowMap.enabled = true;
+          renderer.shadowMap.autoUpdate = false;
           renderer.shadowMap.type = THREE.PCFSoftShadowMap;
           if (window.THREE_ADDONS && window.THREE_ADDONS.RoomEnvironment && typeof THREE.PMREMGenerator === "function") {
             const pmrem = new THREE.PMREMGenerator(renderer);
@@ -5339,7 +5388,7 @@ ${DRAW_MATH_SRC}
           }
         },
         prerender(gl, options) {
-          if (!renderer || !bloomState || !hasActive3D) {
+          if (!renderer || !hasActive3D) {
             if (bloomState) bloomState.rendered = false;
             return;
           }
@@ -5350,9 +5399,20 @@ ${DRAW_MATH_SRC}
 
           const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
           const prevVp = gl.getParameter(gl.VIEWPORT);
+          if (!bloomState) {
+            renderer.resetState();
+            renderer.shadowMap.needsUpdate = true;
+            renderer.shadowMap.render(scene, camera);
+            renderer.setRenderTarget(null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+            if (prevVp) gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+            renderer.resetState();
+            return;
+          }
           ensureBloomTargets(bloomState, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
           renderer.resetState();
+          renderer.shadowMap.needsUpdate = true;
           // 1. Render 3D HDR scene + PCF soft shadows into sceneRT
           renderer.setRenderTarget(bloomState.sceneRT);
           renderer.setClearColor(0x000000, 0);
@@ -5650,7 +5710,7 @@ ${DRAW_MATH_SRC}
                 "  float rank = clamp(uvNorm.x * 0.65 + (1.0 - uvNorm.y) * 0.35, 0.0, 1.0);",
                 "  float localP = clamp((uHatchProgress - rank * 0.55) / 0.45, 0.0, 1.0);",
                 "  float uFrac = clamp((uvNorm.x * ca + (1.0 - uvNorm.y) * sa), 0.0, 1.0);",
-                "  float sweepReveal = smoothstep(localP + 0.04, localP - 0.04, uFrac * 0.85);",
+                "  float sweepReveal = 1.0 - smoothstep(localP - 0.04, localP + 0.04, uFrac * 0.85);",
                 "  float hMask = lineMask * sweepReveal * uHatchAlpha * step(0.002, localP);",
                 "  diffuseColor.rgb = mix(diffuseColor.rgb, uHatchColor, clamp(hMask, 0.0, 0.75));",
                 "  totalEmissiveRadiance += uHatchColor * hMask * 0.08;",
@@ -5995,12 +6055,30 @@ ${DRAW_MATH_SRC}
               return { cp, tan, nVec, bVec, u: fIdx / entry.baseSegs };
             };
 
+            const sagAt = (uVal) => {
+              if (!entry.catenary) return 0;
+              const nSpans = Math.max(1, (entry.coords.length || 2) - 1);
+              const spanPhase = (uVal * nSpans) % 1;
+              return -Math.sin(spanPhase * Math.PI) * sagMeters;
+            };
+            const geomSig = [
+              drawSegs,
+              segFrac.toFixed(4),
+              rMeters.toFixed(3),
+              altMeters.toFixed(3),
+              sagMeters.toFixed(3),
+              endTaperM.toFixed(2),
+            ].join("|");
+            const needsRebuild = entry._lastGeomSig !== geomSig;
+            entry._lastGeomSig = geomSig;
+
             for (const st of entry.strands) {
+              st.mat.opacity = alpha;
+              st.shMat.opacity = alpha * (entry.catenary ? 0.30 : 0.48);
+              if (!needsRebuild) continue;
               const latShiftM = st.offPx
                 ? metersForScreenPx(st.offPx, midLat, curZoom, layer.radius_ref_zoom ?? curZoom, layer.radius_coupling ?? 0.42, 0.45, 2.8)
                 : 0;
-              st.mat.opacity = alpha;
-              st.shMat.opacity = alpha * (entry.catenary ? 0.30 : 0.48);
 
               for (let i = 0; i <= drawSegs; i++) {
                 const isFracTip = hasTipFrac && i === drawSegs;
@@ -6012,12 +6090,7 @@ ${DRAW_MATH_SRC}
                   u: i / entry.baseSegs,
                 };
                 const u = sData.u;
-                let sagOff = 0;
-                if (entry.catenary) {
-                  const nSpans = Math.max(1, (entry.coords.length || 2) - 1);
-                  const spanPhase = (u * nSpans) % 1;
-                  sagOff = -Math.sin(spanPhase * Math.PI) * sagMeters;
-                }
+                const sagOff = sagAt(u);
                 const cp = sData.cp;
                 const tan = sData.tan;
                 const sideDir = new THREE.Vector3(-tan.y, tan.x, 0).normalize();
@@ -6074,10 +6147,11 @@ ${DRAW_MATH_SRC}
                 const rm = entry.pulseRings[p];
                 const ph = (((t - tStart) * pSpeed + p / Math.max(1, pLen)) % 1 + 1) % 1;
                 const sData = sampleCenterAt(ph * exactSegPos);
+                const rSag = sagAt(sData.u);
                 rm.visible = true;
-                rm.position.set(sData.cp.x, sData.cp.y, sData.cp.z + altMeters);
+                rm.position.set(sData.cp.x, sData.cp.y, sData.cp.z + altMeters + rSag);
                 rm.scale.setScalar(rMeters * 1.18);
-                rm.lookAt(sData.cp.x + sData.tan.x, sData.cp.y + sData.tan.y, sData.cp.z + altMeters + sData.tan.z);
+                rm.lookAt(sData.cp.x + sData.tan.x, sData.cp.y + sData.tan.y, sData.cp.z + altMeters + rSag + sData.tan.z);
               }
             } else {
               for (const rm of entry.pulseRings) rm.visible = false;
@@ -6094,8 +6168,9 @@ ${DRAW_MATH_SRC}
             }
             if (prog > 0.01 && prog < 0.995 && exactSegPos > 0.1) {
               const tipData = sampleCenterAt(exactSegPos);
+              const tipSag = sagAt(tipData.u);
               entry.tipSpark.visible = true;
-              entry.tipSpark.position.set(tipData.cp.x, tipData.cp.y, tipData.cp.z + altMeters);
+              entry.tipSpark.position.set(tipData.cp.x, tipData.cp.y, tipData.cp.z + altMeters + tipSag);
               entry.tipSpark.scale.setScalar(rMeters * 1.8);
             } else {
               entry.tipSpark.visible = false;
@@ -6193,19 +6268,36 @@ ${DRAW_MATH_SRC}
               else if (layer.model === "solar_farm") grp = buildSolarFarmModel(layer);
               else if (layer.model === "survey_vessel") grp = buildSurveyVesselModel(layer);
               else grp = buildTransmissionTowerModel(layer);
+              const mats = [];
+              const seenMats = new Set();
               grp.traverse((ch) => {
                 if (ch.isMesh) {
                   ch.castShadow = true;
                   ch.receiveShadow = true;
+                  const matList = Array.isArray(ch.material) ? ch.material : (ch.material ? [ch.material] : []);
+                  for (const m of matList) {
+                    if (m && !seenMats.has(m)) {
+                      seenMats.add(m);
+                      mats.push({
+                        mat: m,
+                        baseOpacity: typeof m.opacity === "number" ? m.opacity : 1.0,
+                        baseTransparent: Boolean(m.transparent),
+                      });
+                    }
+                  }
                 }
               });
               scene.add(grp);
-              entry = { key, grp };
+              entry = { key, grp, mats };
               modelCache.set(key, entry);
             }
             activeModels.add(key);
             entry.grp.visible = visible && alpha > 0.01;
             if (!entry.grp.visible) continue;
+            for (const item of entry.mats || []) {
+              item.mat.opacity = item.baseOpacity * alpha;
+              item.mat.transparent = item.baseTransparent || alpha < 0.999;
+            }
             anyVisible3D = true;
             anyShadowCaster = true;
 
@@ -6361,26 +6453,37 @@ ${DRAW_MATH_SRC}
       }
     };
 
+    // Scratch compositing canvas shared between sub-frame shutter accumulation and radial cut blur.
+    const cutBlurSrc = document.createElement("canvas");
+    cutBlurSrc.width = W; cutBlurSrc.height = H;
+    const cutBlurSrcCtx = cutBlurSrc.getContext("2d");
+
     // Optical sub-frame shutter accumulator with arbitrary per-sample weights (cosine/trapezoid window).
+    // Composite map + overlay at full alpha into cutBlurSrc first so overlays do not double-blend over the basemap.
     window.__beginShutterAccum = function() {
       compCanvas.style.display = "block";
       compCtx.clearRect(0, 0, W, H);
     };
     window.__accumSubframe = function(weightOrIdx, cumWeight) {
+      cutBlurSrcCtx.save();
+      cutBlurSrcCtx.clearRect(0, 0, W, H);
+      if (Math.abs(window.__currentRoll) > 0.01) {
+        const sc = computeRollOverscan(window.__currentRoll);
+        cutBlurSrcCtx.translate(W * 0.5, H * 0.5);
+        cutBlurSrcCtx.rotate((window.__currentRoll * Math.PI) / 180);
+        cutBlurSrcCtx.scale(sc, sc);
+        cutBlurSrcCtx.translate(-W * 0.5, -H * 0.5);
+      }
+      cutBlurSrcCtx.drawImage(map.getCanvas(), 0, 0, W, H);
+      cutBlurSrcCtx.drawImage(ovCanvas, 0, 0, W, H);
+      cutBlurSrcCtx.restore();
+
       compCtx.save();
       const blendAlpha = (cumWeight != null && cumWeight > 0)
         ? clamp(Number(weightOrIdx) / Number(cumWeight), 0, 1)
         : (1 / (Number(weightOrIdx) + 1));
       compCtx.globalAlpha = blendAlpha;
-      if (Math.abs(window.__currentRoll) > 0.01) {
-        const sc = computeRollOverscan(window.__currentRoll);
-        compCtx.translate(W * 0.5, H * 0.5);
-        compCtx.rotate((window.__currentRoll * Math.PI) / 180);
-        compCtx.scale(sc, sc);
-        compCtx.translate(-W * 0.5, -H * 0.5);
-      }
-      compCtx.drawImage(map.getCanvas(), 0, 0, W, H);
-      compCtx.drawImage(ovCanvas, 0, 0, W, H);
+      compCtx.drawImage(cutBlurSrc, 0, 0, W, H);
       compCtx.restore();
     };
     window.__endShutterAccum = function() {
@@ -6391,9 +6494,6 @@ ${DRAW_MATH_SRC}
     // composite when one is showing, otherwise the map and overlay canvases with the
     // current roll, then averages scaled copies from 1 to 1 + amount into the
     // composite canvas. The caller hides the composite after capture.
-    const cutBlurSrc = document.createElement("canvas");
-    cutBlurSrc.width = W; cutBlurSrc.height = H;
-    const cutBlurSrcCtx = cutBlurSrc.getContext("2d");
     window.__cutBlurComposite = function(amount, copies) {
       cutBlurSrcCtx.save();
       cutBlurSrcCtx.clearRect(0, 0, W, H);
@@ -6443,8 +6543,8 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
 <body>
   <canvas id="c" width="${width}" height="${height}"></canvas>
   <script>
-    const VEC = ${vectorsJson};
-    const SPEC = ${JSON.stringify(actSpec)};
+    const VEC = ${vectorsJson.replace(/</g, "\\u003c")};
+    const SPEC = ${JSON.stringify(actSpec).replace(/</g, "\\u003c")};
     const W = ${width}, H = ${height};
     const ctx = document.getElementById("c").getContext("2d");
     const maskC = document.createElement("canvas"); maskC.width = 1200; maskC.height = 1700;
@@ -6617,14 +6717,19 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
 
       if (SPEC.entry_flash_hex && t < 0.55) {
         const fA = 1 - easeOutCubic(seg(t, 0, 0.55));
-        const h = SPEC.entry_flash_hex.replace("#", "");
-        ctx.fillStyle = "rgba(" + parseInt(h.slice(0,2),16) + "," + parseInt(h.slice(2,4),16) + "," + parseInt(h.slice(4,6),16) + "," + (fA * 0.78).toFixed(3) + ")";
+        let h = String(SPEC.entry_flash_hex).replace("#", "");
+        if (h.length === 3 || h.length === 4) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        ctx.fillStyle = "rgba(" + (parseInt(h.slice(0,2),16) || 0) + "," + (parseInt(h.slice(2,4),16) || 0) + "," + (parseInt(h.slice(4,6),16) || 0) + "," + (fA * 0.78).toFixed(3) + ")";
         ctx.fillRect(0, 0, W, H);
       }
     };
   </script>
 </body>
 </html>`;
+}
+
+function wrapDeltaDeg(fromDeg, toDeg) {
+  return ((((toDeg - fromDeg) + 180) % 360) + 360) % 360 - 180;
 }
 
 function sampleCameraAt(samples, frameIndex, subOffset = 0) {
@@ -6638,11 +6743,11 @@ function sampleCameraAt(samples, frameIndex, subOffset = 0) {
   const a = samples[i0], b = samples[i1];
   return {
     center: [
-      a.center[0] + (b.center[0] - a.center[0]) * u,
+      a.center[0] + wrapDeltaDeg(a.center[0], b.center[0]) * u,
       a.center[1] + (b.center[1] - a.center[1]) * u,
     ],
     zoom: a.zoom + (b.zoom - a.zoom) * u,
-    bearing: (a.bearing || 0) + ((b.bearing || 0) - (a.bearing || 0)) * u,
+    bearing: (a.bearing || 0) + wrapDeltaDeg(a.bearing || 0, b.bearing || 0) * u,
     pitch: (a.pitch || 0) + ((b.pitch || 0) - (a.pitch || 0)) * u,
     roll: (a.roll || 0) + ((b.roll || 0) - (a.roll || 0)) * u,
     shutter_samples: a.shutter_samples || 1,
@@ -6655,7 +6760,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   const outName = act.output_file || act.output_name || `${act.act_id}.mp4`;
   const outMp4 = resolve(outDir, outName);
   const resolvedOutDir = resolve(outDir);
-  if (outMp4 !== resolvedOutDir && !outMp4.startsWith(resolvedOutDir + "/")) {
+  if (!outMp4.startsWith(resolvedOutDir + sep)) {
     throw new Error(`Output path escapes output directory (${resolvedOutDir}): ${outName}`);
   }
   const actKind = act.kind || act.mode || act.type || "map";
@@ -6680,29 +6785,15 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   }
   console.log(`\n=== ${isPreview ? "Previewing" : "Baking"} ${act.act_id} (${actKind}): ${act.duration_s.toFixed(3)}s (${totalFrames} frames) -> ${isPreview ? "keyframes" : outMp4} ===`);
 
-  const page = await browser.newPage();
-  page.on("pageerror", (err) => console.error(`  [${act.act_id} pageerror]`, err));
-  await page.setViewport({ width, height, deviceScaleFactor: 1 });
   const captureFormat = act.capture_format || opts.captureFormat || "jpeg";
   const captureQuality = act.capture_quality ?? opts.captureQuality ?? 95;
-  const shotter = await createCdpScreenshotter(page, width, height, {
-    format: captureFormat,
-    quality: captureQuality,
-  });
-  const encoder = isPreview
-    ? null
-    : spawnFramePipeEncoder(outMp4, {
-        codec: captureFormat === "png" ? "png" : "mjpeg",
-        fps,
-        crf: 15,
-        gop: 1,
-        preset: "fast",
-        useVideoToolbox: false,
-      });
   const t0 = Date.now();
   const trackLog = [];
   const previewFrames = [];
   let succeeded = false;
+  let page = null;
+  let shotter = null;
+  let encoder = null;
 
   const sampleIndices = (() => {
     if (!isPreview) return null;
@@ -6716,6 +6807,23 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
   })();
 
   try {
+    page = await browser.newPage();
+    page.on("pageerror", (err) => console.error(`  [${act.act_id} pageerror]`, err));
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    shotter = await createCdpScreenshotter(page, width, height, {
+      format: captureFormat,
+      quality: captureQuality,
+    });
+    encoder = isPreview
+      ? null
+      : spawnFramePipeEncoder(outMp4, {
+          codec: captureFormat === "png" ? "png" : "mjpeg",
+          fps,
+          crf: 15,
+          gop: 1,
+          preset: "fast",
+          useVideoToolbox: false,
+        });
     if (actKind === "blueprint_paper") {
       await page.setContent(buildBlueprintHtml(baseUrl, width, height, vectorsJson, act), { waitUntil: "load" });
       await page.evaluate(() => document.fonts.ready);
@@ -6882,10 +6990,10 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
     }
     succeeded = true;
   } finally {
-    await shotter.close();
-    await page.close();
+    if (shotter) await shotter.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
     if (!succeeded && encoder) {
-      await encoder.abort();
+      await encoder.abort().catch(() => {});
     }
   }
   if (encoder) await encoder.finish();
@@ -7023,13 +7131,14 @@ async function main() {
     projectModelsDir,
   });
   const url = `http://127.0.0.1:${server.address().port}`;
-  const browser = await puppeteer.launch({
-    executablePath: resolveChrome(),
-    headless: "new",
-    args: getChromeArgs(width, height),
-  });
+  let browser = null;
   const allPreviewFrames = [];
   try {
+    browser = await puppeteer.launch({
+      executablePath: resolveChrome(),
+      headless: "new",
+      args: getChromeArgs(width, height),
+    });
     for (const act of selectedActs) {
       if (coverageOnly) {
         await coverageAct(browser, url, vectorsJson, width, height, fps, act);
@@ -7048,7 +7157,7 @@ async function main() {
       }
     }
   } finally {
-    await browser.close();
+    if (browser) await browser.close().catch(() => {});
     server.close();
   }
   if (previewTotal > 0 && allPreviewFrames.length > 0) {

@@ -70,7 +70,7 @@ def camera_expand(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     payload = (
-        to_baker_keyframes(samples, frame_offset=samples[0]["frame"])
+        to_baker_keyframes(samples, frame_offset=samples[0]["frame"] if samples else 0)
         if fmt == "baker"
         else to_scene_keys(samples)
     )

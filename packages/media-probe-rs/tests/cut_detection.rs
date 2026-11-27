@@ -95,3 +95,56 @@ fn single_colour_clip_is_one_shot() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(starts, vec![0.0], "shot starts: {starts:?}");
 }
+
+#[test]
+fn rotated_portrait_clip_reports_display_dimensions() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let dir = scratch_dir("rotated");
+    let raw = dir.join("raw.mp4");
+    let clip = dir.join("rotated.mp4");
+    render(&raw, "color=c=0x406080:s=320x180:r=30:d=1[v]");
+    let status = Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-display_rotation", "90", "-i"])
+        .arg(&raw)
+        .args(["-c", "copy"])
+        .arg(&clip)
+        .status()
+        .expect("spawn ffmpeg");
+    assert!(status.success());
+    let report = analyze_media(&clip, &AnalyzeOptions::default()).expect("analyze");
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(report.video.width, 180);
+    assert_eq!(report.video.height, 320);
+}
+
+#[test]
+fn ten_bit_modest_exposure_shift_matches_eight_bit_gate() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let dir = scratch_dir("tenbit_gate");
+    let clip8 = dir.join("shift8.mp4");
+    let clip10 = dir.join("shift10.mp4");
+    // A modest 8-bit brightness/crop step (~8 units in 8-bit < 15.0, but ~32 units in 10-bit >= 15.0)
+    // paired with a textured crop jump scoring between cut_candidate_floor (5) and scene_threshold (12).
+    let filter = "testsrc2=s=1280x568:r=30:d=2,crop=320:568:0:0[a];\
+                  testsrc2=s=1280x568:r=30:d=2,crop=320:568:80:0,eq=brightness=0.03[b];\
+                  [a][b]concat=n=2:v=1[v]";
+    render(&clip8, filter);
+    let status = Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-filter_complex", filter])
+        .args(["-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p10le", "-r", "30"])
+        .arg(&clip10)
+        .status()
+        .expect("spawn ffmpeg");
+    if !status.success() {
+        std::fs::remove_dir_all(&dir).ok();
+        return;
+    }
+    let starts8 = shot_starts(&clip8);
+    let starts10 = shot_starts(&clip10);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(starts10, starts8, "10-bit ({starts10:?}) diverged from 8-bit ({starts8:?})");
+}

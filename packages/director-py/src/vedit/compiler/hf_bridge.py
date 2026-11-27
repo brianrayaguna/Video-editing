@@ -58,7 +58,12 @@ def resolve_hf_compiler_cli(repo_root: Path | None = None) -> Path:
     )
 
 
-def _run_node_cli(args: list[str], *, repo_root: Path | None = None) -> dict[str, Any]:
+def _run_node_cli(
+    args: list[str],
+    *,
+    repo_root: Path | None = None,
+    timeout_s: float = 900.0,
+) -> dict[str, Any]:
     node_bin = shutil.which("node")
     if not node_bin:
         raise FileNotFoundError("Node.js >= 22 is required to invoke @vedit/hf-compiler.")
@@ -66,13 +71,19 @@ def _run_node_cli(args: list[str], *, repo_root: Path | None = None) -> dict[str
     cli_js = resolve_hf_compiler_cli(repo_root=root)
     env = dict(os.environ)
     env.setdefault("VEDIT_REPO_ROOT", str(root))
-    proc = subprocess.run(
-        [node_bin, str(cli_js), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-    )
+    try:
+        proc = subprocess.run(
+            [node_bin, str(cli_js), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HyperframesCompileError(
+            f"hf-compiler command {args[0]!r} timed out after {timeout_s:g}s."
+        ) from exc
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         raise HyperframesCompileError(f"hf-compiler command {args[0]!r} failed: {detail}")

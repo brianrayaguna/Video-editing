@@ -10,7 +10,7 @@ import {
   type SafeZoneMargins,
 } from "./contracts.js";
 import { assertPlanStructure } from "./index.js";
-import { lintPlanPerformance } from "./lint.js";
+import { lintPlanPerformance, NON_FATAL_WARNING_CODES } from "./lint.js";
 
 export interface CompileOptions {
   platformTarget?: PlatformTarget;
@@ -82,138 +82,161 @@ interface TtfWeightAxisInfo {
   maxWeight: number;
 }
 
-function readTtfWeightAxis(filePath: string): TtfWeightAxisInfo | null {
+interface TtfMetadata {
+  familyName: string | null;
+  weightAxis: TtfWeightAxisInfo | null;
+}
+
+const ttfMetadataCache = new Map<string, TtfMetadata>();
+
+const KNOWN_FONT_FAMILY_MAP: Readonly<Record<string, string>> = {
+  archivoblack: "Archivo Black",
+  unbounded: "Unbounded",
+  bebasneue: "Bebas Neue",
+  oswald: "Oswald",
+  anton: "Anton",
+  leaguegothic: "League Gothic",
+  syne: "Syne",
+  barlowcondensed: "Barlow Condensed",
+  cinzel: "Cinzel",
+  rubik: "Rubik",
+  spacegrotesk: "Space Grotesk",
+  inter: "Inter",
+  montserrat: "Montserrat",
+  plusjakartasans: "Plus Jakarta Sans",
+  roboto: "Roboto",
+  poppins: "Poppins",
+  outfit: "Outfit",
+  dmsans: "DM Sans",
+  manrope: "Manrope",
+  opensans: "Open Sans",
+  lato: "Lato",
+  nunito: "Nunito",
+  sora: "Sora",
+  worksans: "Work Sans",
+  ebgaramond: "EB Garamond",
+  ebgaramonditalic: "EB Garamond",
+  playfairdisplay: "Playfair Display",
+  lora: "Lora",
+  merriweather: "Merriweather",
+  librebaskerville: "Libre Baskerville",
+  instrumentserif: "Instrument Serif",
+  spacemono: "Space Mono",
+  ibmplexmono: "IBM Plex Mono",
+  jetbrainsmono: "JetBrains Mono",
+  sourcecodepro: "Source Code Pro",
+  courierprime: "Courier Prime",
+  caveat: "Caveat",
+  permanentmarker: "Permanent Marker",
+  patrickhand: "Patrick Hand",
+};
+
+function readTtfMetadata(filePath: string): TtfMetadata {
   try {
-    if (!fs.existsSync(filePath)) return null;
-    const buf = fs.readFileSync(filePath);
-    if (buf.length < 12) return null;
-    const numTables = buf.readUInt16BE(4);
-    let fvarOff = 0;
-    let os2Off = 0;
-    for (let i = 0; i < numTables; i += 1) {
-      const rec = 12 + i * 16;
-      if (rec + 16 > buf.length) break;
-      const tag = buf.toString("ascii", rec, rec + 4);
-      if (tag === "fvar") fvarOff = buf.readUInt32BE(rec + 8);
-      else if (tag === "OS/2") os2Off = buf.readUInt32BE(rec + 8);
+    if (!fs.existsSync(filePath)) {
+      return { familyName: null, weightAxis: null };
     }
-    if (fvarOff && fvarOff + 12 <= buf.length) {
-      const axesOff = buf.readUInt16BE(fvarOff + 4);
-      const axisCount = buf.readUInt16BE(fvarOff + 8);
-      const axisSize = buf.readUInt16BE(fvarOff + 10);
-      for (let i = 0; i < axisCount; i += 1) {
-        const off = fvarOff + axesOff + i * axisSize;
-        if (off + 16 > buf.length) break;
-        const axisTag = buf.toString("ascii", off, off + 4);
-        if (axisTag === "wght") {
-          const minW = Math.max(1, Math.min(1000, Math.round(buf.readInt32BE(off + 4) / 65536)));
-          const maxW = Math.max(minW, Math.min(1000, Math.round(buf.readInt32BE(off + 12) / 65536)));
-          return { isVariable: true, minWeight: minW, maxWeight: maxW };
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return { familyName: null, weightAxis: null };
+    }
+    const cacheKey = `${path.resolve(filePath)}::${stat.mtimeMs}::${stat.size}`;
+    const cached = ttfMetadataCache.get(cacheKey);
+    if (cached) return cached;
+
+    const buf = fs.readFileSync(filePath);
+    let weightAxis: TtfWeightAxisInfo | null = null;
+    let familyName: string | null = null;
+    if (buf.length >= 12) {
+      const numTables = buf.readUInt16BE(4);
+      let fvarOff = 0;
+      let os2Off = 0;
+      let nameOffset = 0;
+      let nameLength = 0;
+      for (let i = 0; i < numTables; i += 1) {
+        const rec = 12 + i * 16;
+        if (rec + 16 > buf.length) break;
+        const tag = buf.toString("ascii", rec, rec + 4);
+        if (tag === "fvar") fvarOff = buf.readUInt32BE(rec + 8);
+        else if (tag === "OS/2") os2Off = buf.readUInt32BE(rec + 8);
+        else if (tag === "name") {
+          nameOffset = buf.readUInt32BE(rec + 8);
+          nameLength = buf.readUInt32BE(rec + 12);
         }
       }
+      if (fvarOff && fvarOff + 12 <= buf.length) {
+        const axesOff = buf.readUInt16BE(fvarOff + 4);
+        const axisCount = buf.readUInt16BE(fvarOff + 8);
+        const axisSize = buf.readUInt16BE(fvarOff + 10);
+        for (let i = 0; i < axisCount; i += 1) {
+          const off = fvarOff + axesOff + i * axisSize;
+          if (off + 16 > buf.length) break;
+          const axisTag = buf.toString("ascii", off, off + 4);
+          if (axisTag === "wght") {
+            const minW = Math.max(1, Math.min(1000, Math.round(buf.readInt32BE(off + 4) / 65536)));
+            const maxW = Math.max(minW, Math.min(1000, Math.round(buf.readInt32BE(off + 12) / 65536)));
+            weightAxis = { isVariable: true, minWeight: minW, maxWeight: maxW };
+            break;
+          }
+        }
+      }
+      if (!weightAxis && os2Off && os2Off + 6 <= buf.length) {
+        const w = Math.max(100, Math.min(1000, buf.readUInt16BE(os2Off + 4)));
+        weightAxis = { isVariable: false, minWeight: w, maxWeight: w };
+      }
+      if (nameOffset && nameOffset + 6 <= buf.length && nameLength >= 6) {
+        const count = buf.readUInt16BE(nameOffset + 2);
+        const strOffset = nameOffset + buf.readUInt16BE(nameOffset + 4);
+        let fallbackName: string | null = null;
+        for (let i = 0; i < count; i += 1) {
+          const rec = nameOffset + 6 + i * 12;
+          if (rec + 12 > buf.length) break;
+          const platformId = buf.readUInt16BE(rec);
+          const nameId = buf.readUInt16BE(rec + 6);
+          if (nameId !== 1 && nameId !== 16) continue;
+          const len = buf.readUInt16BE(rec + 8);
+          const off = strOffset + buf.readUInt16BE(rec + 10);
+          if (off + len > buf.length) continue;
+          if ((platformId === 3 || platformId === 0) && len % 2 !== 0) continue;
+          const slice = Buffer.from(buf.subarray(off, off + len));
+          const decoded =
+            platformId === 3 || platformId === 0
+              ? slice.swap16().toString("utf16le").replace(/\0/g, "").trim()
+              : slice.toString("latin1").trim();
+          if (!decoded) continue;
+          if (nameId === 16) {
+            familyName = decoded;
+            break;
+          }
+          fallbackName ??= decoded;
+        }
+        familyName ??= fallbackName;
+      }
     }
-    if (os2Off && os2Off + 6 <= buf.length) {
-      const w = Math.max(100, Math.min(900, buf.readUInt16BE(os2Off + 4)));
-      return { isVariable: false, minWeight: w, maxWeight: w };
-    }
-    return null;
+    const meta: TtfMetadata = { familyName, weightAxis };
+    ttfMetadataCache.set(cacheKey, meta);
+    return meta;
   } catch {
-    return null;
+    return { familyName: null, weightAxis: null };
   }
 }
 
-function readTtfFamilyName(filePath: string): string | null {
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    const buf = fs.readFileSync(filePath);
-    if (buf.length < 12) return null;
-    const numTables = buf.readUInt16BE(4);
-    let nameOffset = 0;
-    let nameLength = 0;
-    for (let i = 0; i < numTables; i += 1) {
-      const rec = 12 + i * 16;
-      if (rec + 16 > buf.length) break;
-      const tag = buf.toString("ascii", rec, rec + 4);
-      if (tag === "name") {
-        nameOffset = buf.readUInt32BE(rec + 8);
-        nameLength = buf.readUInt32BE(rec + 12);
-        break;
-      }
-    }
-    if (!nameOffset || nameOffset + 6 > buf.length || nameLength < 6) return null;
-    const count = buf.readUInt16BE(nameOffset + 2);
-    const strOffset = nameOffset + buf.readUInt16BE(nameOffset + 4);
-    let fallbackName: string | null = null;
-    for (let i = 0; i < count; i += 1) {
-      const rec = nameOffset + 6 + i * 12;
-      if (rec + 12 > buf.length) break;
-      const platformId = buf.readUInt16BE(rec);
-      const nameId = buf.readUInt16BE(rec + 6);
-      if (nameId !== 1 && nameId !== 16) continue;
-      const len = buf.readUInt16BE(rec + 8);
-      const off = strOffset + buf.readUInt16BE(rec + 10);
-      if (off + len > buf.length) continue;
-      if ((platformId === 3 || platformId === 0) && len % 2 !== 0) continue;
-      const slice = Buffer.from(buf.subarray(off, off + len));
-      const decoded =
-        platformId === 3 || platformId === 0
-          ? slice.swap16().toString("utf16le").replace(/\0/g, "").trim()
-          : slice.toString("latin1").trim();
-      if (!decoded) continue;
-      if (nameId === 16) return decoded;
-      fallbackName ??= decoded;
-    }
-    return fallbackName;
-  } catch {
-    return null;
-  }
+function inferKnownFontFamilyHint(fileName: string): string | null {
+  const base = path.basename(fileName, path.extname(fileName));
+  const stem = base
+    .replace(
+      /[-_](Italic[-_])?(Variable|Regular|ExtraLight|Light|Medium|SemiBold|Bold|ExtraBold|Black|Italic)+$/i,
+      ""
+    )
+    .replace(/[-_](BoldItalic|BlackItalic|Italic)$/i, "");
+  const pathCompact = stem.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return KNOWN_FONT_FAMILY_MAP[pathCompact] ?? null;
 }
 
 function inferFontDescriptor(
   assetPath: string,
   assetId: string
 ): { family: string; weight: string; style: "normal" | "italic"; isVariable: boolean } {
-  const knownMap: Record<string, string> = {
-    archivoblack: "Archivo Black",
-    unbounded: "Unbounded",
-    bebasneue: "Bebas Neue",
-    oswald: "Oswald",
-    anton: "Anton",
-    leaguegothic: "League Gothic",
-    syne: "Syne",
-    barlowcondensed: "Barlow Condensed",
-    cinzel: "Cinzel",
-    rubik: "Rubik",
-    spacegrotesk: "Space Grotesk",
-    inter: "Inter",
-    montserrat: "Montserrat",
-    plusjakartasans: "Plus Jakarta Sans",
-    roboto: "Roboto",
-    poppins: "Poppins",
-    outfit: "Outfit",
-    dmsans: "DM Sans",
-    manrope: "Manrope",
-    opensans: "Open Sans",
-    lato: "Lato",
-    nunito: "Nunito",
-    sora: "Sora",
-    worksans: "Work Sans",
-    ebgaramond: "EB Garamond",
-    ebgaramonditalic: "EB Garamond",
-    playfairdisplay: "Playfair Display",
-    lora: "Lora",
-    merriweather: "Merriweather",
-    librebaskerville: "Libre Baskerville",
-    instrumentserif: "Instrument Serif",
-    spacemono: "Space Mono",
-    ibmplexmono: "IBM Plex Mono",
-    jetbrainsmono: "JetBrains Mono",
-    sourcecodepro: "Source Code Pro",
-    courierprime: "Courier Prime",
-    caveat: "Caveat",
-    permanentmarker: "Permanent Marker",
-    patrickhand: "Patrick Hand",
-  };
   const base = path.basename(assetPath, path.extname(assetPath));
   const style: "normal" | "italic" = /italic/i.test(base) || /italic/i.test(assetId) ? "italic" : "normal";
   const stem = base
@@ -226,18 +249,22 @@ function inferFontDescriptor(
   const idClean = assetId.replace(/^font[_-]?/i, "");
   const idCompact = idClean.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  const ttfFamily = readTtfFamilyName(assetPath);
+  const ttfMeta = readTtfMetadata(assetPath);
   const family =
-    knownMap[pathCompact] ??
-    knownMap[idCompact] ??
-    ttfFamily ??
+    KNOWN_FONT_FAMILY_MAP[pathCompact] ??
+    KNOWN_FONT_FAMILY_MAP[idCompact] ??
+    ttfMeta.familyName ??
     (stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim() || assetId);
 
-  const axisInfo = readTtfWeightAxis(assetPath);
-  let isVariable = axisInfo?.isVariable ?? /variable/i.test(base);
+  const axisInfo = ttfMeta.weightAxis;
+  let isVariable = axisInfo ? axisInfo.isVariable : /variable/i.test(base);
   let weight = "400";
   if (axisInfo?.isVariable) {
     weight = `${axisInfo.minWeight} ${axisInfo.maxWeight}`;
+    isVariable = true;
+  } else if (axisInfo && !axisInfo.isVariable) {
+    weight = String(axisInfo.minWeight);
+    isVariable = false;
   } else if (/variable/i.test(base)) {
     weight = "100 900";
     isVariable = true;
@@ -247,8 +274,6 @@ function inferFontDescriptor(
     weight = "600";
   } else if (/(?:^|[-_])black(?:italic)?$/i.test(base)) {
     weight = "900";
-  } else if (/archivo.?black/i.test(family)) {
-    weight = "400 900";
   } else if (/(?:^|[-_])bold(?:italic)?$/i.test(base)) {
     weight = "700";
   } else if (/(?:^|[-_])medium(?:italic)?$/i.test(base)) {
@@ -257,11 +282,9 @@ function inferFontDescriptor(
     weight = "200";
   } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
     weight = "300";
-  } else if (axisInfo && !axisInfo.isVariable) {
-    weight = String(axisInfo.minWeight);
   } else if (
     !/[-_](regular|italic)$/i.test(base) &&
-    /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display|rubik|plus.?jakarta.?sans|oswald|outfit|dm.?sans|manrope|open.?sans|nunito|sora|work.?sans|lora|merriweather|cinzel|syne|jetbrains.?mono|source.?code.?pro|caveat|league.?gothic/i.test(
+    /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display|rubik|plus.?jakarta.?sans|oswald|outfit|dm.?sans|manrope|open.?sans|nunito|sora|work.?sans|lora|merriweather|cinzel|syne|jetbrains.?mono|source.?code.?pro|caveat/i.test(
       family
     )
   ) {
@@ -388,6 +411,20 @@ interface CatalogTemplateMatch {
   compositionPath: string;
   defaults: Record<string, unknown>;
   variableTypes: Record<string, string>;
+  variableEnums: Record<string, string[]>;
+}
+
+const ALLOWED_BLEND_MODES = new Set(["normal", "screen", "multiply", "overlay", "lighten"]);
+
+function isPathContainedIn(candidate: string, baseDir: string): boolean {
+  try {
+    const resolvedBase = fs.existsSync(baseDir) ? fs.realpathSync(baseDir) : path.resolve(baseDir);
+    const resolvedCand = fs.existsSync(candidate) ? fs.realpathSync(candidate) : path.resolve(candidate);
+    const rel = path.relative(resolvedBase, resolvedCand);
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  } catch {
+    return false;
+  }
 }
 
 const brandCatalogCache = new Map<string, Map<string, CatalogTemplateMatch> | null>();
@@ -397,13 +434,15 @@ function resolveBrandTemplateEntry(
   templateId: string
 ): CatalogTemplateMatch | null {
   if (!brandId || !templateId) return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(brandId)) return null;
   const repoRoot = findRepoRootForTemplates();
   if (!repoRoot) return null;
   const cacheKey = `${repoRoot}::${brandId}`;
   let table = brandCatalogCache.get(cacheKey);
   if (table === undefined) {
-    const catalogFile = path.join(repoRoot, "profiles", "brands", brandId, "templates", "catalog.json");
-    if (!fs.existsSync(catalogFile)) {
+    const brandsRoot = path.join(repoRoot, "profiles", "brands");
+    const catalogFile = path.join(brandsRoot, brandId, "templates", "catalog.json");
+    if (!fs.existsSync(catalogFile) || !isPathContainedIn(catalogFile, brandsRoot)) {
       brandCatalogCache.set(cacheKey, null);
       return null;
     }
@@ -412,7 +451,7 @@ function resolveBrandTemplateEntry(
         templates?: Array<{
           template_id?: string;
           composition_path?: string;
-          variables?: Array<{ id?: string; type?: string; default?: unknown }>;
+          variables?: Array<{ id?: string; type?: string; default?: unknown; enum_values?: unknown }>;
         }>;
       };
       table = new Map<string, CatalogTemplateMatch>();
@@ -420,16 +459,21 @@ function resolveBrandTemplateEntry(
         if (!entry.template_id || !entry.composition_path) continue;
         const defaults: Record<string, unknown> = {};
         const variableTypes: Record<string, string> = {};
+        const variableEnums: Record<string, string[]> = {};
         for (const v of entry.variables ?? []) {
           if (v.id) {
             if (v.type) variableTypes[v.id] = v.type;
             if (v.default !== undefined) defaults[v.id] = v.default;
+            if (Array.isArray(v.enum_values)) {
+              variableEnums[v.id] = v.enum_values.map((item) => String(item));
+            }
           }
         }
         table.set(entry.template_id, {
           compositionPath: entry.composition_path,
           defaults,
           variableTypes,
+          variableEnums,
         });
       }
       brandCatalogCache.set(cacheKey, table);
@@ -463,17 +507,27 @@ function findRepoRootForTemplates(): string | null {
 
 function resolveTemplateCompositionPath(rawPath: string): string | null {
   if (!rawPath) return null;
+  const repoRoot = findRepoRootForTemplates();
+  const allowedRoots = [repoRoot, process.cwd()].filter((r): r is string => Boolean(r));
   if (path.isAbsolute(rawPath)) {
-    return fs.existsSync(rawPath) && fs.statSync(rawPath).isFile() ? rawPath : null;
+    if (!fs.existsSync(rawPath) || !fs.statSync(rawPath).isFile()) return null;
+    return allowedRoots.some((root) => isPathContainedIn(rawPath, root)) ? rawPath : null;
   }
   const cwdCandidate = path.resolve(process.cwd(), rawPath);
-  if (fs.existsSync(cwdCandidate) && fs.statSync(cwdCandidate).isFile()) {
+  if (
+    fs.existsSync(cwdCandidate) &&
+    fs.statSync(cwdCandidate).isFile() &&
+    allowedRoots.some((root) => isPathContainedIn(cwdCandidate, root))
+  ) {
     return cwdCandidate;
   }
-  const repoRoot = findRepoRootForTemplates();
   if (repoRoot) {
     const rootCandidate = path.resolve(repoRoot, rawPath);
-    if (fs.existsSync(rootCandidate) && fs.statSync(rootCandidate).isFile()) {
+    if (
+      fs.existsSync(rootCandidate) &&
+      fs.statSync(rootCandidate).isFile() &&
+      isPathContainedIn(rootCandidate, repoRoot)
+    ) {
       return rootCandidate;
     }
   }
@@ -875,13 +929,11 @@ function buildOverlayCompositionHtml(
   const exitDur = Number(
     (isCaption ? Math.min(captionFadeOutMs / 1000, duration * 0.2) : Math.max(0.11, enterDur * 0.48)).toFixed(3)
   );
-  const exitAt = Number(
-    (isCaption ? Math.max(enterDur, duration - exitDur) : Math.max(0.05, duration - exitDur)).toFixed(3)
-  );
-  const blendCss =
-    ov.blend_mode && ov.blend_mode !== "normal"
-      ? `mix-blend-mode: ${ov.blend_mode};`
-      : "";
+  const safeBlendMode =
+    ov.blend_mode && ov.blend_mode !== "normal" && ALLOWED_BLEND_MODES.has(ov.blend_mode)
+      ? ov.blend_mode
+      : null;
+  const blendCss = safeBlendMode ? `mix-blend-mode: ${safeBlendMode};` : "";
   const matteCss =
     ov.matte_mode === "alpha_matte"
       ? "mask-mode: alpha;"
@@ -917,6 +969,15 @@ function buildOverlayCompositionHtml(
   const anticOffset = physics.anticipationS > 0.01 ? physics.anticipationS : 0;
   const enterStartScale = anticOffset > 0 ? anticDipScale : physics.enterScale;
   const squashStart = anticOffset + enterDur;
+  const minExitAt = isCaption
+    ? enterDur
+    : squashStart + (physics.squashSettle ? 0.18 : 0.05);
+  const exitAt = Number(
+    (isCaption
+      ? Math.max(enterDur, duration - exitDur)
+      : Math.min(duration, Math.max(minExitAt, duration - exitDur))
+    ).toFixed(3)
+  );
   const squashTweens = physics.squashSettle
     ? `tl.to("#${innerId}", { scaleX: 1.03, scaleY: 0.97, duration: 0.06, ease: "power1.out" }, ${squashStart.toFixed(3)});\n    tl.to("#${innerId}", { scaleX: 1.0, scaleY: 1.0, duration: 0.12, ease: "power2.out" }, ${(squashStart + 0.06).toFixed(3)});\n    `
     : "";
@@ -959,7 +1020,7 @@ function buildOverlayCompositionHtml(
     ${anticPrep}tl.fromTo(
       "#${innerId}",
       { opacity: ${anticOffset > 0 ? 0.85 : 0}, y: ${anticOffset > 0 ? 22 : 12}, scale: ${enterStartScale} },
-      { opacity: 1, y: 0, scale: 1, duration: ${enterDur}, ease: "${easeName}" },
+      { opacity: 1, y: 0, scale: 1, duration: ${enterDur}, ease: "${easeName}"${anticOffset > 0 ? ", immediateRender: false" : ""} },
       ${anticOffset}
     );
     ${overlapChildren}${squashTweens}tl.to("#${innerId}", { opacity: 0, y: -8, duration: ${exitDur}, ease: "power3.in" }, ${exitAt});
@@ -1079,7 +1140,8 @@ function renderParameterizedTemplate(
   height: number,
   safeZone: SafeZoneMargins,
   extraFamilies: readonly string[],
-  variableTypes: Record<string, string> = {}
+  variableTypes: Record<string, string> = {},
+  variableEnums: Record<string, readonly string[]> = {}
 ): string {
   const isPortrait = height > width;
   const scaleFactor = Math.min(width, height) / 1080;
@@ -1188,7 +1250,8 @@ function renderParameterizedTemplate(
     MOTION_REGISTER: physics.registerName,
     ANTICIPATION_S: String(physics.anticipationS),
     OVERLAP_STAGGER_S: String(physics.overlapStaggerS),
-    BLEND_MODE: ov.blend_mode ?? "normal",
+    BLEND_MODE:
+      ov.blend_mode && ALLOWED_BLEND_MODES.has(ov.blend_mode) ? ov.blend_mode : "normal",
     MATTE_MODE: ov.matte_mode ?? "none",
     PARENT_OVERLAY_ID: ov.parent_overlay_id ?? "",
     ENTRANCE_S: String(enterS),
@@ -1210,16 +1273,34 @@ function renderParameterizedTemplate(
   for (const [key, val] of Object.entries(ov.props)) {
     if (val === undefined || val === null) continue;
     const expectedType = variableTypes[key];
+    const upper = key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
     if (expectedType === "number") {
       const n = typeof val === "number" ? val : Number(String(val).trim());
       if (typeof val === "boolean" || String(val).trim() === "" || !Number.isFinite(n)) {
         throw new Error(`Overlay ${ov.overlay_id} variable '${key}' expects a finite number, got ${JSON.stringify(val)}`);
       }
-      const upper = key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
       tokens[`VAR_${upper}`] = String(n);
       continue;
     }
-    const upper = key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    if (expectedType === "color") {
+      const rawColor = typeof val === "string" ? val.trim() : "";
+      if (!/^#[0-9A-Fa-f]{6}$/.test(rawColor)) {
+        throw new Error(`Overlay ${ov.overlay_id} variable '${key}' expects a hex color (#RRGGBB), got ${JSON.stringify(val)}`);
+      }
+      tokens[`VAR_${upper}`] = rawColor.toUpperCase();
+      continue;
+    }
+    if (expectedType === "enum") {
+      const allowed = variableEnums[key];
+      const rawEnum = typeof val === "string" ? val.trim() : "";
+      if (allowed && allowed.length > 0 && !allowed.includes(rawEnum)) {
+        throw new Error(
+          `Overlay ${ov.overlay_id} variable '${key}' must be one of [${allowed.join(", ")}], got ${JSON.stringify(val)}`
+        );
+      }
+      tokens[`VAR_${upper}`] = escapeHtml(rawEnum);
+      continue;
+    }
     if (typeof val === "string") {
       tokens[`VAR_${upper}`] = /^#[0-9A-Fa-f]{6}$/.test(val.trim())
         ? val.trim().toUpperCase()
@@ -1332,11 +1413,14 @@ function autoStageBundledFonts(
     return { addedFonts: [], addedFiles: [] };
   }
 
-  const existingFamilies = new Set(existingFonts.map((f) => f.family.toLowerCase()));
+  const existingNormalFamilies = new Set(
+    existingFonts.filter((f) => f.style === "normal").map((f) => f.family.toLowerCase())
+  );
+  const existingKeys = new Set(existingFonts.map((f) => `${f.family.toLowerCase()}::${f.style}`));
   const needed = new Set<string>();
   for (const fam of referencedFamilies) {
     const lc = fam.toLowerCase();
-    if (!existingFamilies.has(lc) && BUNDLED_FAMILIES.some((b) => b.toLowerCase() === lc)) {
+    if (!existingNormalFamilies.has(lc) && BUNDLED_FAMILIES.some((b) => b.toLowerCase() === lc)) {
       needed.add(lc);
     }
   }
@@ -1345,9 +1429,12 @@ function autoStageBundledFonts(
   const candidates: Array<{ srcPath: string; fileName: string; desc: ReturnType<typeof inferFontDescriptor> }> = [];
   for (const fn of fs.readdirSync(fontsDir).sort()) {
     if (!/\.(?:ttf|otf|woff2?)$/i.test(fn)) continue;
+    const hint = inferKnownFontFamilyHint(fn);
+    if (hint && !needed.has(hint.toLowerCase())) continue;
     const srcPath = path.join(fontsDir, fn);
     const desc = inferFontDescriptor(srcPath, fn);
-    if (needed.has(desc.family.toLowerCase())) {
+    const key = `${desc.family.toLowerCase()}::${desc.style}`;
+    if (needed.has(desc.family.toLowerCase()) && !existingKeys.has(key)) {
       candidates.push({ srcPath, fileName: fn, desc });
     }
   }
@@ -1455,7 +1542,7 @@ function injectOverlayTrackKeyframes(
     (function() {
       var target = document.getElementById("root");
       if (!target || typeof gsap === "undefined") return;
-      var kfs = ${JSON.stringify(payload)};
+      var kfs = ${JSON.stringify(payload).replace(/</g, "\\u003c")};
       gsap.set(target, {
         transformOrigin: "${originX}px ${originY}px",
         x: kfs[0].dx,
@@ -1522,12 +1609,12 @@ function injectOverlayTrackKeyframes(
         }
       }
       window.__timelines = window.__timelines || {};
-      var parentTl = window.__timelines[${JSON.stringify(sceneId)}];
+      var parentTl = window.__timelines[${JSON.stringify(sceneId).replace(/</g, "\\u003c")}];
       if (parentTl && typeof parentTl.add === "function") {
         trackTl.paused(false);
         parentTl.add(trackTl, 0);
       } else {
-        window.__timelines[${JSON.stringify(sceneId)}] = trackTl;
+        window.__timelines[${JSON.stringify(sceneId).replace(/</g, "\\u003c")}] = trackTl;
       }
     })();
   </script>`;
@@ -1547,11 +1634,7 @@ export function compileEditPlanToHyperframes(
 ): CompiledProjectResult {
   assertPlanStructure(plan);
   const perfViolations = lintPlanPerformance(plan).filter(
-    (v) =>
-      v.code !== "KINETIC_LEGIBILITY_DURATION" &&
-      v.code !== "CAPTION_CPS_TOO_FAST" &&
-      v.code !== "CAPTION_DURATION_SHORT" &&
-      v.code !== "MICRO_TEXT_DETECTED"
+    (v) => !NON_FATAL_WARNING_CODES.has(v.code)
   );
   if (perfViolations.length > 0) {
     const first = perfViolations[0];
@@ -1579,15 +1662,16 @@ export function compileEditPlanToHyperframes(
   const lanes: Array<Array<{ start: number; end: number }>> = [];
   const hostTags: string[] = [];
   const compositionFiles: string[] = [];
+  const usedSceneIds = new Set<string>();
 
   if (plan.render_strategy === "full_hf") {
-    const videoLane = assignTrackLane(lanes, 0, plan.duration_s);
     for (const clip of plan.video_tracks) {
       const relSrc = assetPathsById.get(clip.asset_id) ?? "assets/missing.mp4";
-      const cid = sanitizeId(clip.clip_id);
+      const cid = allocateUniqueId(clip.clip_id, usedSceneIds);
       const start = Number(clip.timeline_start_s.toFixed(3));
       const dur = Number(clip.timeline_duration_s.toFixed(3));
       const mediaStart = Number(clip.source_start_s.toFixed(3));
+      const videoLane = assignTrackLane(lanes, start, dur);
       hostTags.push(
         `      <video id="${cid}" class="clip" src="${escapeHtml(relSrc)}" ` +
           `data-start="${start}" data-duration="${dur}" data-media-start="${mediaStart}" ` +
@@ -1597,7 +1681,7 @@ export function compileEditPlanToHyperframes(
     }
     for (const track of plan.audio_tracks) {
       const relSrc = assetPathsById.get(track.asset_id) ?? "assets/missing.mp3";
-      const tid = sanitizeId(track.track_id);
+      const tid = allocateUniqueId(track.track_id, usedSceneIds);
       const start = Number(track.timeline_start_s.toFixed(3));
       const dur = Number(track.timeline_duration_s.toFixed(3));
       const mediaStart = Number(track.source_start_s.toFixed(3));
@@ -1611,11 +1695,14 @@ export function compileEditPlanToHyperframes(
     }
   }
 
-  const hasCaptions = plan.overlay_compositions.some((ov) => ov.kind === "caption_rail");
-  const captionLane = hasCaptions ? assignTrackLane(lanes, 0, plan.duration_s) : -1;
-
   const referencedFamilies = new Set<string>();
-  const usedSceneIds = new Set<string>();
+  const captionHostPending: Array<{
+    sceneId: string;
+    start: number;
+    dur: number;
+    extraAttrs: string;
+    hostStyleAttr: string;
+  }> = [];
   for (const ov of plan.overlay_compositions) {
     const sceneId = allocateUniqueId(ov.overlay_id, usedSceneIds);
     const scenePath = path.join(compDir, `${sceneId}.html`);
@@ -1662,7 +1749,8 @@ export function compileEditPlanToHyperframes(
         plan.height,
         safeZone,
         extraFontFamilies,
-        catalogMatch?.variableTypes ?? {}
+        catalogMatch?.variableTypes ?? {},
+        catalogMatch?.variableEnums ?? {}
       );
       finalSceneHtml = injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height, sceneId);
     } else {
@@ -1684,8 +1772,6 @@ export function compileEditPlanToHyperframes(
 
     const start = Number(ov.timeline_start_s.toFixed(3));
     const dur = Number(ov.timeline_duration_s.toFixed(3));
-    const lane = ov.kind === "caption_rail" ? captionLane : assignTrackLane(lanes, start, dur);
-    const trackKind = ov.kind === "caption_rail" ? "captions" : "graphics";
     const templateAttr = ov.template_id
       ? ` data-template-id="${escapeHtml(ov.template_id)}"`
       : "";
@@ -1696,14 +1782,48 @@ export function compileEditPlanToHyperframes(
       ov.matte_mode && ov.matte_mode !== "none"
         ? ` data-matte-mode="${escapeHtml(ov.matte_mode)}"`
         : "";
-    hostTags.push(
-      `      <div id="${sceneId}" data-composition-id="${sceneId}" ` +
-        `data-composition-src="compositions/${sceneId}.html" ` +
-        `data-start="${start}" data-duration="${dur}" ` +
-        `data-track-index="${lane}" data-track-kind="${trackKind}"` +
-        `${templateAttr}${hostParentAttr}${hostMatteAttr} ` +
-        `data-width="${plan.width}" data-height="${plan.height}"></div>`
-    );
+    const hostStyleParts: string[] = [];
+    if (ov.blend_mode && ov.blend_mode !== "normal" && ALLOWED_BLEND_MODES.has(ov.blend_mode)) {
+      hostStyleParts.push(`mix-blend-mode: ${ov.blend_mode};`);
+    }
+    if (ov.matte_mode === "alpha_matte") {
+      hostStyleParts.push("mask-mode: alpha;");
+    } else if (ov.matte_mode === "luma_matte") {
+      hostStyleParts.push("mask-mode: luminance;");
+    } else if (ov.matte_mode === "inverted_alpha") {
+      hostStyleParts.push("mask-mode: alpha; mask-composite: exclude;");
+    }
+    const hostStyleAttr =
+      hostStyleParts.length > 0 ? ` style="${hostStyleParts.join(" ")}"` : "";
+    const extraAttrs = `${templateAttr}${hostParentAttr}${hostMatteAttr}`;
+
+    if (ov.kind === "caption_rail") {
+      captionHostPending.push({ sceneId, start, dur, extraAttrs, hostStyleAttr });
+    } else {
+      const lane = assignTrackLane(lanes, start, dur);
+      hostTags.push(
+        `      <div id="${sceneId}" data-composition-id="${sceneId}" ` +
+          `data-composition-src="compositions/${sceneId}.html" ` +
+          `data-start="${start}" data-duration="${dur}" ` +
+          `data-track-index="${lane}" data-track-kind="graphics"` +
+          `${extraAttrs}${hostStyleAttr} ` +
+          `data-width="${plan.width}" data-height="${plan.height}"></div>`
+      );
+    }
+  }
+
+  if (captionHostPending.length > 0) {
+    const captionLane = assignTrackLane(lanes, 0, plan.duration_s);
+    for (const cap of captionHostPending) {
+      hostTags.push(
+        `      <div id="${cap.sceneId}" data-composition-id="${cap.sceneId}" ` +
+          `data-composition-src="compositions/${cap.sceneId}.html" ` +
+          `data-start="${cap.start}" data-duration="${cap.dur}" ` +
+          `data-track-index="${captionLane}" data-track-kind="captions"` +
+          `${cap.extraAttrs}${cap.hostStyleAttr} ` +
+          `data-width="${plan.width}" data-height="${plan.height}"></div>`
+      );
+    }
   }
 
   const { addedFonts, addedFiles } = autoStageBundledFonts(

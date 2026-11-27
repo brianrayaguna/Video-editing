@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -17,6 +18,7 @@ struct FfprobeFormat {
     format_name: Option<String>,
     duration: Option<String>,
     bit_rate: Option<String>,
+    tags: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,10 +27,18 @@ struct FfprobeDisposition {
 }
 
 #[derive(Debug, Deserialize)]
+struct FfprobeSideData {
+    rotation: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
 struct FfprobeStream {
+    index: Option<usize>,
     codec_type: Option<String>,
     codec_name: Option<String>,
     disposition: Option<FfprobeDisposition>,
+    side_data_list: Option<Vec<FfprobeSideData>>,
+    tags: Option<BTreeMap<String, String>>,
     width: Option<u32>,
     height: Option<u32>,
     r_frame_rate: Option<String>,
@@ -47,6 +57,45 @@ pub struct ProbeMetadata {
     pub container: ContainerInfo,
     pub video: VideoInfo,
     pub audio_base: AudioInfo,
+    pub video_stream_index: Option<usize>,
+    pub audio_stream_index: Option<usize>,
+}
+
+fn parse_hms_duration(raw: &str) -> Option<f64> {
+    let mut parts = raw.trim().split(':');
+    let h = parts.next()?.parse::<f64>().ok()?;
+    let m = parts.next()?.parse::<f64>().ok()?;
+    let s = parts.next()?.parse::<f64>().ok()?;
+    if parts.next().is_some() || !h.is_finite() || !m.is_finite() || !s.is_finite() {
+        return None;
+    }
+    let total = h * 3600.0 + m * 60.0 + s;
+    (total.is_finite() && total >= 0.0).then_some(total)
+}
+
+fn tag_duration_s(tags: Option<&BTreeMap<String, String>>) -> Option<f64> {
+    let tags = tags?;
+    tags.iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("DURATION"))
+        .and_then(|(_, v)| parse_hms_duration(v))
+}
+
+fn stream_rotation_deg(vs: &FfprobeStream) -> i32 {
+    if let Some(rot) = vs
+        .side_data_list
+        .as_ref()
+        .and_then(|list| list.iter().find_map(|sd| sd.rotation))
+    {
+        return rot;
+    }
+    vs.tags
+        .as_ref()
+        .and_then(|t| {
+            t.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("rotate"))
+                .and_then(|(_, v)| v.trim().parse::<i32>().ok())
+        })
+        .unwrap_or(0)
 }
 
 pub fn parse_rational(raw: Option<&str>) -> f64 {
@@ -59,7 +108,8 @@ pub fn parse_rational(raw: Option<&str>) -> f64 {
             return 0.0;
         };
         if num.is_finite() && den.is_finite() && num >= 0.0 && den > 0.0 {
-            num / den
+            let q = num / den;
+            if q.is_finite() { q } else { 0.0 }
         } else {
             0.0
         }
@@ -119,6 +169,9 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
                 .and_then(|d| d.parse::<f64>().ok())
                 .filter(|d| d.is_finite() && *d >= 0.0)
         })
+        .or_else(|| tag_duration_s(fmt.and_then(|f| f.tags.as_ref())))
+        .or_else(|| tag_duration_s(vstream.and_then(|s| s.tags.as_ref())))
+        .or_else(|| tag_duration_s(astream.and_then(|s| s.tags.as_ref())))
         .unwrap_or(0.0)
         .max(0.0);
 
@@ -146,12 +199,19 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
             .as_deref()
             .and_then(|n| n.parse::<u64>().ok())
             .unwrap_or_else(|| (duration_s * fps).round().max(0.0) as u64);
+        let raw_w = vs.width.unwrap_or(0);
+        let raw_h = vs.height.unwrap_or(0);
+        let (disp_w, disp_h) = if stream_rotation_deg(vs).abs() % 180 == 90 {
+            (raw_h, raw_w)
+        } else {
+            (raw_w, raw_h)
+        };
 
         VideoInfo {
             present: true,
             codec: vs.codec_name.clone(),
-            width: vs.width.unwrap_or(0),
-            height: vs.height.unwrap_or(0),
+            width: disp_w,
+            height: disp_h,
             fps: (fps * 1000.0).round() / 1000.0,
             is_cfr,
             pixel_format: vs.pix_fmt.clone(),
@@ -209,6 +269,8 @@ pub fn run_ffprobe(path: &Path) -> Result<ProbeMetadata> {
         container,
         video,
         audio_base,
+        video_stream_index: vstream.and_then(|s| s.index),
+        audio_stream_index: astream.and_then(|s| s.index),
     })
 }
 
@@ -224,6 +286,7 @@ mod tests {
         assert_eq!(parse_rational(Some("30/abc")), 0.0);
         assert_eq!(parse_rational(Some("NaN")), 0.0);
         assert_eq!(parse_rational(Some("inf")), 0.0);
+        assert_eq!(parse_rational(Some("1e308/1e-308")), 0.0);
         assert_eq!(parse_rational(None), 0.0);
     }
 }

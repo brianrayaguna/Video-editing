@@ -429,3 +429,93 @@ def test_contracts_validate_includes_critique_packet_and_brand_memory() -> None:
     assert payload["ok"] is True
     assert "critique_packet.schema.json" in payload["schemas"]
     assert "brand_memory.schema.json" in payload["schemas"]
+
+
+def test_schema_drift_fixes_for_idioms_media_probe_and_manifest() -> None:
+    from vedit.models import MediaProbeResult
+
+    root = find_repo_root()
+    idioms = json.loads(
+        (root / "profiles" / "brands" / "geoverum" / "directing_idioms.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    with_phrases = {
+        **idioms,
+        "readiness_phrases": {
+            "throat_clearing": ["in this video"],
+            "trailing_bloat": ["thanks for watching"],
+            "telling_exposition": ["it is important to note"],
+        },
+    }
+    assert validate_against_contract(with_phrases, "directing_idioms.schema.json") == []
+
+    bad_fn_idioms = json.loads(json.dumps(idioms))
+    bad_fn_idioms["auto_director"]["device_rules"][0]["function"] = "not_a_storyboard_fn"
+    assert validate_against_contract(bad_fn_idioms, "directing_idioms.schema.json")
+
+    probe = MediaProbeResult.model_validate(
+        {
+            "schema_version": "1.0",
+            "path": "clip.mp4",
+            "sha256": "a" * 64,
+            "file_bytes": 128,
+            "container": {"format_name": "mp4", "duration_s": 2.0, "bit_rate": None},
+            "video": {"present": False, "width": 0, "height": 0, "fps": 0.0, "is_cfr": True},
+            "audio": {"present": False, "silence_intervals": [], "silence_ratio": 0.0},
+            "shots": [],
+            "shot_stats": {
+                "count": 0,
+                "asl_p25_s": 0.0,
+                "asl_p50_s": 0.0,
+                "asl_p75_s": 0.0,
+                "cuts_per_min": 0.0,
+            },
+            "visual": {
+                "sampled_frames": 0,
+                "palette": [],
+                "palette_entropy": 0.0,
+                "mean_luminance": 0.0,
+                "band_luminance": {"upper": 0.0, "center": 0.0, "lower_third": 0.0},
+                "mean_sharpness": 0.0,
+                "black_intervals": [],
+                "keyframes": [],
+            },
+            "timing_ms": {"hash_ms": 1, "ffprobe_ms": 1, "stream_analyze_ms": 1, "total_ms": 3},
+        }
+    )
+    assert (
+        validate_against_contract(probe.model_dump(exclude_none=True), "media_probe.schema.json")
+        == []
+    )
+
+    bad_manifest = {
+        "schema_version": "1.0",
+        "project_id": "p1",
+        "brand_id": "geoverum",
+        "platform_target_id": "shorts_9x16_1080p",
+        "created_at": "2026-01-01T00:00:00Z",
+        "directories": {
+            "inputs": "\\\\server\\share\\inputs",
+            "probes": "probes",
+            "breakdowns": "breakdowns",
+            "transcripts": "transcripts",
+            "decisions": "decisions",
+            "maps": "maps",
+            "broll": "broll",
+            "audio": "audio",
+            "plan": "plan",
+            "build": "build",
+            "output": "output",
+        },
+        "artifacts": {
+            "brief": "brief.md",
+            "edit_plan": "plan/edit_plan.json",
+            "verification": "plan/verification.json",
+            "master": "output/master.mp4",
+            "audit": "output/audit.json",
+            "otio": "output/timeline.otio",
+            "benchmark": "output/benchmark.json",
+        },
+    }
+    assert validate_against_contract(bad_manifest, "project_manifest.schema.json")

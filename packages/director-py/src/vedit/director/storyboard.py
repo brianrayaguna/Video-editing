@@ -249,7 +249,9 @@ def _check(
             add(f"last beat function is {beats[-1]['function']!r}", beats[-1])
     elif iid == "variation_against_recent":
         story = sb["story"]
-        for ep in (sb.get("recent_episodes") or [])[-p["lookback"] :]:
+        lookback = int(p.get("lookback", 0))
+        recent = (sb.get("recent_episodes") or [])[-lookback:] if lookback > 0 else []
+        for ep in recent:
             same_hook = (
                 story.get("hook_mechanism") and ep.get("hook_mechanism") == story["hook_mechanism"]
             )
@@ -701,6 +703,8 @@ def scaffold_storyboard(
                 "sync_word_s": round(sync["start_s"], 3),
             }
         )
+    if not beats:
+        raise ValueError("Transcript has no non-filler words to storyboard.")
     # Enforce the minimum event spacing by letting a crowded beat start a little later.
     min_gap = next(
         (i["params"]["min_gap_s"] for i in idioms["idioms"] if i["idiom_id"] == "event_cadence"),
@@ -767,9 +771,20 @@ def apply_director_storyboard(auto_sb: dict[str, Any], directed: dict[str, Any])
     if missing:
         raise ValueError(f"locked beats missing from the director storyboard: {missing}")
     banned = set(out["overrides"].get("banned_devices") or [])
+    fallback_candidates = [
+        "camera_drift",
+        "static_hold",
+        "region_fill",
+        *(
+            str(b["device"])
+            for b in out["beats"]
+            if b.get("device") and str(b["device"]) not in banned
+        ),
+    ]
+    fallback_device = next((d for d in fallback_candidates if d not in banned), "static_hold")
     for b in out["beats"]:
         if b["device"] in banned and b["beat_id"] not in locked:
-            b["device"] = "camera_drift"
+            b["device"] = fallback_device
             b["story_need"] = b["story_need"] or "keep the subject alive while the clause lands"
     out["directing_source"] = "mixed" if out["beats"] != directed.get("beats") else "user"
     return out

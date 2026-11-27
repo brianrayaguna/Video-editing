@@ -86,9 +86,15 @@ class ModalCloudMediaOpsProvider:
     def _download_file(self, volume: Any, remote_relpath: str, local_output: Path) -> Path:
         local_output.parent.mkdir(parents=True, exist_ok=True)
         clean_rel = remote_relpath.lstrip("/")
-        with local_output.open("wb") as fp:
-            for chunk in volume.read_file(clean_rel):
-                fp.write(chunk)
+        part_path = local_output.with_suffix(local_output.suffix + ".part")
+        try:
+            with part_path.open("wb") as fp:
+                for chunk in volume.read_file(clean_rel):
+                    fp.write(chunk)
+            part_path.replace(local_output)
+        except BaseException:
+            part_path.unlink(missing_ok=True)
+            raise
         return local_output
 
     def _resolve_remote_fn(self, override: Any | None, fn_name: str) -> Any:
@@ -125,7 +131,14 @@ class ModalCloudMediaOpsProvider:
         volume = self._get_volume()
         remote_rel = self._stage_file(volume, speech_input)
         remote_fn = self._resolve_remote_fn(self._clean_audio_fn, "clean_audio_cloud")
-        summary = remote_fn.remote(remote_rel, strength=strength)
+        try:
+            summary = remote_fn.remote(remote_rel, strength=strength)
+        except ProviderAPIError:
+            raise
+        except Exception as exc:
+            raise ProviderAPIError(
+                self.provider_name, None, f"Modal clean_audio_cloud failed: {exc}"
+            ) from exc
         self._download_file(volume, str(summary["output_subpath"]), output_path)
         return MediaOpResult(
             provider=self.provider_name,
@@ -147,7 +160,14 @@ class ModalCloudMediaOpsProvider:
         volume = self._get_volume()
         remote_rel = self._stage_file(volume, video_input)
         remote_fn = self._resolve_remote_fn(self._reframe_fn, "reframe_video_cloud")
-        summary = remote_fn.remote(remote_rel, target_aspect_ratio=target_aspect_ratio)
+        try:
+            summary = remote_fn.remote(remote_rel, target_aspect_ratio=target_aspect_ratio)
+        except ProviderAPIError:
+            raise
+        except Exception as exc:
+            raise ProviderAPIError(
+                self.provider_name, None, f"Modal reframe_video_cloud failed: {exc}"
+            ) from exc
         self._download_file(volume, str(summary["output_subpath"]), output_path)
         return MediaOpResult(
             provider=self.provider_name,

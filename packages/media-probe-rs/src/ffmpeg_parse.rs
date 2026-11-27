@@ -36,7 +36,7 @@ pub fn parse_ffmpeg_stderr(stderr: &str, duration_s: f64) -> ParsedFfmpegStderr 
     let mut current_pts_us: Option<i64> = None;
     let mut stats_by_pts: BTreeMap<i64, [f64; 4]> = BTreeMap::new();
 
-    for line in stderr.lines() {
+    for line in stderr.split(['\n', '\r']) {
         let trimmed = line.trim();
 
         if trimmed.contains("pts_time:") {
@@ -151,9 +151,10 @@ pub fn parse_ffmpeg_stderr(stderr: &str, duration_s: f64) -> ParsedFfmpegStderr 
 /// Sum of absolute per-key changes between the frame at `t` and the frame before it.
 /// `None` when either frame is missing or incomplete.
 fn stats_change_at(frame_stats: &[(f64, [f64; 4])], t: f64) -> Option<f64> {
-    let idx = frame_stats
-        .iter()
-        .position(|(ft, _)| (ft - t).abs() < 2e-3)?;
+    let pos = frame_stats.partition_point(|(ft, _)| *ft < t - 2e-3);
+    let idx = (pos..frame_stats.len())
+        .take_while(|&i| frame_stats[i].0 <= t + 2e-3)
+        .find(|&i| (frame_stats[i].0 - t).abs() < 2e-3)?;
     if idx == 0 {
         return None;
     }
@@ -182,7 +183,7 @@ pub fn gate_cut_candidates(
         .iter()
         .copied()
         .filter(|(t, conf)| {
-            conf * 100.0 >= scene_threshold
+            conf * 100.0 + 1e-9 >= scene_threshold
                 || stats_change_at(frame_stats, *t).is_some_and(|d| d >= stats_change_min)
         })
         .collect()
@@ -431,5 +432,23 @@ mod tests {
         let (shots, stats) = build_shots_and_stats(&[(1.0, 0.5)], f64::NAN, 0.4);
         assert!(shots.is_empty());
         assert_eq!(stats.count, 0);
+    }
+
+    #[test]
+    fn parses_ebur128_summary_after_bare_cr_progress_line() {
+        let sample = "[Parsed_ebur128_8 @ 0x4] Summary:\nframe= 12 fps=0.0 q=-0.0 size=N/A time=00:00:00.40\r  Integrated loudness:\n    I:         -14.2 LUFS\n  Loudness range:\n    LRA:         5.1 LU\n  True peak:\n    Peak:       -1.1 dBFS\n";
+        let parsed = parse_ffmpeg_stderr(sample, 3.0);
+        assert_eq!(parsed.integrated_lufs, Some(-14.2));
+        assert_eq!(parsed.lra, Some(5.1));
+        assert_eq!(parsed.true_peak_dbtp, Some(-1.1));
+    }
+
+    #[test]
+    fn accepts_exact_threshold_score_despite_float_rounding() {
+        // (29.0 / 100.0) * 100.0 == 28.999999999999996 in IEEE-754.
+        let stderr = "[Parsed_scdet_6 @ 0x2] lavfi.scd.score: 29.0, lavfi.scd.time: 2.0\n";
+        let parsed = parse_ffmpeg_stderr(stderr, 5.0);
+        let cuts = gate_cut_candidates(&parsed.cut_times_s, &parsed.frame_stats, 29.0, 15.0);
+        assert_eq!(cuts.len(), 1);
     }
 }

@@ -253,24 +253,25 @@ def extract_project_vectors(
         "dissolved_region": None,
     }
 
-    c_data = json.loads(countries_file.read_text(encoding="utf-8"))
-    for feat in c_data.get("features") or []:
-        props = feat.get("properties") or {}
-        name = str(props.get("ADMIN") or props.get("NAME") or "")
-        cont = str(props.get("CONTINENT") or "")
-        nl = name.lower()
-        cl = cont.lower()
-        if nl in want_countries:
-            key = want_countries[nl]
-            result["countries"][key] = _simplify_geom(feat["geometry"], step=2, min_pts=20)
-        if cl in want_continents:
-            key = want_continents[cl]
-            result["continents"].setdefault(key, []).append(
-                {
-                    "name": name,
-                    "geometry": _simplify_geom(feat["geometry"], step=6, min_pts=18),
-                }
-            )
+    if want_countries or want_continents:
+        c_data = json.loads(countries_file.read_text(encoding="utf-8"))
+        for feat in c_data.get("features") or []:
+            props = feat.get("properties") or {}
+            name = str(props.get("ADMIN") or props.get("NAME") or "")
+            cont = str(props.get("CONTINENT") or "")
+            nl = name.lower()
+            cl = cont.lower()
+            if nl in want_countries:
+                key = want_countries[nl]
+                result["countries"][key] = _simplify_geom(feat["geometry"], step=2, min_pts=20)
+            if cl in want_continents:
+                key = want_continents[cl]
+                result["continents"].setdefault(key, []).append(
+                    {
+                        "name": name,
+                        "geometry": _simplify_geom(feat["geometry"], step=6, min_pts=18),
+                    }
+                )
 
     if want_provinces and provinces_file.is_file():
         p_data = json.loads(provinces_file.read_text(encoding="utf-8"))
@@ -601,9 +602,22 @@ def geo_prepare_cmd(
             if ":" not in spec:
                 raise typer.BadParameter(f"Invalid --bbox {spec!r}; expected 'W,S,E,N:Z'.")
             box_part, z_part = spec.rsplit(":", 1)
-            w, s, e, n = (float(v) for v in box_part.split(","))
-            for z_token in z_part.split(","):
-                bbox_coords.update(_enum_bbox_tiles(w, s, e, n, int(z_token)))
+            coords_parts = box_part.split(",")
+            if len(coords_parts) != 4:
+                raise typer.BadParameter(f"Invalid --bbox {spec!r}; expected 4 W,S,E,N floats.")
+            try:
+                w, s, e, n = (float(v) for v in coords_parts)
+                z_vals = [int(z_token) for z_token in z_part.split(",")]
+            except ValueError as exc:
+                raise typer.BadParameter(
+                    f"Invalid --bbox numeric value in {spec!r}: {exc}"
+                ) from exc
+            for z_val in z_vals:
+                if not 0 <= z_val <= 22:
+                    raise typer.BadParameter(
+                        f"Invalid --bbox zoom {z_val} in {spec!r}; expected 0..22."
+                    )
+                bbox_coords.update(_enum_bbox_tiles(w, s, e, n, z_val))
         regular_tile_coords: set[tuple[int, int, int]] = set()
         hq_tile_coords: set[tuple[int, int, int]] = set()
         if tile_list:
@@ -615,12 +629,21 @@ def geo_prepare_cmd(
             except (OSError, ValueError) as exc:
                 raise typer.BadParameter(str(exc)) from exc
         regular_fetch = {c for c in regular_tile_coords if c[0] <= S2_CLOUDLESS_MAX_NATIVE_Z}
+        merged_coords = bbox_coords | hq_tile_coords
+        defer_grade = bool(
+            grade_tiles
+            and regular_fetch
+            and merged_coords
+            and any(c[0] <= S2_CLOUDLESS_MAX_NATIVE_Z for c in merged_coords)
+        )
         if regular_fetch:
             s2_more, _ = _fetch_tile_set(
-                root, regular_fetch, hq_aerial=False, grade_tiles=grade_tiles
+                root,
+                regular_fetch,
+                hq_aerial=False,
+                grade_tiles=(grade_tiles and not defer_grade),
             )
             fetched_count += s2_more
-        merged_coords = bbox_coords | hq_tile_coords
         if merged_coords:
             s2_more, hq_more = _fetch_tile_set(
                 root, merged_coords, hq_aerial=hq_aerial, grade_tiles=grade_tiles
@@ -870,7 +893,8 @@ def validate_map_scene(
                     "prohibition_pins)."
                 )
             if ltype in _TEXT_LAYER_TYPES:
-                fpx = float(layer.get("font_px", 56))
+                raw_fpx = layer.get("font_px")
+                fpx = float(56 if raw_fpx is None else raw_fpx)
                 if fpx < min_font_px:
                     errors.append(
                         f"[{act_id}] layer #{idx} ({ltype}) font_px={fpx} is below minimum "
@@ -883,8 +907,10 @@ def validate_map_scene(
                             f"[{act_id}] layer #{idx} (curved_label) requires at least 2 "
                             "[lng, lat] points in 'coords'."
                         )
-                t0 = float(layer.get("start_s", 0.0))
-                t1 = float(layer.get("end_s", dur))
+                raw_t0 = layer.get("start_s")
+                raw_t1 = layer.get("end_s")
+                t0 = float(0.0 if raw_t0 is None else raw_t0)
+                t1 = float(dur if raw_t1 is None else raw_t1)
                 text_intervals.append((t0, t1, str(layer.get("text") or ltype)))
 
         # 2. Enforce calm hierarchy: error above 4 concurrent text overlays, warn at 4
@@ -892,8 +918,8 @@ def validate_map_scene(
             step = 0.25
             t_cur = 0.0
             warned_crowd = False
-            while t_cur <= dur:
-                active = [lbl for (a, b, lbl) in text_intervals if a <= t_cur <= b]
+            while t_cur < dur - 1e-6:
+                active = [lbl for (a, b, lbl) in text_intervals if a <= t_cur < b]
                 if len(active) > 4:
                     errors.append(
                         f"[{act_id}] {len(active)} concurrent text overlays at t={t_cur:.2f}s "
@@ -1282,8 +1308,10 @@ def validate_map_scene(
                 and isinstance(layer.get("coord"), list)
                 and len(layer["coord"]) >= 2
             ):
-                t0 = float(layer.get("start_s", 0.0))
-                t1 = float(layer.get("end_s", dur if dur > 0 else t0 + 1.0))
+                raw_t0 = layer.get("start_s")
+                raw_t1 = layer.get("end_s")
+                t0 = float(0.0 if raw_t0 is None else raw_t0)
+                t1 = float((dur if dur > 0 else t0 + 1.0) if raw_t1 is None else raw_t1)
                 t_mid = 0.5 * (t0 + t1)
                 nearest_cam = min(cam_points, key=lambda item: abs(item[0] - t_mid))
                 xp, yp = _approx_viewport_pct(
@@ -1441,8 +1469,8 @@ def build_geoverum_ass_captions(
     height: int = 1920,
     speed: float = 1.0,
     max_words: int = 4,
-    font_size: int | None = 56,
-    margin_v: int | None = 348,
+    font_size: int | None = None,
+    margin_v: int | None = None,
     fade_in_ms: int = 130,
     fade_out_ms: int = 0,
     gap_ms: int = 67,
@@ -1451,6 +1479,7 @@ def build_geoverum_ass_captions(
     outline_color: str = "#03161F",
     outline_px: float | None = None,
     shadow_px: float | None = None,
+    letter_spacing: float = 0.3,
     blur_px: float = 0.8,
 ) -> str:
     """Build Geoverum boxless bottom-band ASS subtitles via the shared mastering ASS engine.
@@ -1477,6 +1506,7 @@ def build_geoverum_ass_captions(
         outline_color=outline_color,
         outline_px=outline_px,
         shadow_px=shadow_px,
+        letter_spacing=letter_spacing,
         blur_px=blur_px,
     )
 
@@ -1543,15 +1573,17 @@ def geo_build_captions_cmd(
     from vedit.mastering.ass_captions import validate_ass_captions_readability
 
     is_portrait = height > width
+    scale = min(width, height) / 1080.0
     eff_max_words = 4
-    eff_font_size: int | None = 56 if is_portrait else None
-    eff_margin_v: int | None = 348 if is_portrait else None
+    eff_font_size: int | None = round(56 * scale) if is_portrait else None
+    eff_margin_v: int | None = round(348 * (height / 1920.0)) if is_portrait else None
     eff_fade_in = 130
     eff_fade_out = 0
     eff_gap_ms = 67
     eff_font = "Rubik"
     eff_fg = "#F4F1EA"
     eff_outline = "#03161F"
+    eff_letter_spacing = 0.3
     if brand:
         try:
             policy_path = (
@@ -1564,14 +1596,25 @@ def geo_build_captions_cmd(
                 pal = vtok.get("palette_roles") or {}
                 eff_max_words = int(typo.get("max_words_per_caption_group", eff_max_words))
                 if is_portrait:
-                    eff_font_size = int(typo.get("caption_font_px_9x16", eff_font_size or 56))
-                    eff_margin_v = int(typo.get("caption_margin_v_px_9x16", eff_margin_v or 348))
+                    raw_px = int(typo.get("caption_font_px_9x16", 56))
+                    raw_mv = int(typo.get("caption_margin_v_px_9x16", 348))
+                    eff_font_size = max(16, round(raw_px * scale))
+                    eff_margin_v = round(raw_mv * (height / 1920.0))
                 if typo.get("caption_fade_in_ms") is not None:
                     eff_fade_in = int(typo["caption_fade_in_ms"])
                 if typo.get("caption_fade_out_ms") is not None:
                     eff_fade_out = int(typo["caption_fade_out_ms"])
                 if typo.get("caption_gap_ms") is not None:
                     eff_gap_ms = int(typo["caption_gap_ms"])
+                if typo.get("caption_letter_spacing_em") is not None:
+                    resolved_px = (
+                        font_size
+                        if font_size is not None
+                        else (eff_font_size if eff_font_size is not None else round(46 * scale))
+                    )
+                    eff_letter_spacing = round(
+                        float(typo["caption_letter_spacing_em"]) * resolved_px, 2
+                    )
                 raw_fam = typo.get("caption_font_family")
                 if isinstance(raw_fam, str) and raw_fam.strip():
                     eff_font = raw_fam.split(",")[0].strip().strip("'\"") or eff_font
@@ -1597,6 +1640,7 @@ def geo_build_captions_cmd(
         font_name=eff_font,
         fg_color=eff_fg,
         outline_color=eff_outline,
+        letter_spacing=eff_letter_spacing,
     )
     out = out_file.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1918,7 +1962,7 @@ def geo_mix_audio_cmd(
             if a_ev["start_s"] < duration_s - 0.2:
                 a_wav = tmp_path / f"amb_{idx}.wav"
                 a_len = min(a_ev["duration_s"], duration_s - a_ev["start_s"])
-                synthesize_ambience_layers(a_len, a_wav, level_db=-24.0)
+                synthesize_ambience_layers(a_len, a_wav, level_db=0.0)
                 extra_fx.append(
                     {
                         "t_s": a_ev["start_s"],
@@ -2095,7 +2139,12 @@ def geo_mix_audio_cmd(
             check=False,
             timeout=300,
         )
-        meas = _parse_loudnorm_json(pass1.stderr) if pass1.returncode == 0 else None
+        if pass1.returncode != 0:
+            err_tail = (pass1.stderr or "").strip().splitlines()[-8:]
+            raise RuntimeError(
+                f"ffmpeg loudnorm pass 1 failed (exit {pass1.returncode}): " + " | ".join(err_tail)
+            )
+        meas = _parse_loudnorm_json(pass1.stderr)
         can_two_pass = meas is not None and all(
             _is_finite_loudnorm_val(v)
             for v in (

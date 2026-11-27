@@ -464,7 +464,11 @@ export function clipHomogeneousPolyline(verts, eps = 1e-4) {
       !Number.isFinite(a.w) ||
       !Number.isFinite(b.w) ||
       !Number.isFinite(a.x) ||
-      !Number.isFinite(b.x)
+      !Number.isFinite(b.x) ||
+      !Number.isFinite(a.y) ||
+      !Number.isFinite(b.y) ||
+      !Number.isFinite(a.z) ||
+      !Number.isFinite(b.z)
     ) {
       if (cur.length >= 2) out.push(cur);
       cur = [];
@@ -512,9 +516,11 @@ function clampUnit(u) {
  * with a deterministic bisection fallback.
  */
 export function cubicBezier(x1, y1, x2, y2) {
-  const cx1 = Math.max(0, Math.min(1, Number(x1) || 0));
+  const rawX1 = Number(x1);
+  const cx1 = Number.isFinite(rawX1) ? Math.max(0, Math.min(1, rawX1)) : 0;
   const cy1 = Number.isFinite(Number(y1)) ? Number(y1) : 0;
-  const cx2 = Math.max(0, Math.min(1, Number(x2) || 1));
+  const rawX2 = Number(x2);
+  const cx2 = Number.isFinite(rawX2) ? Math.max(0, Math.min(1, rawX2)) : 1;
   const cy2 = Number.isFinite(Number(y2)) ? Number(y2) : 1;
   const sampleX = (t) => ((3 * (cx1 - cx2) + 1) * t + 3 * (cx2 - 2 * cx1)) * t * t + 3 * cx1 * t;
   const sampleY = (t) => ((3 * (cy1 - cy2) + 1) * t + 3 * (cy2 - 2 * cy1)) * t * t + 3 * cy1 * t;

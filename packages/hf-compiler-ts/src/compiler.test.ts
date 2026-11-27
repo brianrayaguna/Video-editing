@@ -2407,3 +2407,471 @@ test("all 32 Geoverum brand templates compile with zero typography lint warnings
   );
   assert.equal(lintResult.ok, true);
 });
+
+test("captions always paint last above full-screen overlays while preserving compositionFiles order", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-caption-zorder-"));
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      overlay_compositions: [
+        {
+          overlay_id: "cap_first",
+          kind: "caption_rail",
+          template_id: "caption_rail",
+          timeline_start_s: 0.2,
+          timeline_duration_s: 1.5,
+          transparent: true,
+          safe_band: "lower_third",
+          props: { text: "Always visible" },
+        },
+        {
+          overlay_id: "curtain_second",
+          kind: "full_scene",
+          template_id: "soft_curtain_transition",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {},
+          variables: { mode: "curtain_sweep" },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  // compositionFiles keeps plan order.
+  assert.equal(path.basename(compiled.compositionFiles[0]!), "cap_first.html");
+  assert.equal(path.basename(compiled.compositionFiles[1]!), "curtain_second.html");
+
+  // Host DOM emits graphics before captions and assigns captions the highest track index.
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  const curtainPos = indexHtml.indexOf('id="curtain_second"');
+  const capPos = indexHtml.indexOf('id="cap_first"');
+  assert.ok(curtainPos > 0 && capPos > curtainPos, "Caption host must appear after graphic overlays in index.html");
+  const curtainTrack = Number(indexHtml.match(/id="curtain_second"[^>]*data-track-index="(\d+)"/)?.[1]);
+  const capTrack = Number(indexHtml.match(/id="cap_first"[^>]*data-track-index="(\d+)"/)?.[1]);
+  assert.ok(capTrack > curtainTrack, `Expected caption track (${capTrack}) > graphic track (${curtainTrack})`);
+});
+
+test("catalog sample defaults do not poison omitted optional template variables", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-sample-defaults-"));
+  compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: 14.0,
+      overlay_compositions: [
+        {
+          overlay_id: "bar_real",
+          kind: "data_card",
+          template_id: "comparison_bar_chart",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 2.5,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {},
+          variables: {
+            title: "DEPTHS",
+            bar1_label: "A",
+            bar1_value: 520,
+            bar2_label: "B",
+            bar2_value: 310,
+            bar3_label: "C",
+            bar3_value: 140,
+          },
+        },
+        {
+          overlay_id: "dist_only_primary",
+          kind: "kinetic_callout",
+          template_id: "dual_unit_distance_bracket",
+          timeline_start_s: 2.6,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { primary_distance: "14 km" },
+        },
+        {
+          overlay_id: "cutaway_minimal",
+          kind: "kinetic_callout",
+          template_id: "cutaway_height_gauge",
+          timeline_start_s: 4.8,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { title: "DEPTH", reading_value: "945 m", fill_pct: 60 },
+        },
+        {
+          overlay_id: "gauge_minimal",
+          kind: "kinetic_callout",
+          template_id: "physical_gauge_callout",
+          timeline_start_s: 7.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { gauge_mode: "thermometer", start_value: 10, end_value: 35, unit: "K" },
+        },
+        {
+          overlay_id: "parch_year_only",
+          kind: "full_scene",
+          template_id: "historical_parchment_plate",
+          timeline_start_s: 9.2,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { variant: "timeline_bar", year: "1945" },
+        },
+        {
+          overlay_id: "cap_bar_style",
+          kind: "caption_rail",
+          template_id: "caption_rail",
+          timeline_start_s: 11.4,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "lower_third",
+          props: {},
+          variables: {
+            text: "Three plates collide",
+            caption_style: "bar",
+            accent_color: "#F5C542",
+            highlight_text: "plates",
+          },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const barHtml = fs.readFileSync(path.join(tmpDir, "compositions", "bar_real.html"), "utf8");
+  assert.doesNotMatch(barHtml, /100 km|85 km|70 km/);
+  assert.match(barHtml, /id="bar_real-v1"[^>]*><\/span>/);
+
+  const distHtml = fs.readFileSync(path.join(tmpDir, "compositions", "dist_only_primary.html"), "utf8");
+  assert.doesNotMatch(distHtml, /\(3\.8 km\)|\(5 mi\)/);
+
+  const cutHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cutaway_minimal.html"), "utf8");
+  assert.doesNotMatch(cutHtml, /14,760 ft|40,000 ft|>0 m</);
+
+  const gaugeHtml = fs.readFileSync(path.join(tmpDir, "compositions", "gauge_minimal.html"), "utf8");
+  assert.doesNotMatch(gaugeHtml, /NEW YORK|\(28°F\)/);
+
+  const parchHtml = fs.readFileSync(path.join(tmpDir, "compositions", "parch_year_only.html"), "utf8");
+  assert.doesNotMatch(parchHtml, /LOUISIANA PURCHASE/);
+
+  const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_bar_style.html"), "utf8");
+  assert.match(capHtml, /class="style-bar"/);
+  assert.match(capHtml, /<span class="vedit-caption-accent"/);
+});
+
+test("compiler validates color/enum template variables, path containment, host blend_mode, and full_hf lanes", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-hardening-"));
+
+  // Invalid color variable throws loudly.
+  assert.throws(
+    () =>
+      compileEditPlanToHyperframes(
+        makeSamplePlan({
+          brand_id: "geoverum",
+          overlay_compositions: [
+            {
+              overlay_id: "bad_color",
+              kind: "kinetic_callout",
+              template_id: "radar_pulse_rings",
+              timeline_start_s: 0.0,
+              timeline_duration_s: 1.5,
+              transparent: true,
+              safe_band: "center_safe",
+              props: {},
+              variables: { ring_color: "#FF0000; background:url(x)" },
+            },
+          ],
+        }),
+        path.join(tmpDir, "bad_color"),
+        { copyAssets: false }
+      ),
+    /expects a hex color/i
+  );
+
+  // Invalid enum variable throws loudly.
+  assert.throws(
+    () =>
+      compileEditPlanToHyperframes(
+        makeSamplePlan({
+          brand_id: "geoverum",
+          overlay_compositions: [
+            {
+              overlay_id: "bad_enum",
+              kind: "kinetic_callout",
+              template_id: "chevron_flow_band",
+              timeline_start_s: 0.0,
+              timeline_duration_s: 1.5,
+              transparent: true,
+              safe_band: "center_safe",
+              props: {},
+              variables: { direction: "sideways_bogus" },
+            },
+          ],
+        }),
+        path.join(tmpDir, "bad_enum"),
+        { copyAssets: false }
+      ),
+    /must be one of/i
+  );
+
+  // Path traversal in composition_path is rejected.
+  assert.throws(
+    () =>
+      compileEditPlanToHyperframes(
+        makeSamplePlan({
+          overlay_compositions: [
+            {
+              overlay_id: "trav_tpl",
+              kind: "full_scene",
+              timeline_start_s: 0.0,
+              timeline_duration_s: 1.0,
+              transparent: true,
+              safe_band: "fullscreen",
+              props: { composition_path: "../../../../../../etc/hosts" },
+            },
+          ],
+        }),
+        path.join(tmpDir, "trav"),
+        { copyAssets: false }
+      ),
+    /missing composition_path/i
+  );
+
+  // Full HF mode allocates distinct lanes for overlapping video clips and disambiguates IDs,
+  // and applies blend_mode onto parameterized template host elements.
+  const okOut = path.join(tmpDir, "ok_full_hf");
+  const compiled = compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      render_strategy: "full_hf",
+      duration_s: 4.0,
+      video_tracks: [
+        {
+          clip_id: "dup_id",
+          asset_id: "src_1",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 3.0,
+          source_start_s: 0.0,
+          role: "a_roll",
+          reframed_to_target: true,
+        },
+        {
+          clip_id: "dup_id",
+          asset_id: "src_1",
+          timeline_start_s: 1.0,
+          timeline_duration_s: 2.0,
+          source_start_s: 0.0,
+          role: "b_roll",
+          reframed_to_target: true,
+        },
+      ],
+      overlay_compositions: [
+        {
+          overlay_id: "dup_id",
+          kind: "kinetic_callout",
+          template_id: "radar_pulse_rings",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          blend_mode: "screen",
+          props: {},
+        },
+      ],
+    }),
+    okOut,
+    { copyAssets: false }
+  );
+
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  const vid1Track = indexHtml.match(/<video id="dup_id"[^>]*data-track-index="(\d+)"/)?.[1];
+  const vid2Track = indexHtml.match(/<video id="dup_id_2"[^>]*data-track-index="(\d+)"/)?.[1];
+  assert.ok(vid1Track && vid2Track && vid1Track !== vid2Track, "Overlapping full_hf videos need distinct lanes");
+  assert.match(indexHtml, /<div id="dup_id_3"[^>]*mix-blend-mode:\s*screen;/);
+});
+
+test("lint handles 4-digit font weights, plain caption prose mentioning blur, root-only data-layout-ignore, and variables text fallback", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-lint-fixes-"));
+  const plan = makeSamplePlan({
+    brand_id: "geoverum",
+    duration_s: 4.0,
+    assets: [
+      {
+        asset_id: "font_dm",
+        sha256: "a".repeat(64),
+        kind: "font",
+        path: path.join(path.resolve(process.cwd(), "..", ".."), "assets", "geo", "fonts", "DMSans-Variable.ttf"),
+      },
+      {
+        asset_id: "font_lg",
+        sha256: "b".repeat(64),
+        kind: "font",
+        path: path.join(path.resolve(process.cwd(), "..", ".."), "assets", "geo", "fonts", "LeagueGothic-Regular.ttf"),
+      },
+      {
+        asset_id: "font_ab",
+        sha256: "c".repeat(64),
+        kind: "font",
+        path: "/nonexistent/ArchivoBlack-Regular.ttf",
+      },
+    ],
+    overlay_compositions: [
+      {
+        overlay_id: "cap_blur_prose",
+        kind: "caption_rail",
+        template_id: "caption_rail",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 2.0,
+        transparent: true,
+        safe_band: "lower_third",
+        props: {
+          text: "",
+          font_family: "DM Sans",
+        },
+        variables: {
+          text: "Lens blur(effect) stays sharp across twenty two fast characters",
+        },
+      },
+      {
+        overlay_id: "dm_weight_1000",
+        kind: "kinetic_callout",
+        timeline_start_s: 2.2,
+        timeline_duration_s: 1.5,
+        transparent: true,
+        safe_band: "center_safe",
+        props: {
+          headline: "Ultra Black",
+          font_family: "DM Sans",
+          custom_css: ".ultra { font-family: 'DM Sans', sans-serif; font-size: 48px; font-weight: 1000; }",
+        },
+      },
+      {
+        overlay_id: "child_ignore_micro",
+        kind: "full_scene",
+        timeline_start_s: 0.2,
+        timeline_duration_s: 1.5,
+        transparent: true,
+        safe_band: "fullscreen",
+        props: {
+          custom_html: '<div class="tiny">Micro</div><div data-layout-ignore="true">Footer</div>',
+          custom_css: ".tiny { font-size: 12px; }",
+        },
+      },
+    ],
+  });
+
+  // Empty props.text must not mask variables.text in CPS/legibility checks, and prose "blur(effect)" is not CSS blur.
+  const planFindings = lintPlanPerformance(plan);
+  assert.equal(planFindings.some((f) => f.code === "FORBIDDEN_CSS_BLUR"), false);
+  assert.equal(planFindings.some((f) => f.code === "CAPTION_CPS_TOO_FAST"), true);
+
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  // Static fonts without wght axis must NOT be emitted as "100 900" or "400 900".
+  assert.match(indexHtml, /font-family: 'League Gothic';[\s\S]*?font-weight: 400;/);
+  assert.match(indexHtml, /font-family: 'Archivo Black';[\s\S]*?font-weight: 400;/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(lintResult.performanceViolations.some((v) => v.code === "FORBIDDEN_CSS_BLUR"), false);
+  assert.equal(
+    lintResult.performanceViolations.some((v) => v.code === "TYPO_UNAVAILABLE_WEIGHT" && v.location.includes("dm_weight_1000")),
+    false
+  );
+  assert.equal(
+    lintResult.performanceViolations.some((v) => v.code === "MICRO_TEXT_DETECTED" && v.location.includes("child_ignore_micro")),
+    true
+  );
+});
+
+test("template GSAP timelines and layout math handle short durations, repeated pulses, and safe-zone positioning cleanly", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-tpl-motion-"));
+  compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: 10.0,
+      overlay_compositions: [
+        {
+          overlay_id: "short_wipe",
+          kind: "full_scene",
+          template_id: "soft_curtain_transition",
+          timeline_start_s: 0.0,
+          timeline_duration_s: 0.2,
+          transparent: true,
+          safe_band: "fullscreen",
+          props: {},
+          variables: { mode: "feathered_dark_wipe" },
+        },
+        {
+          overlay_id: "radar_imm",
+          kind: "kinetic_callout",
+          template_id: "radar_pulse_rings",
+          timeline_start_s: 1.0,
+          timeline_duration_s: 2.5,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+        },
+        {
+          overlay_id: "wx_imm",
+          kind: "full_scene",
+          template_id: "weather_cloud_rain",
+          timeline_start_s: 3.6,
+          timeline_duration_s: 2.5,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+        },
+        {
+          overlay_id: "dual_dec",
+          kind: "kinetic_callout",
+          template_id: "dual_metric_compare",
+          timeline_start_s: 6.2,
+          timeline_duration_s: 0.6,
+          transparent: true,
+          safe_band: "upper_safe",
+          props: {},
+          variables: { left_value: "1,234.56 km", right_value: "3.14°C" },
+        },
+        {
+          overlay_id: "parch_tl",
+          kind: "full_scene",
+          template_id: "historical_parchment_plate",
+          timeline_start_s: 7.0,
+          timeline_duration_s: 2.0,
+          transparent: true,
+          safe_band: "center_safe",
+          props: {},
+          variables: { variant: "timeline_bar", year: "1803" },
+        },
+      ],
+    }),
+    tmpDir,
+    { copyAssets: false }
+  );
+
+  const wipeHtml = fs.readFileSync(path.join(tmpDir, "compositions", "short_wipe.html"), "utf8");
+  assert.doesNotMatch(wipeHtml, /Math\.max\(0\.28,\s*Math\.min\(dur,\s*0\.45\)\)/);
+
+  const radarHtml = fs.readFileSync(path.join(tmpDir, "compositions", "radar_imm.html"), "utf8");
+  assert.match(radarHtml, /immediateRender:\s*false/);
+
+  const wxHtml = fs.readFileSync(path.join(tmpDir, "compositions", "wx_imm.html"), "utf8");
+  assert.match(wxHtml, /immediateRender:\s*false/);
+
+  const dualHtml = fs.readFileSync(path.join(tmpDir, "compositions", "dual_dec.html"), "utf8");
+  assert.match(dualHtml, /c\.p >= 0\.999/);
+  assert.match(dualHtml, /Math\.max\(0\.15/);
+
+  const parchHtml = fs.readFileSync(path.join(tmpDir, "compositions", "parch_tl.html"), "utf8");
+  assert.doesNotMatch(parchHtml, /#parch_tl-timeline\s*\{[^}]*top:\s*calc\(10%/);
+  assert.doesNotMatch(parchHtml, /#parch_tl-compass\s*\{[^}]*bottom:\s*calc\(28\.5%/);
+});

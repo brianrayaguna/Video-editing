@@ -110,8 +110,39 @@
         const prefix = m[1] || "";
         const tok = m[2] || "";
         const suffix = m[3] || "";
-        const sep = tok.includes(",") && !tok.includes(".") ? "," : (tok.includes(".") && tok.split(".").pop().length === 3 ? "." : "");
-        const num = parseFloat(sep ? tok.replace(new RegExp("\\" + sep, "g"), "") : tok.replace(",", "."));
+        let thousandsSep = "";
+        let decimalSep = "";
+        let decimals = 0;
+        if (tok.includes(",") && tok.includes(".")) {
+          if (tok.lastIndexOf(".") > tok.lastIndexOf(",")) {
+            thousandsSep = ",";
+            decimalSep = ".";
+          } else {
+            thousandsSep = ".";
+            decimalSep = ",";
+          }
+          decimals = tok.slice(tok.lastIndexOf(decimalSep) + 1).length;
+        } else if (tok.includes(",")) {
+          const parts = tok.split(",");
+          if (parts.length === 2 && parts[1].length !== 3) {
+            decimalSep = ",";
+            decimals = parts[1].length;
+          } else {
+            thousandsSep = ",";
+          }
+        } else if (tok.includes(".")) {
+          const parts = tok.split(".");
+          if (parts.length === 2 && parts[1].length !== 3) {
+            decimalSep = ".";
+            decimals = parts[1].length;
+          } else {
+            thousandsSep = ".";
+          }
+        }
+        let normalized = tok;
+        if (thousandsSep) normalized = normalized.replace(new RegExp("\\" + thousandsSep, "g"), "");
+        if (decimalSep && decimalSep !== ".") normalized = normalized.replace(decimalSep, ".");
+        const num = parseFloat(normalized);
         if (!Number.isFinite(num) || num <= 0) return;
         const c = { p: 0 };
         tl.fromTo(
@@ -122,8 +153,15 @@
             duration: countDur,
             ease: "expo.out",
             onUpdate: () => {
-              let s = String(Math.round(num * c.p));
-              if (sep) s = s.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+              if (c.p >= 0.999) {
+                el.textContent = raw;
+                return;
+              }
+              const cur = num * c.p;
+              const fixed = decimals > 0 ? cur.toFixed(decimals) : String(Math.round(cur));
+              const [intPart, fracPart] = fixed.split(".");
+              let s = thousandsSep ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSep) : intPart;
+              if (fracPart !== undefined) s += (decimalSep || ".") + fracPart;
               el.textContent = prefix + s + suffix;
             },
           },
@@ -138,9 +176,9 @@
 
       const tl = gsap.timeline({ paused: true });
       tl.fromTo("#{{SCENE_ID}}-col-l", { y: 18 * S, opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0);
-      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-lv"), 0.04, Math.min(0.75, exitAt - 0.3));
+      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-lv"), 0.04, Math.max(0.15, Math.min(0.75, exitAt - 0.3)));
       tl.fromTo("#{{SCENE_ID}}-col-r", { y: 18 * S, opacity: 0 }, { y: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0.2);
-      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-rv"), 0.24, Math.min(0.75, exitAt - 0.4));
+      bindCountUp(tl, document.getElementById("{{SCENE_ID}}-rv"), 0.24, Math.max(0.15, Math.min(0.75, exitAt - 0.4)));
       tl.to("#{{SCENE_ID}}-pair", { y: -12 * S, opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
 
       window.__timelines = window.__timelines || {};

@@ -70,7 +70,13 @@ def _download(url: str, dest: Path) -> tuple[str, bool, str]:
             data = resp.read()
         if len(data) < 80:
             return (dest.name, False, f"too small ({len(data)} bytes)")
-        dest.write_bytes(data)
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        try:
+            tmp.write_bytes(data)
+            tmp.replace(dest)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
         return (dest.name, True, f"downloaded ({len(data)} B)")
     except Exception as exc:  # noqa: BLE001
         return (dest.name, False, str(exc))
@@ -96,8 +102,22 @@ def _derive_static_bold_fonts() -> list[str]:
             continue
         font = TTFont(str(src))
         if "fvar" in font:
-            static_font = instantiateVariableFont(font, {"wght": wght}, inplace=False)
-            static_font.save(str(dst))
+            loc: dict[str, float] = {a.axisTag: float(a.defaultValue) for a in font["fvar"].axes}
+            if "wght" not in loc:
+                continue
+            loc["wght"] = float(wght)
+            static_font = instantiateVariableFont(font, loc, inplace=False, updateFontNames=False)
+            static_font["OS/2"].usWeightClass = int(wght)
+            if wght >= 700:
+                static_font["OS/2"].fsSelection = (static_font["OS/2"].fsSelection & ~0b1000001) | 0b100000
+                static_font["head"].macStyle |= 1
+            tmp = dst.with_suffix(dst.suffix + ".part")
+            try:
+                static_font.save(str(tmp))
+                tmp.replace(dst)
+            except Exception:
+                tmp.unlink(missing_ok=True)
+                raise
             derived.append(dst_name)
     return derived
 

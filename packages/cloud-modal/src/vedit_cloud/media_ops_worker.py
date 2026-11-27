@@ -151,7 +151,7 @@ def run_clean_audio_cloud(
             capture_output=True,
             text=True,
             check=False,
-            timeout=600,
+            timeout=240,
         )
         if extract_proc.returncode != 0:
             raise RuntimeError(f"FFmpeg speech extraction failed: {extract_proc.stderr}")
@@ -176,7 +176,7 @@ def run_clean_audio_cloud(
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=600,
+                timeout=300,
             )
             if df_proc.returncode != 0:
                 raise RuntimeError(
@@ -190,10 +190,14 @@ def run_clean_audio_cloud(
         out_sha = _sha256_file(enhanced_wav)
         out_rel = f"media_ops/clean_audio/{out_sha}.wav"
         out_cas = cas_mount_path / out_rel
-        out_cas.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(enhanced_wav, out_cas)
+        wrote_cas = False
+        if not out_cas.is_file():
+            out_cas.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(enhanced_wav, out_cas)
+            wrote_cas = True
 
-    cas_volume.commit()
+    if wrote_cas:
+        cas_volume.commit()
     wall_ms = int((time.perf_counter() - t0) * 1000)
     return {
         "output_subpath": out_rel,
@@ -232,8 +236,10 @@ def run_reframe_video_cloud(
     with tempfile.TemporaryDirectory(prefix="vedit_reframe_") as tmp_dir:
         out_local = Path(tmp_dir) / "reframed.mp4"
         vf = (
-            f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={target_w}:{target_h},setsar=1,format=yuv420p"
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos:"
+            f"out_color_matrix=bt709:out_range=tv,"
+            f"crop={target_w}:{target_h},setsar=1,format=yuv420p,"
+            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv"
         )
         proc = subprocess.run(
             [
@@ -261,13 +267,15 @@ def run_reframe_video_cloud(
                 "-movflags",
                 "+faststart",
                 "-c:a",
-                "copy",
+                "aac",
+                "-b:a",
+                "192k",
                 str(out_local),
             ],
             capture_output=True,
             text=True,
             check=False,
-            timeout=900,
+            timeout=780,
         )
         if proc.returncode != 0:
             raise RuntimeError(f"Cloud FFmpeg reframe failed: {proc.stderr}")
@@ -275,10 +283,14 @@ def run_reframe_video_cloud(
         out_sha = _sha256_file(out_local)
         out_rel = f"media_ops/reframe/{out_sha}_{target_w}x{target_h}.mp4"
         out_cas = cas_mount_path / out_rel
-        out_cas.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(out_local, out_cas)
+        wrote_cas = False
+        if not out_cas.is_file():
+            out_cas.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out_local, out_cas)
+            wrote_cas = True
 
-    cas_volume.commit()
+    if wrote_cas:
+        cas_volume.commit()
     wall_ms = int((time.perf_counter() - t0) * 1000)
     return {
         "output_subpath": out_rel,

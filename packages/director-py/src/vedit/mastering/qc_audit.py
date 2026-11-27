@@ -6,6 +6,7 @@ import array
 import json
 import math
 import re
+import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -285,6 +286,9 @@ def generate_diff_contact_sheet(
                 cells.append(cell)
         if not cells:
             return None
+        if len(cells) == 1:
+            shutil.copy2(cells[0], output_jpg)
+            return output_jpg
         inputs: list[str] = []
         for c in cells:
             inputs.extend(["-i", str(c)])
@@ -893,12 +897,17 @@ def audit_mastered_deliverable(
                 )
             )
 
+        target_lufs, max_tp_limit, target_lra, lufs_tol = resolve_loudness_profile(
+            loudness_profile, platform_target
+        )
+        metrics["loudness_profile"] = loudness_profile or "platform_default"
         ebur = subprocess.run(
             [
                 "ffmpeg",
                 "-hide_banner",
                 "-i",
                 str(media_path),
+                "-vn",
                 "-af",
                 "ebur128=peak=true",
                 "-f",
@@ -910,10 +919,6 @@ def audit_mastered_deliverable(
             check=False,
             timeout=300,
         )
-        target_lufs, max_tp_limit, target_lra, lufs_tol = resolve_loudness_profile(
-            loudness_profile, platform_target
-        )
-        metrics["loudness_profile"] = loudness_profile or "platform_default"
         spec_trans = measure_spectral_translation(media_path)
         if spec_trans is not None:
             metrics["low_to_mid_db"] = spec_trans["low_to_mid_db"]
@@ -1013,8 +1018,14 @@ def audit_mastered_deliverable(
                     )
 
         if a_stream is not None and v_stream is not None:
-            v_dur = float(v_stream.get("duration") or 0.0)
-            a_dur = float(a_stream.get("duration") or 0.0)
+            try:
+                v_dur = float(v_stream.get("duration") or 0.0)
+            except (TypeError, ValueError):
+                v_dur = 0.0
+            try:
+                a_dur = float(a_stream.get("duration") or 0.0)
+            except (TypeError, ValueError):
+                a_dur = 0.0
             if v_dur > 0 and a_dur > 0 and abs(v_dur - a_dur) > 0.5:
                 errors.append(
                     QCIssue(

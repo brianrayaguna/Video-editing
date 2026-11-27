@@ -118,7 +118,8 @@
 
       if (isIris) {
         const openAt = Math.min(dur * 0.28, 0.45);
-        const closeAt = Math.max(openAt + 0.35, dur * 0.72);
+        const closeAt = Math.min(dur * 0.85, Math.max(openAt + Math.min(0.35, dur * 0.3), dur * 0.72));
+        const closeDur = Math.max(0.05, Math.min(0.35, dur - closeAt));
         tl.fromTo(
           ["#{{SCENE_ID}}-hole", "#{{SCENE_ID}}-ring"],
           { scale: 0.02, transformOrigin: "50% 50%" },
@@ -127,13 +128,13 @@
         );
         tl.to(
           ["#{{SCENE_ID}}-hole", "#{{SCENE_ID}}-ring"],
-          { scale: 0.02, duration: Math.max(0.22, dur - closeAt), ease: "power3.in", transformOrigin: "50% 50%" },
+          { scale: 0.02, duration: closeDur, ease: "power3.in", transformOrigin: "50% 50%" },
           closeAt
         );
       } else {
         const startX = -100 * dir;
         const endX = 100 * dir;
-        const sweepDur = isFeatheredWipe ? Math.max(0.28, Math.min(dur, 0.45)) : dur;
+        const sweepDur = isFeatheredWipe ? Math.min(dur, 0.45) : dur;
         if (isFeatheredWipe && curtainEl) {
           curtainEl.style.background =
             "linear-gradient(90deg, rgba(8,10,16,0) 0%, rgba(8,10,16,0.58) 18%, rgba(8,10,16,0.96) 50%, rgba(8,10,16,0.58) 82%, rgba(8,10,16,0) 100%)";
