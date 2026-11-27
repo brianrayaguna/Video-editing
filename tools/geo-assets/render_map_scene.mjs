@@ -258,7 +258,36 @@ function buildDynamicFontFaceCss(baseUrl) {
     :root, body { font-synthesis: none; font-optical-sizing: auto; }`;
 }
 
+function resolveImageryCredit(mapOpts = {}) {
+  if (mapOpts.show_credit === false) return "";
+  if (typeof mapOpts.imagery_credit === "string" && mapOpts.imagery_credit.trim()) {
+    return mapOpts.imagery_credit.trim();
+  }
+  const sourceMode = mapOpts.tile_source || "hybrid";
+  if (sourceMode === "hybrid" || sourceMode === "realistic") {
+    const attrPath = join(REPO_ROOT, "assets/geo/tiles_hq/attribution.json");
+    if (existsSync(attrPath)) {
+      try {
+        const parsed = JSON.parse(readFileSync(attrPath, "utf8"));
+        if (typeof parsed.credit_line === "string" && parsed.credit_line.trim()) {
+          return parsed.credit_line.trim();
+        }
+      } catch {
+        // Fall through to default open-data credit.
+      }
+    }
+  }
+  return "Sentinel-2 cloudless 2024 · EOX";
+}
+
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
+  const imageryCredit =
+    typeof resolveImageryCredit === "function"
+      ? resolveImageryCredit(mapOpts)
+      : typeof mapOpts.imagery_credit === "string"
+        ? mapOpts.imagery_credit.trim()
+        : "";
+  const isPortrait = height > width;
   const sourceMode = mapOpts.tile_source || "hybrid";
   const tileRoute =
     sourceMode === "project"
@@ -331,13 +360,26 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
     #ov, #comp { pointer-events: none; }
     #comp { display: none; }
     .maplibregl-control-container { display: none !important; }
+    #imagery-credit {
+      position: absolute;
+      ${isPortrait ? "top: 44px; left: 36px; max-width: 72%;" : "bottom: 24px; right: 28px; max-width: 60%;"}
+      z-index: 40;
+      pointer-events: none;
+      font-family: "Inter", sans-serif;
+      font-size: ${isPortrait ? "16px" : "15px"};
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      line-height: 1.25;
+      color: rgba(244, 241, 234, 0.74);
+      text-shadow: 0 1px 4px rgba(3, 22, 31, 0.9), 0 0 10px rgba(3, 22, 31, 0.65);
+    }
   </style>
 </head>
 <body>
   <div id="stage">
     <div id="map"></div>
     <canvas id="ov" width="${ovW}" height="${ovH}"></canvas>
-  </div>
+  </div>${imageryCredit ? `\n  <div id="imagery-credit">${imageryCredit.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>` : ""}
   <canvas id="comp" width="${width}" height="${height}"></canvas>
   <script>
     const BASE_URL = ${JSON.stringify(baseUrl).replace(/</g, "\\u003c")};
@@ -7282,6 +7324,8 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
           sun_elevation_deg: act.sun_elevation_deg ?? opts.sunElevationDeg ?? 42,
           atmosphere: act.atmosphere ?? null,
           hdr_bloom: act.hdr_bloom ?? opts.hdrBloom ?? true,
+          imagery_credit: act.imagery_credit ?? opts.imageryCredit ?? null,
+          show_credit: act.show_credit ?? opts.showCredit ?? true,
         }),
         { waitUntil: "load" }
       );

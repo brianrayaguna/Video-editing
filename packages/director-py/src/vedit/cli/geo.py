@@ -24,6 +24,20 @@ from vedit.director.camera_moves import (
     expand_move_plan,
     smooth_scene_keys,
 )
+from vedit.geo_imagery import (
+    GOOGLE_TILES_MAX_Z,
+    NATIONAL_ORTHO_MAX_Z,
+    NATIONAL_ORTHO_MIN_Z,
+    S2_CLOUDLESS_MAX_NATIVE_Z,
+    GoogleMapTilesClient,
+    format_credit_line,
+    google_satellite_tile_url,
+    national_ortho_url,
+    record_imagery_attribution,
+    resolve_imagery_provider,
+    s2_cloudless_url,
+    tiles_to_bbox,
+)
 from vedit.mastering.ffmpeg_master import _is_finite_loudnorm_val, _parse_loudnorm_json
 from vedit.mastering.sound_design import (
     LOUDNESS_PROFILES,
@@ -54,38 +68,39 @@ def _deg2num(lat: float, lon: float, z: int) -> tuple[int, int]:
     return max(0, min(int(n) - 1, x)), max(0, min(int(n) - 1, y))
 
 
-# Open-licensed imagery sources used by `geo prepare`.
-# - Sentinel-2 cloudless 2016: CC BY 4.0 (EOX IT Services GmbH; contains modified Copernicus
-#   Sentinel data 2016). Global coverage at ~10 m native resolution (z14).
-# - National orthoimagery: public domain (U.S. Geological Survey, The National Map). Covers the
-#   United States at ~1 m (served to z16) and answers HTTP 404 outside its coverage at z13+;
-#   lower zooms return generic placeholder imagery, so it is requested only from z13.
-# High-resolution (`--hq`) tiles try the national orthoimagery first and fall back to Sentinel-2
-# up to its native zoom. Deeper tiles are not stored when only Sentinel-2 covers the area;
-# `serve_tiles.mjs` upsamples the nearest stored ancestor instead.
-S2_CLOUDLESS_MAX_NATIVE_Z = 14
-NATIONAL_ORTHO_MIN_Z = 13
-NATIONAL_ORTHO_MAX_Z = 16
+# Satellite imagery sources used by `geo prepare`:
+# - Google Map Tiles API (2D satellite, up to z18) when `GOOGLE_MAPS_API_KEY` is configured.
+# - National orthoimagery: public domain (U.S. Geological Survey, The National Map, ~1 m, z13-16).
+# - Sentinel-2 cloudless 2024: CC BY 4.0 (EOX IT Services GmbH; modified Copernicus Sentinel data
+#   2024, ~10 m native, z0-14).
 _TILE_ABSENT_HTTP_CODES = frozenset({"204", "400", "404"})
 
 
 def _s2_cloudless_url(z: int, x: int, y: int, subdomain: str = "a") -> str:
-    return (
-        f"https://{subdomain}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/"
-        f"{z}/{y}/{x}.jpg"
-    )
+    return s2_cloudless_url(z, x, y, subdomain)
 
 
 def _national_ortho_url(z: int, x: int, y: int) -> str:
-    return (
-        "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/"
-        f"{z}/{y}/{x}"
-    )
+    return national_ortho_url(z, x, y)
 
 
-def hq_tile_urls(z: int, x: int, y: int, subdomain: str = "a") -> list[str]:
-    """Return open high-resolution tile URLs for `(z, x, y)` in fallback order."""
+def hq_tile_urls(
+    z: int,
+    x: int,
+    y: int,
+    subdomain: str = "a",
+    *,
+    google_session: str | None = None,
+    google_api_key: str | None = None,
+) -> list[str]:
+    """Return high-resolution tile URLs for `(z, x, y)` in fallback order."""
     urls: list[str] = []
+    if google_session and google_api_key and 0 <= z <= GOOGLE_TILES_MAX_Z:
+        urls.append(
+            google_satellite_tile_url(
+                z, x, y, session_token=google_session, api_key=google_api_key
+            )
+        )
     if NATIONAL_ORTHO_MIN_Z <= z <= NATIONAL_ORTHO_MAX_Z:
         urls.append(_national_ortho_url(z, x, y))
     if z <= S2_CLOUDLESS_MAX_NATIVE_Z:
@@ -405,12 +420,14 @@ def _fetch_tile_set(
     hq_aerial: bool | None,
     grade_tiles: bool,
     missing: set[tuple[int, int, int]] | None = None,
+    provider: str = "auto",
 ) -> tuple[int, int]:
-    """Fetch satellite tiles: z<=12 from Sentinel-2 2016 (graded), z>=13 high-resolution.
+    """Fetch satellite tiles: z<=12 from Sentinel-2 2024 (graded), z>=13 high-resolution.
 
-    `hq_aerial` True sends every tile to the high-resolution fetcher, False sends every tile to
-    Sentinel-2; None splits at z=13. Returns (Sentinel-2 tiles present, HQ tiles present).
-    Tiles no source could supply are added to `missing` when it is given.
+    When `provider` resolves to `google` (auto when `GOOGLE_MAPS_API_KEY` is configured),
+    high-resolution tiles use the Google Map Tiles API (2D satellite up to z18) with
+    automatic fallback to USGS National Map and Sentinel-2 cloudless 2024, and record
+    official copyright attribution in `assets/geo/tiles_hq/attribution.json`.
     """
     fetched_count = 0
     hq_fetched_count = 0
@@ -425,6 +442,22 @@ def _fetch_tile_set(
     else:
         s2_coords = sorted(c for c in coords if c[0] <= 12)
         hq_coords = sorted(c for c in coords if c[0] >= 13)
+
+    resolved_provider, google_api_key = resolve_imagery_provider(provider, repo_root=root)
+    google_session: str | None = None
+    google_client: GoogleMapTilesClient | None = None
+    if hq_coords and resolved_provider == "google" and google_api_key:
+        try:
+            google_client = GoogleMapTilesClient(google_api_key)
+            google_session = google_client.create_session(map_type="satellite")
+        except Exception as exc:
+            if provider.strip().lower() == "google":
+                raise RuntimeError(
+                    "Google Map Tiles API session failed (verify Map Tiles API & Billing are "
+                    f"enabled in Google Cloud Console): {exc}"
+                ) from exc
+            google_client = None
+            google_session = None
 
     def _fetch_url(dest: Path, url: str) -> bool:
         if dest.is_file() and dest.stat().st_size >= 64:
@@ -478,7 +511,17 @@ def _fetch_tile_set(
         idx, (z, x, y) = item
         dest = hq_dir / str(z) / str(x) / f"{y}.jpg"
         sub = ("a", "b", "c", "d")[idx % 4]
-        return any(_fetch_url(dest, url) for url in hq_tile_urls(z, x, y, sub))
+        return any(
+            _fetch_url(dest, url)
+            for url in hq_tile_urls(
+                z,
+                x,
+                y,
+                sub,
+                google_session=google_session,
+                google_api_key=google_api_key,
+            )
+        )
 
     if s2_coords:
         with ThreadPoolExecutor(max_workers=16) as pool:
@@ -493,6 +536,22 @@ def _fetch_tile_set(
         hq_fetched_count = sum(hq_ok)
         if missing is not None:
             missing.update(c for c, ok in zip(hq_coords, hq_ok, strict=True) if not ok)
+        if hq_fetched_count > 0:
+            active_sources: list[str] = []
+            google_copyright: str | None = None
+            if google_client and google_session:
+                active_sources.append("google_map_tiles")
+                bbox_val = tiles_to_bbox(set(hq_coords))
+                if bbox_val is not None:
+                    max_z = max(c[0] for c in hq_coords)
+                    google_copyright = google_client.fetch_viewport_copyright(bbox_val, max_z)
+            else:
+                active_sources.append("usgs_national_map")
+            if s2_coords or not google_client:
+                active_sources.append("eox_s2_2024")
+            record_imagery_attribution(
+                hq_dir, sources=active_sources, google_copyright=google_copyright
+            )
 
     if grade_tiles and s2_coords:
         node_bin = shutil.which("node")
@@ -578,11 +637,20 @@ def geo_prepare_cmd(
         bool | None,
         typer.Option(
             "--hq/--no-hq",
-            help="Fetch open high-resolution tiles into assets/geo/tiles_hq/: public-domain "
-            "national orthoimagery where covered (~1 m, z<=16), otherwise Sentinel-2 2016 "
-            "(~10 m, z<=14) (default: auto-enabled for z >= 13).",
+            help="Fetch high-resolution tiles into assets/geo/tiles_hq/: Google Map Tiles API "
+            "when GOOGLE_MAPS_API_KEY is set (global sub-meter, z<=18), otherwise open "
+            "national orthoimagery (~1 m, z<=16) and Sentinel-2 cloudless 2024 (~10 m, z<=14) "
+            "(default: auto-enabled for z >= 13).",
         ),
     ] = None,
+    provider: Annotated[
+        str,
+        typer.Option(
+            "--provider",
+            help="HQ imagery provider: auto (Google if GOOGLE_MAPS_API_KEY set, else open), "
+            "google, or open.",
+        ),
+    ] = "auto",
     tile_list: Annotated[
         Path | None,
         typer.Option(
@@ -645,11 +713,29 @@ def geo_prepare_cmd(
             )
             fetched_count += s2_more
         if merged_coords:
+            extra_kwargs: dict[str, Any] = {}
+            if provider != "auto":
+                extra_kwargs["provider"] = provider
             s2_more, hq_more = _fetch_tile_set(
-                root, merged_coords, hq_aerial=hq_aerial, grade_tiles=grade_tiles
+                root,
+                merged_coords,
+                hq_aerial=hq_aerial,
+                grade_tiles=grade_tiles,
+                **extra_kwargs,
             )
             fetched_count += s2_more
             hq_fetched_count += hq_more
+
+    resolved_provider, _ = resolve_imagery_provider(provider, repo_root=root)
+    attr_path = root / "assets" / "geo" / "tiles_hq" / "attribution.json"
+    imagery_credit = format_credit_line(["eox_s2_2024"])
+    if attr_path.is_file():
+        try:
+            attr_data = json.loads(attr_path.read_text(encoding="utf-8"))
+            if isinstance(attr_data.get("credit_line"), str) and attr_data["credit_line"].strip():
+                imagery_credit = attr_data["credit_line"].strip()
+        except (OSError, ValueError):
+            pass
 
     vectors = extract_project_vectors(
         repo_root=root,
@@ -665,6 +751,8 @@ def geo_prepare_cmd(
         json.dumps(
             {
                 "ok": True,
+                "imagery_provider": resolved_provider,
+                "imagery_credit": imagery_credit,
                 "tiles_verified": fetched_count,
                 "hq_tiles_verified": hq_fetched_count,
                 "vectors_path": str(out_file),

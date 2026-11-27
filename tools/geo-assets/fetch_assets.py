@@ -293,7 +293,7 @@ def build_tile_plan(
 
     for idx, (z, x, y) in enumerate(sorted(eox_coords)):
         sub = ("a", "b", "c", "d")[idx % 4]
-        url = f"https://{sub}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"
+        url = f"https://{sub}.tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg"
         dest = RAW_DIR / "tiles_s2_2016" / str(z) / str(x) / f"{y}.jpg"
         tasks.append(("eox_s2_2016", z, x, y, url, dest))
 

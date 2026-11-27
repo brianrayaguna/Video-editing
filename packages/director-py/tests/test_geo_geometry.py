@@ -142,13 +142,38 @@ def test_hq_tile_urls_prefer_open_orthoimagery_then_sentinel2() -> None:
     mid = hq_tile_urls(14, 3090, 6428)
     assert len(mid) == 2
     assert "nationalmap.gov" in mid[0]
-    assert "s2cloudless" in mid[1]
+    assert "s2cloudless-2024_3857" in mid[1]
     assert mid[1].endswith("/14/6428/3090.jpg")
     deep = hq_tile_urls(16, 12360, 25712)
     assert len(deep) == 1 and "nationalmap.gov" in deep[0]
     assert hq_tile_urls(17, 24721, 51425) == []
     low = hq_tile_urls(8, 97, 43)
-    assert len(low) == 1 and "s2cloudless" in low[0]
+    assert len(low) == 1 and "s2cloudless-2024_3857" in low[0]
+
+
+def test_hq_tile_urls_with_google_session_and_attribution(tmp_path: Path) -> None:
+    from vedit.geo_imagery import format_credit_line, record_imagery_attribution
+
+    urls = hq_tile_urls(
+        17, 104352, 67824, google_session="tok123", google_api_key="key456"
+    )
+    assert len(urls) == 1
+    assert urls[0].startswith("https://tile.googleapis.com/v1/2dtiles/17/104352/67824?")
+    assert "session=tok123" in urls[0]
+    assert "key=key456" in urls[0]
+
+    attr_path, credit = record_imagery_attribution(
+        tmp_path,
+        sources=["google_map_tiles", "eox_s2_2024"],
+        google_copyright="Imagery ©2026 Google, Airbus, Maxar Technologies",
+    )
+    assert attr_path.is_file()
+    assert "Imagery ©2026 Google, Airbus, Maxar Technologies" in credit
+    assert "Sentinel-2 cloudless 2024" in credit
+    assert (
+        format_credit_line(["eox_s2_2024"])
+        == "Sentinel-2 cloudless 2024 by EOX IT Services GmbH"
+    )
 
 
 def _closeup_scene(zoom: float) -> dict:

@@ -273,36 +273,78 @@ def _synthesize_sfx_pack() -> list[str]:
     return created
 
 
+def _periodic_fbm(
+    rng: np.random.Generator,
+    sz: int,
+    octaves: list[tuple[int, float]],
+) -> np.ndarray:
+    """Generate a seamless tileable 2D multi-octave fractional Brownian motion field."""
+    acc = np.zeros((sz, sz), dtype=np.float32)
+    freqs = np.fft.fftfreq(sz)
+    fx, fy = np.meshgrid(freqs, freqs)
+    radius = np.hypot(fx, fy)
+    for cutoff_cycles, weight in octaves:
+        white = rng.standard_normal((sz, sz)).astype(np.float32)
+        spec = np.fft.fft2(white)
+        sigma = cutoff_cycles / float(sz)
+        mask = np.exp(-0.5 * (radius / max(sigma, 1e-6)) ** 2)
+        mask[0, 0] = 0.0
+        layer = np.fft.ifft2(spec * mask).real.astype(np.float32)
+        std = float(layer.std()) or 1.0
+        acc += (layer / std) * weight
+    return acc
+
+
 def _synthesize_textures() -> list[str]:
     TEXTURES_DIR.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(7)
     created: list[str] = []
 
-    # 1. vintage_paper.png (512x512 seamless warm paper grain)
-    sz = 512
-    base = np.full((sz, sz, 3), [217, 210, 195], dtype=np.float32)
-    grain = rng.normal(0.0, 6.5, (sz, sz, 1)).astype(np.float32)
-    ys = np.linspace(0, 2 * math.pi, sz, dtype=np.float32)[:, None]
-    xs = np.linspace(0, 2 * math.pi, sz, dtype=np.float32)[None, :]
-    fiber = (np.sin(xs * 6) * 2.5 + np.cos(ys * 8) * 2.0)[:, :, None]
-    img = np.clip(base + grain + fiber, 0, 255).astype(np.uint8)
-    Image.fromarray(img, mode="RGB").save(TEXTURES_DIR / "vintage_paper.png", optimize=True)
+    # 2048x2048 seamless 2K textures suitable for 1080p and 4K compositions.
+    sz = 2048
+
+    # 1. vintage_paper.png (2048x2048 seamless warm cotton paper with multi-scale fiber)
+    base = np.full((sz, sz, 3), [219, 211, 194], dtype=np.float32)
+    cloud = _periodic_fbm(rng, sz, [(6, 5.5), (18, 3.2), (64, 2.0), (220, 1.4)])
+    fine_grain = rng.normal(0.0, 3.8, (sz, sz)).astype(np.float32)
+    # Subtle warm/cool tonal variation across channels for organic paper depth.
+    paper = base.copy()
+    paper[:, :, 0] += cloud * 1.05 + fine_grain
+    paper[:, :, 1] += cloud * 0.98 + fine_grain * 0.95
+    paper[:, :, 2] += cloud * 0.85 + fine_grain * 0.88
+    Image.fromarray(np.clip(paper, 0, 255).astype(np.uint8), mode="RGB").save(
+        TEXTURES_DIR / "vintage_paper.png", optimize=True
+    )
     created.append("vintage_paper.png")
 
-    # 2. parchment_fold.png (512x512 subtle paper crease shading)
-    parch = np.full((sz, sz, 3), [228, 218, 198], dtype=np.float32)
-    parch += rng.normal(0.0, 5.0, (sz, sz, 1)).astype(np.float32)
-    # Soft vertical & horizontal fold creases
-    vx = np.exp(-((np.arange(sz) - sz * 0.5) ** 2) / (2 * 5.0**2))[None, :, None]
-    hy = np.exp(-((np.arange(sz) - sz * 0.5) ** 2) / (2 * 5.0**2))[:, None, None]
-    parch -= (vx + hy) * 18.0
+    # 2. parchment_fold.png (2048x2048 archival parchment with organic fold & highlight ridge)
+    parch = np.full((sz, sz, 3), [228, 218, 197], dtype=np.float32)
+    parch_cloud = _periodic_fbm(rng, sz, [(5, 6.5), (16, 3.5), (56, 2.0), (200, 1.2)])
+    parch_grain = rng.normal(0.0, 3.2, (sz, sz)).astype(np.float32)
+    coords = np.arange(sz, dtype=np.float32)
+    # Slightly organic folded crease with paired shadow trough and subtle highlight ridge.
+    wobble_x = _periodic_fbm(rng, sz, [(4, 6.0)])[:, 0]
+    wobble_y = _periodic_fbm(rng, sz, [(4, 6.0)])[0, :]
+    dx = coords[None, :] - (sz * 0.5 + wobble_x[:, None])
+    dy = coords[:, None] - (sz * 0.5 + wobble_y[None, :])
+    crease_shadow = (np.exp(-(dx**2) / (2 * 14.0**2)) + np.exp(-(dy**2) / (2 * 14.0**2))) * 16.0
+    crease_highlight = (
+        np.exp(-((dx - 16.0) ** 2) / (2 * 18.0**2))
+        + np.exp(-((dy - 16.0) ** 2) / (2 * 18.0**2))
+    ) * 5.0
+    for c_idx, scale in enumerate((1.04, 0.99, 0.88)):
+        parch[:, :, c_idx] += parch_cloud * scale + parch_grain - crease_shadow + crease_highlight
     Image.fromarray(np.clip(parch, 0, 255).astype(np.uint8), mode="RGB").save(
         TEXTURES_DIR / "parchment_fold.png", optimize=True
     )
     created.append("parchment_fold.png")
 
-    # 3. subtle_grain.png (512x512 monochrome film grain overlay)
-    g = np.clip(128.0 + rng.normal(0.0, 22.0, (sz, sz)), 0, 255).astype(np.uint8)
+    # 3. subtle_grain.png (2048x2048 seamless 35mm-style organic monochrome film grain)
+    organic_grain = (
+        _periodic_fbm(rng, sz, [(320, 9.5), (680, 11.5)])
+        + rng.normal(0.0, 8.5, (sz, sz)).astype(np.float32)
+    )
+    g = np.clip(128.0 + organic_grain, 0, 255).astype(np.uint8)
     Image.fromarray(g, mode="L").save(TEXTURES_DIR / "subtle_grain.png", optimize=True)
     created.append("subtle_grain.png")
 
@@ -325,7 +367,7 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=12) as pool:
         futs = {pool.submit(_download, url, dest): (cat, dest) for cat, url, dest in tasks}
         for fut in as_completed(futs):
-            cat, dest = futs[fut]
+            cat, _dest = futs[fut]
             name, ok, msg = fut.result()
             if ok:
                 results[cat].append(name)

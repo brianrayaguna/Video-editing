@@ -39,7 +39,10 @@ def load_dotenv_safe(repo_root: Path | None = None) -> list[Path]:
 
     loaded: list[Path] = []
     for path in candidates:
-        if not path.is_file():
+        try:
+            if not path.is_file():
+                continue
+        except PermissionError:
             continue
         entries = _parse_dotenv_lines(path.read_text(encoding="utf-8"))
         for key, val in entries.items():
