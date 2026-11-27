@@ -433,7 +433,8 @@ def _fetch_tile_set(
     hq_fetched_count = 0
     raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
     hq_dir = root / "assets" / "geo" / "tiles_hq"
-    if hq_aerial is True:
+    resolved_provider, google_api_key = resolve_imagery_provider(provider, repo_root=root)
+    if hq_aerial is True or (hq_aerial is None and resolved_provider == "google"):
         s2_coords = []
         hq_coords = sorted(coords)
     elif hq_aerial is False:
@@ -443,7 +444,6 @@ def _fetch_tile_set(
         s2_coords = sorted(c for c in coords if c[0] <= 12)
         hq_coords = sorted(c for c in coords if c[0] >= 13)
 
-    resolved_provider, google_api_key = resolve_imagery_provider(provider, repo_root=root)
     google_session: str | None = None
     google_client: GoogleMapTilesClient | None = None
     if hq_coords and resolved_provider == "google" and google_api_key:

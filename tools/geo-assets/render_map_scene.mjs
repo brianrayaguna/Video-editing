@@ -288,7 +288,7 @@ function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
         ? mapOpts.imagery_credit.trim()
         : "";
   const isPortrait = height > width;
-  const sourceMode = mapOpts.tile_source || "hybrid";
+  const sourceMode = mapOpts.tile_source || "realistic";
   const tileRoute =
     sourceMode === "project"
       ? "/tiles_project/{z}/{x}/{y}.jpg"
@@ -7309,7 +7309,7 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
       );
       await page.setContent(
         buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
-          tile_source: act.tile_source || "hybrid",
+          tile_source: act.tile_source || "realistic",
           projection: act.projection || "mercator",
           terrain_3d: Boolean(act.terrain_3d),
           terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
@@ -7482,7 +7482,7 @@ async function coverageAct(browser, baseUrl, vectorsJson, width, height, fps, ac
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
     await page.setContent(
       buildMapSceneHtml(baseUrl, width, height, vectorsJson, {
-        tile_source: act.tile_source || "hybrid",
+        tile_source: act.tile_source || "realistic",
         projection: act.projection || "mercator",
         terrain_3d: Boolean(act.terrain_3d),
         terrain_exaggeration: act.terrain_exaggeration ?? 2.4,
