@@ -7,9 +7,12 @@
       background: transparent;
       --vedit-ink: {{VAR_FG_COLOR|#F4F1EA}};
       --vedit-accent: {{VAR_ACCENT_COLOR|#F5C542}};
-      --vedit-muted: {{VAR_MUTED_COLOR|#9CA3AF}};
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      --vedit-muted: {{VAR_MUTED_COLOR|#C2D0D8}};
+      font-family: '{{DISPLAY_FONT}}', 'Barlow Condensed', 'Archivo Black', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -47,43 +50,49 @@
     }
     .gv-cg-title {
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
-      font-size: calc(22px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-size: calc(26px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.28;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--vedit-ink);
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
     }
     .gv-cg-primary {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{DISPLAY_FONT}}', 'Barlow Condensed', 'Archivo Black', sans-serif;
       font-size: calc(54px * {{SCALE_FACTOR}});
-      line-height: 0.98;
-      letter-spacing: -0.02em;
+      font-weight: 800;
+      line-height: 1.02;
+      letter-spacing: -0.015em;
       color: var(--vedit-accent);
       text-shadow: 0 3px 16px rgba(0, 0, 0, 0.92), 0 0 6px rgba(0, 0, 0, 0.95);
     }
     .gv-cg-secondary {
-      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
-      font-size: calc(26px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.22;
+      letter-spacing: 0.01em;
       color: var(--vedit-ink);
-      opacity: 0.9;
+      opacity: 0.92;
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92);
     }
     .gv-cg-rail {
       position: relative;
       display: flex;
       align-items: stretch;
-      gap: calc(10px * {{SCALE_FACTOR}});
+      gap: calc(12px * {{SCALE_FACTOR}});
     }
     .gv-cg-axis {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       align-items: flex-end;
-      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
-      font-size: calc(18px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
+      font-size: calc(24px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: 0.02em;
       color: var(--vedit-muted);
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.92);
       padding: calc(4px * {{SCALE_FACTOR}}) 0;

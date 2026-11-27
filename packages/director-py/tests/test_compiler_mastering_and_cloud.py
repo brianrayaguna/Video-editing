@@ -668,7 +668,7 @@ def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
         target,
         tmp_path / "default.ass",
     ).read_text(encoding="utf-8")
-    assert "Style: CaptionLower,Space Grotesk,60," in default_ass
+    assert "Style: CaptionLower,Rubik,56," in default_ass
     assert "\\blur" not in default_ass
 
     styled_ass = write_ass_overlays_file(
@@ -699,7 +699,7 @@ def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
     ).read_text(encoding="utf-8")
     # 90% opacity -> alpha 0x19; bottom margin round(1920 * 0.271) = 520.
     assert "Style: CaptionLower,Inter,72,&H19EAF1F4," in styled_ass
-    assert ",-1,0,0,0,100,100,-0.3,0,1,0.0,0,2," in styled_ass
+    assert ",-1,0,0,0,100,100,0.3,0,1,0.0,0,2," in styled_ass
     assert ",520,1" in styled_ass
     shadow_line = next(line for line in styled_ass.splitlines() if line.startswith("Dialogue: 0,"))
     assert "\\blur6" in shadow_line and "\\1a&H73&" in shadow_line

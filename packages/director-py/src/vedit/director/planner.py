@@ -355,6 +355,24 @@ def _group_caption_words(
     return groups
 
 
+_COMPACT_METRIC_RE = re.compile(
+    r"(?:[$€£¥]|Rp\.?\s*)?\d[\d.,]*(?:\s*(?:%|km²|km2|m²|m2|km|mi|m|ft|mm/yr|°C|°F|°|million|billion|thousand|juta|miliar|ribu|meter|tahun|years|days|hari))?",
+    re.IGNORECASE,
+)
+
+
+def _extract_compact_metric_callout(phrase: str) -> tuple[str, str]:
+    """Extract a concise metric figure and compact label to prevent verbatim caption duplication."""
+    m = _COMPACT_METRIC_RE.search(phrase)
+    if not m:
+        return phrase, ""
+    metric = m.group(0).strip()
+    remainder = (phrase[: m.start()] + " " + phrase[m.end() :]).strip(" ,.;:-")
+    tokens = [w for w in remainder.split() if len(w) > 2]
+    label = " ".join(tokens[:2]) if tokens else ""
+    return metric, label
+
+
 def _build_overlays(
     clips: list[VideoClipOp],
     transcript: NormalizedTranscript | None,
@@ -421,6 +439,14 @@ def _build_overlays(
                 "pattern": "clean_caption_rail",
                 **motion,
             }
+            if typo.title_family:
+                caption_props["title_family"] = typo.title_family
+            if typo.serif_family:
+                caption_props["serif_family"] = typo.serif_family
+            if typo.mono_family:
+                caption_props["mono_family"] = typo.mono_family
+            if typo.caption_gap_ms is not None:
+                caption_props["caption_gap_ms"] = typo.caption_gap_ms
             is_portrait = platform_target.height > platform_target.width
             if typo.caption_font_family:
                 caption_props["caption_font_family"] = typo.caption_font_family
@@ -436,6 +462,12 @@ def _build_overlays(
                 caption_props["caption_fade_in_ms"] = typo.caption_fade_in_ms
             if typo.caption_fade_out_ms is not None:
                 caption_props["caption_fade_out_ms"] = typo.caption_fade_out_ms
+            if typo.caption_letter_spacing_em is not None:
+                caption_props["caption_letter_spacing_em"] = typo.caption_letter_spacing_em
+            if typo.base_rem_px is not None:
+                caption_props["base_rem_px"] = typo.base_rem_px
+            if typo.type_scale is not None:
+                caption_props["type_scale"] = typo.type_scale.model_dump(exclude_none=True)
             if caption_path:
                 caption_props["composition_path"] = caption_path
             overlays.append(
@@ -479,17 +511,24 @@ def _build_overlays(
                 else:
                     card_template = None
 
-                # Pass only content overrides so template token_ref defaults (e.g. amber_fact_card
-                # amber surface + dark ink) are preserved rather than overwritten.
-                card_vars: dict[str, object] = {"text": phrase, "label": phrase}
+                # Extract concise figure + compact label so the data card signals rather than
+                # duplicating the full spoken caption verbatim (reduces split-attention load).
+                compact_metric, compact_label = _extract_compact_metric_callout(phrase)
+                card_vars: dict[str, object] = {
+                    "metric": compact_metric,
+                    "number": compact_metric,
+                    "text": compact_label or compact_metric,
+                    "label": compact_label,
+                }
                 card_path = None
                 if template_catalog is not None and card_template:
                     entry = catalog_map[card_template]
                     card_vars = resolve_template_variables(entry, policy, card_vars)
                     card_path = entry.composition_path
                 card_props: dict[str, object] = {
-                    "headline": phrase,
-                    "text": phrase,
+                    "headline": compact_metric,
+                    "subtitle": compact_label,
+                    "text": compact_metric,
                     "font_family": typo.body_family,
                     "display_family": typo.display_family,
                     "accent_color": card_vars.get("accent_color", palette.accent),
@@ -498,6 +537,16 @@ def _build_overlays(
                     "pattern": "split_metric_card",
                     **motion,
                 }
+                if typo.title_family:
+                    card_props["title_family"] = typo.title_family
+                if typo.serif_family:
+                    card_props["serif_family"] = typo.serif_family
+                if typo.mono_family:
+                    card_props["mono_family"] = typo.mono_family
+                if typo.base_rem_px is not None:
+                    card_props["base_rem_px"] = typo.base_rem_px
+                if typo.type_scale is not None:
+                    card_props["type_scale"] = typo.type_scale.model_dump(exclude_none=True)
                 if card_path:
                     card_props["composition_path"] = card_path
                 overlays.append(

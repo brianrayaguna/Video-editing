@@ -159,7 +159,23 @@ def storyboard_overlays(
         band = "fullscreen" if kind in _FULLSCREEN_KINDS else (entry.safe_band or "center_safe")
         if band not in _BANDS:
             band = "center_safe"
-        props: dict[str, Any] = {"storyboard_beat_id": beat["beat_id"], "device": beat["device"]}
+        typo = policy.soft_priors.visual_tokens.typography
+        props: dict[str, Any] = {
+            "storyboard_beat_id": beat["beat_id"],
+            "device": beat["device"],
+            "font_family": typo.body_family,
+            "display_family": typo.display_family,
+        }
+        if typo.title_family:
+            props["title_family"] = typo.title_family
+        if typo.serif_family:
+            props["serif_family"] = typo.serif_family
+        if typo.mono_family:
+            props["mono_family"] = typo.mono_family
+        if typo.base_rem_px is not None:
+            props["base_rem_px"] = typo.base_rem_px
+        if typo.type_scale is not None:
+            props["type_scale"] = typo.type_scale.model_dump(exclude_none=True)
         box = _anchor_box(bound, safe_zone, variables=variables)
         if box is not None:
             props["box"] = box

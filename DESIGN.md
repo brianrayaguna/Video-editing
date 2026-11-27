@@ -29,6 +29,13 @@ Engine code must stay brand-agnostic and free of historical episode artifacts. B
 - Prefer direct boxless typography with crisp readability shadows, full-bleed vector diagrams, straight `0°` framing by default, or functional pointers/brackets/lassos over decorative containers.
 - Stage local font binaries explicitly for both browser `@font-face` compilation and headless worker fontconfig registration so Chromium and `libass` never silently fall back to system sans fonts.
 
+### Typography system, inverse scale & layout grid
+
+- **Modular type scale & root scaling**: Define discrete typographic roles (`hero`, `display`, `title`, `caption`, `telemetry`, `body`, `micro`) in `brand_style_policy.json` (`type_scale`) and expose them as scaled `:root` CSS custom properties (`--type-*-size/weight/leading/tracking`, `--vedit-scale`, root `font-size`) paired with uniform `4 px`/`8 px` spacing rhythm tokens (`--space-1` through `--space-8`) and column grid markers (`12` columns on `16:9`, `6` columns on `9:16`) so overlays scale uniformly across `1080p` and `4K`.
+- **Inverse leading and tracking**: Scale `line-height` and `letter-spacing` inversely with type size. Large headlines and hero numerals use tight leading (`0.98–1.08`) and tight or slightly negative tracking (`-0.02em` to `-0.01em`, except intentional wide-tracked cartographic ALL-CAPS); smaller labels, telemetry, body text, and captions open to looser leading (`1.22–1.38`) and positive tracking (`+0.01em` to `+0.06em`) so glyphs remain open under `H.264` / `YUV 4:2:0` chroma subsampling.
+- **Explicit weights & role separation**: Declare explicit `font-weight` values strictly within each staged font's real weight range—never omit `font-weight` on multi-weight display families under `font-synthesis: none`, and never request weights missing from bundled static or variable binaries. Pair strong display weight (`700–800`, or single-weight black faces at `400`) against calmer secondary weight (`500–600`; avoid sub-`500` thin strokes that shimmer over moving frames). Keep `{{CAPTION_FONT}}` separate from `{{BODY_FONT}}`, and assign `{{MONO_FONT}}` to tabular telemetry and secondary unit readouts.
+- **Optical kerning & contrast tiers**: Enable `font-kerning: normal` across HTML compositions and apply pairwise kerning when laying out curved Canvas 2D map labels character-by-character. Enforce WCAG `>= 4.5:1` AA as a hard floor across all overlays and target `>= 7.0:1` AAA (`min_wcag_contrast_small_text`) for small text, captions, and credits using grounded dark halos or scrims over bright terrain.
+
 Brand palettes, typography families, and cartographic label rules belong in the brand profile craft document—not here.
 
 ---

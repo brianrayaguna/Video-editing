@@ -9,6 +9,9 @@
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-grid {
@@ -48,24 +51,28 @@
       will-change: transform, opacity;
     }
     .gv-bp-metric {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{TITLE_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(82px * {{SCALE_FACTOR}});
-      line-height: 1.02;
-      letter-spacing: -0.025em;
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.02em;
       color: var(--vedit-accent);
       text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
     }
     .gv-bp-title {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(40px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.1;
+      letter-spacing: 0.01em;
       color: var(--vedit-ink);
       text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
     }
     .gv-bp-sub {
       font-size: calc(28px * {{SCALE_FACTOR}});
       font-weight: 500;
-      line-height: 1.3;
+      line-height: 1.35;
+      letter-spacing: 0.01em;
       color: #DCE8F5;
       max-width: 92%;
     }
@@ -97,6 +104,9 @@
     #{{SCENE_ID}}-sil-metric {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(46px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      line-height: 1.06;
+      letter-spacing: -0.01em;
       color: var(--vedit-accent);
       text-shadow: 0 3px 12px rgba(0, 0, 0, 0.82);
       white-space: nowrap;

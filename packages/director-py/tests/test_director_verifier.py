@@ -813,3 +813,101 @@ def test_verifier_continuous_camera_no_temporal_drift_and_transcript_segments() 
     )
     report = verify_edit_plan(plan, policy, shorts, transcript=transcript)
     assert "SOFT_TEMPORAL_CURVE_DRIFT" not in {w.code for w in report.warnings}
+
+
+def test_verifier_flags_small_text_aaa_contrast_and_typography_craft_warnings(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from vedit.contracts import find_repo_root
+    from vedit.director.critique import build_critique_packet
+    from vedit.models import VideoClipOp
+
+    _probe, policy, target, _transcript = _build_fixture_bundle(tmp_path)
+    plan = EditPlan(
+        job_id="verify_typo_craft",
+        project_id="proj_typo",
+        brand_id=policy.brand_id,
+        platform_target_id=target.platform_id,
+        render_strategy="hybrid",
+        duration_s=10.0,
+        fps=30.0,
+        width=target.width,
+        height=target.height,
+        assets=[
+            AssetRef(asset_id="v1", sha256="a" * 64, kind="video", path="a.mp4", duration_s=10.0)
+        ],
+        video_tracks=[
+            VideoClipOp(
+                clip_id="c1",
+                asset_id="v1",
+                timeline_start_s=0.0,
+                timeline_duration_s=5.0,
+                source_start_s=0.0,
+                role="a_roll",
+                reframed_to_target=True,
+            ),
+            VideoClipOp(
+                clip_id="c2",
+                asset_id="v1",
+                timeline_start_s=5.0,
+                timeline_duration_s=5.0,
+                source_start_s=5.0,
+                role="a_roll",
+                reframed_to_target=True,
+            ),
+        ],
+        overlay_compositions=[
+            OverlayCompositionOp(
+                overlay_id="cap_mid_contrast",
+                kind="caption_rail",
+                timeline_start_s=0.5,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="lower_third",
+                props={
+                    "text": "Border narrows here",
+                    # #8A96A0 on #0B0F19 yields ~6.4:1 (passes AA 4.5, below AAA 7.0).
+                    "fg_color": "#8A96A0",
+                    "bg_color": "#0B0F19",
+                    "caption_letter_spacing_em": -0.02,
+                    "custom_css": (
+                        ".bad { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; }"
+                    ),
+                },
+            )
+        ],
+        audio_tracks=[],
+    )
+    report = verify_edit_plan(plan, policy, target)
+    assert report.passed is True
+    warn_codes = {w.code for w in report.warnings}
+    assert "SMALL_TEXT_BELOW_AAA_CONTRAST" in warn_codes
+    assert "NEGATIVE_TRACKING_SMALL_TEXT" in warn_codes
+    assert "UNAVAILABLE_FONT_WEIGHT" in warn_codes
+
+    idioms = json.loads(
+        (find_repo_root() / "profiles" / "brands" / "geoverum" / "directing_idioms.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    packet = build_critique_packet(
+        idioms=idioms,
+        spatial_forensics={
+            "summary": {
+                "typography": {
+                    "median_wcag_contrast": 8.4,
+                    "min_wcag_contrast": 5.1,
+                    "small_text_min_wcag_contrast": 5.1,
+                    "aaa_pass_rate": 0.65,
+                    "estimated_line_height_ratio": 1.26,
+                    "max_text_width_pct": 0.72,
+                }
+            }
+        },
+    )
+    tc = packet["deterministic"]["typography_contrast"]
+    assert tc["passed"] is True
+    assert tc["aaa_passed"] is False
+    assert tc["small_text_min_wcag_contrast"] == 5.1

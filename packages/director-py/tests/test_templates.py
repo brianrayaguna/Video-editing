@@ -156,3 +156,59 @@ def test_geoverum_catalog_editorial_templates_resolve_and_validate() -> None:
             props=resolved,
         )
         assert validate_overlay_template(ov, catalog) == []
+
+
+def test_geoverum_type_scale_and_template_typography_hygiene() -> None:
+    import re
+
+    root = find_repo_root()
+    policy = BrandStylePolicy.model_validate_json(
+        (root / "profiles" / "brands" / "geoverum" / "brand_style_policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    typo = policy.soft_priors.visual_tokens.typography
+    assert typo.type_scale is not None
+    assert typo.base_rem_px == 16
+    assert typo.caption_letter_spacing_em is not None and typo.caption_letter_spacing_em > 0
+    assert policy.hard_guardrails.min_wcag_contrast_small_text == 7.0
+
+    scale = typo.type_scale
+    assert scale.hero is not None and scale.body is not None and scale.micro is not None
+    assert scale.hero.line_height < scale.body.line_height <= scale.micro.line_height
+    assert (
+        scale.hero.letter_spacing_em
+        < scale.body.letter_spacing_em
+        < scale.micro.letter_spacing_em
+    )
+
+    comp_dir = root / "profiles" / "brands" / "geoverum" / "templates" / "components"
+    for html_path in sorted(comp_dir.glob("*.html")):
+        text = html_path.read_text(encoding="utf-8")
+        style_blocks = re.findall(r"<style[^>]*>([\s\S]*?)</style>", text, re.IGNORECASE)
+        css = "\n".join(style_blocks)
+        if "font-family" not in css:
+            continue
+        assert "font-kerning: normal" in css, f"{html_path.name} missing font-kerning: normal"
+        # Check CSS blocks with template placeholders preserved via sentinel replacement.
+        sentinel = re.sub(r"\{\{([A-Z0-9_|.-]+)\}\}", r"__TOK_\1__", css)
+        for sel, body in re.findall(r"([^{}@]+)\{([^{}]+)\}", sentinel):
+            sel_clean = sel.strip()
+            if sel_clean.startswith("#root"):
+                continue
+            size_m = re.search(r"font-size\s*:\s*(?:calc\(\s*)?(\d+(?:\.\d+)?)px", body)
+            size_px = float(size_m.group(1)) if size_m else None
+            wt_m = re.search(r"font-weight\s*:\s*(\d{3})\b", body)
+            wt = int(wt_m.group(1)) if wt_m else None
+            ls_m = re.search(r"letter-spacing\s*:\s*(-?\d+(?:\.\d+)?)(em|px)", body)
+            if "__TOK_DISPLAY_FONT__" in body:
+                assert wt is not None, (
+                    f"{html_path.name} selector {sel_clean!r} uses DISPLAY_FONT without font-weight"
+                )
+                assert wt <= 800, (
+                    f"{html_path.name} selector {sel_clean!r} requests weight {wt} > 800"
+                )
+            if size_px is not None and size_px <= 34 and ls_m is not None:
+                assert float(ls_m.group(1)) >= 0, (
+                    f"{html_path.name} selector {sel_clean!r} ({size_px}px) has negative tracking"
+                )

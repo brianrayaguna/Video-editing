@@ -439,16 +439,40 @@ def _check_keyword_cut_windows(
                     break
 
 
+_BOUNDED_FONT_MAX_WEIGHT: dict[str, int] = {
+    "barlow condensed": 800,
+    "archivo black": 400,
+    "ibm plex mono": 700,
+    "lora": 700,
+    "space grotesk": 700,
+}
+
+
+def _is_small_text_overlay(ov: OverlayCompositionOp, merged: dict[str, Any]) -> bool:
+    if ov.kind in ("caption_rail", "lower_third"):
+        return True
+    if ov.template_id in ("source_credit", "broadcast_bug", "caption_rail"):
+        return True
+    for key in ("font_size_px", "caption_font_px"):
+        raw = merged.get(key)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool) and 0 < float(raw) <= 34.0:
+            return True
+    return False
+
+
 def _check_overlay_contrast(
     ov: OverlayCompositionOp,
     policy: BrandStylePolicy,
     errors: list[VerificationIssue],
+    warnings: list[VerificationIssue],
 ) -> None:
     min_ratio = policy.hard_guardrails.min_wcag_contrast
+    small_target = policy.hard_guardrails.min_wcag_contrast_small_text
     merged: dict[str, Any] = {**(ov.variables or {}), **(ov.props or {})}
     fg = _first_hex(merged, ("fg_color", "text_color", "ink"))
     bg = _first_hex(merged, ("bg_color", "background_color", "ground"))
     palette_bg = policy.soft_priors.visual_tokens.palette_roles.ground
+    is_small = _is_small_text_overlay(ov, merged)
 
     if fg and bg:
         ratio = wcag_contrast_ratio(fg, bg)
@@ -461,6 +485,18 @@ def _check_overlay_contrast(
                     message=(
                         f"Overlay contrast {ratio:.2f}:1 ({fg} on {bg}) "
                         f"is below minimum {min_ratio:.2f}:1."
+                    ),
+                )
+            )
+        elif is_small and ratio < small_target:
+            warnings.append(
+                VerificationIssue(
+                    severity="warning",
+                    code="SMALL_TEXT_BELOW_AAA_CONTRAST",
+                    target_id=ov.overlay_id,
+                    message=(
+                        f"Small-text overlay contrast {ratio:.2f}:1 ({fg} on {bg}) meets AA "
+                        f"but is below the {small_target:.1f}:1 AAA target."
                     ),
                 )
             )
@@ -478,6 +514,64 @@ def _check_overlay_contrast(
                     ),
                 )
             )
+        elif is_small and ratio < small_target:
+            warnings.append(
+                VerificationIssue(
+                    severity="warning",
+                    code="SMALL_TEXT_BELOW_AAA_CONTRAST",
+                    target_id=ov.overlay_id,
+                    message=(
+                        f"Small-text overlay foreground {fg} on policy ground {palette_bg} yields "
+                        f"{ratio:.2f}:1 (< {small_target:.1f}:1 AAA target)."
+                    ),
+                )
+            )
+
+
+def _check_overlay_typography(
+    ov: OverlayCompositionOp,
+    warnings: list[VerificationIssue],
+) -> None:
+    merged: dict[str, Any] = {**(ov.variables or {}), **(ov.props or {})}
+    for key in ("caption_letter_spacing", "caption_letter_spacing_em"):
+        raw = merged.get(key)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) < 0.0:
+            warnings.append(
+                VerificationIssue(
+                    severity="warning",
+                    code="NEGATIVE_TRACKING_SMALL_TEXT",
+                    target_id=ov.overlay_id,
+                    message=(
+                        f"Overlay sets negative {key}={raw}; small/caption typography should "
+                        "use zero or positive letter-spacing."
+                    ),
+                )
+            )
+            break
+
+    custom_css = str(merged.get("custom_css") or "")
+    if custom_css:
+        for block in re.findall(r"\{([^{}]+)\}", custom_css):
+            fam_m = re.search(r"font-family\s*:\s*([^;]+)", block, re.IGNORECASE)
+            wt_m = re.search(r"font-weight\s*:\s*(\d{3})\b", block, re.IGNORECASE)
+            if not fam_m or not wt_m:
+                continue
+            fam = fam_m.group(1).split(",")[0].strip().strip("'\"").lower()
+            wt = int(wt_m.group(1))
+            max_wt = _BOUNDED_FONT_MAX_WEIGHT.get(fam)
+            if max_wt is not None and wt > max_wt:
+                warnings.append(
+                    VerificationIssue(
+                        severity="warning",
+                        code="UNAVAILABLE_FONT_WEIGHT",
+                        target_id=ov.overlay_id,
+                        message=(
+                            f"custom_css requests font-weight {wt} on '{fam}' "
+                            f"(maximum bundled weight is {max_wt})."
+                        ),
+                    )
+                )
+                break
 
 
 def _check_overlays_and_spatial_grounding(
@@ -485,6 +579,7 @@ def _check_overlays_and_spatial_grounding(
     policy: BrandStylePolicy,
     platform_target: PlatformTarget,
     errors: list[VerificationIssue],
+    warnings: list[VerificationIssue],
 ) -> None:
     guard = policy.hard_guardrails
     banned_patterns = {p.lower() for p in guard.banned_patterns}
@@ -573,7 +668,8 @@ def _check_overlays_and_spatial_grounding(
                 )
             )
 
-        _check_overlay_contrast(ov, policy, errors)
+        _check_overlay_contrast(ov, policy, errors, warnings)
+        _check_overlay_typography(ov, warnings)
 
         explicit_box = ov.props.get("box") if isinstance(ov.props.get("box"), dict) else None
         if explicit_box is not None:
@@ -846,7 +942,9 @@ def verify_edit_plan(
     _check_schema_and_canvas(plan, platform_target, errors, repo_root)
     _check_assets_and_video_tracks(plan, effective_policy, errors, warnings)
     _check_keyword_cut_windows(plan, effective_policy, transcript, errors)
-    _check_overlays_and_spatial_grounding(plan, effective_policy, platform_target, errors)
+    _check_overlays_and_spatial_grounding(
+        plan, effective_policy, platform_target, errors, warnings
+    )
     _check_audio_dag(plan, errors, warnings)
     _check_soft_temporal_priors(plan, effective_policy, warnings)
     _check_template_bindings(plan, template_catalog, platform_target, errors)
@@ -860,6 +958,8 @@ def verify_edit_plan(
         "banned_transitions_and_patterns",
         "avoid_heavy_css_blur",
         "min_wcag_contrast",
+        "min_wcag_contrast_small_text",
+        "typography_craft_rules",
         "platform_safe_zones",
         "never_overlap_subject_boxes",
         "audio_dag_voiceover_carving",

@@ -8,6 +8,9 @@
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -28,26 +31,28 @@
       max-width: calc(660px * {{SCALE_FACTOR}});
     }
     #{{SCENE_ID}}-title {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{DISPLAY_FONT}}', 'Barlow Condensed', 'Archivo Black', sans-serif;
       font-size: calc(68px * {{SCALE_FACTOR}});
-      font-weight: 900;
+      font-weight: 800;
       line-height: 1.04;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.02em;
+      text-wrap: balance;
       color: var(--vedit-ink);
       text-shadow:
-        0 6px 26px rgba(0, 0, 0, 0.88),
+        0 6px 26px rgba(3, 22, 31, 0.88),
         0 2px 6px rgba(0, 0, 0, 0.98);
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      column-gap: calc(18px * {{SCALE_FACTOR}});
-      row-gap: calc(6px * {{SCALE_FACTOR}});
+      column-gap: calc(16px * {{SCALE_FACTOR}});
+      row-gap: calc(8px * {{SCALE_FACTOR}});
     }
     .gv-word-mask {
       display: inline-block;
       overflow: hidden;
       vertical-align: bottom;
-      padding-bottom: calc(4px * {{SCALE_FACTOR}});
+      padding-bottom: 0.16em;
+      margin-bottom: -0.12em;
     }
     .gv-word-inner {
       display: inline-block;
@@ -101,8 +106,8 @@
       wordInners.forEach((el, idx) => {
         tl.fromTo(
           el,
-          { yPercent: 112, opacity: 0 },
-          { yPercent: 0, opacity: 1, duration: enterS, ease: "expo.out" },
+          { yPercent: 112 },
+          { yPercent: 0, duration: enterS, ease: "expo.out" },
           0.02 + idx * 0.068
         );
       });

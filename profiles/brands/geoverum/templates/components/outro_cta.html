@@ -8,6 +8,9 @@
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-scrim {
@@ -32,17 +35,21 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
-      gap: calc(18px * {{SCALE_FACTOR}});
+      gap: calc(16px * {{SCALE_FACTOR}});
       max-width: 92%;
     }
     .gv-outro-mask {
       overflow: hidden;
+      padding-bottom: 0.14em;
+      margin-bottom: -0.10em;
     }
     #{{SCENE_ID}}-prompt {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
-      font-size: calc(46px * {{SCALE_FACTOR}});
-      line-height: 1.12;
-      letter-spacing: -0.02em;
+      font-family: '{{DISPLAY_FONT}}', 'Barlow Condensed', 'Archivo Black', sans-serif;
+      font-size: calc(48px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      text-wrap: balance;
       color: var(--vedit-ink);
       text-shadow:
         0 4px 20px rgba(0, 0, 0, 0.9),
@@ -50,7 +57,8 @@
     }
     #{{SCENE_ID}}-cta {
       font-size: calc(29px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-weight: 600;
+      line-height: 1.28;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--vedit-accent);
@@ -60,6 +68,7 @@
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-size: calc(28px * {{SCALE_FACTOR}});
       font-weight: 600;
+      line-height: 1.28;
       letter-spacing: 0.18em;
       text-transform: lowercase;
       color: var(--vedit-ink);
@@ -103,13 +112,13 @@
       const tl = gsap.timeline({ paused: true });
       tl.fromTo("#{{SCENE_ID}}-scrim", { opacity: 0 }, { opacity: 1, duration: enterS, ease: "power2.out" }, 0);
       if (promptEl && !promptEl.classList.contains("gv-empty")) {
-        tl.fromTo("#{{SCENE_ID}}-prompt", { yPercent: 108, opacity: 0 }, { yPercent: 0, opacity: 1, duration: enterS, ease: "expo.out" }, 0.04);
+        tl.fromTo("#{{SCENE_ID}}-prompt", { yPercent: 108 }, { yPercent: 0, duration: enterS, ease: "expo.out" }, 0.04);
       }
       if (ctaEl && !ctaEl.classList.contains("gv-empty")) {
-        tl.fromTo("#{{SCENE_ID}}-cta", { yPercent: 105, opacity: 0 }, { yPercent: 0, opacity: 1, duration: enterS * 0.9, ease: "expo.out" }, 0.18);
+        tl.fromTo("#{{SCENE_ID}}-cta", { yPercent: 105 }, { yPercent: 0, duration: enterS * 0.9, ease: "expo.out" }, 0.18);
       }
       if (brandEl && !brandEl.classList.contains("gv-empty")) {
-        tl.fromTo("#{{SCENE_ID}}-brand", { yPercent: 100, opacity: 0 }, { yPercent: 0, opacity: 0.72, duration: enterS * 0.85, ease: "expo.out" }, 0.28);
+        tl.fromTo("#{{SCENE_ID}}-brand", { yPercent: 100 }, { yPercent: 0, duration: enterS * 0.85, ease: "expo.out" }, 0.28);
       }
       tl.to(["#{{SCENE_ID}}-inner", "#{{SCENE_ID}}-scrim"], { opacity: 0, duration: exitS, ease: "power3.in" }, exitAt);
 

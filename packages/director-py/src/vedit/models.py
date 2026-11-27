@@ -126,15 +126,40 @@ class PaletteRoles(StrictModel):
     muted_ink: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
+class TypeScaleStep(StrictModel):
+    size_px_9x16: int = Field(ge=12, le=240)
+    size_px_16x9: int = Field(ge=12, le=240)
+    weight: int = Field(ge=100, le=900)
+    line_height: float = Field(ge=0.8, le=2.2)
+    letter_spacing_em: float = Field(ge=-0.08, le=0.35)
+    family_role: Literal["display", "title", "body", "caption", "mono", "serif"]
+    min_wcag_contrast: float | None = Field(default=None, ge=3.0, le=21.0)
+
+
+class TypeScaleTokens(StrictModel):
+    hero: TypeScaleStep | None = None
+    display: TypeScaleStep | None = None
+    title: TypeScaleStep | None = None
+    caption: TypeScaleStep | None = None
+    telemetry: TypeScaleStep | None = None
+    body: TypeScaleStep | None = None
+    micro: TypeScaleStep | None = None
+
+
 class TypographyTokens(StrictModel):
     display_family: str
     body_family: str
     title_family: str | None = None
+    serif_family: str | None = None
+    mono_family: str | None = None
+    base_rem_px: float | None = Field(default=None, ge=8.0, le=32.0)
     caption_case: Literal["sentence", "uppercase", "title", "lowercase"]
     caption_style: Literal["plain", "chip", "bar"] | None = None
     caption_transition_ms: int | None = Field(default=None, ge=0, le=200)
     caption_fade_in_ms: int | None = Field(default=None, ge=0, le=200)
     caption_fade_out_ms: int | None = Field(default=None, ge=0, le=200)
+    caption_gap_ms: int | None = Field(default=None, ge=0, le=250)
+    caption_letter_spacing_em: float | None = Field(default=None, ge=-0.05, le=0.25)
     max_words_per_caption_group: int = Field(ge=1, le=12)
     default_caption_band: Literal[
         "lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"
@@ -143,6 +168,7 @@ class TypographyTokens(StrictModel):
     caption_font_px_9x16: int | None = Field(default=None, ge=20, le=120)
     caption_margin_v_px_9x16: int | None = Field(default=None, ge=0, le=960)
     caption_band_y_pct_9x16: list[float] | None = Field(default=None, min_length=2, max_length=2)
+    type_scale: TypeScaleTokens | None = None
 
 
 class MotionStyleTokens(StrictModel):
@@ -186,6 +212,7 @@ class HardGuardrails(StrictModel):
     no_cut_within_keyword_ms: int = Field(ge=0, le=1000)
     never_overlap_subject_boxes: bool = True
     min_wcag_contrast: float = Field(ge=3.0, default=4.5)
+    min_wcag_contrast_small_text: float = Field(ge=4.5, le=21.0, default=7.0)
     banned_transitions: list[str] = Field(default_factory=list)
     banned_patterns: list[str] = Field(default_factory=list)
     avoid_heavy_css_blur: bool = True
@@ -736,6 +763,10 @@ class SpatialTypographySummary(StrictModel):
     display_to_caption_ratio: float | None = Field(default=None, ge=0.0)
     median_wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
     min_wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
+    small_text_min_wcag_contrast: float | None = Field(default=None, ge=1.0, le=21.0)
+    aaa_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    estimated_line_height_ratio: float | None = Field(default=None, ge=0.5, le=4.0)
+    max_text_width_pct: float | None = Field(default=None, ge=0.0, le=1.0)
     tilted_text_count: int = Field(ge=0)
     boxed_text_ratio: float = Field(ge=0.0, le=1.0)
 

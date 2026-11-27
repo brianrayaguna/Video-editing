@@ -142,14 +142,53 @@ const __FONT_KNOWN_FAMILIES = Object.freeze({
   patrickhand: "Patrick Hand",
 });
 
+function readTtfWeightAxis(filePath) {
+  try {
+    const buf = readFileSync(filePath);
+    if (buf.length < 12) return null;
+    const numTables = buf.readUInt16BE(4);
+    let fvarOff = 0;
+    let os2Off = 0;
+    for (let i = 0; i < numTables; i++) {
+      const rec = 12 + i * 16;
+      if (rec + 16 > buf.length) break;
+      const tag = buf.toString("ascii", rec, rec + 4);
+      if (tag === "fvar") fvarOff = buf.readUInt32BE(rec + 8);
+      else if (tag === "OS/2") os2Off = buf.readUInt32BE(rec + 8);
+    }
+    if (fvarOff && fvarOff + 12 <= buf.length) {
+      const axesOff = buf.readUInt16BE(fvarOff + 4);
+      const axisCount = buf.readUInt16BE(fvarOff + 8);
+      const axisSize = buf.readUInt16BE(fvarOff + 10);
+      for (let i = 0; i < axisCount; i++) {
+        const off = fvarOff + axesOff + i * axisSize;
+        if (off + 16 > buf.length) break;
+        if (buf.toString("ascii", off, off + 4) === "wght") {
+          const minW = Math.max(1, Math.min(1000, Math.round(buf.readInt32BE(off + 4) / 65536)));
+          const maxW = Math.max(minW, Math.min(1000, Math.round(buf.readInt32BE(off + 12) / 65536)));
+          return { isVariable: true, minWeight: minW, maxWeight: maxW };
+        }
+      }
+    }
+    if (os2Off && os2Off + 6 <= buf.length) {
+      const w = Math.max(100, Math.min(900, buf.readUInt16BE(os2Off + 4)));
+      return { isVariable: false, minWeight: w, maxWeight: w };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function buildDynamicFontFaceCss(baseUrl) {
   const fontsDir = join(REPO_ROOT, "assets", "geo", "fonts");
-  const rules = [];
+  const faces = [];
   if (existsSync(fontsDir)) {
     const files = readdirSync(fontsDir)
       .filter((fn) => /\.(?:ttf|otf)$/i.test(fn))
       .sort();
     for (const fn of files) {
+      const fullPath = join(fontsDir, fn);
       const base = fn.replace(/\.(?:ttf|otf)$/i, "");
       const style = /italic/i.test(base) ? "italic" : "normal";
       const stem = base
@@ -163,8 +202,12 @@ function buildDynamicFontFaceCss(baseUrl) {
         __FONT_KNOWN_FAMILIES[compact] ||
         stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim();
       if (!family) continue;
+      const axis = readTtfWeightAxis(fullPath);
+      const isVariable = Boolean(axis?.isVariable || /variable/i.test(base));
       let weight = "400";
-      if (/variable/i.test(base)) {
+      if (axis?.isVariable) {
+        weight = `${axis.minWeight} ${axis.maxWeight}`;
+      } else if (/variable/i.test(base)) {
         weight = "100 900";
       } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
         weight = "800";
@@ -182,19 +225,31 @@ function buildDynamicFontFaceCss(baseUrl) {
         weight = "200";
       } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
         weight = "300";
+      } else if (axis && !axis.isVariable) {
+        weight = String(axis.minWeight);
       }
       const fmt = fn.toLowerCase().endsWith(".otf") ? "opentype" : "truetype";
-      rules.push(
-        `    @font-face { font-family: "${family}"; src: url("${baseUrl}/fonts/${encodeURIComponent(fn)}") format("${fmt}"); font-weight: ${weight}; font-style: ${style}; font-display: block; }`
-      );
+      faces.push({ fn, family, weight, style, fmt, isVariable });
     }
   }
-  if (rules.length > 0) return rules.join("\n");
-  return `    @font-face { font-family: "Space Grotesk"; src: url("${baseUrl}/fonts/SpaceGrotesk-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
-    @font-face { font-family: "Rubik"; src: url("${baseUrl}/fonts/Rubik-Bold.ttf") format("truetype"); font-weight: 700 800; font-display: block; }
-    @font-face { font-family: "Rubik"; src: url("${baseUrl}/fonts/Rubik-Black.ttf") format("truetype"); font-weight: 900; font-display: block; }
-    @font-face { font-family: "Archivo Black"; src: url("${baseUrl}/fonts/ArchivoBlack-Regular.ttf") format("truetype"); font-weight: 400 900; font-display: block; }
-    @font-face { font-family: "EB Garamond"; src: url("${baseUrl}/fonts/EBGaramond-Variable.ttf") format("truetype"); font-weight: 400 800; font-display: block; }`;
+  // Deduplicate static vs variable collisions per (family, style) so Chromium resolves exact fvar axes cleanly.
+  const varKeys = new Set(faces.filter((f) => f.isVariable).map((f) => `${f.family.toLowerCase()}::${f.style}`));
+  const deduped = faces.filter((f) => f.isVariable || !varKeys.has(`${f.family.toLowerCase()}::${f.style}`));
+  if (deduped.length > 0) {
+    const rules = deduped.map(
+      (f) =>
+        `    @font-face { font-family: "${f.family}"; src: url("${baseUrl}/fonts/${encodeURIComponent(f.fn)}") format("${f.fmt}"); font-weight: ${f.weight}; font-style: ${f.style}; font-display: block; }`
+    );
+    rules.push("    :root, body { font-synthesis: none; font-optical-sizing: auto; }");
+    return rules.join("\n");
+  }
+  return `    @font-face { font-family: "Barlow Condensed"; src: url("${baseUrl}/fonts/BarlowCondensed-Bold.ttf") format("truetype"); font-weight: 700; font-display: block; }
+    @font-face { font-family: "Barlow Condensed"; src: url("${baseUrl}/fonts/BarlowCondensed-ExtraBold.ttf") format("truetype"); font-weight: 800; font-display: block; }
+    @font-face { font-family: "Inter"; src: url("${baseUrl}/fonts/Inter-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+    @font-face { font-family: "Rubik"; src: url("${baseUrl}/fonts/Rubik-Variable.ttf") format("truetype"); font-weight: 300 900; font-display: block; }
+    @font-face { font-family: "Lora"; src: url("${baseUrl}/fonts/Lora-Italic-Variable.ttf") format("truetype"); font-weight: 400 700; font-style: italic; font-display: block; }
+    @font-face { font-family: "IBM Plex Mono"; src: url("${baseUrl}/fonts/IBMPlexMono-Bold.ttf") format("truetype"); font-weight: 700; font-display: block; }
+    :root, body { font-synthesis: none; font-optical-sizing: auto; }`;
 }
 
 function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts = {}) {
@@ -1992,26 +2047,143 @@ ${DRAW_MATH_SRC}
       return { a, b, c, d, e: p0.x, f: p0.y };
     }
 
-    // Multi-ring luminous text glow with continuous sub-pixel transform scaling (zero 1px font-step jitter),
-    // optional stroke outline, multi-line text support, and compact sub-pill for discrete headcounts.
-    function drawGlowingText(text, x, y, fontPx, { fill = "#FFFFFF", glowHex = "#22C55E", glowStrength = "luminous", angle = 0, scale = 1.0, alpha = 1, family = "Space Grotesk", weight = 800, strokeHex = null, strokeWidth = 0, lineHeightMult = 1.08, subPill = null } = {}) {
+    const CARTO_TYPO_PRESETS = Object.freeze({
+      country: { family: "Barlow Condensed", weight: 800, fontStyle: "normal", letterSpacingEm: 0.14, fill: "#F4F1EA", strokeHex: "rgba(3,22,31,0.80)", strokeMult: 0.048, glowStrength: "none", uppercase: true },
+      region:  { family: "Inter", weight: 600, fontStyle: "normal", letterSpacingEm: 0.18, fill: "#C8D4DC", strokeHex: "rgba(3,22,31,0.72)", strokeMult: 0.042, glowStrength: "none", uppercase: true },
+      city:    { family: "Inter", weight: 700, fontStyle: "normal", letterSpacingEm: 0.01, fill: "#F4F1EA", strokeHex: "rgba(3,22,31,0.82)", strokeMult: 0.045, glowStrength: "none", uppercase: false },
+      water:   { family: "Lora", weight: 600, fontStyle: "italic", letterSpacingEm: 0.08, fill: "#A8D8FF", strokeHex: "rgba(3,22,31,0.78)", strokeMult: 0.042, glowStrength: "none", uppercase: false },
+      coord:   { family: "IBM Plex Mono", weight: 700, fontStyle: "normal", letterSpacingEm: 0.06, fill: "#DCE8F5", strokeHex: "rgba(3,22,31,0.82)", strokeMult: 0.042, glowStrength: "none", uppercase: true, tabularDigits: true },
+      hero:    { family: "Barlow Condensed", weight: 800, fontStyle: "normal", letterSpacingEm: -0.01, fill: "#F4F1EA", strokeHex: "rgba(3,22,31,0.86)", strokeMult: 0.052, glowStrength: "none", uppercase: true },
+    });
+
+    function inferFontFallback(family) {
+      const f = String(family || "").toLowerCase();
+      if (/garamond|lora|playfair|merriweather|baskerville|serif|cinzel/.test(f)) return "Georgia, serif";
+      if (/mono|courier|code/.test(f)) return "monospace";
+      return "sans-serif";
+    }
+
+    function resolveCanvasLetterSpacingPx(letterSpacing, fontPx) {
+      if (!letterSpacing) return 0;
+      if (typeof letterSpacing === "number") return Number.isFinite(letterSpacing) ? letterSpacing : 0;
+      const s = String(letterSpacing).trim();
+      if (s.endsWith("em")) {
+        const val = parseFloat(s);
+        return Number.isFinite(val) ? val * fontPx : 0;
+      }
+      const px = parseFloat(s);
+      return Number.isFinite(px) ? px : 0;
+    }
+
+    function applyCanvasLetterSpacing(letterSpacing, fontPx) {
+      if (typeof ctx.letterSpacing !== "string") return;
+      const px = resolveCanvasLetterSpacingPx(letterSpacing, fontPx);
+      ctx.letterSpacing = px ? px.toFixed(2) + "px" : "0px";
+    }
+
+    // Draw a single centered line with optional fixed-width tabular digit slots (eliminates
+    // horizontal jitter on proportional fonts in Canvas 2D) and anchored left-to-right typewriter.
+    function renderLinePass(fullLine, ly, mode, { tabularDigits = false, typewriterChars = null, typewriterLeadHex = null, fill = "#FFFFFF", strokeHex = null, extraSpacingPx = 0 } = {}) {
+      const isTw = typewriterChars != null;
+      const visibleChars = isTw ? Math.max(0, Math.min(fullLine.length, typewriterChars)) : fullLine.length;
+      if (visibleChars <= 0) return;
+      if (!tabularDigits && !isTw) {
+        ctx.textAlign = "center";
+        if (mode === "stroke") ctx.strokeText(fullLine, 0, ly);
+        else ctx.fillText(fullLine, 0, ly);
+        return;
+      }
+      if (!tabularDigits && isTw) {
+        // Measure full text width once so centered typewriter stays anchored with zero creep.
+        const fullW = ctx.measureText(fullLine).width;
+        const x0 = -fullW * 0.5;
+        ctx.textAlign = "left";
+        const shown = fullLine.slice(0, visibleChars);
+        if (mode === "stroke") {
+          ctx.strokeText(shown, x0, ly);
+        } else if (typewriterLeadHex && visibleChars < fullLine.length && shown.length > 0) {
+          const head = shown.slice(0, -1);
+          const lead = shown.slice(-1);
+          if (head) {
+            ctx.fillStyle = fill;
+            ctx.fillText(head, x0, ly);
+          }
+          ctx.fillStyle = typewriterLeadHex;
+          ctx.fillText(lead, x0 + ctx.measureText(head).width, ly);
+        } else {
+          ctx.fillText(shown, x0, ly);
+        }
+        return;
+      }
+      // Fixed-slot tabular digit rendering for smooth zero-jitter Canvas 2D counters/odometers.
+      const prevLs = typeof ctx.letterSpacing === "string" ? ctx.letterSpacing : null;
+      if (prevLs !== null) ctx.letterSpacing = "0px";
+      let maxDigitW = 0;
+      for (let d = 0; d <= 9; d++) {
+        maxDigitW = Math.max(maxDigitW, ctx.measureText(String(d)).width);
+      }
+      const chars = Array.from(fullLine);
+      const widths = chars.map((ch) => (ch >= "0" && ch <= "9" ? maxDigitW : ctx.measureText(ch).width));
+      const totalW = widths.reduce((a, b) => a + b, 0) + Math.max(0, chars.length - 1) * extraSpacingPx;
+      let cx = -totalW * 0.5;
+      ctx.textAlign = "center";
+      for (let i = 0; i < Math.min(chars.length, visibleChars); i++) {
+        const ch = chars[i];
+        const cw = widths[i];
+        const px = cx + cw * 0.5;
+        if (mode === "stroke") {
+          ctx.strokeText(ch, px, ly);
+        } else {
+          if (typewriterLeadHex && isTw && visibleChars < chars.length && i === visibleChars - 1) {
+            ctx.fillStyle = typewriterLeadHex;
+          } else {
+            ctx.fillStyle = fill;
+          }
+          ctx.fillText(ch, px, ly);
+        }
+        cx += cw + extraSpacingPx;
+      }
+      if (prevLs !== null) ctx.letterSpacing = prevLs;
+    }
+
+    // Multi-ring luminous text glow + cartographic dark contrast halo with continuous sub-pixel
+    // scaling, italic/letter-spacing support, Canvas 2D tabular digit slots, and anchored typewriter.
+    function drawGlowingText(text, x, y, fontPx, { fill = "#F4F1EA", glowHex = null, glowStrength = "none", angle = 0, scale = 1.0, alpha = 1, family = "Barlow Condensed", weight = 800, fontStyle = "normal", letterSpacing = 0, strokeHex = null, strokeWidth = 0, lineHeightMult = 1.08, tabularDigits = false, typewriterChars = null, typewriterLeadHex = null, subPill = null } = {}) {
       if (alpha <= 0.005 || scale <= 0.01) return;
       const lines = String(text ?? "").split("\\n");
       const lineStep = fontPx * lineHeightMult;
       const totalH = (lines.length - 1) * lineStep;
+      const fallback = inferFontFallback(family);
+      const stylePrefix = fontStyle && fontStyle !== "normal" ? fontStyle + " " : "";
       ctx.save();
       ctx.translate(x, y);
       if (angle) ctx.rotate(angle);
       if (Math.abs(scale - 1.0) > 1e-4) ctx.scale(scale, scale);
-      ctx.font = weight + " " + Math.round(fontPx) + "px '" + family + "', sans-serif";
+      ctx.font = stylePrefix + weight + " " + Math.round(fontPx) + "px '" + family + "', " + fallback;
+      const extraSpacingPx = resolveCanvasLetterSpacingPx(letterSpacing, fontPx);
+      applyCanvasLetterSpacing(letterSpacing, fontPx);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      if (glowHex && glowStrength !== "none") {
+
+      // Distribute typewriter character budget cleanly across multi-line strings.
+      const lineBudgets = [];
+      let remChars = typewriterChars;
+      for (let li = 0; li < lines.length; li++) {
+        if (remChars == null) {
+          lineBudgets.push(null);
+        } else {
+          const take = Math.max(0, Math.min(lines[li].length, remChars));
+          lineBudgets.push(take);
+          remChars = Math.max(0, remChars - lines[li].length - 1);
+        }
+      }
+
+      if (glowHex && glowStrength && glowStrength !== "none") {
         const rings = glowStrength === "intense"
           ? [[fontPx * 0.85, 0.55], [fontPx * 0.45, 0.82], [fontPx * 0.18, 0.96]]
           : glowStrength === "subtle"
-            ? [[fontPx * 0.35, 0.52], [fontPx * 0.14, 0.72]]
-            : [[fontPx * 0.62, 0.48], [fontPx * 0.28, 0.78], [fontPx * 0.12, 0.94]];
+            ? [[fontPx * 0.32, 0.48], [fontPx * 0.14, 0.68]]
+            : [[fontPx * 0.58, 0.46], [fontPx * 0.26, 0.74], [fontPx * 0.12, 0.90]];
         for (const [blurR, a] of rings) {
           ctx.save();
           ctx.globalAlpha = alpha * a;
@@ -2019,26 +2191,43 @@ ${DRAW_MATH_SRC}
           ctx.shadowBlur = blurR;
           ctx.fillStyle = fill;
           for (let li = 0; li < lines.length; li++) {
-            ctx.fillText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+            renderLinePass(lines[li], -totalH * 0.5 + li * lineStep, "fill", {
+              tabularDigits,
+              typewriterChars: lineBudgets[li],
+              fill,
+              extraSpacingPx,
+            });
           }
           ctx.restore();
         }
       }
       ctx.globalAlpha = alpha;
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = Math.max(4, fontPx * 0.14);
-      ctx.shadowOffsetY = 3;
+      ctx.shadowColor = "rgba(0,0,0,0.82)";
+      ctx.shadowBlur = Math.max(4, fontPx * 0.12);
+      ctx.shadowOffsetY = 2;
       if (strokeHex && strokeWidth > 0) {
         ctx.strokeStyle = strokeHex;
-        ctx.lineWidth = strokeWidth;
+        ctx.lineWidth = Math.min(strokeWidth, fontPx * 0.24);
         ctx.lineJoin = "round";
+        ctx.miterLimit = 2;
         for (let li = 0; li < lines.length; li++) {
-          ctx.strokeText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+          renderLinePass(lines[li], -totalH * 0.5 + li * lineStep, "stroke", {
+            tabularDigits,
+            typewriterChars: lineBudgets[li],
+            strokeHex,
+            extraSpacingPx,
+          });
         }
       }
       ctx.fillStyle = fill;
       for (let li = 0; li < lines.length; li++) {
-        ctx.fillText(lines[li], 0, -totalH * 0.5 + li * lineStep);
+        renderLinePass(lines[li], -totalH * 0.5 + li * lineStep, "fill", {
+          tabularDigits,
+          typewriterChars: lineBudgets[li],
+          typewriterLeadHex,
+          fill,
+          extraSpacingPx,
+        });
       }
 
       if (subPill && subPill.alpha > 0.01 && subPill.text) {
@@ -2049,7 +2238,8 @@ ${DRAW_MATH_SRC}
         ctx.translate(0, pY);
         ctx.scale(pScale, pScale);
         ctx.globalAlpha = alpha * subPill.alpha;
-        ctx.font = "800 " + pFont + "px '" + family + "', sans-serif";
+        ctx.font = "800 " + pFont + "px '" + family + "', " + fallback;
+        applyCanvasLetterSpacing(0, pFont);
         const tw = ctx.measureText(subPill.text).width;
         const iconW = subPill.icon === "person" ? pFont * 0.95 : 0;
         const padX = pFont * 0.55;
@@ -2087,6 +2277,120 @@ ${DRAW_MATH_SRC}
         ctx.textBaseline = "middle";
         ctx.fillText(subPill.text, -pillW * 0.5 + padX + iconW, 1);
         ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Arc-length-parametrized curved cartographic label for rivers, straits, coastlines, and ranges.
+    function drawCurvedMapLabel(screenPts, text, fontPx, { fill = "#A8D8FF", family = "Lora", weight = 600, fontStyle = "italic", letterSpacingPx = 0, strokeHex = "rgba(3,22,31,0.78)", strokeWidth = 2.0, alpha = 1.0, offsetPx = 0, revealProgress = 1.0, maxCharAngleDeg = 22 } = {}) {
+      if (alpha <= 0.005 || !screenPts || screenPts.length < 2 || !text) return;
+      // Auto-orient left-to-right so curved map labels are never rendered upside-down.
+      let pts = screenPts;
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      if (last.x < first.x) {
+        pts = [...pts].reverse();
+      }
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) {
+        cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+      }
+      const totalLen = cum[cum.length - 1];
+      if (totalLen < fontPx * 0.8) return;
+
+      const sampleAt = (s) => {
+        const clamped = Math.max(0, Math.min(totalLen, s));
+        let lo = 0;
+        let hi = cum.length - 1;
+        while (lo + 1 < hi) {
+          const mid = (lo + hi) >> 1;
+          if (cum[mid] <= clamped) lo = mid;
+          else hi = mid;
+        }
+        const segLen = Math.max(1e-6, cum[hi] - cum[lo]);
+        const u = (clamped - cum[lo]) / segLen;
+        const p0 = pts[lo];
+        const p1 = pts[hi];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const ang = Math.atan2(dy, dx);
+        const nx = -Math.sin(ang);
+        const ny = Math.cos(ang);
+        return {
+          x: p0.x + dx * u + nx * offsetPx,
+          y: p0.y + dy * u + ny * offsetPx,
+          angle: ang,
+        };
+      };
+
+      const fallback = inferFontFallback(family);
+      const stylePrefix = fontStyle && fontStyle !== "normal" ? fontStyle + " " : "";
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = stylePrefix + weight + " " + Math.round(fontPx) + "px '" + family + "', " + fallback;
+      applyCanvasLetterSpacing(0, fontPx);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      const chars = Array.from(String(text));
+      const charWidths = chars.map((ch) => ctx.measureText(ch).width);
+      // Pairwise optical kerning adjustment preserves natural glyph spacing (e.g. AV, WA, To)
+      // when laying out curved river, strait, and coastline labels character-by-character.
+      const advances = chars.map((ch, i) => {
+        const chW = charWidths[i];
+        let kern = 0;
+        if (i + 1 < chars.length) {
+          const next = chars[i + 1];
+          const pairW = ctx.measureText(ch + next).width;
+          kern = pairW - (chW + charWidths[i + 1]);
+        }
+        return Math.max(chW * 0.35, chW + kern) + letterSpacingPx;
+      });
+      const textLen = advances.reduce((a, b) => a + b, 0) - letterSpacingPx;
+      const startS = Math.max(0, (totalLen - textLen) * 0.5);
+      const visibleCount = Math.max(0, Math.round(chars.length * clamp(revealProgress, 0, 1)));
+      const maxDeltaRad = (maxCharAngleDeg * Math.PI) / 180;
+
+      // Pass 1: crisp dark halo; Pass 2: clean high-luma fill.
+      const passes = strokeHex && strokeWidth > 0 ? ["stroke", "fill"] : ["fill"];
+      for (const pass of passes) {
+        let sCur = startS;
+        let prevAng = null;
+        for (let i = 0; i < visibleCount; i++) {
+          const ch = chars[i];
+          const adv = advances[i];
+          const midS = sCur + charWidths[i] * 0.5;
+          const pose = sampleAt(midS);
+          let ang = pose.angle;
+          if (prevAng != null) {
+            let delta = ang - prevAng;
+            while (delta > Math.PI) delta -= Math.PI * 2;
+            while (delta < -Math.PI) delta += Math.PI * 2;
+            if (Math.abs(delta) > maxDeltaRad) {
+              ang = prevAng + Math.sign(delta) * maxDeltaRad;
+            }
+          }
+          prevAng = ang;
+          if (ch.trim()) {
+            ctx.save();
+            ctx.translate(pose.x, pose.y);
+            ctx.rotate(ang);
+            if (pass === "stroke") {
+              ctx.strokeStyle = strokeHex;
+              ctx.lineWidth = Math.min(strokeWidth, fontPx * 0.24);
+              ctx.lineJoin = "round";
+              ctx.miterLimit = 2;
+              ctx.shadowColor = "rgba(0,0,0,0.75)";
+              ctx.shadowBlur = Math.max(3, fontPx * 0.1);
+              ctx.strokeText(ch, 0, 0);
+            } else {
+              ctx.fillStyle = fill;
+              ctx.fillText(ch, 0, 0);
+            }
+            ctx.restore();
+          }
+          sCur += adv;
+        }
       }
       ctx.restore();
     }
@@ -2827,10 +3131,18 @@ ${DRAW_MATH_SRC}
         ctx.fill();
       }
       const fSize = Math.max(38, Math.min(130, len * 0.145));
-      ctx.font = "800 " + Math.round(fSize) + "px 'Space Grotesk', sans-serif";
+      ctx.font = "800 " + Math.round(fSize) + "px 'Barlow Condensed', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(labelText, 0, -Math.max(16, len * 0.045));
+      const ly = -Math.max(16, len * 0.045);
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(3,22,31,0.84)";
+      ctx.lineWidth = Math.max(3, fSize * 0.06);
+      ctx.lineJoin = "round";
+      ctx.strokeText(labelText, 0, ly);
+      ctx.restore();
+      ctx.fillText(labelText, 0, ly);
       ctx.restore();
     }
 
@@ -3243,8 +3555,16 @@ ${DRAW_MATH_SRC}
             }
           }
         } else if (layer.type === "glow_label") {
+          const preset = layer.carto_role ? (CARTO_TYPO_PRESETS[layer.carto_role] || {}) : {};
           const space = layer.space || (layer.ref_zoom != null ? "map_plane" : "world_billboard");
-          let sc = layer.pop_scale ? lerp(0.84, 1.0, easeOutBack(seg(t, tStart, tStart + (layer.pop_duration_s ?? 0.35)))) : 1.0;
+          const useComicBounce = layer.register === "comic" || layer.pop_bounce === true;
+          let sc = layer.pop_scale
+            ? lerp(
+                useComicBounce ? 0.86 : 0.94,
+                1.0,
+                (useComicBounce ? easeOutBack : easeOutExpo)(seg(t, tStart, tStart + (layer.pop_duration_s ?? 0.30)))
+              )
+            : 1.0;
           if (layer.exit_scale_down_s && t > tEnd - layer.exit_scale_down_s) {
             sc *= 1 - easeInCubic(seg(t, tEnd - layer.exit_scale_down_s, tEnd));
           }
@@ -3256,17 +3576,23 @@ ${DRAW_MATH_SRC}
             yFly = lerp(320, 0, enterP) - lerp(0, 220, exitP);
           }
           let displayText = String(layer.text ?? "");
+          if (preset.uppercase && !layer.preserve_case) {
+            displayText = displayText.toUpperCase();
+          }
+          let tabularDigits = Boolean(layer.tabular_digits ?? preset.tabularDigits ?? false);
+          let typewriterChars = null;
           if (layer.count_to != null) {
             const cStart = tStart + (layer.count_delay_s ?? 0);
             const cDur = layer.count_duration_s ?? 0.85;
-            const cu = easeOutCubic(seg(t, cStart, cStart + cDur));
+            // Critically damped expo-out avoids overshooting numeric metrics past ground truth.
+            const cu = easeOutExpo(seg(t, cStart, cStart + cDur));
             const val = Math.round(lerp(layer.count_from ?? 0, layer.count_to, cu));
             displayText = (layer.count_prefix || "") + val.toLocaleString(layer.count_locale || "en-US") + (layer.count_suffix || "");
+            tabularDigits = true;
           } else if (layer.typewriter_s) {
             const twStart = tStart + (layer.typewriter_delay_s ?? 0);
             const twU = clamp(seg(t, twStart, twStart + layer.typewriter_s), 0, 1);
-            const chars = Math.max(0, Math.round(displayText.length * twU));
-            displayText = displayText.slice(0, chars);
+            typewriterChars = Math.max(0, Math.round(displayText.length * twU));
           }
           let curCoord = layer.coord;
           if (curCoord && layer.move_to_coord && layer.move_start_s != null) {
@@ -3281,12 +3607,13 @@ ${DRAW_MATH_SRC}
             const spStart = layer.sub_pill.start_s ?? (tStart + (layer.sub_pill.delay_s ?? 0));
             const spEnd = layer.sub_pill.end_s ?? tEnd;
             if (t >= spStart && t <= spEnd) {
-              const spIn = easeOutBack(seg(t, spStart, spStart + (layer.sub_pill.pop_s ?? 0.28)));
+              const spEase = useComicBounce ? easeOutBack : easeOutExpo;
+              const spIn = lerp(useComicBounce ? 0.82 : 0.94, 1.0, spEase(seg(t, spStart, spStart + (layer.sub_pill.pop_s ?? 0.26))));
               const spOut = layer.sub_pill.fade_out_s ? 1 - seg(t, spEnd - layer.sub_pill.fade_out_s, spEnd) : 1;
               subPill = {
                 ...layer.sub_pill,
                 alpha: clamp(spOut, 0, 1),
-                scale: clamp(spIn, 0, 1.15),
+                scale: clamp(spIn, 0, useComicBounce ? 1.12 : 1.0),
               };
             }
           }
@@ -3295,18 +3622,30 @@ ${DRAW_MATH_SRC}
             : (layer.angle || 0);
           const angRad = angDeg * Math.PI / 180;
           const baseFont = layer.font_px || 64;
+          let letterSpacing = layer.letter_spacing ?? (preset.letterSpacingEm != null ? (preset.letterSpacingEm + "em") : 0);
+          if (layer.tracking_from_em != null && layer.tracking_to_em != null) {
+            const trU = easeOutExpo(seg(t, tStart, tStart + (layer.tracking_duration_s ?? 0.9)));
+            letterSpacing = lerp(layer.tracking_from_em, layer.tracking_to_em, trU).toFixed(4) + "em";
+          }
+          const hasExplicitGlow = layer.glow_hex != null || (layer.glow_strength != null && layer.glow_strength !== "none");
+          const defaultHaloW = Math.max(1.8, Math.min(4.2, baseFont * (preset.strokeMult ?? 0.045)));
           const textOpts = {
-            fill: layer.fill || "#FFFFFF",
-            glowHex: layer.glow_hex ?? "#22C55E",
-            glowStrength: layer.glow_strength || "luminous",
+            fill: layer.fill || preset.fill || "#F4F1EA",
+            glowHex: hasExplicitGlow ? (layer.glow_hex ?? "#F5C542") : null,
+            glowStrength: layer.glow_strength ?? (layer.glow_hex ? "luminous" : (preset.glowStrength ?? "none")),
             angle: angRad,
             scale: sc,
             alpha: baseAlpha,
-            family: layer.family || "Rubik",
-            weight: layer.weight || 800,
-            strokeHex: layer.stroke_hex || null,
-            strokeWidth: layer.stroke_width ?? 0,
+            family: layer.family || preset.family || "Barlow Condensed",
+            weight: layer.weight || preset.weight || 800,
+            fontStyle: layer.font_style || preset.fontStyle || "normal",
+            letterSpacing,
+            strokeHex: layer.stroke_hex ?? preset.strokeHex ?? "rgba(3,22,31,0.80)",
+            strokeWidth: layer.stroke_width !== undefined ? layer.stroke_width : defaultHaloW,
             lineHeightMult: layer.line_height_mult ?? 1.08,
+            tabularDigits,
+            typewriterChars,
+            typewriterLeadHex: layer.typewriter_lead_hex || null,
             subPill,
           };
           if (space === "map_plane" && curCoord && !layer.fly_through) {
@@ -3338,6 +3677,30 @@ ${DRAW_MATH_SRC}
               baseFont,
               textOpts
             );
+          }
+        } else if (layer.type === "curved_label") {
+          const preset = CARTO_TYPO_PRESETS[layer.carto_role || "water"] || CARTO_TYPO_PRESETS.water;
+          const rawCoords = resolveGeom(layer.coords_ref) || layer.coords || [];
+          const segs = projectPolylineClipped(rawCoords);
+          if (segs.length && segs[0].length >= 2) {
+            const fPx = layer.font_px || 42;
+            const revealP = layer.reveal_s ? easeOutExpo(seg(t, tStart, tStart + layer.reveal_s)) : 1.0;
+            let txt = String(layer.text ?? "");
+            if (preset.uppercase && !layer.preserve_case) txt = txt.toUpperCase();
+            const lsEm = layer.letter_spacing_em ?? preset.letterSpacingEm ?? 0.08;
+            drawCurvedMapLabel(segs[0], txt, fPx, {
+              fill: layer.fill || preset.fill || "#A8D8FF",
+              family: layer.family || preset.family || "Lora",
+              weight: layer.weight || preset.weight || 600,
+              fontStyle: layer.font_style || preset.fontStyle || "italic",
+              letterSpacingPx: lsEm * fPx,
+              strokeHex: layer.stroke_hex ?? preset.strokeHex ?? "rgba(3,22,31,0.78)",
+              strokeWidth: layer.stroke_width ?? Math.max(1.6, Math.min(3.5, fPx * (preset.strokeMult ?? 0.042))),
+              alpha: baseAlpha,
+              offsetPx: layer.offset_px ?? 0,
+              revealProgress: revealP,
+              maxCharAngleDeg: layer.max_char_angle_deg ?? 22,
+            });
           }
         } else if (layer.type === "crimson_x") {
           const pt = projectPointSafe(layer.coord);
@@ -3519,19 +3882,28 @@ ${DRAW_MATH_SRC}
         } else if (layer.type === "year_badge") {
           const x = W * (layer.x_pct ?? 0.5);
           const y = H * (layer.y_pct ?? 0.21);
-          const sc = lerp(0.92, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.30)));
-          drawGlowingText(String(layer.text || "1928"), x, y, layer.font_px || 96, {
-            fill: layer.fill || "#FFFBEB",
+          const sc = lerp(0.94, 1.0, easeOutExpo(seg(t, tStart, tStart + 0.30)));
+          const fPx = layer.font_px || 96;
+          drawGlowingText(String(layer.text || "1928"), x, y, fPx, {
+            fill: layer.fill || "#F4F1EA",
             glowHex: layer.glow_hex || "#F5C542",
-            glowStrength: layer.glow_strength || "intense",
+            glowStrength: layer.glow_strength || "subtle",
+            strokeHex: "rgba(3,22,31,0.84)",
+            strokeWidth: Math.max(2.2, fPx * 0.04),
+            family: layer.family || "IBM Plex Mono",
+            weight: layer.weight || 700,
+            tabularDigits: true,
             scale: sc,
             alpha: baseAlpha,
           });
           if (layer.subtitle) {
             drawGlowingText(String(layer.subtitle), x, y + 66, 30, {
-              fill: "#E2F4FA",
-              glowHex: "#03161F",
-              glowStrength: "subtle",
+              fill: "#DCE8F5",
+              strokeHex: "rgba(3,22,31,0.84)",
+              strokeWidth: 1.8,
+              family: layer.subtitle_family || "Inter",
+              weight: 600,
+              letterSpacing: "0.06em",
               alpha: baseAlpha * 0.95,
             });
           }
@@ -3663,20 +4035,25 @@ ${DRAW_MATH_SRC}
             if (angRad) ctx.rotate(angRad);
             drawGlowingText(String(primaryTxt), 0, -fPx * 0.25, fPx, {
               fill: lblCol,
-              glowHex: "#03161F",
-              glowStrength: "subtle",
+              strokeHex: "rgba(3,22,31,0.85)",
+              strokeWidth: Math.max(2.0, fPx * 0.045),
+              glowStrength: "none",
               alpha: labelAlpha,
-              family: "Rubik",
-              weight: 900,
+              family: layer.family || "Barlow Condensed",
+              weight: layer.weight || 800,
+              tabularDigits: true,
             });
             if (secondaryTxt) {
-              drawGlowingText(String(secondaryTxt), 0, fPx * 0.55, Math.round(fPx * 0.58), {
+              const secPx = Math.round(fPx * 0.56);
+              drawGlowingText(String(secondaryTxt), 0, fPx * 0.55, secPx, {
                 fill: lblCol,
-                glowHex: "#03161F",
-                glowStrength: "subtle",
+                strokeHex: "rgba(3,22,31,0.85)",
+                strokeWidth: Math.max(1.6, secPx * 0.05),
+                glowStrength: "none",
                 alpha: labelAlpha * 0.96,
-                family: "Rubik",
-                weight: 800,
+                family: layer.secondary_family || "IBM Plex Mono",
+                weight: 700,
+                tabularDigits: true,
               });
             }
             ctx.restore();
@@ -3749,17 +4126,18 @@ ${DRAW_MATH_SRC}
                 glowHex: layer.bloom_hex || "#38BDF8",
                 glowStrength: "luminous",
                 alpha: baseAlpha * slideP,
-                family: "Rubik",
-                weight: 800,
+                family: layer.family || "Barlow Condensed",
+                weight: layer.weight || 800,
               });
             }
             ctx.restore();
           }
         } else if (layer.type === "counter_odometer") {
           const steps = layer.steps || [{ at_s: tStart, value: "0" }];
-          const flyP = easeOutBack(seg(t, tStart, tStart + (layer.fly_up_s ?? 0.28)));
+          const useComicBounce = layer.register === "comic" || layer.pop_bounce === true;
+          const flyP = (useComicBounce ? easeOutBack : easeOutExpo)(seg(t, tStart, tStart + (layer.fly_up_s ?? 0.28)));
           const cx = W * (layer.x_pct ?? 0.5);
-          const cy = H * (layer.y_pct ?? 0.22) + lerp(280, 0, clamp(flyP, 0, 1.06));
+          const cy = H * (layer.y_pct ?? 0.22) + lerp(240, 0, clamp(flyP, 0, useComicBounce ? 1.06 : 1.0));
           const fPx = layer.font_px || 152;
           let curIdx = 0;
           for (let i = 0; i < steps.length; i++) {
@@ -3768,30 +4146,38 @@ ${DRAW_MATH_SRC}
           const curStep = steps[curIdx];
           const prevStep = curIdx > 0 ? steps[curIdx - 1] : null;
           const rollDur = layer.roll_s ?? 0.14;
-          const rollP = prevStep ? easeOutCubic(seg(t, curStep.at_s, curStep.at_s + rollDur)) : 1.0;
+          const rollP = prevStep ? easeOutExpo(seg(t, curStep.at_s, curStep.at_s + rollDur)) : 1.0;
+          const odoFamily = layer.family || "Barlow Condensed";
+          const odoWeight = layer.weight || 800;
           ctx.save();
           ctx.translate(cx, cy);
-          ctx.rotate(((layer.angle_deg ?? -7) * Math.PI) / 180);
+          ctx.rotate(((layer.angle_deg ?? 0) * Math.PI) / 180);
           ctx.beginPath();
           ctx.rect(-W * 0.46, -fPx * 1.05, W * 0.92, fPx * 2.10);
           ctx.clip();
           if (prevStep && rollP < 0.995) {
             drawGlowingText(String(prevStep.value), 0, lerp(0, -fPx * 0.72, rollP), fPx, {
-              fill: layer.fill || "#FDE047",
+              fill: layer.fill || "#F5C542",
               glowHex: layer.glow_hex || "#F59E0B",
-              glowStrength: "intense",
+              glowStrength: layer.glow_strength || "subtle",
+              strokeHex: "rgba(3,22,31,0.88)",
+              strokeWidth: Math.max(2.8, fPx * 0.032),
               alpha: baseAlpha * Math.pow(1 - rollP, 2.0),
-              family: "Rubik",
-              weight: 900,
+              family: odoFamily,
+              weight: odoWeight,
+              tabularDigits: true,
             });
           }
           drawGlowingText(String(curStep.value), 0, lerp(fPx * 0.72, 0, rollP), fPx, {
-            fill: layer.fill || "#FDE047",
+            fill: layer.fill || "#F5C542",
             glowHex: layer.glow_hex || "#F59E0B",
-            glowStrength: "intense",
+            glowStrength: layer.glow_strength || "subtle",
+            strokeHex: "rgba(3,22,31,0.88)",
+            strokeWidth: Math.max(2.8, fPx * 0.032),
             alpha: prevStep ? baseAlpha * Math.pow(rollP, 1.15) : baseAlpha,
-            family: "Rubik",
-            weight: 900,
+            family: odoFamily,
+            weight: odoWeight,
+            tabularDigits: true,
           });
           ctx.restore();
         } else if (layer.type === "question_arc") {
@@ -3854,7 +4240,9 @@ ${DRAW_MATH_SRC}
           ctx.translate(bx, by);
           ctx.rotate(((layer.angle_deg ?? 0) * Math.PI) / 180);
           ctx.globalAlpha = baseAlpha * pop;
-          ctx.font = "900 " + fPx + "px 'Rubik', sans-serif";
+          const ptrFamily = layer.family || "Barlow Condensed";
+          const ptrWeight = layer.weight || 800;
+          ctx.font = ptrWeight + " " + fPx + "px '" + ptrFamily + "', " + inferFontFallback(ptrFamily);
           ctx.textBaseline = "middle";
           for (let li = 0; li < lines.length; li++) {
             const ly = (li - (lines.length - 1) * 0.5) * lineH;
@@ -3889,12 +4277,13 @@ ${DRAW_MATH_SRC}
               ctx.restore();
             } else {
               drawGlowingText(ln, 0, ly, fPx, {
-                fill: layer.fill || "#FFFFFF",
-                glowHex: "#03161F",
-                glowStrength: "subtle",
+                fill: layer.fill || "#F4F1EA",
+                strokeHex: layer.stroke_hex ?? "rgba(3,22,31,0.84)",
+                strokeWidth: layer.stroke_width ?? Math.max(2.0, fPx * 0.045),
+                glowStrength: layer.glow_strength || "none",
                 alpha: baseAlpha * pop,
-                family: "Rubik",
-                weight: 900,
+                family: ptrFamily,
+                weight: ptrWeight,
               });
             }
           }
@@ -3964,14 +4353,19 @@ ${DRAW_MATH_SRC}
           ctx.arc(pt.x, pt.y, Math.max(4, 6 * zSc), 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
-          drawGlowingText(String(layer.text || ""), pt.x + (layer.dx || 0), pt.y - stemH - (layer.font_px || 40) * 0.65 * zSc + (layer.dy || 0), layer.font_px || 40, {
-            fill: "#FFFFFF",
-            glowHex: "#03161F",
-            glowStrength: "subtle",
+          const pinFontPx = layer.font_px || 40;
+          const pinPreset = layer.carto_role ? (CARTO_TYPO_PRESETS[layer.carto_role] || {}) : CARTO_TYPO_PRESETS.city;
+          drawGlowingText(String(layer.text || ""), pt.x + (layer.dx || 0), pt.y - stemH - pinFontPx * 0.65 * zSc + (layer.dy || 0), pinFontPx, {
+            fill: layer.fill || pinPreset.fill || "#F4F1EA",
+            strokeHex: layer.stroke_hex ?? pinPreset.strokeHex ?? "rgba(3,22,31,0.82)",
+            strokeWidth: layer.stroke_width ?? Math.max(1.8, pinFontPx * 0.045),
+            glowStrength: layer.glow_strength || "none",
             scale: zSc,
             alpha: baseAlpha * pop,
-            family: "Rubik",
-            weight: 800,
+            family: layer.family || pinPreset.family || "Inter",
+            weight: layer.weight || pinPreset.weight || 700,
+            fontStyle: layer.font_style || pinPreset.fontStyle || "normal",
+            letterSpacing: layer.letter_spacing ?? (pinPreset.letterSpacingEm != null ? (pinPreset.letterSpacingEm + "em") : 0),
           });
         } else if (layer.type === "human_silhouette_row") {
           const count = layer.count || 10;
@@ -6365,9 +6759,32 @@ async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps, act, o
         { waitUntil: "load" }
       );
       await page.evaluate(() => window.__ready);
-      await page.evaluate(() => document.fonts.ready);
       const samples = act.camera_samples || [];
       const layers = act.layers || [];
+      // Deterministically preload Canvas 2D font faces before frame 0 so measureText/fillText never hit FOUT.
+      const fontSpecs = new Set([
+        "700 48px 'Barlow Condensed'",
+        "800 64px 'Barlow Condensed'",
+        "600 40px 'Inter'",
+        "700 48px 'Inter'",
+        "700 56px 'Rubik'",
+        "800 56px 'Rubik'",
+        "italic 600 42px 'Lora'",
+        "700 42px 'Lora'",
+        "700 42px 'IBM Plex Mono'",
+        "400 64px 'Archivo Black'",
+      ]);
+      for (const layer of layers) {
+        if (layer.family) {
+          const st = layer.font_style === "italic" ? "italic " : "";
+          const wt = layer.weight || 700;
+          fontSpecs.add(`${st}${wt} 48px '${layer.family}'`);
+        }
+      }
+      await page.evaluate(async (specs) => {
+        await Promise.allSettled(specs.map((s) => document.fonts.load(s)));
+        await document.fonts.ready;
+      }, [...fontSpecs]);
       const preloadUrls = [];
       const preloadModelUrls = [];
       for (const layer of layers) {

@@ -86,11 +86,16 @@
                 "display_family": { "type": "string" },
                 "body_family": { "type": "string" },
                 "title_family": { "type": "string" },
+                "serif_family": { "type": "string" },
+                "mono_family": { "type": "string" },
+                "base_rem_px": { "type": "number", "minimum": 8, "maximum": 32 },
                 "caption_case": { "type": "string", "enum": ["sentence", "uppercase", "title", "lowercase"] },
                 "caption_style": { "type": "string", "enum": ["plain", "chip", "bar"] },
                 "caption_transition_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "caption_fade_in_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
                 "caption_fade_out_ms": { "type": "integer", "minimum": 0, "maximum": 200 },
+                "caption_gap_ms": { "type": "integer", "minimum": 0, "maximum": 250 },
+                "caption_letter_spacing_em": { "type": "number", "minimum": -0.05, "maximum": 0.25 },
                 "max_words_per_caption_group": { "type": "integer", "minimum": 1, "maximum": 12 },
                 "default_caption_band": { "type": "string", "enum": ["lower_third", "center_safe", "upper_safe", "dynamic_away_from_subject"] },
                 "caption_font_family": { "type": "string" },
@@ -101,6 +106,19 @@
                   "items": { "type": "number", "minimum": 0, "maximum": 1 },
                   "minItems": 2,
                   "maxItems": 2
+                },
+                "type_scale": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "hero": { "$ref": "#/$defs/type_scale_step" },
+                    "display": { "$ref": "#/$defs/type_scale_step" },
+                    "title": { "$ref": "#/$defs/type_scale_step" },
+                    "caption": { "$ref": "#/$defs/type_scale_step" },
+                    "telemetry": { "$ref": "#/$defs/type_scale_step" },
+                    "body": { "$ref": "#/$defs/type_scale_step" },
+                    "micro": { "$ref": "#/$defs/type_scale_step" }
+                  }
                 }
               }
             },
@@ -161,6 +179,7 @@
         "no_cut_within_keyword_ms": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "never_overlap_subject_boxes": { "type": "boolean" },
         "min_wcag_contrast": { "type": "number", "minimum": 3.0 },
+        "min_wcag_contrast_small_text": { "type": "number", "minimum": 4.5, "maximum": 21.0 },
         "banned_transitions": { "type": "array", "items": { "type": "string" } },
         "banned_patterns": { "type": "array", "items": { "type": "string" } },
         "avoid_heavy_css_blur": { "type": "boolean" }
@@ -238,6 +257,32 @@
         "reference_hashes": { "type": "array", "items": { "type": "string" } },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "created_at": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "type_scale_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "size_px_9x16",
+        "size_px_16x9",
+        "weight",
+        "line_height",
+        "letter_spacing_em",
+        "family_role"
+      ],
+      "properties": {
+        "size_px_9x16": { "type": "integer", "minimum": 12, "maximum": 240 },
+        "size_px_16x9": { "type": "integer", "minimum": 12, "maximum": 240 },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+        "line_height": { "type": "number", "minimum": 0.8, "maximum": 2.2 },
+        "letter_spacing_em": { "type": "number", "minimum": -0.08, "maximum": 0.35 },
+        "family_role": {
+          "type": "string",
+          "enum": ["display", "title", "body", "caption", "mono", "serif"]
+        },
+        "min_wcag_contrast": { "type": "number", "minimum": 3.0, "maximum": 21.0 }
       }
     }
   }

@@ -78,6 +78,10 @@
             "display_to_caption_ratio": { "type": ["number", "null"], "minimum": 0 },
             "median_wcag_contrast": { "type": ["number", "null"], "minimum": 1, "maximum": 21 },
             "min_wcag_contrast": { "type": ["number", "null"], "minimum": 1, "maximum": 21 },
+            "small_text_min_wcag_contrast": { "type": ["number", "null"], "minimum": 1, "maximum": 21 },
+            "aaa_pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "estimated_line_height_ratio": { "type": ["number", "null"], "minimum": 0.5, "maximum": 4.0 },
+            "max_text_width_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
             "tilted_text_count": { "type": "integer", "minimum": 0 },
             "boxed_text_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
           }

@@ -697,6 +697,18 @@ def _write_structure_md(result: dict[str, Any], out_path: Path) -> None:
         f"`{t.get('caption_height_pct_p50')}`"
     )
     wcag_str = f"`{t.get('median_wcag_contrast')}` / `{t.get('min_wcag_contrast')}`"
+    small_wcag_str = (
+        f"`{t.get('small_text_min_wcag_contrast')}` / "
+        f"`{t['aaa_pass_rate']:.1%}`"
+        if t.get("aaa_pass_rate") is not None
+        else f"`{t.get('small_text_min_wcag_contrast')}` / `None`"
+    )
+    measure_str = (
+        f"`{t.get('estimated_line_height_ratio')}` / "
+        f"`{t['max_text_width_pct']:.1%}`"
+        if t.get("max_text_width_pct") is not None
+        else f"`{t.get('estimated_line_height_ratio')}` / `None`"
+    )
     tilt_box_str = f"`{t['tilted_text_count']}` / `{t['boxed_text_ratio']:.1%}`"
 
     lines = [
@@ -734,6 +746,8 @@ def _write_structure_md(result: dict[str, Any], out_path: Path) -> None:
         f"| Display / Body / Caption height % | {type_h_str} |",
         f"| Display-to-Caption scale ratio | `{t.get('display_to_caption_ratio')}` |",
         f"| WCAG contrast (median / min) | {wcag_str} |",
+        f"| Small-text min WCAG / AAA pass rate | {small_wcag_str} |",
+        f"| Est. line-height ratio / Max text width % | {measure_str} |",
         f"| Tilted text blocks / Boxed ratio | {tilt_box_str} |",
         "",
         "## 4. Motion & Easing Physics",
@@ -830,6 +844,10 @@ def analyze_video(
     body_h: list[float] = []
     caption_h: list[float] = []
     wcag_vals: list[float] = []
+    small_wcag_vals: list[float] = []
+    aaa_pass_flags: list[bool] = []
+    line_height_ratios: list[float] = []
+    text_width_pcts: list[float] = []
     tilted_count = 0
     boxed_count = 0
     total_text_blocks = 0
@@ -901,6 +919,11 @@ def analyze_video(
                     bgr, (x1, y1, x2, y2)
                 )
                 wcag_vals.append(contrast)
+                aaa_threshold = 4.5 if role == "display" else 7.0
+                aaa_pass_flags.append(contrast >= aaa_threshold)
+                if role != "display":
+                    small_wcag_vals.append(contrast)
+                text_width_pcts.append(round((x2 - x1) / max(width, 1), 4))
                 total_text_blocks += 1
                 if container_style != "boxless":
                     boxed_count += 1
@@ -947,6 +970,30 @@ def analyze_video(
                         "safe_zone_violation": viol,
                     }
                 )
+
+        # Estimate stacked line-height ratios between horizontally overlapping adjacent text lines.
+        if len(text_boxes_px) >= 2:
+            sorted_tb = sorted(text_boxes_px, key=lambda b: (b[1], b[0]))
+            for idx_a in range(len(sorted_tb) - 1):
+                ax1, ay1, ax2, ay2 = sorted_tb[idx_a]
+                ah = max(1.0, float(ay2 - ay1))
+                aw = max(1.0, float(ax2 - ax1))
+                ayc = (ay1 + ay2) * 0.5
+                for idx_b in range(idx_a + 1, len(sorted_tb)):
+                    bx1, by1, bx2, by2 = sorted_tb[idx_b]
+                    bh = max(1.0, float(by2 - by1))
+                    bw = max(1.0, float(bx2 - bx1))
+                    byc = (by1 + by2) * 0.5
+                    overlap_w = max(0.0, float(min(ax2, bx2) - max(ax1, bx1)))
+                    if overlap_w / min(aw, bw) < 0.40:
+                        continue
+                    if max(ah, bh) / min(ah, bh) > 1.45:
+                        continue
+                    mean_h = (ah + bh) * 0.5
+                    ratio = (byc - ayc) / mean_h
+                    if 0.85 <= ratio <= 2.60:
+                        line_height_ratios.append(ratio)
+                    break
 
         # 2. Graphic containers.
         g_boxes = _detect_graphic_containers(bgr, text_boxes_px)
@@ -1230,6 +1277,22 @@ def analyze_video(
                     round(float(statistics.median(wcag_vals)), 2) if wcag_vals else None
                 ),
                 "min_wcag_contrast": round(min(wcag_vals), 2) if wcag_vals else None,
+                "small_text_min_wcag_contrast": (
+                    round(min(small_wcag_vals), 2) if small_wcag_vals else None
+                ),
+                "aaa_pass_rate": (
+                    round(sum(1 for ok_flag in aaa_pass_flags if ok_flag) / len(aaa_pass_flags), 4)
+                    if aaa_pass_flags
+                    else None
+                ),
+                "estimated_line_height_ratio": (
+                    round(float(statistics.median(line_height_ratios)), 2)
+                    if line_height_ratios
+                    else None
+                ),
+                "max_text_width_pct": (
+                    round(max(text_width_pcts), 4) if text_width_pcts else None
+                ),
                 "tilted_text_count": tilted_count,
                 "boxed_text_ratio": (
                     round(boxed_count / total_text_blocks, 4) if total_text_blocks else 0.0

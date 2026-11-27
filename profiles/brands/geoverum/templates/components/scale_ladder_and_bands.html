@@ -9,6 +9,9 @@
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -39,6 +42,7 @@
     .gv-sl-title {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(40px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.06;
       letter-spacing: 0.02em;
       text-transform: uppercase;
@@ -71,9 +75,10 @@
       gap: calc(4px * {{SCALE_FACTOR}});
     }
     .gv-sl-row-val {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
-      font-size: calc(46px * {{SCALE_FACTOR}});
-      line-height: 1;
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
+      font-size: calc(44px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.08;
       color: var(--vedit-accent);
       text-shadow:
         0 4px 16px rgba(0, 0, 0, 0.9),
@@ -85,8 +90,9 @@
     .gv-sl-row-lbl {
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-size: calc(29px * {{SCALE_FACTOR}});
-      font-weight: 700;
-      letter-spacing: 0.04em;
+      font-weight: 600;
+      line-height: 1.28;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--vedit-ink);
       text-shadow:
@@ -129,9 +135,11 @@
       border-right: 2.5px solid var(--vedit-accent);
     }
     .gv-sl-band-hdr {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
       font-size: calc(28px * {{SCALE_FACTOR}});
-      line-height: 1.05;
+      font-weight: 600;
+      line-height: 1.22;
+      letter-spacing: 0.02em;
       color: var(--vedit-ink);
       text-align: center;
       text-shadow: 0 3px 12px rgba(0, 0, 0, 0.9);

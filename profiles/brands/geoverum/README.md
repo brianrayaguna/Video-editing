@@ -21,7 +21,7 @@ Full craft rules: [`CRAFT.md`](CRAFT.md).
 1. **Story-first directing**: Each narration's own question, withheld answer, and ending note determine its structure, hook mechanism, signature image, surface count, colour casting, and ending ([`DIRECTING.md`](DIRECTING.md)); two narrations must not produce the same film shape.
 2. **Satellite spine with story-motivated registers (`9:16`)**: Graded marine-teal satellite relief usually carries `70–90%` of runtime as a continuous virtual-camera take; dark vector, blueprint, parchment, cross-section, horizon terrain, aerial ortho, globe, or real-footage registers appear only when the narrative mode changes, with zero generative video.
 3. **Map blocks & luminous seams**: `45°` diagonal-hatched terrain blocks and multi-bloc regional fills sealed by crisp `2–3px` white exterior rims, three-layer luminous glowing border/route strokes (outer bloom + mid glow + bright core), `2×2` quad and diagonal white-seamed splits, and high-res urban ortho landmark masks.
-4. **Dual-layer typography & plain captions (`y = 70–72%`)**: True-centered (`x = 50%`) 2–4 word sentence-case `Space Grotesk` / `Inter` plain white captions with subtle dark drop shadow, short opacity cross-fades (`~150ms`), and zero default watermark (`watermark_default: false`), paired with axis-aligned in-world map labels and tight color-matched district tags.
+4. **Dual-layer typography & plain captions (`y = 66–84%`)**: True-centered (`x = 50%`) 2–4 word sentence-case `Rubik` Bold (`56 px` on `9:16`, `46 px` on `16:9`) plain warm-white captions with `#03161F` halo and dark drop shadow, short fade-in (`120 ms`), hard cut out with a `67 ms` perceptual gap, and zero default watermark (`watermark_default: false`), paired with axis-aligned in-world map labels and tight color-matched district tags.
 5. **Dual-unit, cross-section & split grammar**: White double-headed arrows, T-brackets, and dashed amber corridors (`mi` + `km`, `ft` + `m`), 2D underwater/volcanic/altitude cross-sections (with subtle `NOT TO SCALE` disclaimer when schematic), compact population pin pills, true-scale silhouette overlays, and whip-zoom / split-wipe / soft-iris / 3D card-flip transitions.
 6. **Kinetic SFX & heavy-ducked BGM**: Continuous narration-led editing (`50–80%` voice density), quiet ambient/dramatic BGM (`ducking_strength: 0.90`, `76–136 BPM`), and `15–28` visual-locked `pop`/`ding`/`click`/`whoosh` accents per minute (`sfx_policy: "kinetic_accents"`).
 
@@ -39,11 +39,12 @@ Full craft rules: [`CRAFT.md`](CRAFT.md).
 | `hydro_accent` | `#7CE0F9` | Meridian/parallel lasers, altitude rulers, waterbodies, and curved open-water labels. |
 | `comparison_accent` | `#2E74E6` | Secondary comparative territory tint, elevation zones, and vertical longitude bands. |
 | `muted_ink` | `#9DB2BE` | Secondary orientation labels and quiet source credits. |
-| `display_family` | `Archivo Black` | Tabular metrics, counters, acronym initials, kinetic portals, and map display callouts. |
-| `body_family` | `Space Grotesk, Inter, Montserrat` | Plain captions (`2–4` words), highlight tags, labels, and optional watermark. |
-| `title_family` | `Unbounded` | Major display titles and curved basin marks. |
-| `serif_family` | `EB Garamond, Playfair Display` | Historical parchment canvases, era stamps, and archival decrees (upright + italic). |
-| `mono_family` | `Space Mono` | Technical blueprint rulers, coordinates, and elevation scales. |
+| `display_family` | `Barlow Condensed` | Headlines, country labels, split metrics, and cartographic display callouts (`700–800`). |
+| `title_family` | `Archivo Black` | Massive 1–2 word hero numerals, stamps, era years, and kinetic portal titles (`400`). |
+| `body_family` | `Inter` | Diagram subtitles, bar labels, city markers, credits, and optional watermark (`500–600`). |
+| `caption_font_family` | `Rubik` | Screen-fixed plain documentary captions (`2–4` words, `700`, `+0.015em`). |
+| `serif_family` | `Lora, EB Garamond` | Curved hydrography labels (italic), etymology callouts, and historical parchment plates. |
+| `mono_family` | `IBM Plex Mono, JetBrains Mono` | Technical blueprint rulers, coordinates, elevation scales, and dual-unit secondary telemetry (`600`). |
 
 ---
 

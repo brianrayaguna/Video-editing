@@ -6,6 +6,7 @@ headless Chromium + ProRes 4444 RGBA rendering for frames that require zero DOM 
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -109,7 +110,7 @@ def _escape_ass_text(text: str) -> str:
     return cleaned.replace("\n", r"\N")
 
 
-def _primary_font_name(raw_family: Any, default: str = "Space Grotesk") -> str:
+def _primary_font_name(raw_family: Any, default: str = "Rubik") -> str:
     if not isinstance(raw_family, str) or not raw_family.strip():
         return default
     return raw_family.split(",")[0].strip().strip("'\"") or default
@@ -122,7 +123,8 @@ def _caption_style(
 
     Supported props (all optional): `caption_font_px`, `caption_bottom_pct`,
     `caption_bold`, `caption_opacity`, `caption_outline_px`, `caption_shadow_px`,
-    `caption_shadow_opacity`, `caption_shadow_blur_px`, `caption_letter_spacing`.
+    `caption_shadow_opacity`, `caption_shadow_blur_px`, `caption_letter_spacing`,
+    `caption_letter_spacing_em`.
     """
 
     def _num(key: str) -> float | None:
@@ -134,8 +136,10 @@ def _caption_style(
         except (TypeError, ValueError):
             return None
 
-    default_px = round(width * 0.056) if is_portrait else round(height * 0.054)
+    scale = min(width, height) / 1080.0
+    default_px = round(56 * scale) if is_portrait else round(46 * scale)
     font_px = _num("caption_font_px")
+    resolved_font_px = round(font_px) if font_px and font_px > 0 else default_px
     bottom_pct = _num("caption_bottom_pct")
     opacity = _num("caption_opacity")
     shadow_opacity = _num("caption_shadow_opacity")
@@ -148,18 +152,25 @@ def _caption_style(
         else None
     )
     spacing = _num("caption_letter_spacing")
+    if spacing is None:
+        spacing_em = _num("caption_letter_spacing_em")
+        if spacing_em is not None:
+            spacing = round(spacing_em * resolved_font_px, 2)
+    outline_blur = _num("caption_outline_blur_px")
+    gap_ms = _num("caption_gap_ms")
     bold_raw = merged.get("caption_bold", True)
     norm_bottom = (
         (bottom_pct / 100.0) if (bottom_pct is not None and bottom_pct > 1.0) else bottom_pct
     )
     return {
-        "font_px": round(font_px) if font_px and font_px > 0 else default_px,
+        "font_px": resolved_font_px,
         "bottom_pct": min(max(norm_bottom, 0.0), 0.9) if norm_bottom is not None else None,
         "bold": bool(bold_raw),
         "opacity": min(max(opacity, 0.0), 1.0) if opacity is not None else 1.0,
         "outline_px": max(_num("caption_outline_px") or 0.0, 0.0)
         if _num("caption_outline_px") is not None
         else None,
+        "outline_blur_px": max(outline_blur, 0.0) if outline_blur is not None else 0.0,
         "shadow_px": max(_num("caption_shadow_px") or 0.0, 0.0)
         if _num("caption_shadow_px") is not None
         else None,
@@ -169,7 +180,8 @@ def _caption_style(
         "shadow_blur_px": max(blur, 0.0) if blur is not None else 0.0,
         "glow_color": glow_color,
         "glow_px": max(glow_px, 0.0) if glow_px is not None else 0.0,
-        "letter_spacing": spacing if spacing is not None else -0.3,
+        "letter_spacing": spacing if spacing is not None else 0.3,
+        "gap_ms": max(0, min(250, round(gap_ms))) if gap_ms is not None else 0,
     }
 
 
@@ -187,8 +199,8 @@ def write_ass_overlays_file(
 
     sym_x_px = round(width * max(sz.left_pct, sz.right_pct, 0.06))
     upper_margin_v = round(height * sz.top_pct)
-    # ASS Fontsize scales by ascender+descender (~0.72x CSS visual cap-height); scale
-    # proportionally so visual size matches CSS 44px @ 1080x1920 and 42px @ 1920x1080.
+    # Unified caption scale matches HyperFrames CSS and build_ass_from_transcript:
+    # 56px @ 1080x1920 portrait and 46px @ 1920x1080 landscape.
     wm_font_px = max(18, round(24 * scale))
     wm_margin_v = round(height * (0.16 if is_portrait else 0.075))
     wm_margin_r = round(width * (0.055 if is_portrait else 0.05))
@@ -197,7 +209,7 @@ def write_ass_overlays_file(
     first_cap = next((o for o in overlays if o.kind == "caption_rail"), None)
     cap_merged = _merge_overlay_props(first_cap)
     cap_font = _primary_font_name(
-        cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Space Grotesk"
+        cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Rubik"
     )
     cap_style = _caption_style(cap_merged, width=width, height=height, is_portrait=is_portrait)
     cap_bottom_pct = cap_style["bottom_pct"]
@@ -213,7 +225,7 @@ def write_ass_overlays_file(
 
     wm_ov = next((o for o in overlays if o.template_id == "broadcast_bug"), None)
     wm_merged = _merge_overlay_props(wm_ov)
-    wm_font = _primary_font_name(wm_merged.get("font_family"), cap_font)
+    wm_font = _primary_font_name(wm_merged.get("font_family"), "Inter")
     wm_opacity = float(wm_merged.get("opacity", 0.72))
     wm_color = _hex_to_ass_color(str(wm_merged.get("fg_color") or "#F4F1EA"), wm_opacity)
     wm_shadow = _hex_to_ass_color("#000000", 0.65)
@@ -244,7 +256,7 @@ def write_ass_overlays_file(
         f"PlayResX: {width}",
         f"PlayResY: {height}",
         "ScaledBorderAndShadow: yes",
-        "WrapStyle: 2",
+        "WrapStyle: 0",
         "",
         "[V4+ Styles]",
         (
@@ -273,7 +285,7 @@ def write_ass_overlays_file(
         ),
         (
             f"Style: Watermark,{wm_font},{wm_font_px},{wm_color},{wm_color},"
-            f"{wm_shadow},{wm_shadow},1,0,0,0,100,100,2.2,0,1,0.8,1.5,"
+            f"{wm_shadow},{wm_shadow},-1,0,0,0,100,100,2.2,0,1,0.8,1.5,"
             f"9,{sym_x_px},{wm_margin_r},{wm_margin_v},1"
         ),
         (
@@ -286,10 +298,28 @@ def write_ass_overlays_file(
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
 
-    for ov in sorted(overlays, key=lambda item: item.timeline_start_s):
+    sorted_overlays = sorted(overlays, key=lambda item: item.timeline_start_s)
+    caption_starts: list[tuple[str, float]] = [
+        (item.overlay_id, item.timeline_start_s)
+        for item in sorted_overlays
+        if item.kind == "caption_rail"
+    ]
+    next_caption_start: dict[str, float] = {}
+    for idx in range(len(caption_starts) - 1):
+        next_caption_start[caption_starts[idx][0]] = caption_starts[idx + 1][1]
+
+    for ov in sorted_overlays:
         merged = _merge_overlay_props(ov)
+        end_s = ov.timeline_start_s + ov.timeline_duration_s
+        if ov.kind == "caption_rail" and cap_style["gap_ms"] > 0:
+            raw_out_check = merged.get("caption_fade_out_ms")
+            if raw_out_check == 0 and ov.overlay_id in next_caption_start:
+                nxt_start = next_caption_start[ov.overlay_id]
+                gap_s = cap_style["gap_ms"] / 1000.0
+                if nxt_start - end_s < gap_s and (nxt_start - gap_s) >= ov.timeline_start_s + 0.2:
+                    end_s = nxt_start - gap_s
         start_ts = _format_ass_time(ov.timeline_start_s)
-        end_ts = _format_ass_time(ov.timeline_start_s + ov.timeline_duration_s)
+        end_ts = _format_ass_time(end_s)
 
         if ov.template_id == "broadcast_bug":
             text = _escape_ass_text(str(merged.get("text") or "geoverum"))
@@ -323,7 +353,13 @@ def write_ass_overlays_file(
         fade = (
             f"\\fad({fade_in_ms},{fade_out_ms})" if (fade_in_ms or fade_out_ms) else ""
         )
-        fade_tag = f"{{{fade}}}" if fade else ""
+        outline_blur_tag = (
+            f"\\blur{cap_style['outline_blur_px']:g}"
+            if cap_style["outline_blur_px"] > 0
+            else ""
+        )
+        main_tags = f"{fade}{outline_blur_tag}"
+        fade_tag = f"{{{main_tags}}}" if main_tags else ""
         escaped_text = _escape_ass_text(raw_text)
         if cap_style["glow_color"] and cap_style["glow_px"] > 0:
             gc = cap_style["glow_color"]
@@ -358,6 +394,251 @@ def write_ass_overlays_file(
     output_ass_path.parent.mkdir(parents=True, exist_ok=True)
     output_ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return output_ass_path
+
+
+def _chunk_words_by_pause_and_rate(
+    words: list[dict[str, Any]],
+    *,
+    max_words: int = 4,
+    pause_threshold_s: float = 0.18,
+) -> list[dict[str, Any]]:
+    """Group word timestamps into balanced phrase segments respecting speech pauses and rate."""
+    clean = [w for w in words if str(w.get("word") or w.get("text") or "").strip()]
+    if not clean:
+        return []
+    out: list[dict[str, Any]] = []
+    buf: list[dict[str, Any]] = []
+    for word in clean:
+        txt = str(word.get("word") or word.get("text") or "").strip()
+        w_start = float(word.get("start", word.get("start_s", 0.0)))
+        w_end = float(word.get("end", word.get("end_s", w_start + 0.18)))
+        if buf:
+            prev_end = float(buf[-1].get("end", buf[-1].get("end_s", w_start)))
+            prev_txt = str(buf[-1].get("word") or buf[-1].get("text") or "").strip()
+            buf_start = float(buf[0].get("start", buf[0].get("start_s", prev_end)))
+            buf_span = max(0.15, prev_end - buf_start)
+            rate_wps = len(buf) / buf_span
+            # Adaptive word cap under rapid speech keeps CPS within comfortable mobile range.
+            eff_cap = max_words
+            if rate_wps > 3.6 and max_words > 2:
+                eff_cap = max(2, max_words - 2)
+            elif rate_wps > 2.8 and max_words > 3:
+                eff_cap = max(3, max_words - 1)
+            gap = w_start - prev_end
+            ends_clause = prev_txt.endswith((".", "!", "?", ";", ":", ","))
+            if len(buf) >= eff_cap or gap >= pause_threshold_s or ends_clause:
+                out.append(
+                    {
+                        "start": buf_start,
+                        "end": prev_end,
+                        "text": " ".join(
+                            str(x.get("word") or x.get("text") or "").strip() for x in buf
+                        ),
+                    }
+                )
+                buf = []
+        buf.append({"word": txt, "start": w_start, "end": w_end})
+    if buf:
+        out.append(
+            {
+                "start": float(buf[0]["start"]),
+                "end": float(buf[-1]["end"]),
+                "text": " ".join(str(x["word"]) for x in buf),
+            }
+        )
+    return out
+
+
+def build_ass_from_transcript(
+    transcript_data: dict[str, Any] | list[dict[str, Any]],
+    *,
+    width: int = 1080,
+    height: int = 1920,
+    speed: float = 1.0,
+    max_words: int = 4,
+    font_size: int | None = None,
+    margin_v: int | None = None,
+    fade_in_ms: int = 130,
+    fade_out_ms: int = 0,
+    gap_ms: int = 67,
+    font_name: str = "Rubik",
+    fg_color: str = "#F4F1EA",
+    outline_color: str = "#03161F",
+    outline_opacity: float = 0.88,
+    outline_px: float | None = None,
+    shadow_px: float | None = None,
+    shadow_opacity: float = 0.88,
+    letter_spacing: float = 0.3,
+    blur_px: float = 0.8,
+) -> str:
+    """Generate a broadcast-calibrated ASS script from transcript segments or word timestamps.
+
+    Shared single-source ASS generator used by both mastering and CLI caption builders so
+    outline opacity, safe margins, balanced wrapping, perceptual inter-cue gaps, and 9:16 vs
+    16:9 scaling stay identical across every pipeline entry point.
+    """
+    if speed <= 0:
+        raise ValueError("speed must be > 0")
+    is_portrait = height > width
+    scale = min(width, height) / 1080.0
+    eff_font_px = (
+        int(font_size)
+        if font_size is not None
+        else (round(56 * scale) if is_portrait else round(46 * scale))
+    )
+    eff_margin_v = (
+        int(margin_v)
+        if margin_v is not None
+        else (round(348 * (height / 1920.0)) if is_portrait else round(height * 0.095))
+    )
+    eff_margin_x = round(width * (0.078 if is_portrait else 0.125))
+    eff_outline = round(outline_px if outline_px is not None else 2.4 * scale, 2)
+    eff_shadow = round(shadow_px if shadow_px is not None else 2.4 * scale, 2)
+    fade_in = max(0, min(200, int(fade_in_ms)))
+    fade_out = max(0, min(200, int(fade_out_ms)))
+    eff_gap_s = max(0, min(250, int(gap_ms))) / 1000.0
+    primary_ass = _hex_to_ass_color(fg_color, 1.0)
+    outline_ass = _hex_to_ass_color(outline_color, outline_opacity)
+    shadow_ass = _hex_to_ass_color("#000000", shadow_opacity)
+
+    tag_parts: list[str] = []
+    if fade_in or fade_out:
+        tag_parts.append(f"\\fad({fade_in},{fade_out})")
+    if blur_px > 0:
+        tag_parts.append(f"\\blur{blur_px:g}")
+    tag_prefix = f"{{{''.join(tag_parts)}}}" if tag_parts else ""
+
+    if isinstance(transcript_data, list):
+        segments = transcript_data
+    else:
+        segments = list(transcript_data.get("segments") or [])
+        if not segments and isinstance(transcript_data.get("words"), list):
+            segments = _chunk_words_by_pause_and_rate(
+                list(transcript_data["words"]), max_words=max_words
+            )
+
+    cues: list[tuple[float, float, str]] = []
+    for seg in segments:
+        t0 = float(seg.get("start", seg.get("start_s", 0.0))) / speed
+        t1 = float(seg.get("end", seg.get("end_s", t0 + 0.5))) / speed
+        raw_text = " ".join(str(seg.get("text") or "").split())
+        if not raw_text or t1 <= t0:
+            continue
+        words = raw_text.split()
+        if len(words) <= max_words:
+            chunks = [words]
+        else:
+            n_chunks = math.ceil(len(words) / max_words)
+            base = len(words) // n_chunks
+            rem = len(words) % n_chunks
+            chunks = []
+            pos = 0
+            for ci in range(n_chunks):
+                take = base + (1 if ci < rem else 0)
+                chunks.append(words[pos : pos + take])
+                pos += take
+        total_chars = max(1, sum(len(" ".join(c)) for c in chunks))
+        cur_t = t0
+        for ci, chunk in enumerate(chunks):
+            txt = " ".join(chunk)
+            if txt.endswith((",", ".")):
+                txt = txt[:-1]
+            dur_c = (t1 - t0) * (len(txt) / total_chars)
+            end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
+            cues.append((cur_t, end_t, txt))
+            cur_t = end_t
+
+    lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {width}",
+        f"PlayResY: {height}",
+        "WrapStyle: 0",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Default,{_primary_font_name(font_name, 'Rubik')},{eff_font_px},{primary_ass},"
+        f"{primary_ass},{outline_ass},{shadow_ass},-1,0,0,0,100,100,{letter_spacing:g},0,1,"
+        f"{eff_outline:g},{eff_shadow:g},2,{eff_margin_x},{eff_margin_x},{eff_margin_v},1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+
+    for idx, (c_start, c_end, txt) in enumerate(cues):
+        adj_end = c_end
+        if eff_gap_s > 0 and fade_out == 0 and idx + 1 < len(cues):
+            nxt_start = cues[idx + 1][0]
+            if nxt_start - adj_end < eff_gap_s and (nxt_start - eff_gap_s) >= c_start + 0.18:
+                adj_end = nxt_start - eff_gap_s
+        lines.append(
+            f"Dialogue: 0,{_format_ass_time(c_start)},{_format_ass_time(adj_end)},"
+            f"Default,,0,0,0,,{tag_prefix}{_escape_ass_text(txt)}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+_ASS_TIME_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})\.(\d{2})$")
+_ASS_TAG_STRIP_RE = re.compile(r"\{[^}]*\}")
+
+
+def _parse_ass_time(ts: str) -> float | None:
+    m = _ASS_TIME_RE.match(ts.strip())
+    if not m:
+        return None
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 100.0
+
+
+def validate_ass_captions_readability(
+    ass_text: str,
+    *,
+    max_cps: float = 20.0,
+    min_multiword_dur_s: float = 0.65,
+) -> list[str]:
+    """Audit generated ASS captions for reading speed (CPS), brief flashes, and overlaps."""
+    warnings: list[str] = []
+    parsed: list[tuple[float, float, str]] = []
+    for line in ass_text.splitlines():
+        if not line.startswith("Dialogue:"):
+            continue
+        parts = line.split(",", 9)
+        if len(parts) < 10:
+            continue
+        style = parts[3].strip()
+        if style in {"Watermark", "SourceCredit"}:
+            continue
+        t0 = _parse_ass_time(parts[1])
+        t1 = _parse_ass_time(parts[2])
+        if t0 is None or t1 is None or t1 <= t0:
+            continue
+        visible = _ASS_TAG_STRIP_RE.sub("", parts[9]).replace(r"\N", " ").strip()
+        if not visible:
+            continue
+        parsed.append((t0, t1, visible))
+    parsed.sort(key=lambda item: item[0])
+    for idx, (t0, t1, txt) in enumerate(parsed):
+        dur = t1 - t0
+        cps = len(txt) / max(dur, 0.01)
+        words = txt.split()
+        if len(txt) >= 10 and cps > max_cps:
+            warnings.append(
+                f"Caption {t0:.2f}-{t1:.2f}s '{txt}' runs at {cps:.1f} cps (> {max_cps:g} cps)."
+            )
+        if len(words) >= 4 and dur < min_multiword_dur_s:
+            warnings.append(
+                f"Caption {t0:.2f}-{t1:.2f}s '{txt}' lasts {dur:.2f}s "
+                f"(< {min_multiword_dur_s:.2f}s)."
+            )
+        if idx + 1 < len(parsed):
+            nxt_t0 = parsed[idx + 1][0]
+            if nxt_t0 < t1 - 0.005:
+                warnings.append(
+                    f"Caption {t0:.2f}-{t1:.2f}s overlaps next cue starting at {nxt_t0:.2f}s."
+                )
+    return warnings
 
 
 def escape_ffmpeg_filter_path(path: Path) -> str:

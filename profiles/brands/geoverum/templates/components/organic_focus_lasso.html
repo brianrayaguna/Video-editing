@@ -8,6 +8,9 @@
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -31,8 +34,9 @@
       top: calc(-56px * {{SCALE_FACTOR}});
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(40px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.06;
-      letter-spacing: -0.015em;
+      letter-spacing: 0em;
       color: var(--vedit-accent);
       text-align: center;
       white-space: nowrap;

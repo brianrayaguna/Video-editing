@@ -239,11 +239,20 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
         ]
     }
     ass = build_geoverum_ass_captions(transcript, speed=1.3, max_words=4)
-    assert "Style: Default,Rubik,56," in ass
-    assert ",1,1.6,3.2,2,60,60,348,1" in ass
-    # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s
+    assert "WrapStyle: 0" in ass
+    assert "Style: Default,Rubik,56,&H00EAF1F4,&H00EAF1F4,&H1F1F1603,&H1F000000," in ass
+    assert ",1,2.4,2.4,2,84,84,348,1" in ass
+    # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s; touching earlier cue trims by 67ms gap (0:00:01.93)
+    assert "0:00:01.93,Default," in ass
     assert "0:00:02.00,0:00:04.00" in ass
     assert "Hasilnya selisih 117 meter?" in ass
+
+    # 16:9 landscape scaling adapts PlayRes, font size, and bottom margin cleanly.
+    ass_16x9 = build_geoverum_ass_captions(
+        transcript, width=1920, height=1080, font_size=None, margin_v=None
+    )
+    assert "PlayResX: 1920" in ass_16x9 and "PlayResY: 1080" in ass_16x9
+    assert "Style: Default,Rubik,46," in ass_16x9
 
     # Centisecond rollover near 60s must format 0:01:00.00 (never 0:00:60.00) and escape ASS tags
     edge_ass = build_geoverum_ass_captions(
@@ -252,18 +261,160 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert "0:00:60.00" not in edge_ass
     assert "0:01:00.00,0:01:01.00" in edge_ass
     assert r"\{tag\}" in edge_ass
-    assert r"\N" not in edge_ass.split("{\\fad(130,0)}", 1)[1]
+    assert r"\N" not in edge_ass.split("{\\fad(130,0)\\blur0.8}", 1)[1]
 
 
 def test_build_geoverum_ass_captions_fades_in_and_cuts_out() -> None:
+    from vedit.mastering.ass_captions import validate_ass_captions_readability
+
     seg = {"segments": [{"start": 0.0, "end": 1.0, "text": "Garis batas"}]}
-    assert "{\\fad(130,0)}Garis batas" in build_geoverum_ass_captions(seg)
+    assert "{\\fad(130,0)\\blur0.8}Garis batas" in build_geoverum_ass_captions(seg)
     custom = build_geoverum_ass_captions(seg, fade_in_ms=100, fade_out_ms=60)
-    assert "{\\fad(100,60)}Garis batas" in custom
+    assert "{\\fad(100,60)\\blur0.8}Garis batas" in custom
     clamped = build_geoverum_ass_captions(seg, fade_in_ms=900, fade_out_ms=-5)
-    assert "{\\fad(200,0)}Garis batas" in clamped
-    plain = build_geoverum_ass_captions(seg, fade_in_ms=0, fade_out_ms=0)
-    assert "\\fad" not in plain and ",,Garis batas" in plain
+    assert "{\\fad(200,0)\\blur0.8}Garis batas" in clamped
+    plain = build_geoverum_ass_captions(seg, fade_in_ms=0, fade_out_ms=0, blur_px=0.0)
+    assert "\\fad" not in plain and "\\blur" not in plain and ",,Garis batas" in plain
+
+    # Readability audit flags fast (>20 cps) multi-word flashes cleanly.
+    fast_ass = build_geoverum_ass_captions(
+        {"segments": [{"start": 0.0, "end": 0.5, "text": "Kepulauan Nusantara sangat luas sekali"}]}
+    )
+    warns = validate_ass_captions_readability(fast_ass)
+    assert any("cps" in w for w in warns)
+
+
+def test_validate_scene_checks_curved_label_and_four_text_crowd_warning() -> None:
+    bad_curved = {
+        "width": 1080,
+        "height": 1920,
+        "acts": [
+            {
+                "act_id": "a1",
+                "duration_s": 5.0,
+                "camera_keyframes": [{"t": 0.0, "center": [-5.5, 36.0], "zoom": 8.0}],
+                "layers": [
+                    {
+                        "type": "curved_label",
+                        "text": "Strait",
+                        "coords": [[-5.5, 36.0]],
+                        "font_px": 42,
+                    }
+                ],
+            }
+        ],
+    }
+    rep_bad = validate_map_scene(bad_curved)
+    assert rep_bad["ok"] is False
+    assert any("curved_label" in e for e in rep_bad["errors"])
+
+    crowded = {
+        "width": 1080,
+        "height": 1920,
+        "acts": [
+            {
+                "act_id": "a1",
+                "duration_s": 5.0,
+                "camera_keyframes": [{"t": 0.0, "center": [-5.5, 36.0], "zoom": 8.0}],
+                "layers": [
+                    {
+                        "type": "glow_label",
+                        "text": "SPAIN",
+                        "font_px": 56,
+                        "start_s": 0.0,
+                        "end_s": 5.0,
+                    },
+                    {
+                        "type": "glow_label",
+                        "text": "MOROCCO",
+                        "font_px": 56,
+                        "start_s": 0.0,
+                        "end_s": 5.0,
+                    },
+                    {
+                        "type": "pin_label",
+                        "text": "Tangier",
+                        "font_px": 40,
+                        "start_s": 0.0,
+                        "end_s": 5.0,
+                    },
+                    {
+                        "type": "curved_label",
+                        "text": "Strait of Gibraltar",
+                        "coords": [[-5.8, 35.95], [-5.3, 36.0]],
+                        "font_px": 40,
+                        "start_s": 0.0,
+                        "end_s": 5.0,
+                    },
+                ],
+            }
+        ],
+    }
+    rep_crowd = validate_map_scene(crowded)
+    assert rep_crowd["ok"] is True
+    assert any("4 concurrent map text overlays" in w for w in rep_crowd["warnings"])
+
+
+def test_ass_watermark_bold_flag_and_static_font_staging(tmp_path: Path) -> None:
+    from vedit.contracts import load_platform_targets
+    from vedit.mastering.ass_captions import write_ass_overlays_file
+    from vedit.mastering.ffmpeg_master import _stage_plan_fonts_dir
+    from vedit.models import EditPlan, OverlayCompositionOp, PlatformTarget
+
+    target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
+    ass_path = write_ass_overlays_file(
+        [
+            OverlayCompositionOp(
+                overlay_id="wm_1",
+                kind="full_scene",
+                template_id="broadcast_bug",
+                timeline_start_s=0.0,
+                timeline_duration_s=2.0,
+                transparent=True,
+                safe_band="upper_safe",
+                props={"text": "geoverum", "font_family": "Rubik"},
+            )
+        ],
+        target,
+        tmp_path / "wm.ass",
+    )
+    ass_txt = ass_path.read_text(encoding="utf-8")
+    assert "WrapStyle: 0" in ass_txt
+    wm_style = next(ln for ln in ass_txt.splitlines() if ln.startswith("Style: Watermark,"))
+    assert ",-1,0,0,0,100,100,2.2," in wm_style
+
+    plan = EditPlan(
+        job_id="j_fonts",
+        project_id="p_fonts",
+        brand_id="geoverum",
+        platform_target_id="shorts_9x16_1080p",
+        render_strategy="hybrid",
+        duration_s=2.0,
+        fps=30,
+        width=1080,
+        height=1920,
+        assets=[],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[],
+        verifier_passed=True,
+    )
+    staged = _stage_plan_fonts_dir(plan, tmp_path / "libass_fonts")
+    assert staged is not None
+    names = {p.name for p in staged.iterdir()}
+    assert "Rubik-Bold.ttf" in names
+    assert "Rubik-Variable.ttf" not in names
+    assert "Inter-Bold.ttf" in names
+    assert "Inter-Variable.ttf" not in names
+
+
+def test_planner_compact_metric_avoids_verbatim_caption_duplication() -> None:
+    from vedit.director.planner import _extract_compact_metric_callout
+
+    metric, label = _extract_compact_metric_callout("The strait is only 14 km wide today")
+    assert metric == "14 km"
+    assert len(label.split()) <= 2
+    assert metric not in label
 
 
 def test_map_plane_jacobian_has_near_plane_determinant_guard() -> None:

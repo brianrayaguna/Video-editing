@@ -338,9 +338,10 @@ test("caption centering is symmetric (x=50%) with y=70% portrait band and propor
   assert.match(capHtml, /left: 16%;\s*right: 16%;/);
   // Portrait lower_third sits around y=70% (bottom: 28.5%).
   assert.match(capHtml, /bottom: 28\.5%;/);
-  // Plain documentary style (no pill box) and 44px proportional font size.
+  // Plain documentary style (no pill box) and unified 56px proportional font size.
   assert.match(capHtml, /class="vedit-caption-plain"/);
-  assert.match(capHtml, /font-size: 44px;/);
+  assert.match(capHtml, /font-size: 56px;/);
+  assert.match(capHtml, /letter-spacing: 0\.015em;/);
   // Hard cut transition (0.033s <= 33ms @ 30fps).
   assert.match(capHtml, /duration: 0\.033/);
 
@@ -378,7 +379,7 @@ test("caption centering is symmetric (x=50%) with y=70% portrait band and propor
     { platformTarget: uhdTarget, copyAssets: false }
   );
   const uhdHtml = fs.readFileSync(compiledUhd.compositionFiles[0]!, "utf8");
-  assert.match(uhdHtml, /font-size: 84px;/);
+  assert.match(uhdHtml, /font-size: 92px;/);
   assert.match(uhdHtml, /bottom: 9\.5%;/);
 });
 
@@ -482,7 +483,7 @@ test("parameterized Geoverum brand templates compile cleanly without SVG logo on
   assert.doesNotMatch(bugHtml, /<svg/i);
   assert.match(bugHtml, /top: 16%;/);
   assert.match(bugHtml, /right: 5\.5%;/);
-  assert.match(bugHtml, /font-size: 18px;/);
+  assert.match(bugHtml, /font-size: 24px;/);
 
   const lintResult = await lintHyperframesProjectDir(tmpDir);
   assert.equal(
@@ -2129,6 +2130,280 @@ test("arc track keyframes subdivide cleanly with 24 eased steps and radar_pulse_
     lintResult.totalErrors,
     0,
     `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});
+
+test("compiler reads SFNT fvar weight ranges, deduplicates static+variable faces, wires 4-role tokens, and flags fast CPS", async () => {
+  const repoRoot = path.resolve(process.cwd(), "..", "..");
+  const fontsDir = path.join(repoRoot, "assets", "geo", "fonts");
+  const sgVar = path.join(fontsDir, "SpaceGrotesk-Variable.ttf");
+  const sgBold = path.join(fontsDir, "SpaceGrotesk-Bold.ttf");
+  const rubikVar = path.join(fontsDir, "Rubik-Variable.ttf");
+  const rubikBold = path.join(fontsDir, "Rubik-Bold.ttf");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-typo-upgrade-"));
+  const plan = makeSamplePlan({
+    brand_id: "geoverum",
+    assets: [
+      { asset_id: "font_sg_bold", sha256: "1".repeat(64), kind: "font", path: sgBold },
+      { asset_id: "font_sg_var", sha256: "2".repeat(64), kind: "font", path: sgVar },
+      { asset_id: "font_rubik_bold", sha256: "3".repeat(64), kind: "font", path: rubikBold },
+      { asset_id: "font_rubik_var", sha256: "4".repeat(64), kind: "font", path: rubikVar },
+    ],
+    overlay_compositions: [
+      {
+        overlay_id: "arch_tokens",
+        kind: "full_scene",
+        template_id: "historical_parchment_plate",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 2.5,
+        transparent: true,
+        safe_band: "fullscreen",
+        props: {
+          font_family: "Inter",
+          display_family: "Barlow Condensed",
+          title_family: "Archivo Black",
+          serif_family: "Lora",
+          mono_family: "IBM Plex Mono",
+        },
+        variables: { variant: "timeline_bar", year: "1803 – 1928", title: "Treaty Corridor" },
+      },
+      {
+        overlay_id: "fast_cap",
+        kind: "caption_rail",
+        template_id: "caption_rail",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 0.5,
+        transparent: true,
+        safe_band: "lower_third",
+        props: {
+          text: "Kepulauan Nusantara sangat luas sekali",
+          caption_font_family: "Rubik",
+        },
+      },
+    ],
+  });
+
+  const perfFindings = lintPlanPerformance(plan);
+  assert.ok(perfFindings.some((f) => f.code === "CAPTION_CPS_TOO_FAST"));
+  assert.ok(perfFindings.some((f) => f.code === "CAPTION_DURATION_SHORT"));
+
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, { copyAssets: false });
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /font-synthesis:\s*none;/);
+  assert.match(indexHtml, /font-optical-sizing:\s*auto;/);
+  // Real SFNT fvar reads exact 300 700 range for Space Grotesk and deduplicates static SpaceGrotesk-Bold.
+  assert.match(indexHtml, /font-family: 'Space Grotesk';[\s\S]*?font-weight: 300 700;/);
+  assert.doesNotMatch(indexHtml, /assets\/font_sg_bold\.ttf/);
+  // Rubik variable (300 900) wins over colliding static Rubik-Bold.
+  assert.match(indexHtml, /font-family: 'Rubik';[\s\S]*?font-weight: 300 900;/);
+  assert.doesNotMatch(indexHtml, /assets\/font_rubik_bold\.ttf/);
+  // Auto-staged bundled families referenced by template tokens.
+  assert.match(indexHtml, /font-family: 'Lora';/);
+  assert.match(indexHtml, /font-family: 'IBM Plex Mono';/);
+
+  const archHtml = fs.readFileSync(path.join(tmpDir, "compositions", "arch_tokens.html"), "utf8");
+  assert.match(archHtml, /font-family: 'Lora', 'Lora', 'EB Garamond'/);
+  assert.match(archHtml, /font-family: 'IBM Plex Mono', 'IBM Plex Mono', monospace/);
+  assert.match(archHtml, /font-family: 'Archivo Black', 'Archivo Black'/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  assert.equal(
+    lintResult.totalErrors,
+    0,
+    `Expected 0 lint errors, got: ${JSON.stringify(lintResult.hyperframesFindings)}`
+  );
+  assert.equal(lintResult.ok, true);
+});
+
+test("typography system separates CAPTION_FONT from BODY_FONT, emits root type_scale/grid vars, and flags craft violations", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-typo-sys-"));
+  const target: PlatformTarget = {
+    platform_id: "shorts_9x16_1080p",
+    aspect_ratio: "9:16",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    safe_zone: { top_pct: 0.14, bottom_pct: 0.22, left_pct: 0.06, right_pct: 0.16 },
+  };
+
+  const plan = makeSamplePlan({
+    brand_id: "geoverum",
+    width: 1080,
+    height: 1920,
+    overlay_compositions: [
+      {
+        overlay_id: "cap_sep",
+        kind: "caption_rail",
+        template_id: "caption_rail",
+        timeline_start_s: 0.0,
+        timeline_duration_s: 1.8,
+        transparent: true,
+        safe_band: "lower_third",
+        props: {
+          text: "Strait narrows sharply",
+          font_family: "Inter, sans-serif",
+          caption_font_family: "Rubik, Inter, sans-serif",
+          caption_letter_spacing_em: 0.02,
+          base_rem_px: 16,
+        },
+      },
+      {
+        overlay_id: "metric_sep",
+        kind: "kinetic_callout",
+        template_id: "tabular_metric",
+        timeline_start_s: 2.0,
+        timeline_duration_s: 2.0,
+        transparent: true,
+        safe_band: "upper_safe",
+        props: {
+          label: "14 KM",
+          secondary_value: "(8.7 mi)",
+          subtitle: "Gibraltar gap",
+          font_family: "Inter, sans-serif",
+          caption_font_family: "Rubik, Inter, sans-serif",
+          display_family: "Barlow Condensed, sans-serif",
+          title_family: "Archivo Black, sans-serif",
+          mono_family: "IBM Plex Mono, monospace",
+        },
+      },
+      {
+        overlay_id: "bad_typo_css",
+        kind: "kinetic_callout",
+        timeline_start_s: 4.2,
+        timeline_duration_s: 1.5,
+        transparent: true,
+        safe_band: "center_safe",
+        props: {
+          headline: "Defect check",
+          custom_css: `
+            .bad-weight { font-family: 'Barlow Condensed', sans-serif; font-size: 48px; font-weight: 900; }
+            .missing-weight { font-family: 'Barlow Condensed', sans-serif; font-size: 52px; }
+            .bad-track { font-family: 'Inter', sans-serif; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; }
+          `,
+        },
+      },
+    ],
+  });
+
+  const compiled = compileEditPlanToHyperframes(plan, tmpDir, {
+    platformTarget: target,
+    copyAssets: false,
+  });
+  const indexHtml = fs.readFileSync(compiled.indexHtmlPath, "utf8");
+  assert.match(indexHtml, /font-size:\s*16px;/);
+  assert.match(indexHtml, /font-kerning:\s*normal;/);
+  assert.match(indexHtml, /--space-2:\s*8px;/);
+  assert.match(indexHtml, /--grid-cols:\s*6;/);
+  assert.match(indexHtml, /--type-hero-size:\s*112px;/);
+  assert.match(indexHtml, /--type-caption-tracking:\s*0\.015em;/);
+
+  const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_sep.html"), "utf8");
+  assert.match(capHtml, /font-family:\s*'Rubik', 'Rubik', 'Inter', sans-serif;/);
+  assert.match(capHtml, /letter-spacing:\s*0\.02em;/);
+
+  const metricHtml = fs.readFileSync(path.join(tmpDir, "compositions", "metric_sep.html"), "utf8");
+  // BODY_FONT stays Inter rather than being overridden by Rubik caption_font_family.
+  assert.match(metricHtml, /#metric_sep-sub\s*\{[\s\S]*?font-family:\s*'Inter', 'Inter', sans-serif;/);
+  assert.match(metricHtml, /#metric_sep-primary\s*\{[\s\S]*?font-family:\s*'Archivo Black'/);
+  assert.match(metricHtml, /#metric_sep-secondary\s*\{[\s\S]*?font-family:\s*'IBM Plex Mono'/);
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  const codes = new Set(lintResult.performanceViolations.map((v) => v.code));
+  assert.ok(codes.has("TYPO_UNAVAILABLE_WEIGHT"));
+  assert.ok(codes.has("TYPO_MISSING_DISPLAY_WEIGHT"));
+  assert.ok(codes.has("TYPO_INVERSE_TRACKING"));
+  assert.ok(codes.has("TYPO_INVERSE_LEADING"));
+});
+
+test("all 32 Geoverum brand templates compile with zero typography lint warnings", async () => {
+  const repoRoot = path.resolve(process.cwd(), "..", "..");
+  const catalogPath = path.join(
+    repoRoot,
+    "profiles",
+    "brands",
+    "geoverum",
+    "templates",
+    "catalog.json"
+  );
+  const policyPath = path.join(repoRoot, "profiles", "brands", "geoverum", "brand_style_policy.json");
+  const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8")) as {
+    templates: Array<{ template_id: string; overlay_kind?: string; safe_band?: string }>;
+  };
+  const policy = JSON.parse(fs.readFileSync(policyPath, "utf8")) as {
+    soft_priors: {
+      visual_tokens: {
+        typography: Record<string, unknown>;
+        palette_roles: Record<string, string>;
+      };
+    };
+  };
+  const typo = policy.soft_priors.visual_tokens.typography;
+  const pal = policy.soft_priors.visual_tokens.palette_roles;
+
+  const overlays = catalog.templates.map((entry, idx) => ({
+    overlay_id: `tpl_${idx + 1}_${entry.template_id}`,
+    kind: (entry.overlay_kind ?? "kinetic_callout") as
+      | "caption_rail"
+      | "kinetic_callout"
+      | "lower_third"
+      | "data_card"
+      | "title_scene"
+      | "full_scene",
+    template_id: entry.template_id,
+    timeline_start_s: idx * 2.0,
+    timeline_duration_s: 1.8,
+    transparent: true,
+    safe_band: (entry.safe_band === "dynamic_away_from_subject"
+      ? "lower_third"
+      : entry.safe_band ?? "center_safe") as
+      | "lower_third"
+      | "upper_safe"
+      | "center_safe"
+      | "fullscreen",
+    props: {
+      text: "Sample beat",
+      label: "Gibraltar",
+      title: "Strait Profile",
+      fg_color: pal.ink,
+      bg_color: pal.ground,
+      accent_color: pal.accent,
+      font_family: typo.body_family,
+      display_family: typo.display_family,
+      title_family: typo.title_family,
+      serif_family: typo.serif_family,
+      mono_family: typo.mono_family,
+      caption_font_family: typo.caption_font_family,
+      caption_letter_spacing_em: typo.caption_letter_spacing_em,
+      type_scale: typo.type_scale,
+    },
+  }));
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-all-gv-"));
+  const target: PlatformTarget = {
+    platform_id: "shorts_9x16_1080p",
+    aspect_ratio: "9:16",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    safe_zone: { top_pct: 0.14, bottom_pct: 0.22, left_pct: 0.06, right_pct: 0.16 },
+  };
+  compileEditPlanToHyperframes(
+    makeSamplePlan({
+      brand_id: "geoverum",
+      duration_s: overlays.length * 2.0 + 1.0,
+      overlay_compositions: overlays,
+    }),
+    tmpDir,
+    { platformTarget: target, copyAssets: false }
+  );
+
+  const lintResult = await lintHyperframesProjectDir(tmpDir);
+  const typoViolations = lintResult.performanceViolations.filter((v) => v.code.startsWith("TYPO_"));
+  assert.deepEqual(
+    typoViolations,
+    [],
+    `Expected zero TYPO_* findings across all Geoverum templates, got: ${JSON.stringify(typoViolations)}`
   );
   assert.equal(lintResult.ok, true);
 });

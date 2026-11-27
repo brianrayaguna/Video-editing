@@ -1048,7 +1048,9 @@
       "fail_signs": [
         "route thinner than 4 px",
         "icons under 100 px",
-        "numerals smaller than captions"
+        "numerals smaller than captions",
+        "small text or captions below 7:1 local contrast over bright terrain",
+        "cramped negative tracking on small bold labels"
       ]
     },
     {
@@ -1059,7 +1061,9 @@
         "boxed captions",
         "low-contrast caption shadow over bright snow or ocean",
         "glow on everything",
-        "generic interface chrome"
+        "generic interface chrome",
+        "display headline collapsed to Regular 400 weight",
+        "flat 700 weight hierarchy across primary and secondary labels"
       ]
     },
     {

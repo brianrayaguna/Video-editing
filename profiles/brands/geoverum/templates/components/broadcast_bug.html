@@ -7,6 +7,9 @@
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -22,7 +25,7 @@
       font-size: {{WATERMARK_FONT_PX}}px;
       font-weight: 600;
       letter-spacing: 0.12em;
-      line-height: 1;
+      line-height: 1.2;
       color: var(--vedit-ink);
       text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
       white-space: nowrap;

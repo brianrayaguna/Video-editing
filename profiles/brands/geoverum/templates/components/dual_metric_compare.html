@@ -10,6 +10,9 @@
       --vedit-right: {{VAR_RIGHT_COLOR|#F5C542}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -35,13 +38,14 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
-      gap: calc(6px * {{SCALE_FACTOR}});
+      gap: calc(8px * {{SCALE_FACTOR}});
     }
     .gv-dm-val {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(56px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.02;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.015em;
       white-space: nowrap;
       text-shadow:
         0 4px 18px rgba(0, 0, 0, 0.92),
@@ -50,9 +54,11 @@
     .gv-dm-val.left { color: var(--vedit-left); }
     .gv-dm-val.right { color: var(--vedit-right); }
     .gv-dm-sec {
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
       font-size: calc(30px * {{SCALE_FACTOR}});
-      font-weight: 700;
-      line-height: 1.15;
+      font-weight: 600;
+      line-height: 1.22;
+      letter-spacing: 0.01em;
       white-space: nowrap;
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.94);
     }
@@ -60,7 +66,8 @@
     .gv-dm-sec.right { color: var(--vedit-right); opacity: 0.9; }
     .gv-dm-lbl {
       font-size: calc(28px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-weight: 600;
+      line-height: 1.28;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--vedit-ink);

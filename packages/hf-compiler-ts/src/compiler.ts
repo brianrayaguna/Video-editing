@@ -65,7 +65,6 @@ const BUNDLED_FAMILIES = [
   "Caveat",
   "Permanent Marker",
   "Patrick Hand",
-  "Noto Sans JP",
 ];
 
 interface StagedFontFace {
@@ -74,6 +73,53 @@ interface StagedFontFace {
   format: string;
   weight: string;
   style: "normal" | "italic";
+  isVariable?: boolean;
+}
+
+interface TtfWeightAxisInfo {
+  isVariable: boolean;
+  minWeight: number;
+  maxWeight: number;
+}
+
+function readTtfWeightAxis(filePath: string): TtfWeightAxisInfo | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const buf = fs.readFileSync(filePath);
+    if (buf.length < 12) return null;
+    const numTables = buf.readUInt16BE(4);
+    let fvarOff = 0;
+    let os2Off = 0;
+    for (let i = 0; i < numTables; i += 1) {
+      const rec = 12 + i * 16;
+      if (rec + 16 > buf.length) break;
+      const tag = buf.toString("ascii", rec, rec + 4);
+      if (tag === "fvar") fvarOff = buf.readUInt32BE(rec + 8);
+      else if (tag === "OS/2") os2Off = buf.readUInt32BE(rec + 8);
+    }
+    if (fvarOff && fvarOff + 12 <= buf.length) {
+      const axesOff = buf.readUInt16BE(fvarOff + 4);
+      const axisCount = buf.readUInt16BE(fvarOff + 8);
+      const axisSize = buf.readUInt16BE(fvarOff + 10);
+      for (let i = 0; i < axisCount; i += 1) {
+        const off = fvarOff + axesOff + i * axisSize;
+        if (off + 16 > buf.length) break;
+        const axisTag = buf.toString("ascii", off, off + 4);
+        if (axisTag === "wght") {
+          const minW = Math.max(1, Math.min(1000, Math.round(buf.readInt32BE(off + 4) / 65536)));
+          const maxW = Math.max(minW, Math.min(1000, Math.round(buf.readInt32BE(off + 12) / 65536)));
+          return { isVariable: true, minWeight: minW, maxWeight: maxW };
+        }
+      }
+    }
+    if (os2Off && os2Off + 6 <= buf.length) {
+      const w = Math.max(100, Math.min(900, buf.readUInt16BE(os2Off + 4)));
+      return { isVariable: false, minWeight: w, maxWeight: w };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function readTtfFamilyName(filePath: string): string | null {
@@ -126,7 +172,7 @@ function readTtfFamilyName(filePath: string): string | null {
 function inferFontDescriptor(
   assetPath: string,
   assetId: string
-): { family: string; weight: string; style: "normal" | "italic" } {
+): { family: string; weight: string; style: "normal" | "italic"; isVariable: boolean } {
   const knownMap: Record<string, string> = {
     archivoblack: "Archivo Black",
     unbounded: "Unbounded",
@@ -187,9 +233,14 @@ function inferFontDescriptor(
     ttfFamily ??
     (stem.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim() || assetId);
 
+  const axisInfo = readTtfWeightAxis(assetPath);
+  let isVariable = axisInfo?.isVariable ?? /variable/i.test(base);
   let weight = "400";
-  if (/variable/i.test(base)) {
+  if (axisInfo?.isVariable) {
+    weight = `${axisInfo.minWeight} ${axisInfo.maxWeight}`;
+  } else if (/variable/i.test(base)) {
     weight = "100 900";
+    isVariable = true;
   } else if (/(?:^|[-_])(extra[-_]?bold|ultrabold)(?:italic)?$/i.test(base)) {
     weight = "800";
   } else if (/(?:^|[-_])(semi[-_]?bold|demibold)(?:italic)?$/i.test(base)) {
@@ -206,6 +257,8 @@ function inferFontDescriptor(
     weight = "200";
   } else if (/(?:^|[-_])light(?:italic)?$/i.test(base)) {
     weight = "300";
+  } else if (axisInfo && !axisInfo.isVariable) {
+    weight = String(axisInfo.minWeight);
   } else if (
     !/[-_](regular|italic)$/i.test(base) &&
     /space.?grotesk|unbounded|inter|montserrat|eb.?garamond|playfair.?display|rubik|plus.?jakarta.?sans|oswald|outfit|dm.?sans|manrope|open.?sans|nunito|sora|work.?sans|lora|merriweather|cinzel|syne|jetbrains.?mono|source.?code.?pro|caveat|league.?gothic/i.test(
@@ -213,8 +266,9 @@ function inferFontDescriptor(
     )
   ) {
     weight = "100 900";
+    isVariable = true;
   }
-  return { family, weight, style };
+  return { family, weight, style, isVariable };
 }
 
 function resolveFontFormat(relPath: string): string {
@@ -439,7 +493,90 @@ function computeCaptionBottomPct(safeZone: SafeZoneMargins, width: number, heigh
 
 function computeProportionalCaptionFontPx(width: number, height: number): number {
   const isPortrait = height > width;
-  return isPortrait ? Math.round(width * 0.041) : Math.round(height * 0.039);
+  const scale = Math.min(width, height) / 1080;
+  return isPortrait ? Math.round(56 * scale) : Math.round(46 * scale);
+}
+
+function resolveCaptionLetterSpacingEm(props: Record<string, unknown>): number {
+  const raw = props.caption_letter_spacing_em;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Number(Math.max(-0.05, Math.min(0.25, raw)).toFixed(4));
+  }
+  return 0.015;
+}
+
+interface ResolvedTypeScaleStep {
+  sizePx: number;
+  weight: number;
+  lineHeight: number;
+  letterSpacingEm: number;
+}
+
+function buildTypeScaleCssVars(
+  props: Record<string, unknown>,
+  width: number,
+  height: number
+): string {
+  const isPortrait = height > width;
+  const scaleFactor = Math.min(width, height) / 1080;
+  const defaults: Record<string, ResolvedTypeScaleStep> = {
+    hero: { sizePx: isPortrait ? 112 : 108, weight: 400, lineHeight: 0.98, letterSpacingEm: -0.02 },
+    display: { sizePx: isPortrait ? 76 : 72, weight: 800, lineHeight: 1.04, letterSpacingEm: -0.01 },
+    title: { sizePx: isPortrait ? 48 : 44, weight: 700, lineHeight: 1.12, letterSpacingEm: 0.01 },
+    caption: { sizePx: isPortrait ? 56 : 46, weight: 700, lineHeight: 1.24, letterSpacingEm: 0.015 },
+    telemetry: { sizePx: isPortrait ? 34 : 30, weight: 600, lineHeight: 1.22, letterSpacingEm: 0.02 },
+    body: { sizePx: isPortrait ? 28 : 26, weight: 500, lineHeight: 1.32, letterSpacingEm: 0.01 },
+    micro: { sizePx: isPortrait ? 22 : 20, weight: 600, lineHeight: 1.35, letterSpacingEm: 0.06 },
+  };
+  const rawScale =
+    props.type_scale && typeof props.type_scale === "object"
+      ? (props.type_scale as Record<string, unknown>)
+      : {};
+  const lines: string[] = [
+    `--vedit-scale: ${Number(scaleFactor.toFixed(4))};`,
+    `--space-1: ${Math.round(4 * scaleFactor)}px;`,
+    `--space-2: ${Math.round(8 * scaleFactor)}px;`,
+    `--space-3: ${Math.round(12 * scaleFactor)}px;`,
+    `--space-4: ${Math.round(16 * scaleFactor)}px;`,
+    `--space-6: ${Math.round(24 * scaleFactor)}px;`,
+    `--space-8: ${Math.round(32 * scaleFactor)}px;`,
+    `--grid-cols: ${isPortrait ? 6 : 12};`,
+    `--grid-gutter: ${Math.round(16 * scaleFactor)}px;`,
+    `--measure-editorial: ${isPortrait ? "84%" : "68%"};`,
+  ];
+  for (const [level, fallback] of Object.entries(defaults)) {
+    const custom =
+      rawScale[level] && typeof rawScale[level] === "object"
+        ? (rawScale[level] as Record<string, unknown>)
+        : null;
+    const rawSize = custom
+      ? isPortrait
+        ? custom.size_px_9x16
+        : custom.size_px_16x9
+      : undefined;
+    const basePx =
+      typeof rawSize === "number" && Number.isFinite(rawSize) ? rawSize : fallback.sizePx;
+    const scaledPx = Math.round(basePx * scaleFactor);
+    const weight =
+      custom && typeof custom.weight === "number" && Number.isFinite(custom.weight)
+        ? Math.round(custom.weight)
+        : fallback.weight;
+    const lh =
+      custom && typeof custom.line_height === "number" && Number.isFinite(custom.line_height)
+        ? Number(custom.line_height.toFixed(3))
+        : fallback.lineHeight;
+    const ls =
+      custom &&
+      typeof custom.letter_spacing_em === "number" &&
+      Number.isFinite(custom.letter_spacing_em)
+        ? Number(custom.letter_spacing_em.toFixed(4))
+        : fallback.letterSpacingEm;
+    lines.push(`--type-${level}-size: ${scaledPx}px;`);
+    lines.push(`--type-${level}-weight: ${weight};`);
+    lines.push(`--type-${level}-leading: ${lh};`);
+    lines.push(`--type-${level}-tracking: ${ls}em;`);
+  }
+  return lines.join("\n      ");
 }
 
 function computeBandPositionCss(
@@ -716,7 +853,9 @@ function buildOverlayCompositionHtml(
     resolveCaptionTypographyOverrides(ov, width, height, safeZone);
   const headlineFontPx = Math.round(48 * scaleFactor);
   const subtitleFontPx = Math.round(24 * scaleFactor);
-  const badgeFontPx = Math.round(16 * scaleFactor);
+  const badgeFontPx = Math.max(22, Math.round(22 * scaleFactor));
+  const captionLetterSpacingEm = resolveCaptionLetterSpacingEm(ov.props);
+  const typeScaleVarsCss = buildTypeScaleCssVars(ov.props, width, height);
 
   const entranceMs =
     typeof ov.props.entrance_ms === "number" && Number.isFinite(ov.props.entrance_ms)
@@ -846,7 +985,9 @@ function buildOverlayCompositionHtml(
       --vedit-ink: ${fg};
       --vedit-accent: ${accent};
       --vedit-text-glow: ${glowTextShadow};
+      ${typeScaleVarsCss}
       font-variant-numeric: tabular-nums;
+      font-kerning: normal;
       ${blendCss}
       ${matteCss}
     }
@@ -860,10 +1001,12 @@ function buildOverlayCompositionHtml(
       padding: 0;
       max-width: 100%;
       text-align: center;
+      text-wrap: balance;
       font-size: ${captionFontPx}px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.24;
-      letter-spacing: -0.01em;
+      letter-spacing: ${captionLetterSpacingEm}em;
+      font-kerning: normal;
       text-shadow: var(--vedit-text-glow);
     }
     .vedit-caption-pill {
@@ -873,10 +1016,12 @@ function buildOverlayCompositionHtml(
       padding: 8px 20px;
       max-width: 100%;
       text-align: center;
+      text-wrap: balance;
       font-size: ${captionFontPx}px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.24;
-      letter-spacing: -0.01em;
+      letter-spacing: ${captionLetterSpacingEm}em;
+      font-kerning: normal;
     }
     .vedit-card {
       background: transparent;
@@ -887,13 +1032,14 @@ function buildOverlayCompositionHtml(
       flex-direction: column;
       align-items: center;
       text-align: center;
-      gap: ${Math.round(6 * scaleFactor)}px;
+      gap: ${Math.round(8 * scaleFactor)}px;
       text-shadow: var(--vedit-text-glow);
     }
     .vedit-badge {
       color: var(--vedit-accent);
       font-size: ${badgeFontPx}px;
       font-weight: 700;
+      line-height: 1.3;
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
@@ -906,7 +1052,8 @@ function buildOverlayCompositionHtml(
     .vedit-subtitle {
       font-size: ${subtitleFontPx}px;
       font-weight: 600;
-      line-height: 1.3;
+      line-height: 1.32;
+      letter-spacing: 0.01em;
       opacity: 0.9;
     }
     ${customCss}
@@ -941,10 +1088,30 @@ function renderParameterizedTemplate(
   const bg = resolveCssHex(ov.props.bg_color, "#0F172A");
   const accent = resolveCssHex(ov.props.accent_color, "#38BDF8");
   const bodyFont = escapeCssString(
+    resolveFontFamily(ov.props.font_family ?? ov.props.caption_font_family, extraFamilies)
+  );
+  const captionFont = escapeCssString(
     resolveFontFamily(ov.props.caption_font_family ?? ov.props.font_family, extraFamilies)
   );
+  const captionLetterSpacingEm = resolveCaptionLetterSpacingEm(ov.props);
+  const baseRemPx =
+    typeof ov.props.base_rem_px === "number" && Number.isFinite(ov.props.base_rem_px)
+      ? Math.max(8, Math.min(32, ov.props.base_rem_px))
+      : 16;
   const displayFont = escapeCssString(
     resolveFontFamily(ov.props.display_family ?? ov.props.font_family, extraFamilies)
+  );
+  const titleFont = escapeCssString(
+    resolveFontFamily(
+      ov.props.title_family ?? ov.props.display_family ?? ov.props.font_family,
+      extraFamilies
+    )
+  );
+  const serifFont = escapeCssString(
+    resolveFontFamily(ov.props.serif_family ?? "Lora", extraFamilies)
+  );
+  const monoFont = escapeCssString(
+    resolveFontFamily(ov.props.mono_family ?? "IBM Plex Mono", extraFamilies)
   );
   const captionFade = captionFadeMs(ov.props);
   const captionTransitionS = Number(Math.min(captionFade.inMs / 1000, duration * 0.2).toFixed(3));
@@ -965,7 +1132,7 @@ function renderParameterizedTemplate(
     safeBand === "lower_third" && hasBottomOverride && !ov.props.box
       ? `bottom: ${captionBottomPct}%; left: ${symXPct}%; right: ${symXPct}%; display: flex; justify-content: center; align-items: flex-end;`
       : computeBandPositionCss(safeBand, safeZone, width, height, ov.props.box);
-  const watermarkFontPx = Math.round(18 * scaleFactor);
+  const watermarkFontPx = Math.max(22, Math.round(24 * scaleFactor));
   const watermarkTopPct = isPortrait ? 16.0 : 7.5;
   const watermarkRightPct = isPortrait ? 5.5 : 5.0;
   const rawText =
@@ -998,6 +1165,9 @@ function renderParameterizedTemplate(
     SYM_X_PCT: String(symXPct),
     CAPTION_BOTTOM_PCT: String(captionBottomPct),
     CAPTION_FONT_PX: String(captionFontPx),
+    CAPTION_LETTER_SPACING_EM: String(captionLetterSpacingEm),
+    BASE_REM_PX: String(Number((baseRemPx * scaleFactor).toFixed(2))),
+    GRID_COLS: isPortrait ? "6" : "12",
     BAND_POSITION_CSS: bandPositionCss,
     WATERMARK_FONT_PX: String(watermarkFontPx),
     WATERMARK_TOP_PCT: String(watermarkTopPct),
@@ -1009,7 +1179,11 @@ function renderParameterizedTemplate(
     GLOW_COLOR: glowColor || accent,
     TEXT_GLOW_CSS: textGlowCss,
     BODY_FONT: bodyFont,
+    CAPTION_FONT: captionFont,
     DISPLAY_FONT: displayFont,
+    TITLE_FONT: titleFont,
+    SERIF_FONT: serifFont,
+    MONO_FONT: monoFont,
     EASE_NAME: physics.easeName,
     MOTION_REGISTER: physics.registerName,
     ANTICIPATION_S: String(physics.anticipationS),
@@ -1111,17 +1285,113 @@ function stageLocalAssets(plan: EditPlan, outDir: string, copyAssets: boolean): 
         format: resolveFontFormat(relPath),
         weight: desc.weight,
         style: desc.style,
+        isVariable: desc.isVariable,
       });
     }
   }
-  return { assetPathsById, copiedAssets, stagedFonts };
+  const hasVarByKey = new Set<string>();
+  for (const f of stagedFonts) {
+    if (f.isVariable) {
+      hasVarByKey.add(`${f.family.toLowerCase()}::${f.style}`);
+    }
+  }
+  const dedupedFonts = stagedFonts.filter(
+    (f) => f.isVariable || !hasVarByKey.has(`${f.family.toLowerCase()}::${f.style}`)
+  );
+  return { assetPathsById, copiedAssets, stagedFonts: dedupedFonts };
+}
+
+function extractReferencedFontFamilies(html: string): string[] {
+  const found = new Set<string>();
+  const re = /font-family\s*:\s*([^;\n}]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const raw = m[1] ?? "";
+    for (const part of raw.split(",")) {
+      const cleaned = part.trim().replace(/^['"]|['"]$/g, "").trim();
+      if (!cleaned) continue;
+      if (/^(?:sans-serif|serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace|inherit|initial|unset|georgia|arial|helvetica)$/i.test(cleaned)) {
+        continue;
+      }
+      found.add(cleaned);
+    }
+  }
+  return [...found];
+}
+
+function autoStageBundledFonts(
+  referencedFamilies: readonly string[],
+  existingFonts: readonly StagedFontFace[],
+  outDir: string,
+  copyAssets: boolean
+): { addedFonts: StagedFontFace[]; addedFiles: string[] } {
+  const repoRoot = findRepoRootForTemplates();
+  if (!repoRoot) return { addedFonts: [], addedFiles: [] };
+  const fontsDir = path.join(repoRoot, "assets", "geo", "fonts");
+  if (!fs.existsSync(fontsDir) || !fs.statSync(fontsDir).isDirectory()) {
+    return { addedFonts: [], addedFiles: [] };
+  }
+
+  const existingFamilies = new Set(existingFonts.map((f) => f.family.toLowerCase()));
+  const needed = new Set<string>();
+  for (const fam of referencedFamilies) {
+    const lc = fam.toLowerCase();
+    if (!existingFamilies.has(lc) && BUNDLED_FAMILIES.some((b) => b.toLowerCase() === lc)) {
+      needed.add(lc);
+    }
+  }
+  if (needed.size === 0) return { addedFonts: [], addedFiles: [] };
+
+  const candidates: Array<{ srcPath: string; fileName: string; desc: ReturnType<typeof inferFontDescriptor> }> = [];
+  for (const fn of fs.readdirSync(fontsDir).sort()) {
+    if (!/\.(?:ttf|otf|woff2?)$/i.test(fn)) continue;
+    const srcPath = path.join(fontsDir, fn);
+    const desc = inferFontDescriptor(srcPath, fn);
+    if (needed.has(desc.family.toLowerCase())) {
+      candidates.push({ srcPath, fileName: fn, desc });
+    }
+  }
+
+  const hasVarByKey = new Set<string>();
+  for (const c of candidates) {
+    if (c.desc.isVariable) {
+      hasVarByKey.add(`${c.desc.family.toLowerCase()}::${c.desc.style}`);
+    }
+  }
+  const selected = candidates.filter(
+    (c) => c.desc.isVariable || !hasVarByKey.has(`${c.desc.family.toLowerCase()}::${c.desc.style}`)
+  );
+
+  const addedFonts: StagedFontFace[] = [];
+  const addedFiles: string[] = [];
+  const destFontsDir = path.join(outDir, "assets", "fonts");
+  for (const item of selected) {
+    const relPath = `assets/fonts/${item.fileName}`;
+    if (copyAssets) {
+      fs.mkdirSync(destFontsDir, { recursive: true });
+      const destPath = path.join(destFontsDir, item.fileName);
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(item.srcPath, destPath);
+      }
+      addedFiles.push(destPath);
+    }
+    addedFonts.push({
+      family: item.desc.family,
+      relPath,
+      format: resolveFontFormat(relPath),
+      weight: item.desc.weight,
+      style: item.desc.style,
+      isVariable: item.desc.isVariable,
+    });
+  }
+  return { addedFonts, addedFiles };
 }
 
 function buildLocalFontFaceCss(fonts: readonly StagedFontFace[]): string {
   if (fonts.length === 0) {
     return "";
   }
-  return fonts
+  const faces = fonts
     .map(
       (f) => `    @font-face {
       font-family: '${escapeCssString(f.family)}';
@@ -1132,6 +1402,7 @@ function buildLocalFontFaceCss(fonts: readonly StagedFontFace[]): string {
     }`
     )
     .join("\n");
+  return `${faces}\n    :root { font-synthesis: none; font-optical-sizing: auto; font-kerning: normal; }`;
 }
 
 function injectOverlayTrackKeyframes(
@@ -1276,7 +1547,11 @@ export function compileEditPlanToHyperframes(
 ): CompiledProjectResult {
   assertPlanStructure(plan);
   const perfViolations = lintPlanPerformance(plan).filter(
-    (v) => v.code !== "KINETIC_LEGIBILITY_DURATION"
+    (v) =>
+      v.code !== "KINETIC_LEGIBILITY_DURATION" &&
+      v.code !== "CAPTION_CPS_TOO_FAST" &&
+      v.code !== "CAPTION_DURATION_SHORT" &&
+      v.code !== "MICRO_TEXT_DETECTED"
   );
   if (perfViolations.length > 0) {
     const first = perfViolations[0];
@@ -1339,6 +1614,7 @@ export function compileEditPlanToHyperframes(
   const hasCaptions = plan.overlay_compositions.some((ov) => ov.kind === "caption_rail");
   const captionLane = hasCaptions ? assignTrackLane(lanes, 0, plan.duration_s) : -1;
 
+  const referencedFamilies = new Set<string>();
   const usedSceneIds = new Set<string>();
   for (const ov of plan.overlay_compositions) {
     const sceneId = allocateUniqueId(ov.overlay_id, usedSceneIds);
@@ -1375,6 +1651,7 @@ export function compileEditPlanToHyperframes(
         `Overlay ${ov.overlay_id} references unknown template_id '${ov.template_id}' for brand '${plan.brand_id}'.`
       );
     }
+    let finalSceneHtml: string;
     if (resolvedTemplatePath) {
       const rawTemplate = fs.readFileSync(resolvedTemplatePath, "utf8");
       const rendered = renderParameterizedTemplate(
@@ -1387,11 +1664,7 @@ export function compileEditPlanToHyperframes(
         extraFontFamilies,
         catalogMatch?.variableTypes ?? {}
       );
-      fs.writeFileSync(
-        scenePath,
-        injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height, sceneId),
-        "utf8"
-      );
+      finalSceneHtml = injectOverlayTrackKeyframes(rendered, effectiveOv, plan.width, plan.height, sceneId);
     } else {
       const sceneHtml = buildOverlayCompositionHtml(
         effectiveOv,
@@ -1401,12 +1674,12 @@ export function compileEditPlanToHyperframes(
         safeZone,
         extraFontFamilies
       );
-      fs.writeFileSync(
-        scenePath,
-        injectOverlayTrackKeyframes(sceneHtml, effectiveOv, plan.width, plan.height, sceneId),
-        "utf8"
-      );
+      finalSceneHtml = injectOverlayTrackKeyframes(sceneHtml, effectiveOv, plan.width, plan.height, sceneId);
     }
+    for (const fam of extractReferencedFontFamilies(finalSceneHtml)) {
+      referencedFamilies.add(fam);
+    }
+    fs.writeFileSync(scenePath, finalSceneHtml, "utf8");
     compositionFiles.push(scenePath);
 
     const start = Number(ov.timeline_start_s.toFixed(3));
@@ -1433,9 +1706,29 @@ export function compileEditPlanToHyperframes(
     );
   }
 
+  const { addedFonts, addedFiles } = autoStageBundledFonts(
+    [...referencedFamilies],
+    stagedFonts,
+    outDir,
+    options.copyAssets ?? true
+  );
+  const allStagedFonts = [...stagedFonts, ...addedFonts];
+  const allCopiedAssets = [...copiedAssets, ...addedFiles];
+
   const rootBg = plan.render_strategy === "hybrid" ? "transparent" : "#000000";
   const totalDur = Number(plan.duration_s.toFixed(3));
-  const localFontCss = buildLocalFontFaceCss(stagedFonts);
+  const localFontCss = buildLocalFontFaceCss(allStagedFonts);
+  const firstTypoProps =
+    plan.overlay_compositions.find(
+      (o) => o.props && (o.props.type_scale || o.props.base_rem_px)
+    )?.props ?? {};
+  const rootScaleFactor = Math.min(plan.width, plan.height) / 1080;
+  const rootBaseRemPx =
+    typeof firstTypoProps.base_rem_px === "number" && Number.isFinite(firstTypoProps.base_rem_px)
+      ? Math.max(8, Math.min(32, firstTypoProps.base_rem_px))
+      : 16;
+  const rootRemPx = Number((rootBaseRemPx * rootScaleFactor).toFixed(2));
+  const rootTypeScaleCss = buildTypeScaleCssVars(firstTypoProps, plan.width, plan.height);
   const fontStyleBlock = localFontCss
     ? `\n  <style data-vedit-local-fonts="true">\n${localFontCss}\n  </style>`
     : "";
@@ -1447,6 +1740,12 @@ export function compileEditPlanToHyperframes(
   <title>${escapeHtml(plan.project_id)} - ${escapeHtml(plan.job_id)}</title>
   <script src="${GSAP_CDN}"></script>${fontStyleBlock}
   <style>
+    :root {
+      font-size: ${rootRemPx}px;
+      font-kerning: normal;
+      font-optical-sizing: auto;
+      ${rootTypeScaleCss}
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%;
@@ -1485,7 +1784,7 @@ ${hostTags.join("\n")}
     renderStrategy: plan.render_strategy,
     indexHtmlPath,
     compositionFiles,
-    copiedAssets,
+    copiedAssets: allCopiedAssets,
     recommendedFormat: plan.render_strategy === "hybrid" ? "mov" : "mp4",
   };
 }

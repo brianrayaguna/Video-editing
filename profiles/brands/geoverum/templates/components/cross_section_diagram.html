@@ -10,6 +10,9 @@
       --vedit-hydro: #38BDF8;
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-bg {
@@ -32,8 +35,9 @@
     .gv-xs-title {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(46px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.06;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.01em;
       color: var(--vedit-ink);
       text-shadow: 0 3px 16px rgba(0, 0, 0, 0.55);
     }
@@ -55,13 +59,14 @@
     }
     .gv-xs-svg-label {
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
-      font-weight: 700;
+      font-weight: 600;
       fill: #F4F1EA;
       font-size: 29px;
-      letter-spacing: 0.01em;
+      letter-spacing: 0.015em;
     }
     .gv-xs-svg-metric {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-weight: 800;
       fill: #F5C542;
       font-size: 30px;
     }
@@ -73,18 +78,23 @@
       display: flex;
       justify-content: center;
       align-items: baseline;
-      gap: calc(14px * {{SCALE_FACTOR}});
+      gap: calc(16px * {{SCALE_FACTOR}});
       text-align: center;
     }
     .gv-xs-foot-label {
       font-size: calc(28px * {{SCALE_FACTOR}});
-      font-weight: 600;
+      font-weight: 500;
+      line-height: 1.3;
+      letter-spacing: 0.01em;
       color: #CBD5E1;
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
     }
     .gv-xs-foot-metric {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(32px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
       color: var(--vedit-accent);
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
     }

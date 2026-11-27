@@ -14,6 +14,7 @@ The loop runs after a low-resolution preview (or the final master) exists:
 from __future__ import annotations
 
 import copy
+import json
 import math
 import shutil
 import subprocess
@@ -208,6 +209,7 @@ def build_critique_packet(
     audio_events_s: list[float] | None = None,
     motion_energy_series: list[tuple[float, float]] | None = None,
     previous_packet: dict[str, Any] | None = None,
+    spatial_forensics: dict[str, Any] | Path | None = None,
     iteration: int = 1,
     max_iterations: int = 3,
 ) -> dict[str, Any]:
@@ -251,6 +253,25 @@ def build_critique_packet(
     if video is not None and cuts:
         cont = analyze_cross_cut_continuity(video, [float(c) for c in cuts]).to_dict()
         packet["deterministic"]["editorial_continuity"] = cont
+    if spatial_forensics is not None:
+        sf_data = (
+            json.loads(Path(spatial_forensics).read_text(encoding="utf-8"))
+            if isinstance(spatial_forensics, (str, Path))
+            else spatial_forensics
+        )
+        typo_sum = ((sf_data or {}).get("summary") or {}).get("typography") or {}
+        min_wcag = typo_sum.get("min_wcag_contrast")
+        small_min_wcag = typo_sum.get("small_text_min_wcag_contrast")
+        packet["deterministic"]["typography_contrast"] = {
+            "median_wcag_contrast": typo_sum.get("median_wcag_contrast"),
+            "min_wcag_contrast": min_wcag,
+            "small_text_min_wcag_contrast": small_min_wcag,
+            "aaa_pass_rate": typo_sum.get("aaa_pass_rate"),
+            "estimated_line_height_ratio": typo_sum.get("estimated_line_height_ratio"),
+            "max_text_width_pct": typo_sum.get("max_text_width_pct"),
+            "passed": min_wcag is None or float(min_wcag) >= 4.5,
+            "aaa_passed": small_min_wcag is None or float(small_min_wcag) >= 7.0,
+        }
     if storyboard is not None or (video is not None and cuts):
         est_dur = (
             float(storyboard.get("duration_s") or 0.0)

@@ -9,6 +9,9 @@
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -44,6 +47,7 @@
     .gv-dg-title {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(40px * {{SCALE_FACTOR}});
+      font-weight: 800;
       line-height: 1.06;
       letter-spacing: 0.02em;
       text-transform: uppercase;
@@ -89,8 +93,9 @@
     .gv-dg-pct {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(68px * {{SCALE_FACTOR}});
-      line-height: 0.98;
-      letter-spacing: -0.02em;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.015em;
       text-shadow:
         0 5px 18px rgba(0, 0, 0, 0.92),
         0 1px 4px rgba(0, 0, 0, 0.98);
@@ -104,8 +109,9 @@
     .gv-dg-lbl {
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-size: calc(29px * {{SCALE_FACTOR}});
-      font-weight: 700;
-      letter-spacing: 0.04em;
+      font-weight: 600;
+      line-height: 1.28;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--vedit-ink);
       text-shadow: 0 3px 12px rgba(0, 0, 0, 0.92);

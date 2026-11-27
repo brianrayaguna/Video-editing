@@ -9,6 +9,9 @@
       --vedit-accent: {{ACCENT_COLOR}};
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -55,7 +58,8 @@
     }
     .gv-split-label {
       font-size: calc(29px * {{SCALE_FACTOR}});
-      font-weight: 700;
+      font-weight: 600;
+      line-height: 1.28;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--vedit-ink);
@@ -65,8 +69,9 @@
     .gv-split-metric {
       font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(64px * {{SCALE_FACTOR}});
-      line-height: 1.05;
-      letter-spacing: -0.02em;
+      font-weight: 800;
+      line-height: 1.04;
+      letter-spacing: -0.015em;
       color: var(--vedit-ink);
       text-shadow: 0 4px 16px rgba(0, 0, 0, 0.92);
     }

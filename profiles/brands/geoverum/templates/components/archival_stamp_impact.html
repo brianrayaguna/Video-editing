@@ -7,7 +7,10 @@
       background: transparent;
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
-      font-family: '{{DISPLAY_FONT}}', 'Inter', sans-serif;
+      font-family: '{{TITLE_FONT}}', 'Archivo Black', sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
@@ -19,13 +22,15 @@
       position: absolute;
       left: 50%;
       top: 46%;
-      padding: calc(14px * {{SCALE_FACTOR}}) calc(34px * {{SCALE_FACTOR}});
+      padding: calc(16px * {{SCALE_FACTOR}}) calc(32px * {{SCALE_FACTOR}});
       border: calc(8px * {{SCALE_FACTOR}}) solid {{VAR_STAMP_COLOR|#991B1B}};
       outline: calc(3px * {{SCALE_FACTOR}}) solid {{VAR_STAMP_COLOR|#991B1B}};
       outline-offset: calc(-14px * {{SCALE_FACTOR}});
       color: {{VAR_STAMP_COLOR|#991B1B}};
+      font-family: '{{TITLE_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(64px * {{SCALE_FACTOR}});
-      font-weight: 900;
+      font-weight: 400;
+      line-height: 1;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       opacity: 0;

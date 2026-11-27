@@ -665,7 +665,9 @@ REJECTED_SCENE_LAYER_TYPES = frozenset(
     }
 )
 
-_TEXT_LAYER_TYPES = frozenset({"glow_label", "pin_label", "curved_pointer_label", "year_badge"})
+_TEXT_LAYER_TYPES = frozenset(
+    {"glow_label", "pin_label", "curved_pointer_label", "year_badge", "curved_label"}
+)
 _THREE_D_MODELS = frozenset({"transmission_tower", "solar_farm", "substation", "survey_vessel"})
 
 _REVEAL_MODES = frozenset(
@@ -874,14 +876,22 @@ def validate_map_scene(
                         f"[{act_id}] layer #{idx} ({ltype}) font_px={fpx} is below minimum "
                         f"{min_font_px}px for {width}x{height} legibility."
                     )
+                if ltype == "curved_label":
+                    coords = layer.get("coords")
+                    if not isinstance(coords, list) or len(coords) < 2:
+                        errors.append(
+                            f"[{act_id}] layer #{idx} (curved_label) requires at least 2 "
+                            "[lng, lat] points in 'coords'."
+                        )
                 t0 = float(layer.get("start_s", 0.0))
                 t1 = float(layer.get("end_s", dur))
                 text_intervals.append((t0, t1, str(layer.get("text") or ltype)))
 
-        # 2. Enforce calm hierarchy: at most 4 concurrent text overlays at any sampled timestamp
+        # 2. Enforce calm hierarchy: error above 4 concurrent text overlays, warn at 4
         if text_intervals and dur > 0:
             step = 0.25
             t_cur = 0.0
+            warned_crowd = False
             while t_cur <= dur:
                 active = [lbl for (a, b, lbl) in text_intervals if a <= t_cur <= b]
                 if len(active) > 4:
@@ -890,6 +900,12 @@ def validate_map_scene(
                         f"({', '.join(active[:5])}); max allowed is 4 to prevent visual clutter."
                     )
                     break
+                if len(active) == 4 and not warned_crowd:
+                    warnings.append(
+                        f"[{act_id}] 4 concurrent map text overlays at t={t_cur:.2f}s "
+                        f"({', '.join(active)}); prefer <= 3 labels when captions are active."
+                    )
+                    warned_crowd = True
                 t_cur += step
 
         # 3. Close-up sharpness check: zoom >= 13.5 requires HQ aerial tiles (never Sentinel-2)
@@ -1421,83 +1437,48 @@ def _segments_from_words(words: list[dict[str, Any]], max_words: int = 8) -> lis
 def build_geoverum_ass_captions(
     transcript_data: dict[str, Any] | list[dict[str, Any]],
     *,
+    width: int = 1080,
+    height: int = 1920,
     speed: float = 1.0,
     max_words: int = 4,
-    font_size: int = 56,
-    margin_v: int = 348,
+    font_size: int | None = 56,
+    margin_v: int | None = 348,
     fade_in_ms: int = 130,
     fade_out_ms: int = 0,
+    gap_ms: int = 67,
     font_name: str = "Rubik",
+    fg_color: str = "#F4F1EA",
+    outline_color: str = "#03161F",
+    outline_px: float | None = None,
+    shadow_px: float | None = None,
+    blur_px: float = 0.8,
 ) -> str:
-    """Build locked Geoverum boxless bottom-band ASS subtitles from segments or words.
+    """Build Geoverum boxless bottom-band ASS subtitles via the shared mastering ASS engine.
 
-    Each caption group fades in over ``fade_in_ms`` and leaves over ``fade_out_ms``
-    (default 0: a hard cut to the next group). Both are clamped to 0-200 ms.
+    Routes directly through `vedit.mastering.ass_captions.build_ass_from_transcript` so CLI
+    caption builds and hybrid mastering share identical high-contrast halo styling, safe margins,
+    balanced wrapping, 9:16/16:9 scaling, and perceptual inter-cue gaps.
     """
-    if speed <= 0:
-        raise ValueError("speed must be > 0")
-    fade_in = max(0, min(200, int(fade_in_ms)))
-    fade_out = max(0, min(200, int(fade_out_ms)))
-    fade_tag = f"{{\\fad({fade_in},{fade_out})}}" if (fade_in or fade_out) else ""
-    if isinstance(transcript_data, list):
-        segments = transcript_data
-    else:
-        segments = list(transcript_data.get("segments") or [])
-        if not segments and isinstance(transcript_data.get("words"), list):
-            segments = _segments_from_words(list(transcript_data["words"]), max_words=max_words)
-    lines = [
-        "[Script Info]",
-        "ScriptType: v4.00+",
-        "PlayResX: 1080",
-        "PlayResY: 1920",
-        "WrapStyle: 2",
-        "ScaledBorderAndShadow: yes",
-        "",
-        "[V4+ Styles]",
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
-        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
-        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        f"Style: Default,{font_name},{font_size},&H00FFFFFF,&H0000FFFF,&H90000000,&HA0000000,"
-        f"-1,0,0,0,100,100,0,0,1,1.6,3.2,2,60,60,{margin_v},1",
-        "",
-        "[Events]",
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    ]
+    from vedit.mastering.ass_captions import build_ass_from_transcript
 
-    for seg in segments:
-        t0 = float(seg.get("start", seg.get("start_s", 0.0))) / speed
-        t1 = float(seg.get("end", seg.get("end_s", t0 + 0.5))) / speed
-        raw_text = " ".join(str(seg.get("text") or "").split())
-        if not raw_text or t1 <= t0:
-            continue
-        words = raw_text.split()
-        if len(words) <= max_words:
-            chunks = [words]
-        else:
-            n_chunks = math.ceil(len(words) / max_words)
-            base = len(words) // n_chunks
-            rem = len(words) % n_chunks
-            chunks = []
-            pos = 0
-            for ci in range(n_chunks):
-                take = base + (1 if ci < rem else 0)
-                chunks.append(words[pos : pos + take])
-                pos += take
-        total_chars = max(1, sum(len(" ".join(c)) for c in chunks))
-        cur_t = t0
-        for ci, chunk in enumerate(chunks):
-            txt = " ".join(chunk)
-            # Strip trailing comma/period mid-narration while preserving question marks
-            if txt.endswith((",", ".")):
-                txt = txt[:-1]
-            dur_c = (t1 - t0) * (len(txt) / total_chars)
-            end_t = t1 if ci == len(chunks) - 1 else min(t1, cur_t + max(0.18, dur_c))
-            lines.append(
-                f"Dialogue: 0,{_fmt_ass_time(cur_t)},{_fmt_ass_time(end_t)},"
-                f"Default,,0,0,0,,{fade_tag}{_escape_geo_ass_text(txt)}"
-            )
-            cur_t = end_t
-    return "\n".join(lines) + "\n"
+    return build_ass_from_transcript(
+        transcript_data,
+        width=width,
+        height=height,
+        speed=speed,
+        max_words=max_words,
+        font_size=font_size,
+        margin_v=margin_v,
+        fade_in_ms=fade_in_ms,
+        fade_out_ms=fade_out_ms,
+        gap_ms=gap_ms,
+        font_name=font_name,
+        fg_color=fg_color,
+        outline_color=outline_color,
+        outline_px=outline_px,
+        shadow_px=shadow_px,
+        blur_px=blur_px,
+    )
 
 
 @geo_app.command("validate-scene")
@@ -1524,6 +1505,12 @@ def geo_build_captions_cmd(
     out_file: Annotated[
         Path, typer.Option("--out-file", "-o", help="Destination ASS subtitle path.")
     ],
+    width: Annotated[
+        int, typer.Option("--width", help="Target video width in pixels (1080 or 1920).")
+    ] = 1080,
+    height: Annotated[
+        int, typer.Option("--height", help="Target video height in pixels (1920 or 1080).")
+    ] = 1920,
     speed: Annotated[
         float, typer.Option("--speed", help="Audio playback speed multiplier (e.g. 1.3).")
     ] = 1.0,
@@ -1531,7 +1518,7 @@ def geo_build_captions_cmd(
         int | None, typer.Option("--max-words", help="Maximum words per caption group.")
     ] = None,
     font_size: Annotated[
-        int | None, typer.Option("--font-size", help="ASS font size on 1080x1920 canvas.")
+        int | None, typer.Option("--font-size", help="ASS font size on target canvas.")
     ] = None,
     margin_v: Annotated[
         int | None, typer.Option("--margin-v", help="Bottom safe margin in px.")
@@ -1543,18 +1530,28 @@ def geo_build_captions_cmd(
         int | None,
         typer.Option("--fade-out-ms", help="Caption fade-out in ms (0 = hard cut out)."),
     ] = None,
+    gap_ms: Annotated[
+        int | None,
+        typer.Option("--gap-ms", help="Perceptual gap between touching cues in ms (default 67)."),
+    ] = None,
     brand: Annotated[
         str | None,
         typer.Option("--brand", help="Brand profile ID to load caption defaults from."),
     ] = "geoverum",
 ) -> None:
-    """Generate locked Geoverum boxless bottom-band ASS subtitles."""
+    """Generate calibrated boxless bottom-band ASS subtitles."""
+    from vedit.mastering.ass_captions import validate_ass_captions_readability
+
+    is_portrait = height > width
     eff_max_words = 4
-    eff_font_size = 56
-    eff_margin_v = 348
+    eff_font_size: int | None = 56 if is_portrait else None
+    eff_margin_v: int | None = 348 if is_portrait else None
     eff_fade_in = 130
     eff_fade_out = 0
+    eff_gap_ms = 67
     eff_font = "Rubik"
+    eff_fg = "#F4F1EA"
+    eff_outline = "#03161F"
     if brand:
         try:
             policy_path = (
@@ -1562,37 +1559,62 @@ def geo_build_captions_cmd(
             )
             if policy_path.is_file():
                 pol = json.loads(policy_path.read_text(encoding="utf-8"))
-                typo = ((pol.get("soft_priors") or {}).get("visual_tokens") or {}).get(
-                    "typography"
-                ) or {}
+                vtok = (pol.get("soft_priors") or {}).get("visual_tokens") or {}
+                typo = vtok.get("typography") or {}
+                pal = vtok.get("palette_roles") or {}
                 eff_max_words = int(typo.get("max_words_per_caption_group", eff_max_words))
-                eff_font_size = int(typo.get("caption_font_px_9x16", eff_font_size))
-                eff_margin_v = int(typo.get("caption_margin_v_px_9x16", eff_margin_v))
+                if is_portrait:
+                    eff_font_size = int(typo.get("caption_font_px_9x16", eff_font_size or 56))
+                    eff_margin_v = int(typo.get("caption_margin_v_px_9x16", eff_margin_v or 348))
                 if typo.get("caption_fade_in_ms") is not None:
                     eff_fade_in = int(typo["caption_fade_in_ms"])
                 if typo.get("caption_fade_out_ms") is not None:
                     eff_fade_out = int(typo["caption_fade_out_ms"])
+                if typo.get("caption_gap_ms") is not None:
+                    eff_gap_ms = int(typo["caption_gap_ms"])
                 raw_fam = typo.get("caption_font_family")
                 if isinstance(raw_fam, str) and raw_fam.strip():
                     eff_font = raw_fam.split(",")[0].strip().strip("'\"") or eff_font
+                if isinstance(pal.get("ink"), str):
+                    eff_fg = pal["ink"]
+                if isinstance(pal.get("ground"), str):
+                    eff_outline = pal["ground"]
         except FileNotFoundError:
             pass
 
     data = json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
     ass_text = build_geoverum_ass_captions(
         data,
+        width=width,
+        height=height,
         speed=speed,
         max_words=max_words if max_words is not None else eff_max_words,
         font_size=font_size if font_size is not None else eff_font_size,
         margin_v=margin_v if margin_v is not None else eff_margin_v,
         fade_in_ms=fade_in_ms if fade_in_ms is not None else eff_fade_in,
         fade_out_ms=fade_out_ms if fade_out_ms is not None else eff_fade_out,
+        gap_ms=gap_ms if gap_ms is not None else eff_gap_ms,
         font_name=eff_font,
+        fg_color=eff_fg,
+        outline_color=eff_outline,
     )
     out = out_file.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(ass_text, encoding="utf-8")
-    typer.echo(json.dumps({"ok": True, "ass_path": str(out), "speed": speed}, indent=2))
+    readability_warnings = validate_ass_captions_readability(ass_text)
+    typer.echo(
+        json.dumps(
+            {
+                "ok": True,
+                "ass_path": str(out),
+                "speed": speed,
+                "width": width,
+                "height": height,
+                "readability_warnings": readability_warnings,
+            },
+            indent=2,
+        )
+    )
 
 
 _SFX_LAYER_MAP: dict[str, tuple[str, float]] = {

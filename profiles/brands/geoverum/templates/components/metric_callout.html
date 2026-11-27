@@ -8,11 +8,14 @@
       --vedit-ink: {{FG_COLOR}};
       --vedit-accent: {{ACCENT_COLOR}};
       font-variant-numeric: tabular-nums;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+      font-synthesis: none;
       -webkit-font-smoothing: antialiased;
     }
     #{{SCENE_ID}}-clip {
       position: absolute;
-      top: calc({{SAFE_TOP_PCT}}% + calc(44px * {{SCALE_FACTOR}}));
+      top: calc({{SAFE_TOP_PCT}}% + calc(48px * {{SCALE_FACTOR}}));
       left: {{SYM_X_PCT}}%;
       right: {{SYM_X_PCT}}%;
       display: flex;
@@ -24,7 +27,7 @@
       display: inline-flex;
       flex-direction: column;
       align-items: center;
-      gap: calc(6px * {{SCALE_FACTOR}});
+      gap: calc(8px * {{SCALE_FACTOR}});
       text-align: center;
       max-width: 100%;
     }
@@ -33,10 +36,11 @@
       padding: 0 calc(8px * {{SCALE_FACTOR}});
     }
     #{{SCENE_ID}}-primary {
-      font-family: '{{DISPLAY_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{TITLE_FONT}}', 'Archivo Black', sans-serif;
       font-size: calc(86px * {{SCALE_FACTOR}});
-      line-height: 1.02;
-      letter-spacing: -0.025em;
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.02em;
       color: var(--vedit-ink);
       text-shadow:
         0 4px 18px rgba(0, 0, 0, 0.85),
@@ -45,11 +49,11 @@
       will-change: transform, opacity;
     }
     #{{SCENE_ID}}-secondary {
-      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
       font-size: calc(36px * {{SCALE_FACTOR}});
-      font-weight: 700;
-      line-height: 1.15;
-      letter-spacing: -0.01em;
+      font-weight: 600;
+      line-height: 1.22;
+      letter-spacing: 0.01em;
       color: var(--vedit-accent);
       text-shadow:
         0 3px 12px rgba(0, 0, 0, 0.88),
@@ -59,8 +63,8 @@
       font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
       font-size: calc(29px * {{SCALE_FACTOR}});
       font-weight: 600;
-      line-height: 1.25;
-      letter-spacing: 0.04em;
+      line-height: 1.3;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--vedit-ink);
       opacity: 0.92;
@@ -108,8 +112,8 @@
       if (primaryEl && window.__hyperframes && typeof window.__hyperframes.fitTextFontSize === "function" && rawText) {
         try {
           const fitted = window.__hyperframes.fitTextFontSize(rawText, {
-            fontFamily: "{{DISPLAY_FONT}}",
-            fontWeight: 900,
+            fontFamily: "{{TITLE_FONT}}",
+            fontWeight: 400,
             maxWidth: maxWidthPx,
           });
           if (fitted && fitted.fontSize) {

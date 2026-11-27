@@ -570,23 +570,39 @@ def _video_codec_args(
 def _stage_plan_fonts_dir(plan: EditPlan, dest_dir: Path) -> Path | None:
     """Copy plan font assets plus the engine font library into one directory for libass.
 
-    Plan fonts win on filename collisions; the engine library (`assets/geo/fonts`) makes
-    brand typefaces resolvable even when a plan declares no font assets.
+    Plan fonts win on filename collisions. For the shared engine font library
+    (`assets/geo/fonts`), families that bundle both static weight files and variable masters
+    stage static faces only so FreeType/libass deterministically resolves bold/regular weights
+    without falling back to light default variable instances.
     """
     copied = 0
-    sources: list[Path] = [Path(a.path) for a in plan.assets if a.kind == "font"]
-    try:
-        library = find_repo_root() / "assets" / "geo" / "fonts"
-    except FileNotFoundError:
-        library = None
-    if library is not None and library.is_dir():
-        sources.extend(sorted(p for p in library.iterdir() if p.suffix.lower() in {".ttf", ".otf"}))
-    for src in sources:
+    plan_sources: list[Path] = [Path(a.path) for a in plan.assets if a.kind == "font"]
+    for src in plan_sources:
         if not src.is_file() or (dest_dir / src.name).exists():
             continue
         dest_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest_dir / src.name)
         copied += 1
+
+    try:
+        library = find_repo_root() / "assets" / "geo" / "fonts"
+    except FileNotFoundError:
+        library = None
+    if library is not None and library.is_dir():
+        lib_fonts = sorted(p for p in library.iterdir() if p.suffix.lower() in {".ttf", ".otf"})
+        families_with_static: set[str] = set()
+        for fp in lib_fonts:
+            if "variable" not in fp.stem.lower():
+                families_with_static.add(fp.stem.split("-")[0].lower())
+        for src in lib_fonts:
+            if not src.is_file() or (dest_dir / src.name).exists():
+                continue
+            stem_key = src.stem.split("-")[0].lower()
+            if "variable" in src.stem.lower() and stem_key in families_with_static:
+                continue
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest_dir / src.name)
+            copied += 1
     return dest_dir if copied > 0 else None
 
 
