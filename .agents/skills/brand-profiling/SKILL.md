@@ -44,6 +44,16 @@ packages/director-py/.venv/bin/vedit breakdown structure <ref.mp4> \
   -o "$CAL_DIR/bd_<stem>" \
   --shots-from "$CAL_DIR/bd_<stem>/video_breakdown.json" \
   --platform shorts_9x16_1080p
+
+# 5. Native-FPS full-frame forensics across every frame: continuous camera kinematics,
+#    surface/map register segmentation, color/glow/vignette telemetry, dense OCR caption &
+#    in-world typography tracking, localized graphic events, audio transient sync, and
+#    full-coverage timeline sheets + full-FPS cut burst strips (emits FULLFRAME.md)
+packages/director-py/.venv/bin/vedit breakdown fullframe <ref.mp4> \
+  -o "$CAL_DIR/ff_<stem>" \
+  --platform shorts_9x16_1080p \
+  --ocr-fps 3.0 \
+  --sheet-fps 1.0
 ```
 
 If `tools/rea-video/.venv/bin/rea-video` is not yet installed, instruct the operator or run `bash tools/rea-video/setup.sh`.

@@ -591,14 +591,14 @@ def test_cross_commit_caption_ssot_3d_audio_cues_and_single_pass_grade(tmp_path:
     assert report.passed
     cap_ovs = [o for o in plan.overlay_compositions if o.kind == "caption_rail"]
     assert cap_ovs
-    assert str(cap_ovs[0].props["caption_font_family"]).startswith("Rubik")
-    assert cap_ovs[0].props["caption_font_px"] == 56
-    assert cap_ovs[0].props["caption_bottom_pct"] == round(348 / 1920.0, 5)
+    assert str(cap_ovs[0].props["caption_font_family"]).startswith("Inter")
+    assert cap_ovs[0].props["caption_font_px"] == 52
+    assert cap_ovs[0].props["caption_bottom_pct"] == round(525 / 1920.0, 5)
 
     ass_out = write_ass_overlays_file(cap_ovs, shorts, tmp_path / "ssot_caps.ass")
     ass_txt = ass_out.read_text(encoding="utf-8")
-    assert "Style: CaptionLower,Rubik,56," in ass_txt
-    assert ",348,1\n" in ass_txt
+    assert "Style: CaptionLower,Inter,52," in ass_txt
+    assert ",525,1\n" in ass_txt
 
     # 3D map layers trigger procedural audio cues cleanly.
     cues_3d = plan_narrative_audio_cues(

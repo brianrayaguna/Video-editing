@@ -710,7 +710,7 @@ def test_caption_style_props_override_house_style(tmp_path: Path) -> None:
         target,
         tmp_path / "default.ass",
     ).read_text(encoding="utf-8")
-    assert "Style: CaptionLower,Rubik,56," in default_ass
+    assert "Style: CaptionLower,Inter,52," in default_ass
     assert "\\blur" not in default_ass
 
     styled_ass = write_ass_overlays_file(

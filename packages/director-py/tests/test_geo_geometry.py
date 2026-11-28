@@ -265,8 +265,8 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     }
     ass = build_geoverum_ass_captions(transcript, speed=1.3, max_words=4)
     assert "WrapStyle: 0" in ass
-    assert "Style: Default,Rubik,56,&H00EAF1F4,&H00EAF1F4,&H1F1F1603,&H1F000000," in ass
-    assert ",1,2.4,2.4,2,84,84,348,1" in ass
+    assert "Style: Default,Inter,52,&H00EAF1F4,&H00EAF1F4,&H1F1F1603,&H1F000000," in ass
+    assert ",1,0.55,2.2,2,84,84,525,1" in ass
     # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s; touching earlier cue trims by 67ms gap (0:00:01.93)
     assert "0:00:01.93,Default," in ass
     assert "0:00:02.00,0:00:04.00" in ass
@@ -277,7 +277,7 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
         transcript, width=1920, height=1080, font_size=None, margin_v=None
     )
     assert "PlayResX: 1920" in ass_16x9 and "PlayResY: 1080" in ass_16x9
-    assert "Style: Default,Rubik,46," in ass_16x9
+    assert "Style: Default,Inter,48," in ass_16x9
 
     # Centisecond rollover near 60s must format 0:01:00.00 (never 0:00:60.00) and escape ASS tags
     edge_ass = build_geoverum_ass_captions(
@@ -286,18 +286,18 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert "0:00:60.00" not in edge_ass
     assert "0:01:00.00,0:01:01.00" in edge_ass
     assert r"\{tag\}" in edge_ass
-    assert r"\N" not in edge_ass.split("{\\fad(130,0)\\blur0.8}", 1)[1]
+    assert r"\N" not in edge_ass.split("{\\fad(130,0)\\blur1.1}", 1)[1]
 
 
 def test_build_geoverum_ass_captions_fades_in_and_cuts_out() -> None:
     from vedit.mastering.ass_captions import validate_ass_captions_readability
 
     seg = {"segments": [{"start": 0.0, "end": 1.0, "text": "Garis batas"}]}
-    assert "{\\fad(130,0)\\blur0.8}Garis batas" in build_geoverum_ass_captions(seg)
+    assert "{\\fad(130,0)\\blur1.1}Garis batas" in build_geoverum_ass_captions(seg)
     custom = build_geoverum_ass_captions(seg, fade_in_ms=100, fade_out_ms=60)
-    assert "{\\fad(100,60)\\blur0.8}Garis batas" in custom
+    assert "{\\fad(100,60)\\blur1.1}Garis batas" in custom
     clamped = build_geoverum_ass_captions(seg, fade_in_ms=900, fade_out_ms=-5)
-    assert "{\\fad(200,0)\\blur0.8}Garis batas" in clamped
+    assert "{\\fad(200,0)\\blur1.1}Garis batas" in clamped
     plain = build_geoverum_ass_captions(seg, fade_in_ms=0, fade_out_ms=0, blur_px=0.0)
     assert "\\fad" not in plain and "\\blur" not in plain and ",,Garis batas" in plain
 
@@ -1373,8 +1373,8 @@ def test_geo_captions_16x9_scaling_and_back_to_back_scene_labels() -> None:
         width=1920,
         height=1080,
     )
-    assert "Style: Default,Rubik,46," in ass_16x9
-    assert ",103,1" in ass_16x9
+    assert "Style: Default,Inter,48," in ass_16x9
+    assert ",108,1" in ass_16x9
 
     # Back-to-back non-overlapping labels ([0,2] and [2,4]) must not sum to 5 concurrent at t=2.0,
     # and explicit `"end_s": None` must not crash validation.
@@ -1584,3 +1584,133 @@ def test_validate_scene_validates_contextual_crimson_x_slash() -> None:
     assert not bad_x["ok"]
     joined = "\n".join(bad_x["errors"])
     assert "slash_duration_s" in joined and "gap_s" in joined, joined
+
+
+def test_google_map_tiles_attribution_enforced_for_realistic_graded(tmp_path: Path) -> None:
+    import json
+
+    repo_mock = tmp_path / "repo"
+    hq_dir = repo_mock / "assets" / "geo" / "tiles_hq"
+    hq_dir.mkdir(parents=True)
+    (hq_dir / "attribution.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "sources": ["google_map_tiles"],
+                "credit_line": "Imagery ©Google",
+            }
+        ),
+        encoding="utf-8",
+    )
+    rep = validate_map_scene(
+        {
+            "show_credit": False,
+            "acts": [
+                {
+                    "act_id": "a1",
+                    "kind": "map",
+                    "tile_source": "realistic_graded",
+                    "duration_s": 5.0,
+                    "layers": [],
+                }
+            ],
+        },
+        repo_root=repo_mock,
+    )
+    assert rep["ok"] is True
+    assert any("show_credit=false ignored" in w for w in rep["warnings"]), rep["warnings"]
+
+    # Renderer source enforces realistic_graded lookup and mandatory Google credit.
+    js_src = (find_repo_root() / "tools" / "geo-assets" / "render_map_scene.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert 'sourceMode === "realistic_graded"' in js_src
+    assert 'hqAttr.sources.includes("google_map_tiles")' in js_src
+    assert "item.svg_url || item.image_url" in js_src
+    assert "act.html_file" in js_src
+
+
+def test_validate_map_scene_checks_parchment_sprites_cutaways_and_label_overlap(
+    tmp_path: Path,
+) -> None:
+    # Missing parchment bbox, empty map_sprites, and missing cutaway html_file must error.
+    bad = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "a_bad",
+                    "duration_s": 5.0,
+                    "camera_keyframes": [{"t": 0.0, "center": [95.0, 6.0], "zoom": 6.0}],
+                    "layers": [
+                        {"type": "parchment_sheet", "start_s": 0.0, "end_s": 4.0},
+                        {"type": "map_sprites", "sprites": []},
+                    ],
+                },
+                {
+                    "act_id": "c_bad",
+                    "kind": "cutaway_2d",
+                    "html_file": "missing_cutaway.html",
+                    "duration_s": 4.0,
+                },
+            ]
+        },
+        base_dir=tmp_path,
+    )
+    assert not bad["ok"]
+    joined = "\n".join(bad["errors"])
+    assert "parchment_sheet requires bbox" in joined
+    assert "map_sprites requires a non-empty" in joined
+    assert "cutaway_2d html_file" in joined
+
+    # Valid custom SVG sprite + custom cutaway HTML + overlapping label warning
+    gfx_dir = tmp_path / "media" / "graphics"
+    gfx_dir.mkdir(parents=True)
+    (gfx_dir / "ship.svg").write_text("<svg/>", encoding="utf-8")
+    (gfx_dir / "custom.html").write_text("<html></html>", encoding="utf-8")
+    plan_dir = tmp_path / "plan"
+    plan_dir.mkdir(parents=True)
+    good = validate_map_scene(
+        {
+            "acts": [
+                {
+                    "act_id": "a_ok",
+                    "duration_s": 5.0,
+                    "camera_keyframes": [{"t": 0.0, "center": [95.0, 6.0], "zoom": 6.0}],
+                    "layers": [
+                        {"type": "parchment_sheet", "bbox": [91.0, 4.0, 98.0, 11.0]},
+                        {
+                            "type": "map_sprites",
+                            "sprites": [
+                                {"coord": [95.0, 6.0], "svg_url": "/project_graphics/ship.svg"}
+                            ],
+                        },
+                        {
+                            "type": "glow_label",
+                            "text": "SABANG",
+                            "coord": [95.0, 6.0],
+                            "start_s": 0.0,
+                            "end_s": 4.0,
+                        },
+                        {
+                            "type": "glow_label",
+                            "text": "ACEH",
+                            "coord": [95.02, 6.01],
+                            "start_s": 0.0,
+                            "end_s": 4.0,
+                        },
+                    ],
+                },
+                {
+                    "act_id": "c_ok",
+                    "kind": "cutaway_2d",
+                    "html_file": "../media/graphics/custom.html",
+                    "duration_s": 4.0,
+                },
+            ]
+        },
+        base_dir=plan_dir,
+    )
+    assert good["ok"] is True, good["errors"]
+    assert any("overlap closely" in w for w in good["warnings"]), good["warnings"]
+
+

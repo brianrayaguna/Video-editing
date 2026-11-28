@@ -15,6 +15,10 @@ from vedit.analyzers.brand_analyzer import (
     query_exemplars,
     synthesize_brand_artifacts,
 )
+from vedit.analyzers.fullframe_forensics import (
+    FullFrameForensicsOptions,
+    analyze_video_fullframe,
+)
 from vedit.analyzers.media_probe import ProbeOptions, hash_media, probe_media
 from vedit.analyzers.spatial_forensics import (
     SpatialForensicsOptions,
@@ -263,6 +267,61 @@ def breakdown_structure_cmd(
         "frames_analyzed": len(result.frames),
         "motion_windows": len(result.motion_windows),
         "summary": result.summary.model_dump(exclude_none=True),
+    }
+    typer.echo(json.dumps(payload, indent=2))
+
+
+@breakdown_app.command("fullframe")
+def breakdown_fullframe_cmd(
+    media_file: Annotated[Path, typer.Argument(help="Reference video file to analyze.")],
+    out_dir: Annotated[
+        Path, typer.Option("--out-dir", "-o", help="Full-frame forensics output directory.")
+    ],
+    platform: Annotated[
+        str | None,
+        typer.Option(
+            "--platform",
+            help="Optional platform_target_id (e.g. shorts_9x16_1080p) recorded in report.",
+        ),
+    ] = None,
+    ocr_fps: Annotated[
+        float,
+        typer.Option("--ocr-fps", min=0.5, max=15.0, help="Dense OCR sampling rate in fps."),
+    ] = 3.0,
+    sheet_fps: Annotated[
+        float,
+        typer.Option("--sheet-fps", min=0.2, max=5.0, help="Timeline contact-sheet sampling fps."),
+    ] = 1.0,
+    max_event_strips: Annotated[
+        int,
+        typer.Option("--max-event-strips", min=0, max=64, help="Max full-FPS cut burst strips."),
+    ] = 16,
+) -> None:
+    """Run native-FPS full-frame video forensics across camera, surfaces, layout, and audio."""
+    result = analyze_video_fullframe(
+        media_file,
+        out_dir,
+        FullFrameForensicsOptions(
+            platform_target_id=platform,
+            ocr_fps=ocr_fps,
+            sheet_fps=sheet_fps,
+            max_event_strips=max_event_strips,
+        ),
+    )
+    out_resolved = out_dir.expanduser().resolve()
+    payload = {
+        "fullframe_forensics_path": str(out_resolved / "fullframe_forensics.json"),
+        "report_md_path": result["report_md_path"],
+        "frame_telemetry_path": result["frame_telemetry_path"],
+        "frame_count": result["frame_count"],
+        "surface_segments": len(result["surface_segments"]),
+        "camera_segments": len(result["camera_segments"]),
+        "cuts": len(result["cuts"]),
+        "graphic_events": len(result["graphic_events"]),
+        "captions": len(result["captions"]),
+        "in_world_text": len(result["in_world_text"]),
+        "timeline_sheets": len(result["sheets"]["timeline_sheets"]),
+        "summary": result["summary"],
     }
     typer.echo(json.dumps(payload, indent=2))
 

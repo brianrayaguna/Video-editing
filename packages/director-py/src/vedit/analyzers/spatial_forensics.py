@@ -31,10 +31,10 @@ def resolve_spatial_python(
     """Locate the isolated spatial-forensics Python interpreter."""
     candidates: list[Path] = []
     if explicit is not None:
-        candidates.append(explicit.expanduser().resolve())
+        candidates.append(Path(os.path.abspath(str(explicit.expanduser()))))
     env_py = os.environ.get("VEDIT_SPATIAL_FORENSICS_PYTHON", "").strip()
     if env_py:
-        candidates.append(Path(env_py).expanduser().resolve())
+        candidates.append(Path(os.path.abspath(str(Path(env_py).expanduser()))))
     root = repo_root or find_repo_root()
     candidates.append(root / "tools" / "spatial-forensics" / ".venv" / "bin" / "python")
     for cand in candidates:

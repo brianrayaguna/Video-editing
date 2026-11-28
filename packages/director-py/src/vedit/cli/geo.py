@@ -939,6 +939,26 @@ def validate_map_scene(
     for act in spec.get("acts") or []:
         act_id = str(act.get("act_id") or "unknown")
         act_kind = str(act.get("kind") or act.get("mode") or act.get("type") or "map")
+        if act_kind == "cutaway_2d":
+            preset = act.get("preset")
+            html_file = act.get("html_file")
+            custom_html = act.get("custom_html")
+            known_cutaways = {"soil_root_cutaway", "dust_wall_horizon", "port_depth_cutaway"}
+            if html_file:
+                hp = Path(str(html_file))
+                if not hp.is_absolute() and base_dir is not None:
+                    hp = base_dir / hp
+                if not hp.is_file():
+                    errors.append(
+                        f"[{act_id}] cutaway_2d html_file {html_file!r} not found at {hp}."
+                    )
+            elif not (isinstance(custom_html, str) and custom_html.strip()):
+                if preset is not None and str(preset) not in known_cutaways:
+                    errors.append(
+                        f"[{act_id}] cutaway_2d preset {preset!r} is unknown; expected one of "
+                        f"{sorted(known_cutaways)} or pass html_file/custom_html."
+                    )
+            continue
         if act_kind != "map":
             continue
         _check_render_opts(act, act_id)
@@ -970,6 +990,31 @@ def validate_map_scene(
                 f"[{act_id}] cut_blur_in_s + cut_blur_out_s = {sum(cut_windows):.2f}s exceeds the "
                 f"act duration {dur:.2f}s; the blur never clears mid-act."
             )
+
+        # 0b. Enforce Google Map Tiles attribution visibility when Google tiles are active
+        act_kind = str(act.get("kind") or "map")
+        tile_src = str(act.get("tile_source") or "hybrid")
+        effective_show_credit = (
+            act["show_credit"] if "show_credit" in act else spec.get("show_credit", True)
+        )
+        if (
+            act_kind == "map"
+            and tile_src in {"hybrid", "realistic", "realistic_graded"}
+            and effective_show_credit is False
+            and repo_root is not None
+        ):
+            hq_attr_path = repo_root / "assets" / "geo" / "tiles_hq" / "attribution.json"
+            if hq_attr_path.is_file():
+                try:
+                    hq_attr = json.loads(hq_attr_path.read_text(encoding="utf-8"))
+                    if "google_map_tiles" in (hq_attr.get("sources") or []):
+                        warnings.append(
+                            f"[{act_id}] show_credit=false ignored for Google Map Tiles "
+                            f"(tile_source={tile_src!r}); official imagery attribution will be "
+                            "rendered on screen to comply with tile terms."
+                        )
+                except (OSError, json.JSONDecodeError):
+                    pass
 
         # 1. Reject legacy/chrome slop layers and micro-typography
         text_intervals: list[tuple[float, float, str]] = []
@@ -1461,6 +1506,61 @@ def validate_map_scene(
                             f"[{act_id}] layer #{idx} focus_spotlight feather_px must be >= 0, "
                             f"got {layer['feather_px']!r}."
                         )
+            elif ltype == "parchment_sheet":
+                bbox = layer.get("bbox")
+                if not (isinstance(bbox, list) and len(bbox) == 4):
+                    errors.append(
+                        f"[{act_id}] layer #{idx} parchment_sheet requires bbox "
+                        "[west_lon, south_lat, east_lon, north_lat]."
+                    )
+                else:
+                    nums = [_as_finite_float(v) for v in bbox]
+                    if any(v is None for v in nums) or nums[0] >= nums[2] or nums[1] >= nums[3]:  # type: ignore[operator]
+                        errors.append(
+                            f"[{act_id}] layer #{idx} parchment_sheet bbox must satisfy "
+                            f"west < east and south < north, got {bbox!r}."
+                        )
+            elif ltype == "map_sprites":
+                sprites = layer.get("sprites")
+                if sprites is None:
+                    sprites = layer.get("items")
+                if not isinstance(sprites, list) or len(sprites) == 0:
+                    errors.append(
+                        f"[{act_id}] layer #{idx} map_sprites requires a non-empty 'sprites' list."
+                    )
+                else:
+                    for s_i, sp in enumerate(sprites):
+                        if not isinstance(sp, dict):
+                            errors.append(
+                                f"[{act_id}] layer #{idx} map_sprites[{s_i}] must be an object."
+                            )
+                            continue
+                        sc = sp.get("coord")
+                        sp_path = sp.get("path")
+                        has_sc = isinstance(sc, list) and len(sc) >= 2
+                        has_sp = isinstance(sp_path, list) and len(sp_path) >= 2
+                        if not has_sc and not has_sp:
+                            errors.append(
+                                f"[{act_id}] layer #{idx} map_sprites[{s_i}] "
+                                "requires coord or path."
+                            )
+                        raw_svg = sp.get("svg_url") or sp.get("image_url")
+                        if raw_svg and not str(raw_svg).startswith(("http://", "https://")):
+                            s_rel = str(raw_svg).lstrip("/")
+                            cands: list[Path] = []
+                            if base_dir is not None:
+                                cands.append(base_dir / s_rel)
+                                if s_rel.startswith("project_graphics/"):
+                                    sub = s_rel[len("project_graphics/") :]
+                                    cands.append(base_dir.parent / "media" / "graphics" / sub)
+                                    cands.append(base_dir / "graphics" / sub)
+                            if repo_root is not None:
+                                cands.append(repo_root / "assets" / "geo" / s_rel)
+                            if cands and not any(c.is_file() for c in cands):
+                                errors.append(
+                                    f"[{act_id}] layer #{idx} map_sprites[{s_i}] asset "
+                                    f"{raw_svg!r} not found in project graphics or assets/geo/."
+                                )
 
         # 7. Preflight viewport edge-clipping, caption-band, and cable/substation clearance checks
         cam_points: list[tuple[float, list[float], float, float]] = []
@@ -1599,6 +1699,51 @@ def validate_map_scene(
                         "nearly identical coordinates; separate coordinates or stagger timing."
                     )
 
+        # Label overlap detection: warn when two concurrent labels project onto the same spot
+        placed_labels: list[tuple[int, str, float, float, float, float]] = []
+        if cam_points:
+            for idx, layer in enumerate(layers):
+                ltype = str(layer.get("type") or "")
+                if ltype not in {"glow_label", "pin_label"}:
+                    continue
+                t0 = float(0.0 if layer.get("start_s") is None else layer["start_s"])
+                raw_end = layer.get("end_s")
+                t1 = float((dur if dur > 0 else t0 + 1.0) if raw_end is None else raw_end)
+                t_mid = 0.5 * (t0 + t1)
+                if isinstance(layer.get("coord"), list) and len(layer["coord"]) >= 2:
+                    nearest_cam = min(cam_points, key=lambda item: abs(item[0] - t_mid))
+                    xp, yp = _approx_viewport_pct(
+                        float(layer["coord"][0]),
+                        float(layer["coord"][1]),
+                        nearest_cam[1],
+                        nearest_cam[2],
+                        nearest_cam[3],
+                        width,
+                        height,
+                        dx=float(layer.get("dx") or 0.0),
+                        dy=float(layer.get("dy") or 0.0),
+                    )
+                elif layer.get("x_pct") is not None or layer.get("y_pct") is not None:
+                    xp = float(layer.get("x_pct", 0.5))
+                    yp = float(layer.get("y_pct", 0.25))
+                else:
+                    continue
+                lbl = str(layer.get("text") or ltype).replace("\n", " ")[:24]
+                placed_labels.append((idx, lbl, xp * width, yp * height, t0, t1))
+        for i in range(len(placed_labels)):
+            ia, la, xa, ya, a0, a1 = placed_labels[i]
+            for j in range(i + 1, len(placed_labels)):
+                ib, lb, xb, yb, b0, b1 = placed_labels[j]
+                if min(a1, b1) <= max(a0, b0) + 0.15:
+                    continue
+                if abs(xa - xb) < 95.0 and abs(ya - yb) < 48.0:
+                    dx_px = abs(xa - xb)
+                    dy_px = abs(ya - yb)
+                    warnings.append(
+                        f"[{act_id}] labels #{ia} ({la!r}) and #{ib} ({lb!r}) overlap closely "
+                        f"({dx_px:.0f}x{dy_px:.0f} px); separate positions or stagger."
+                    )
+
     return {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
@@ -1714,13 +1859,13 @@ def build_geoverum_ass_captions(
     fade_in_ms: int = 130,
     fade_out_ms: int = 0,
     gap_ms: int = 67,
-    font_name: str = "Rubik",
+    font_name: str = "Inter",
     fg_color: str = "#F4F1EA",
     outline_color: str = "#03161F",
-    outline_px: float | None = None,
-    shadow_px: float | None = None,
-    letter_spacing: float = 0.3,
-    blur_px: float = 0.8,
+    outline_px: float | None = 0.55,
+    shadow_px: float | None = 2.2,
+    letter_spacing: float = 0.25,
+    blur_px: float = 1.1,
 ) -> str:
     """Build Geoverum boxless bottom-band ASS subtitles via the shared mastering ASS engine.
 
@@ -1808,6 +1953,18 @@ def geo_build_captions_cmd(
         str | None,
         typer.Option("--brand", help="Brand profile ID to load caption defaults from."),
     ] = "geoverum",
+    outline_px: Annotated[
+        float | None,
+        typer.Option("--outline-px", help="Subtle caption edge thickness in px (default 0.55)."),
+    ] = None,
+    shadow_px: Annotated[
+        float | None,
+        typer.Option("--shadow-px", help="Soft caption drop-shadow depth in px (default 2.2)."),
+    ] = None,
+    blur_px: Annotated[
+        float | None,
+        typer.Option("--blur-px", help="Soft edge blur in px for cinema shadow (default 1.1)."),
+    ] = None,
 ) -> None:
     """Generate calibrated boxless bottom-band ASS subtitles."""
     from vedit.mastering.ass_captions import validate_ass_captions_readability
@@ -1815,15 +1972,15 @@ def geo_build_captions_cmd(
     is_portrait = height > width
     scale = min(width, height) / 1080.0
     eff_max_words = 4
-    eff_font_size: int | None = round(56 * scale) if is_portrait else None
-    eff_margin_v: int | None = round(348 * (height / 1920.0)) if is_portrait else None
-    eff_fade_in = 130
+    eff_font_size: int | None = round(52 * scale) if is_portrait else None
+    eff_margin_v: int | None = round(525 * (height / 1920.0)) if is_portrait else None
+    eff_fade_in = 110
     eff_fade_out = 0
     eff_gap_ms = 67
-    eff_font = "Rubik"
+    eff_font = "Inter"
     eff_fg = "#F4F1EA"
     eff_outline = "#03161F"
-    eff_letter_spacing = 0.3
+    eff_letter_spacing = 0.25
     if brand:
         try:
             policy_path = (
@@ -1836,8 +1993,8 @@ def geo_build_captions_cmd(
                 pal = vtok.get("palette_roles") or {}
                 eff_max_words = int(typo.get("max_words_per_caption_group", eff_max_words))
                 if is_portrait:
-                    raw_px = int(typo.get("caption_font_px_9x16", 56))
-                    raw_mv = int(typo.get("caption_margin_v_px_9x16", 348))
+                    raw_px = int(typo.get("caption_font_px_9x16", 52))
+                    raw_mv = int(typo.get("caption_margin_v_px_9x16", 525))
                     eff_font_size = max(16, round(raw_px * scale))
                     eff_margin_v = round(raw_mv * (height / 1920.0))
                 if typo.get("caption_fade_in_ms") is not None:
@@ -1850,7 +2007,7 @@ def geo_build_captions_cmd(
                     resolved_px = (
                         font_size
                         if font_size is not None
-                        else (eff_font_size if eff_font_size is not None else round(46 * scale))
+                        else (eff_font_size if eff_font_size is not None else round(52 * scale))
                     )
                     eff_letter_spacing = round(
                         float(typo["caption_letter_spacing_em"]) * resolved_px, 2
@@ -1880,7 +2037,10 @@ def geo_build_captions_cmd(
         font_name=eff_font,
         fg_color=eff_fg,
         outline_color=eff_outline,
+        outline_px=outline_px if outline_px is not None else 0.55,
+        shadow_px=shadow_px if shadow_px is not None else 2.2,
         letter_spacing=eff_letter_spacing,
+        blur_px=blur_px if blur_px is not None else 1.1,
     )
     out = out_file.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1920,6 +2080,10 @@ _SFX_LAYER_MAP: dict[str, tuple[str, float]] = {
     "wind_streamlines": ("whoosh_fast.wav", -13.0),
     "flag_pin": ("pop_soft.wav", -11.5),
     "ghost_overlay": ("flash_swish.wav", -11.0),
+    "tree_belt": ("whoosh_deep.wav", -12.0),
+    "dust_storm_plume": ("whoosh_deep.wav", -11.5),
+    "parchment_sheet": ("paper_unfold.wav", -9.5),
+    "map_sprites": ("pop_soft.wav", -11.5),
 }
 
 
@@ -2039,6 +2203,39 @@ def synthesize_documentary_bgm(
     return out_wav
 
 
+def _resolve_studio_bgm(
+    root: Path, query: str = "mysterious documentary minimal"
+) -> tuple[Path | None, str]:
+    """Resolve a real studio instrumental BGM track from local cache or AudioCatalogPort."""
+    bgm_dir = root / "assets" / "audio" / "bgm"
+    for preferred in ("documentary_curious.wav", "documentary_default.wav"):
+        cand = bgm_dir / preferred
+        if cand.is_file() and cand.stat().st_size > 16384:
+            return cand, f"studio_library:{cand.name}"
+    if bgm_dir.is_dir():
+        for ext in ("*.wav", "*.mp3", "*.m4a", "*.flac"):
+            matches = sorted(p for p in bgm_dir.glob(ext) if p.stat().st_size > 16384)
+            if matches:
+                return matches[0], f"studio_library:{matches[0].name}"
+    try:
+        from vedit.providers.builtins import build_default_registry
+
+        registry = build_default_registry()
+        catalog = registry.resolve("audio_catalog")
+        tracks = catalog.search_music(query=query, vocal_type="NONE", limit=3)
+        if tracks:
+            bgm_dir.mkdir(parents=True, exist_ok=True)
+            asset_id = tracks[0].asset_id
+            dl = catalog.download_asset(
+                asset_id, kind="music", destination_dir=bgm_dir, quality="high"
+            )
+            if dl.is_file() and dl.stat().st_size > 16384:
+                return dl, f"audio_catalog:{asset_id}"
+    except Exception:
+        pass
+    return None, ""
+
+
 @geo_app.command("mix-audio")
 def geo_mix_audio_cmd(
     scene_file: Annotated[
@@ -2052,11 +2249,55 @@ def geo_mix_audio_cmd(
     ],
     bgm_file: Annotated[
         Path | None,
-        typer.Option("--bgm", help="Optional custom BGM track; synthesizes bed if omitted."),
+        typer.Option(
+            "--bgm",
+            help=(
+                "Primary studio BGM track; resolves from studio library or "
+                "AudioCatalogPort if omitted."
+            ),
+        ),
+    ] = None,
+    bgm_second: Annotated[
+        Path | None,
+        typer.Option(
+            "--bgm-second",
+            help="Optional second studio BGM track for a mid-episode narrative mood shift.",
+        ),
+    ] = None,
+    bgm_switch_s: Annotated[
+        float | None,
+        typer.Option(
+            "--bgm-switch-s",
+            help=(
+                "Timestamp in seconds to transition from primary BGM to --bgm-second "
+                "with a silence breath."
+            ),
+        ),
     ] = None,
     bgm_gain_db: Annotated[
         float, typer.Option("--bgm-gain-db", help="Base BGM attenuation before sidechain ducking.")
     ] = -16.0,
+    bgm_second_gain_db: Annotated[
+        float | None,
+        typer.Option("--bgm-second-gain-db", help="Optional gain override for --bgm-second."),
+    ] = None,
+    ambience_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--ambience",
+            help="Optional real environmental ambience bed (e.g. ocean waves, wind, city hum).",
+        ),
+    ] = None,
+    ambience_gain_db: Annotated[
+        float, typer.Option("--ambience-gain-db", help="Gain for --ambience bed in dB.")
+    ] = -26.0,
+    extra_sfx_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--extra-sfx",
+            help="Optional JSON list of custom studio foley hits [{t_s, path, gain_db, pan}].",
+        ),
+    ] = None,
     storyboard_file: Annotated[
         Path | None,
         typer.Option("--storyboard-file", help="Optional storyboard JSON for adaptive cues."),
@@ -2076,11 +2317,21 @@ def geo_mix_audio_cmd(
         typer.Option(
             "--narrative-fx/--no-narrative-fx",
             help=(
-                "Layer Shepard risers, tension drones, impacts, stingers, whooshes, "
-                "and silence drop-outs."
+                "Layer narrative risers, impacts, stingers, and transition whooshes "
+                "from real studio SFX."
             ),
         ),
     ] = True,
+    allow_synth_fx: Annotated[
+        bool,
+        typer.Option(
+            "--allow-synth-fx/--no-allow-synth-fx",
+            help=(
+                "Allow legacy procedural oscillator synthesis when recorded studio SFX "
+                "are unavailable."
+            ),
+        ),
+    ] = False,
     room_tone: Annotated[
         bool,
         typer.Option(
@@ -2090,10 +2341,10 @@ def geo_mix_audio_cmd(
     ] = True,
     room_tone_db: Annotated[
         float,
-        typer.Option("--room-tone-db", help="Level of synthesized room-tone floor in dBFS."),
-    ] = -48.0,
+        typer.Option("--room-tone-db", help="Level of room-tone floor in dBFS."),
+    ] = -52.0,
 ) -> None:
-    """Mix voiceover + ducked documentary BGM + scene-synced kinetic SFX with two-pass loudnorm."""
+    """Mix voiceover + real studio BGM + recorded foley/kinetic SFX with two-pass loudnorm."""
     root = find_repo_root()
     sfx_dir = root / "assets" / "audio" / "sfx"
     spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
@@ -2114,7 +2365,7 @@ def geo_mix_audio_cmd(
         )
     prof = LOUDNESS_PROFILES[lp_key]
     target_i = prof.target_lufs
-    target_tp = round(min(prof.max_true_peak_dbtp - 0.15, -1.05), 2)
+    target_tp = round(min(prof.max_true_peak_dbtp - 0.35, -1.45), 2)
     target_lra = prof.target_lra
 
     # Probe exact voiceover duration
@@ -2153,16 +2404,80 @@ def geo_mix_audio_cmd(
 
     with tempfile.TemporaryDirectory(prefix="vedit_geo_mix_") as tmp_dir:
         tmp_path = Path(tmp_dir)
+        synthetic_fallback_used = False
         if bgm_file is not None:
             bgm_path = bgm_file.expanduser().resolve()
+            bgm_source_label = str(bgm_path)
         else:
-            bgm_path = tmp_path / "narrative_bgm.wav"
-            synthesize_narrative_bgm(
-                duration_s + 0.5,
-                bgm_path,
-                section_timeline=cues["section_timeline"] or None,
-                silence_dropouts=cues["silence_dropouts"] or None,
+            studio_bgm, studio_label = _resolve_studio_bgm(root)
+            if studio_bgm is not None:
+                bgm_path = studio_bgm
+                bgm_source_label = studio_label
+            else:
+                synthetic_fallback_used = True
+                bgm_path = tmp_path / "narrative_bgm.wav"
+                bgm_source_label = "synthesized_fallback_bed"
+                synthesize_narrative_bgm(
+                    duration_s + 0.5,
+                    bgm_path,
+                    section_timeline=cues["section_timeline"] or None,
+                    silence_dropouts=cues["silence_dropouts"] or None,
+                )
+
+        # Optional two-track narrative BGM bed with crisp 280ms silence breath at chapter pivot
+        if (
+            bgm_second is not None
+            and bgm_switch_s is not None
+            and 0.5 < bgm_switch_s < duration_s - 0.5
+        ):
+            bgm2_path = bgm_second.expanduser().resolve()
+            sw_s = float(bgm_switch_s)
+            breath_s = 0.28
+            bgm1_end = max(0.2, sw_s - breath_s)
+            bgm2_len = max(0.2, duration_s - sw_s + 0.5)
+            bgm2_gain_offset = (
+                (bgm_second_gain_db - bgm_gain_db) if bgm_second_gain_db is not None else 0.0
             )
+            stitched_bgm = tmp_path / "bgm_stitched.wav"
+            b1_out = max(0.0, bgm1_end - 0.35)
+            b2_out = max(0.0, bgm2_len - 1.2)
+            stitch_cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                "-stream_loop",
+                "-1",
+                "-i",
+                str(bgm_path),
+                "-stream_loop",
+                "-1",
+                "-i",
+                str(bgm2_path),
+                "-filter_complex",
+                (
+                    f"[0:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{bgm1_end:.3f},"
+                    f"afade=t=in:st=0:d=0.4,afade=t=out:st={b1_out:.3f}:d=0.35,"
+                    f"apad=pad_dur={breath_s:.3f},atrim=0:{sw_s:.3f}[b1];"
+                    f"[1:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{bgm2_len:.3f},"
+                    f"volume={bgm2_gain_offset:.1f}dB,"
+                    f"afade=t=in:st=0:d=0.35,afade=t=out:st={b2_out:.3f}:d=1.2[b2];"
+                    "[b1][b2]concat=n=2:v=0:a=1[bgm_all]"
+                ),
+                "-map",
+                "[bgm_all]",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-c:a",
+                "pcm_f32le",
+                str(stitched_bgm),
+            ]
+            stitch_proc = subprocess.run(stitch_cmd, capture_output=True, text=True, check=False)
+            if stitch_proc.returncode != 0:
+                raise RuntimeError(f"ffmpeg BGM stitch failed: {stitch_proc.stderr[-400:]}")
+            bgm_path = stitched_bgm
+            bgm_source_label = f"{bgm_source_label} -> {bgm2_path.name}@{sw_s:.2f}s"
 
         events = [
             ev
@@ -2170,10 +2485,31 @@ def geo_mix_audio_cmd(
             if ev["t_s"] < duration_s - 0.15 and (sfx_dir / ev["sfx"]).is_file()
         ]
         extra_fx: list[dict[str, Any]] = []
+        used_risers = 0
+        used_drones = 0
+        used_impacts = 0
+        used_stingers = 0
+        used_whooshes = 0
+
+        # Prefer real recorded studio WAVs from assets/audio/sfx/ over procedural oscillators.
+        studio_riser = sfx_dir / "cinematic_riser.wav"
+        studio_impact = sfx_dir / "stamp_impact.wav"
+        studio_sub = sfx_dir / "sub_thud.wav"
+        studio_stinger = sfx_dir / "ding_glass.wav"
+        studio_warning = sfx_dir / "warning_pulse.wav"
+        studio_whoosh_deep = sfx_dir / "whoosh_deep.wav"
+        studio_whoosh_fast = sfx_dir / "whoosh_fast.wav"
+
         for idx, r_ev in enumerate(cues["risers"]):
             if r_ev["start_s"] + r_ev["duration_s"] <= duration_s:
-                r_wav = tmp_path / f"riser_{idx}.wav"
-                synthesize_shepard_riser(r_ev["duration_s"], r_wav)
+                if studio_riser.is_file():
+                    r_wav = studio_riser
+                elif allow_synth_fx:
+                    r_wav = tmp_path / f"riser_{idx}.wav"
+                    synthesize_shepard_riser(r_ev["duration_s"], r_wav)
+                else:
+                    continue
+                used_risers += 1
                 extra_fx.append(
                     {
                         "t_s": r_ev["start_s"],
@@ -2182,79 +2518,133 @@ def geo_mix_audio_cmd(
                         "pan": 0.0,
                     }
                 )
-        for idx, d_ev in enumerate(cues["drones"]):
-            if d_ev["start_s"] < duration_s - 0.2:
-                d_wav = tmp_path / f"drone_{idx}.wav"
-                d_len = min(d_ev["duration_s"], duration_s - d_ev["start_s"])
-                if d_ev.get("texture") == "granular":
-                    synthesize_granular_pad(d_len, d_wav)
-                else:
-                    synthesize_tension_drone(d_len, d_wav)
-                extra_fx.append(
-                    {
-                        "t_s": d_ev["start_s"],
-                        "path": d_wav,
-                        "gain_db": d_ev["gain_db"],
-                        "pan": 0.0,
-                    }
-                )
-        for idx, a_ev in enumerate(cues.get("ambience") or []):
-            if a_ev["start_s"] < duration_s - 0.2:
-                a_wav = tmp_path / f"amb_{idx}.wav"
-                a_len = min(a_ev["duration_s"], duration_s - a_ev["start_s"])
-                synthesize_ambience_layers(a_len, a_wav, level_db=0.0)
-                extra_fx.append(
-                    {
-                        "t_s": a_ev["start_s"],
-                        "path": a_wav,
-                        "gain_db": a_ev.get("gain_db", -20.0),
-                        "pan": float(a_ev.get("pan") or 0.0),
-                    }
-                )
+        if allow_synth_fx:
+            for idx, d_ev in enumerate(cues["drones"]):
+                if d_ev["start_s"] < duration_s - 0.2:
+                    d_wav = tmp_path / f"drone_{idx}.wav"
+                    d_len = min(d_ev["duration_s"], duration_s - d_ev["start_s"])
+                    if d_ev.get("texture") == "granular":
+                        synthesize_granular_pad(d_len, d_wav)
+                    else:
+                        synthesize_tension_drone(d_len, d_wav)
+                    used_drones += 1
+                    extra_fx.append(
+                        {
+                            "t_s": d_ev["start_s"],
+                            "path": d_wav,
+                            "gain_db": d_ev["gain_db"],
+                            "pan": 0.0,
+                        }
+                    )
+            for idx, a_ev in enumerate(cues.get("ambience") or []):
+                if a_ev["start_s"] < duration_s - 0.2:
+                    a_wav = tmp_path / f"amb_{idx}.wav"
+                    a_len = min(a_ev["duration_s"], duration_s - a_ev["start_s"])
+                    synthesize_ambience_layers(a_len, a_wav, level_db=0.0)
+                    extra_fx.append(
+                        {
+                            "t_s": a_ev["start_s"],
+                            "path": a_wav,
+                            "gain_db": a_ev.get("gain_db", -20.0),
+                            "pan": float(a_ev.get("pan") or 0.0),
+                        }
+                    )
         for idx, imp_ev in enumerate(cues.get("impacts") or []):
             if imp_ev["start_s"] < duration_s - 0.2:
-                i_wav = tmp_path / f"impact_{idx}.wav"
-                synthesize_four_layer_impact(
-                    i_wav,
-                    character=str(imp_ev.get("character") or "verdict"),  # type: ignore[arg-type]
-                )
+                char = str(imp_ev.get("character") or "verdict")
+                if studio_impact.is_file() or studio_sub.is_file():
+                    use_imp = char == "verdict" and studio_impact.is_file()
+                    i_wav = studio_impact if use_imp else studio_sub
+                elif allow_synth_fx:
+                    i_wav = tmp_path / f"impact_{idx}.wav"
+                    synthesize_four_layer_impact(
+                        i_wav,
+                        character=char,  # type: ignore[arg-type]
+                    )
+                else:
+                    continue
+                used_impacts += 1
                 extra_fx.append(
                     {
                         "t_s": imp_ev["start_s"],
                         "path": i_wav,
-                        "gain_db": imp_ev.get("gain_db", -13.0),
+                        "gain_db": imp_ev.get("gain_db", -12.0),
                         "pan": float(imp_ev.get("pan") or 0.0),
                     }
                 )
         for idx, st_ev in enumerate(cues.get("stingers") or []):
             if st_ev["start_s"] < duration_s - 0.2:
-                st_wav = tmp_path / f"stinger_{idx}.wav"
-                synthesize_stinger(
-                    st_wav,
-                    style=str(st_ev.get("style") or "reveal"),  # type: ignore[arg-type]
-                )
+                style = str(st_ev.get("style") or "reveal")
+                if studio_stinger.is_file() or studio_warning.is_file():
+                    use_warn = style == "twist" and studio_warning.is_file()
+                    st_wav = studio_warning if use_warn else studio_stinger
+                elif allow_synth_fx:
+                    st_wav = tmp_path / f"stinger_{idx}.wav"
+                    synthesize_stinger(
+                        st_wav,
+                        style=style,  # type: ignore[arg-type]
+                    )
+                else:
+                    continue
+                used_stingers += 1
                 extra_fx.append(
                     {
                         "t_s": st_ev["start_s"],
                         "path": st_wav,
-                        "gain_db": st_ev.get("gain_db", -15.5),
+                        "gain_db": st_ev.get("gain_db", -13.5),
                         "pan": 0.0,
                     }
                 )
         for idx, wh_ev in enumerate(cues.get("whooshes") or []):
             if wh_ev["start_s"] < duration_s - 0.15:
-                w_wav = tmp_path / f"whoosh_{idx}.wav"
-                synthesize_whoosh(
-                    float(wh_ev.get("duration_s") or 0.4),
-                    w_wav,
-                    direction=str(wh_ev.get("direction") or "in"),  # type: ignore[arg-type]
-                )
+                direction = str(wh_ev.get("direction") or "in")
+                if studio_whoosh_deep.is_file() or studio_whoosh_fast.is_file():
+                    use_fast = direction == "out" and studio_whoosh_fast.is_file()
+                    w_wav = studio_whoosh_fast if use_fast else studio_whoosh_deep
+                elif allow_synth_fx:
+                    w_wav = tmp_path / f"whoosh_{idx}.wav"
+                    synthesize_whoosh(
+                        float(wh_ev.get("duration_s") or 0.4),
+                        w_wav,
+                        direction=direction,  # type: ignore[arg-type]
+                    )
+                else:
+                    continue
+                used_whooshes += 1
                 extra_fx.append(
                     {
                         "t_s": wh_ev["start_s"],
                         "path": w_wav,
-                        "gain_db": wh_ev.get("gain_db", -15.0),
+                        "gain_db": wh_ev.get("gain_db", -13.0),
                         "pan": 0.0,
+                    }
+                )
+        if extra_sfx_json is not None:
+            sfx_json_text = extra_sfx_json.expanduser().resolve().read_text(encoding="utf-8")
+            custom_list = json.loads(sfx_json_text)
+            for item in custom_list:
+                p = Path(str(item["path"])).expanduser().resolve()
+                if p.is_file() and float(item.get("t_s", 0.0)) < duration_s - 0.05:
+                    extra_fx.append(
+                        {
+                            "t_s": float(item.get("t_s", 0.0)),
+                            "path": p,
+                            "gain_db": float(item.get("gain_db", -12.0)),
+                            "pan": float(item.get("pan", 0.0)),
+                            "trim_s": item.get("trim_s"),
+                            "fade_out_s": item.get("fade_out_s"),
+                        }
+                    )
+        if ambience_file is not None:
+            amb_p = ambience_file.expanduser().resolve()
+            if amb_p.is_file():
+                extra_fx.append(
+                    {
+                        "t_s": 0.0,
+                        "path": amb_p,
+                        "gain_db": ambience_gain_db,
+                        "pan": 0.0,
+                        "loop_bed": True,
                     }
                 )
         if room_tone:
@@ -2282,7 +2672,7 @@ def geo_mix_audio_cmd(
         synth_transient_times = [
             float(fx["t_s"])
             for fx in extra_fx
-            if Path(str(fx["path"])).stem.startswith(("impact_", "whoosh_", "stinger_"))
+            if not fx.get("loop_bed") and Path(str(fx["path"])).stem != "room_tone"
         ]
         all_sfx = [
             {"t_s": ev["t_s"], "path": sfx_dir / ev["sfx"], "gain_db": ev["gain_db"], "pan": 0.0}
@@ -2290,7 +2680,10 @@ def geo_mix_audio_cmd(
             if not any(abs(float(ev["t_s"]) - st) <= 0.18 for st in synth_transient_times)
         ] + extra_fx
         for ev in all_sfx:
-            cmd.extend(["-i", str(ev["path"])])
+            if ev.get("loop_bed"):
+                cmd.extend(["-stream_loop", "-1", "-i", str(ev["path"])])
+            else:
+                cmd.extend(["-i", str(ev["path"])])
 
         chains = [
             "[0:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=75,asplit=2[vo_dry][vo_sc_raw]",
@@ -2311,9 +2704,23 @@ def geo_mix_audio_cmd(
                     if abs(float(ev.get("pan") or 0.0)) > 0.01
                     else ""
                 )
+                extra_f = ""
+                if ev.get("loop_bed"):
+                    amb_out = max(0.0, duration_s - 1.0)
+                    extra_f = (
+                        f",atrim=0:{duration_s:.3f},highpass=f=90,lowpass=f=4500,"
+                        f"afade=t=in:st=0:d=0.6,afade=t=out:st={amb_out:.3f}:d=1.0"
+                    )
+                else:
+                    if ev.get("trim_s") is not None:
+                        tr = float(ev["trim_s"])
+                        extra_f += f",atrim=0:{tr:.3f}"
+                        if ev.get("fade_out_s") is not None:
+                            fo = float(ev["fade_out_s"])
+                            extra_f += f",afade=t=out:st={max(0.0, tr - fo):.3f}:d={fo:.3f}"
                 chains.append(
                     f"[{inp}:a]aresample=48000,aformat=channel_layouts=stereo"
-                    f"{pan_part},volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
+                    f"{extra_f}{pan_part},volume={ev['gain_db']:.1f}dB,adelay={ms}|{ms}{tag}"
                 )
                 sfx_tags.append(tag)
             if len(sfx_tags) == 1:
@@ -2360,7 +2767,7 @@ def geo_mix_audio_cmd(
                 f"ffmpeg mix-audio failed (exit {proc.returncode}): " + " | ".join(err_tail)
             )
 
-        # Two-pass linear loudnorm (Pass 1 measure -> Pass 2 linear scale + limiter).
+        # Two-pass linear loudnorm (measure -> linear scale + true-peak limiter).
         pass1 = subprocess.run(
             [
                 "ffmpeg",
@@ -2395,19 +2802,19 @@ def geo_mix_audio_cmd(
                 meas.target_offset,
             )
         )
-        lim_db = prof.max_true_peak_dbtp
+        lim_db = round(min(prof.max_true_peak_dbtp - 0.35, -1.35), 2)
         af_pass2 = (
             (
                 f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:"
                 f"measured_I={meas.input_i}:measured_TP={meas.input_tp}:"
                 f"measured_LRA={meas.input_lra}:measured_thresh={meas.input_thresh}:"
                 f"offset={meas.target_offset}:linear=true:print_format=summary,"
-                f"alimiter=limit={lim_db:.1f}dB:level=disabled"
+                f"alimiter=limit={lim_db:.2f}dB:level=disabled"
             )
             if can_two_pass and meas is not None
             else (
                 f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra},"
-                f"alimiter=limit={lim_db:.1f}dB:level=disabled"
+                f"alimiter=limit={lim_db:.2f}dB:level=disabled"
             )
         )
         pass2 = subprocess.run(
@@ -2446,17 +2853,18 @@ def geo_mix_audio_cmd(
                 "out_file": str(out_path),
                 "duration_s": round(duration_s, 3),
                 "sfx_count": len(events),
-                "riser_count": len(cues["risers"]),
-                "drone_count": len(cues["drones"]),
-                "impact_count": len(cues.get("impacts") or []),
-                "stinger_count": len(cues.get("stingers") or []),
-                "whoosh_count": len(cues.get("whooshes") or []),
+                "riser_count": used_risers,
+                "drone_count": used_drones,
+                "impact_count": used_impacts,
+                "stinger_count": used_stingers,
+                "whoosh_count": used_whooshes,
                 "silence_dropouts": len(cues["silence_dropouts"]),
                 "room_tone_enabled": room_tone,
+                "synthetic_bgm_fallback": synthetic_fallback_used,
                 "cue_clustering_warnings": cues.get("cue_clustering_warnings") or [],
                 "two_pass_loudnorm": can_two_pass,
                 "loudness_profile": lp_key,
-                "bgm_source": str(bgm_file) if bgm_file else "synthesized_narrative_bed",
+                "bgm_source": bgm_source_label,
             },
             indent=2,
         )
@@ -2743,3 +3151,102 @@ def geo_fetch_fonts_cmd(
     proc = subprocess.run(cmd, check=False)
     if proc.returncode != 0:
         raise typer.Exit(code=proc.returncode)
+
+
+@geo_app.command("auto-audio")
+def geo_auto_audio_cmd(
+    scene_file: Annotated[
+        Path, typer.Option("--scene-file", help="Declarative map_scene.json specification.")
+    ],
+    out_dir: Annotated[
+        Path, typer.Option("--out-dir", "-o", help="Project audio output directory.")
+    ],
+    transcript_file: Annotated[
+        Path | None,
+        typer.Option("--transcript", help="Optional transcript JSON for theme & pivot detection."),
+    ] = None,
+    seed: Annotated[
+        str | None,
+        typer.Option("--seed", help="Optional episode slug for deterministic BGM rotation."),
+    ] = None,
+) -> None:
+    """Select and cache theme-matched studio BGM (primary + pivot), ambience, and foley."""
+    from vedit.geo_production import plan_and_fetch_thematic_audio
+
+    spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
+    tr = (
+        json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
+        if transcript_file is not None
+        else None
+    )
+    plan = plan_and_fetch_thematic_audio(
+        spec, tr, out_dir, repo_root=find_repo_root(), seed_key=seed
+    )
+    typer.echo(json.dumps(plan, indent=2))
+
+
+@geo_app.command("master")
+def geo_master_cmd(
+    scene_file: Annotated[
+        Path, typer.Option("--scene-file", help="Declarative map_scene.json specification.")
+    ],
+    acts_dir: Annotated[
+        Path, typer.Option("--acts-dir", help="Directory holding baked per-act MP4 renders.")
+    ],
+    audio_file: Annotated[
+        Path, typer.Option("--audio", help="Mastered 48 kHz WAV/MP3 program audio mix.")
+    ],
+    out_file: Annotated[
+        Path, typer.Option("--out-file", "-o", help="Destination final master MP4 path.")
+    ],
+    captions_file: Annotated[
+        Path | None,
+        typer.Option("--captions", help="Optional calibrated ASS or JSON subtitle file."),
+    ] = None,
+    caption_renderer: Annotated[
+        str,
+        typer.Option(
+            "--caption-renderer",
+            help="Caption rendering backend: 'html' (Chromium Gaussian-shadow strip) or 'libass'.",
+        ),
+    ] = "html",
+    credit_ass_file: Annotated[
+        Path | None,
+        typer.Option("--credit-ass", help="Optional imagery attribution ASS overlay file."),
+    ] = None,
+    contact_sheet: Annotated[
+        Path | None,
+        typer.Option("--contact-sheet", help="Optional destination path for 16-frame JPEG sheet."),
+    ] = None,
+    audit_out: Annotated[
+        Path | None,
+        typer.Option("--audit-out", help="Optional destination path for QC audit JSON."),
+    ] = None,
+    platform: Annotated[
+        str | None,
+        typer.Option(
+            "--platform", help="Platform target ID for QC audit (auto-inferred if omitted)."
+        ),
+    ] = None,
+    crf: Annotated[int, typer.Option("--crf", help="libx264 CRF quality (default 17).")] = 17,
+) -> None:
+    """Assemble baked map/cutaway acts with disc_sweep transitions, captions, audio, and BT.709."""
+    from vedit.geo_production import master_geo_acts
+
+    result = master_geo_acts(
+        scene_file,
+        acts_dir,
+        audio_file,
+        out_file,
+        captions_file=captions_file,
+        caption_renderer=caption_renderer,
+        credit_ass_file=credit_ass_file,
+        contact_sheet=contact_sheet,
+        audit_out=audit_out,
+        platform_id=platform,
+        crf=crf,
+        repo_root=find_repo_root(),
+    )
+    typer.echo(json.dumps(result, indent=2))
+    if not result["ok"]:
+        raise typer.Exit(code=1)

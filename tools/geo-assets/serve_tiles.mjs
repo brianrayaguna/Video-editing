@@ -286,6 +286,8 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
   const projectTilesDir = options.projectTilesDir ? resolve(options.projectTilesDir) : null;
   const projectModelsDir = options.projectModelsDir ? resolve(options.projectModelsDir) : null;
   const projectModelsReal = projectModelsDir && existsSync(projectModelsDir) ? realpathSync(projectModelsDir) : projectModelsDir;
+  const projectGraphicsDir = options.projectGraphicsDir ? resolve(options.projectGraphicsDir) : null;
+  const projectGraphicsReal = projectGraphicsDir && existsSync(projectGraphicsDir) ? realpathSync(projectGraphicsDir) : projectGraphicsDir;
   const demDir = join(geoRoot, "dem");
   const hasHqTile = (pz, px, py) => existsSync(join(tilesHqDir, String(pz), String(px), `${py}.jpg`));
   const hasProjectTile = (pz, px, py) => Boolean(projectTilesDir) && existsSync(join(projectTilesDir, String(pz), String(px), `${py}.jpg`));
@@ -357,6 +359,41 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
           y,
           HYBRID_HQ_MIN_ZOOM,
           88,
+          true
+        );
+        if (!buf) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+        res.end(buf);
+        return;
+      }
+
+      const hqGradedMatch = pathname.match(/^\/tiles_hq_graded\/(\d+)\/(\d+)\/(\d+)\.(?:jpg|jpeg)$/);
+      if (hqGradedMatch) {
+        const z = Number(hqGradedMatch[1]);
+        const x = Number(hqGradedMatch[2]);
+        const y = Number(hqGradedMatch[3]);
+        if (!isValidTileCoord(z, x, y)) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Tile not found");
+          return;
+        }
+        noteGap("tiles_hq", z, x, y, hasHqTile, 0);
+        const buf = await resolveHqOrRegularTile(
+          tilesDir,
+          tilesHqDir,
+          caches,
+          z,
+          x,
+          y,
+          0,
+          90,
           true
         );
         if (!buf) {
@@ -513,6 +550,54 @@ export function startTileServer(port = PORT, host = HOST, options = {}) {
           "Cache-Control": "public, max-age=31536000, immutable",
         });
         res.end(readFileSync(realModel));
+        return;
+      }
+
+      if (pathname.startsWith("/project_graphics/")) {
+        if (!projectGraphicsReal) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const rawGfxRel = pathname.slice("/project_graphics/".length);
+        if (rawGfxRel.split(/[\\/]/).includes("..")) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const relGfx = normalize(rawGfxRel).replace(/^\/+/, "");
+        const gfxPath = resolve(projectGraphicsReal, relGfx);
+        if (
+          (gfxPath !== projectGraphicsReal && !gfxPath.startsWith(projectGraphicsReal + sep)) ||
+          !existsSync(gfxPath) ||
+          !statSync(gfxPath).isFile()
+        ) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const realGfx = realpathSync(gfxPath);
+        if (realGfx !== projectGraphicsReal && !realGfx.startsWith(projectGraphicsReal + sep)) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+          return;
+        }
+        const ext = extname(realGfx).toLowerCase();
+        const extraMime = {
+          ".svg": "image/svg+xml",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".webp": "image/webp",
+          ".html": "text/html; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
+          ".js": "application/javascript; charset=utf-8",
+        };
+        res.writeHead(200, {
+          "Content-Type": extraMime[ext] || MIME_TYPES[ext] || "application/octet-stream",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+        res.end(readFileSync(realGfx));
         return;
       }
 

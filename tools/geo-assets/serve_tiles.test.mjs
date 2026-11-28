@@ -340,3 +340,31 @@ test("projectModelsDir serves .glb and .wasm with proper MIME and blocks travers
     rmSync(geoRoot, { recursive: true, force: true });
   }
 });
+
+test("projectGraphicsDir serves project SVGs and HTML cutaways and blocks traversal", async () => {
+  const geoRoot = mkdtempSync(join(tmpdir(), "geo-gfx-"));
+  const projectGraphicsDir = join(geoRoot, "proj_graphics");
+  try {
+    mkdirSync(projectGraphicsDir, { recursive: true });
+    writeFileSync(
+      join(projectGraphicsDir, "cargo_icon.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"></svg>'
+    );
+    writeFileSync(join(geoRoot, "outside.svg"), "<svg/>");
+
+    const server = await startTileServer(0, "127.0.0.1", { geoRoot, projectGraphicsDir });
+    try {
+      const { port } = server.address();
+      const svgRes = await fetch(`http://127.0.0.1:${port}/project_graphics/cargo_icon.svg`);
+      assert.equal(svgRes.status, 200);
+      assert.equal(svgRes.headers.get("content-type"), "image/svg+xml");
+
+      const badRes = await fetch(`http://127.0.0.1:${port}/project_graphics/..%2foutside.svg`);
+      assert.equal(badRes.status, 404);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    rmSync(geoRoot, { recursive: true, force: true });
+  }
+});

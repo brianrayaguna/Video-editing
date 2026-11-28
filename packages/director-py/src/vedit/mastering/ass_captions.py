@@ -137,7 +137,7 @@ def _caption_style(
             return None
 
     scale = min(width, height) / 1080.0
-    default_px = round(56 * scale) if is_portrait else round(46 * scale)
+    default_px = round(52 * scale) if is_portrait else round(48 * scale)
     font_px = _num("caption_font_px")
     resolved_font_px = round(font_px) if font_px and font_px > 0 else default_px
     bottom_pct = _num("caption_bottom_pct")
@@ -209,7 +209,7 @@ def write_ass_overlays_file(
     first_cap = next((o for o in overlays if o.kind == "caption_rail"), None)
     cap_merged = _merge_overlay_props(first_cap)
     cap_font = _primary_font_name(
-        cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Rubik"
+        cap_merged.get("caption_font_family") or cap_merged.get("font_family"), "Inter"
     )
     cap_style = _caption_style(cap_merged, width=width, height=height, is_portrait=is_portrait)
     cap_bottom_pct = cap_style["bottom_pct"]
@@ -237,10 +237,10 @@ def write_ass_overlays_file(
     cr_font_px = max(14, round(float(cr_merged.get("font_size_px") or (22 * scale))))
 
     outline_w = (
-        cap_style["outline_px"] if cap_style["outline_px"] is not None else round(2.6 * scale, 2)
+        cap_style["outline_px"] if cap_style["outline_px"] is not None else round(0.55 * scale, 2)
     )
     shadow_d = (
-        cap_style["shadow_px"] if cap_style["shadow_px"] is not None else round(2.4 * scale, 2)
+        cap_style["shadow_px"] if cap_style["shadow_px"] is not None else round(2.2 * scale, 2)
     )
     cap_bold = -1 if cap_style["bold"] else 0
     soft_shadow = cap_style["shadow_blur_px"] > 0
@@ -484,16 +484,16 @@ def build_ass_from_transcript(
     eff_font_px = (
         int(font_size)
         if font_size is not None
-        else (round(56 * scale) if is_portrait else round(46 * scale))
+        else (round(52 * scale) if is_portrait else round(48 * scale))
     )
     eff_margin_v = (
         int(margin_v)
         if margin_v is not None
-        else (round(348 * (height / 1920.0)) if is_portrait else round(height * 0.095))
+        else (round(525 * (height / 1920.0)) if is_portrait else round(height * 0.10))
     )
     eff_margin_x = round(width * (0.078 if is_portrait else 0.125))
-    eff_outline = round(outline_px if outline_px is not None else 2.4 * scale, 2)
-    eff_shadow = round(shadow_px if shadow_px is not None else 2.4 * scale, 2)
+    eff_outline = round(outline_px if outline_px is not None else 0.55 * scale, 2)
+    eff_shadow = round(shadow_px if shadow_px is not None else 2.2 * scale, 2)
     fade_in = max(0, min(200, int(fade_in_ms)))
     fade_out = max(0, min(200, int(fade_out_ms)))
     eff_gap_s = max(0, min(250, int(gap_ms))) / 1000.0
