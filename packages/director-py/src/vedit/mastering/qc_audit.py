@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from vedit.mastering.sound_design import resolve_loudness_profile
-from vedit.models import PlatformTarget
+from vedit.metrics import NormRect, resolve_overlay_rect
+from vedit.models import EditPlan, PlatformTarget
 
 _EBUR128_I_RE = re.compile(
     r"Integrated loudness:\s*\n\s*I:\s*([-+]?(?:\d+(?:\.\d+)?|inf))\s*LUFS", re.I
@@ -677,6 +678,387 @@ def measure_spectral_translation(media_path: Path) -> dict[str, float] | None:
     return {"low_to_mid_db": low_to_mid_db}
 
 
+_ASS_TIME_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})\.(\d{2,3})$")
+_ASS_TAG_RE = re.compile(r"\{[^}]*\}")
+
+
+def _parse_ass_timestamp(raw: str) -> float | None:
+    m = _ASS_TIME_RE.match(raw.strip())
+    if not m:
+        return None
+    hrs, mins, secs, frac = m.groups()
+    denom = 1000.0 if len(frac) == 3 else 100.0
+    return int(hrs) * 3600.0 + int(mins) * 60.0 + int(secs) + int(frac) / denom
+
+
+def parse_ass_caption_boxes(
+    ass_path: Path,
+    width: int,
+    height: int,
+) -> list[dict[str, Any]]:
+    """Parse an ASS subtitle file into normalized sample boxes and cue midpoints."""
+    src = ass_path.expanduser().resolve()
+    if not src.is_file():
+        return []
+
+    play_x = max(1, int(width))
+    play_y = max(1, int(height))
+    styles: dict[str, dict[str, float]] = {}
+    style_fields: list[str] = []
+    event_fields: list[str] = []
+    section = ""
+    boxes: list[dict[str, Any]] = []
+
+    for raw_line in src.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower()
+            continue
+        if section == "script info":
+            if line.lower().startswith("playresx:"):
+                try:
+                    play_x = max(1, int(float(line.split(":", 1)[1].strip())))
+                except ValueError:
+                    pass
+            elif line.lower().startswith("playresy:"):
+                try:
+                    play_y = max(1, int(float(line.split(":", 1)[1].strip())))
+                except ValueError:
+                    pass
+        elif section in ("v4+ styles", "v4 styles"):
+            if line.lower().startswith("format:"):
+                style_fields = [f.strip().lower() for f in line.split(":", 1)[1].split(",")]
+            elif line.lower().startswith("style:") and style_fields:
+                vals = [v.strip() for v in line.split(":", 1)[1].split(",")]
+                row = dict(zip(style_fields, vals, strict=False))
+                name = row.get("name", "Default")
+                try:
+                    styles[name] = {
+                        "fontsize": float(row.get("fontsize", 48) or 48),
+                        "alignment": float(row.get("alignment", 2) or 2),
+                        "margin_l": float(row.get("marginl", 20) or 20),
+                        "margin_r": float(row.get("marginr", 20) or 20),
+                        "margin_v": float(row.get("marginv", 80) or 80),
+                    }
+                except ValueError:
+                    continue
+        elif section == "events":
+            if line.lower().startswith("format:"):
+                event_fields = [f.strip().lower() for f in line.split(":", 1)[1].split(",")]
+            elif line.lower().startswith("dialogue:") and event_fields:
+                payload = line.split(":", 1)[1].lstrip()
+                parts = payload.split(",", len(event_fields) - 1)
+                if len(parts) != len(event_fields):
+                    continue
+                row = dict(zip(event_fields, parts, strict=True))
+                start_s = _parse_ass_timestamp(row.get("start", ""))
+                end_s = _parse_ass_timestamp(row.get("end", ""))
+                if start_s is None or end_s is None or end_s <= start_s:
+                    continue
+                clean_text = _ASS_TAG_RE.sub("", row.get("text", "")).strip()
+                if not clean_text:
+                    continue
+                style_cfg = styles.get(row.get("style", "Default")) or next(
+                    iter(styles.values()),
+                    {
+                        "fontsize": 48.0,
+                        "alignment": 2.0,
+                        "margin_l": 20.0,
+                        "margin_r": 20.0,
+                        "margin_v": 80.0,
+                    },
+                )
+                try:
+                    m_v_ev = float(row.get("marginv", 0) or 0)
+                    m_l_ev = float(row.get("marginl", 0) or 0)
+                    m_r_ev = float(row.get("marginr", 0) or 0)
+                except ValueError:
+                    m_v_ev = m_l_ev = m_r_ev = 0.0
+                margin_v = m_v_ev if m_v_ev > 0 else style_cfg["margin_v"]
+                margin_l = m_l_ev if m_l_ev > 0 else style_cfg["margin_l"]
+                margin_r = m_r_ev if m_r_ev > 0 else style_cfg["margin_r"]
+                n_lines = max(1, clean_text.count("\\N") + clean_text.count("\\n") + 1)
+                box_h_px = max(24.0, style_cfg["fontsize"] * 1.45 * n_lines)
+                align = int(style_cfg["alignment"])
+
+                if align in (7, 8, 9):
+                    top_px = margin_v
+                    bot_px = top_px + box_h_px
+                elif align in (4, 5, 6):
+                    mid_px = play_y * 0.5
+                    top_px = mid_px - box_h_px * 0.5
+                    bot_px = mid_px + box_h_px * 0.5
+                else:
+                    bot_px = play_y - margin_v
+                    top_px = bot_px - box_h_px
+
+                top_n = max(0.0, min(0.95, top_px / play_y))
+                bot_n = max(top_n + 0.02, min(1.0, bot_px / play_y))
+                left_n = max(0.0, min(0.45, margin_l / play_x))
+                right_n = max(left_n + 0.1, min(1.0, 1.0 - (margin_r / play_x)))
+                boxes.append(
+                    {
+                        "label": f"ass_cue_{len(boxes) + 1}",
+                        "t_s": round((start_s + end_s) * 0.5, 3),
+                        "text": clean_text,
+                        "rect": NormRect(
+                            top=round(top_n, 4),
+                            bottom=round(bot_n, 4),
+                            left=round(left_n, 4),
+                            right=round(right_n, 4),
+                        ),
+                    }
+                )
+    return boxes
+
+
+def _rgb_rel_luma(r: int, g: int, b: int) -> float:
+    sr = r / 255.0
+    sg = g / 255.0
+    sb = b / 255.0
+    lr = sr / 12.92 if sr <= 0.03928 else ((sr + 0.055) / 1.055) ** 2.4
+    lg = sg / 12.92 if sg <= 0.03928 else ((sg + 0.055) / 1.055) ** 2.4
+    lb = sb / 12.92 if sb <= 0.03928 else ((sb + 0.055) / 1.055) ** 2.4
+    return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb
+
+
+def _decode_raw_frame(
+    media_path: Path,
+    t_s: float,
+    width: int,
+    height: int,
+    *,
+    pix_fmt: Literal["rgb24", "rgba"] = "rgb24",
+) -> bytes | None:
+    bpp = 4 if pix_fmt == "rgba" else 3
+    expected = width * height * bpp
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            f"{max(0.0, float(t_s)):.3f}",
+            "-i",
+            str(media_path),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"scale={width}:{height}:flags=area",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            pix_fmt,
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if proc.returncode != 0 or len(proc.stdout) < expected:
+        return None
+    return proc.stdout[:expected]
+
+
+def _measure_roi_wcag_contrast(
+    rgb: bytes,
+    width: int,
+    height: int,
+    rect: NormRect,
+) -> float:
+    x0 = max(0, min(width - 2, int(rect.left * width)))
+    x1 = max(x0 + 2, min(width, int(math.ceil(rect.right * width))))
+    y0 = max(0, min(height - 2, int(rect.top * height)))
+    y1 = max(y0 + 2, min(height, int(math.ceil(rect.bottom * height))))
+
+    lums: list[float] = []
+    border_lums: list[float] = []
+    for y in range(y0, y1):
+        row_off = y * width * 3
+        is_border_y = y == y0 or y == y1 - 1
+        for x in range(x0, x1):
+            off = row_off + x * 3
+            lum = _rgb_rel_luma(rgb[off], rgb[off + 1], rgb[off + 2])
+            lums.append(lum)
+            if is_border_y or x == x0 or x == x1 - 1:
+                border_lums.append(lum)
+    if len(lums) < 4:
+        return 21.0
+
+    lums.sort()
+    n = len(lums)
+    p02 = lums[max(0, int(0.02 * (n - 1)))]
+    p98 = lums[min(n - 1, int(0.98 * (n - 1)))]
+    ratio_span = (p98 + 0.05) / (p02 + 0.05)
+
+    if border_lums:
+        border_lums.sort()
+        b_med = border_lums[len(border_lums) // 2]
+        r_hi = (max(p98, b_med) + 0.05) / (min(p98, b_med) + 0.05)
+        r_lo = (max(p02, b_med) + 0.05) / (min(p02, b_med) + 0.05)
+        return round(max(ratio_span, r_hi, r_lo), 2)
+    return round(ratio_span, 2)
+
+
+def _measure_safe_zone_intrusion(
+    width: int,
+    height: int,
+    platform: PlatformTarget,
+    *,
+    comp_rgb: bytes | None = None,
+    base_rgb: bytes | None = None,
+    overlay_rgba: bytes | None = None,
+) -> float:
+    sz = platform.safe_zone
+    top_y = int(round(sz.top_pct * height))
+    bot_y = int(round((1.0 - sz.bottom_pct) * height))
+    left_x = int(round(sz.left_pct * width))
+    right_x = int(round((1.0 - sz.right_pct) * width))
+
+    restricted_total = 0
+    intruded = 0
+    for y in range(height):
+        in_y = y < top_y or y >= bot_y
+        for x in range(width):
+            if not (in_y or x < left_x or x >= right_x):
+                continue
+            restricted_total += 1
+            if overlay_rgba is not None:
+                alpha = overlay_rgba[(y * width + x) * 4 + 3]
+                if alpha > 20:
+                    intruded += 1
+            elif comp_rgb is not None and base_rgb is not None:
+                off = (y * width + x) * 3
+                diff = (
+                    abs(comp_rgb[off] - base_rgb[off])
+                    + abs(comp_rgb[off + 1] - base_rgb[off + 1])
+                    + abs(comp_rgb[off + 2] - base_rgb[off + 2])
+                ) / 3.0
+                if diff > 18.0:
+                    intruded += 1
+    if restricted_total == 0:
+        return 0.0
+    return round(intruded / restricted_total, 4)
+
+
+def audit_rendered_frame_contrast(
+    media_path: Path,
+    platform: PlatformTarget,
+    *,
+    plan: EditPlan | None = None,
+    captions_ass_path: Path | None = None,
+    overlay_alpha_path: Path | None = None,
+    base_video_path: Path | None = None,
+    min_contrast: float = 4.5,
+    max_samples: int = 12,
+) -> tuple[list[QCIssue], list[QCIssue], dict[str, Any]]:
+    """Measure pixel-level WCAG 2.1 contrast on rendered frames and optional safe-zone diffs."""
+    errors: list[QCIssue] = []
+    warnings: list[QCIssue] = []
+    metrics: dict[str, Any] = {}
+
+    scale_w = min(360, max(90, int(platform.width)))
+    scale_h = max(90, round((platform.height / max(1, platform.width)) * scale_w / 2) * 2)
+
+    targets: list[dict[str, Any]] = []
+    if plan is not None:
+        for ov in plan.overlay_compositions:
+            rect = resolve_overlay_rect(ov.safe_band, platform.safe_zone)
+            mid_s = round(ov.timeline_start_s + ov.timeline_duration_s * 0.5, 3)
+            targets.append({"label": ov.overlay_id, "t_s": mid_s, "rect": rect})
+    if captions_ass_path is not None:
+        targets.extend(parse_ass_caption_boxes(captions_ass_path, platform.width, platform.height))
+
+    # Evenly thin targets if there are many overlays/cues to keep QC decode bounded.
+    if len(targets) > max_samples:
+        step = len(targets) / max_samples
+        targets = [targets[int(i * step)] for i in range(max_samples)]
+
+    frame_cache: dict[float, bytes | None] = {}
+    ratios: list[float] = []
+    low_findings: list[dict[str, Any]] = []
+    for target in targets:
+        t_s = float(target["t_s"])
+        if t_s not in frame_cache:
+            frame_cache[t_s] = _decode_raw_frame(media_path, t_s, scale_w, scale_h, pix_fmt="rgb24")
+        rgb = frame_cache[t_s]
+        if rgb is None:
+            continue
+        ratio = _measure_roi_wcag_contrast(rgb, scale_w, scale_h, target["rect"])
+        ratios.append(ratio)
+        if ratio < min_contrast:
+            low_findings.append({"label": target["label"], "t_s": t_s, "ratio": ratio})
+            warnings.append(
+                QCIssue(
+                    severity="warning",
+                    code="PIXEL_CONTRAST_LOW",
+                    message=(
+                        f"Rendered frame contrast for '{target['label']}' at {t_s:.2f}s "
+                        f"is {ratio:.2f}:1 (< {min_contrast:.1f}:1 WCAG floor)."
+                    ),
+                )
+            )
+
+    metrics["pixel_contrast_samples"] = len(ratios)
+    if ratios:
+        metrics["pixel_contrast_min_ratio"] = round(min(ratios), 2)
+        metrics["pixel_contrast_median_ratio"] = round(sorted(ratios)[len(ratios) // 2], 2)
+    if low_findings:
+        metrics["pixel_contrast_low_findings"] = low_findings
+
+    # Safe-zone pixel intrusion runs strictly when an explicit alpha or base stream exists.
+    if overlay_alpha_path is None and base_video_path is None:
+        metrics["safe_zone_pixel_diff_skipped"] = "no_base_or_alpha_stream"
+    else:
+        sample_times = sorted(frame_cache.keys()) or [0.5]
+        max_intrusion = 0.0
+        worst_t = sample_times[0]
+        for t_s in sample_times[:4]:
+            if overlay_alpha_path is not None and overlay_alpha_path.is_file():
+                alpha_buf = _decode_raw_frame(
+                    overlay_alpha_path, t_s, scale_w, scale_h, pix_fmt="rgba"
+                )
+                if alpha_buf is None:
+                    continue
+                ratio = _measure_safe_zone_intrusion(
+                    scale_w, scale_h, platform, overlay_rgba=alpha_buf
+                )
+            elif base_video_path is not None and base_video_path.is_file():
+                comp_buf = frame_cache.get(t_s) or _decode_raw_frame(
+                    media_path, t_s, scale_w, scale_h, pix_fmt="rgb24"
+                )
+                base_buf = _decode_raw_frame(
+                    base_video_path, t_s, scale_w, scale_h, pix_fmt="rgb24"
+                )
+                if comp_buf is None or base_buf is None:
+                    continue
+                ratio = _measure_safe_zone_intrusion(
+                    scale_w, scale_h, platform, comp_rgb=comp_buf, base_rgb=base_buf
+                )
+            else:
+                continue
+            if ratio > max_intrusion:
+                max_intrusion = ratio
+                worst_t = t_s
+        metrics["safe_zone_pixel_intrusion_ratio"] = max_intrusion
+        if max_intrusion > 0.015:
+            warnings.append(
+                QCIssue(
+                    severity="warning",
+                    code="SAFE_ZONE_PIXEL_INTRUSION",
+                    message=(
+                        f"Overlay pixels intrude into restricted safe-zone margins "
+                        f"({max_intrusion:.2%} changed pixels at {worst_t:.2f}s)."
+                    ),
+                )
+            )
+
+    return errors, warnings, metrics
+
+
 def audit_mastered_deliverable(
     media_path: Path,
     platform_target: PlatformTarget,
@@ -686,6 +1068,11 @@ def audit_mastered_deliverable(
     reference_path: Path | None = None,
     min_vmaf: float = 85.0,
     loudness_profile: str | None = None,
+    plan: EditPlan | None = None,
+    captions_ass_path: Path | None = None,
+    overlay_alpha_path: Path | None = None,
+    base_video_path: Path | None = None,
+    min_pixel_contrast: float = 4.5,
 ) -> QCAuditReport:
     """Verify resolution, CFR frame rate, bt709 tags, AAC audio, loudness, and visual anomalies."""
     errors: list[QCIssue] = []
@@ -864,6 +1251,25 @@ def audit_mastered_deliverable(
                             message="FFmpeg libvmaf filter not available on this host.",
                         )
                     )
+
+        if (
+            plan is not None
+            or captions_ass_path is not None
+            or overlay_alpha_path is not None
+            or base_video_path is not None
+        ):
+            px_errors, px_warnings, px_metrics = audit_rendered_frame_contrast(
+                media_path,
+                platform_target,
+                plan=plan,
+                captions_ass_path=captions_ass_path,
+                overlay_alpha_path=overlay_alpha_path,
+                base_video_path=base_video_path,
+                min_contrast=min_pixel_contrast,
+            )
+            errors.extend(px_errors)
+            warnings.extend(px_warnings)
+            metrics.update(px_metrics)
 
     if a_stream is None:
         if require_audio:

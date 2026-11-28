@@ -123,6 +123,7 @@ All CLI commands are exposed through `vedit` (installed at `packages/director-py
 | :--- | :--- |
 | `vedit doctor` | Verify local toolchain readiness (`ffmpeg`, `ffprobe`, `vedit-probe`, Node.js, isolated tool venvs, and providers). |
 | `vedit contracts validate` | Validate JSON Schemas, platform mastering presets, and brand trees. |
+| `vedit contracts generate-ts` | Generate TypeScript contract types from JSON Schemas (`--check` guards against schema drift). |
 | `vedit platforms list` | List available delivery mastering targets. |
 | `vedit providers list` | Inspect configured capability providers and active bindings. |
 | `vedit providers auth` | Inspect credential and authentication readiness for configured providers. |
@@ -179,13 +180,14 @@ Run the full verification suite across all runtimes from the repository root:
 # TypeScript compiler bridge typecheck, build, and tests
 (cd packages/hf-compiler-ts && npm run typecheck && npm run build && npm test)
 
-# Geo tile server unit tests
-node --test tools/geo-assets/serve_tiles.test.mjs
+# Geo asset tooling tests (tile server, TTF metadata parity, scene modules, determinism)
+node --test tools/geo-assets/*.test.mjs tools/geo-assets/scene/*.test.mjs
 
-# Python linting, unit/integration tests, and contract validation
+# Python linting, unit/integration tests, and contract sync/validation
 packages/director-py/.venv/bin/ruff check packages/director-py packages/cloud-modal
 packages/director-py/.venv/bin/pytest -v packages/director-py/tests
 packages/director-py/.venv/bin/vedit contracts validate --json
+packages/director-py/.venv/bin/vedit contracts generate-ts --check
 packages/director-py/.venv/bin/vedit platforms list
 packages/director-py/.venv/bin/vedit providers list --json
 ```
