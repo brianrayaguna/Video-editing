@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vedit.contracts import find_repo_root
+from vedit.geo.themes import DEFAULT_AUDIO_THEMES, load_audio_themes
 from vedit.mastering.qc_audit import audit_mastered_deliverable
 
 _PIVOT_RE = re.compile(
@@ -21,79 +22,7 @@ _PIVOT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_THEME_PROFILES: dict[str, dict[str, Any]] = {
-    "maritime": {
-        "keywords": (
-            "pelabuhan", "kapal", "selat", "laut", "dermaga", "samudra", "kargo", "maritim",
-            "port", "ship", "strait", "ocean", "sea", "maritime", "vessel", "canal", "harbor",
-        ),
-        "curious_query": "mysterious rhythmic marimba documentary",
-        "tension_query": "dark suspense orchestral hybrid documentary",
-        "ambience_query": "ocean waves sea ambience",
-        "ambience_gain_db": -27.5,
-        "foley": {
-            "maritime_horn": ("distant cargo ship fog horn", -17.0, 2.4, 0.8),
-            "underwater_dive": ("underwater dive splash submerge", -9.5, 2.2, 0.7),
-        },
-    },
-    "weather": {
-        "keywords": (
-            "badai", "debu", "angin", "kering", "kekeringan", "hujan", "salju", "iklim",
-            "storm", "dust", "wind", "drought", "blizzard", "hurricane", "climate", "monsoon",
-        ),
-        "curious_query": "minimal documentary acoustic investigative",
-        "tension_query": "ominous dark ambient tension documentary",
-        "ambience_query": "wind blowing prairie ambience",
-        "ambience_gain_db": -26.5,
-        "foley": {
-            "wind_gust": ("strong wind dust gust", -14.0, 2.2, 0.7),
-        },
-    },
-    "infrastructure": {
-        "keywords": (
-            "kereta", "jembatan", "terowongan", "bendungan", "jalan", "tol", "pipa", "kabel",
-            "railway", "train", "bridge", "tunnel", "dam", "highway", "pipeline", "cable", "grid",
-        ),
-        "curious_query": "pulsing minimal tech documentary",
-        "tension_query": "tense pulse investigative documentary",
-        "ambience_query": "distant industrial city hum ambience",
-        "ambience_gain_db": -28.0,
-        "foley": {},
-    },
-    "geology": {
-        "keywords": (
-            "gunung", "gempa", "lempeng", "vulkanik", "magma", "patahan", "sungai", "lembah",
-            "volcano", "earthquake", "tectonic", "fault", "magma", "canyon", "glacier", "river",
-        ),
-        "curious_query": "cinematic atmospheric wonder documentary",
-        "tension_query": "deep rumble suspense documentary",
-        "ambience_query": "deep mountain wind nature ambience",
-        "ambience_gain_db": -27.5,
-        "foley": {},
-    },
-    "aviation": {
-        "keywords": (
-            "pesawat", "bandara", "penerbangan", "udara", "rute terbang",
-            "aircraft", "airport", "flight", "airspace", "airline", "aviation",
-        ),
-        "curious_query": "modern investigative electronic documentary",
-        "tension_query": "suspenseful hybrid documentary",
-        "ambience_query": "distant airplane jet ambience",
-        "ambience_gain_db": -28.0,
-        "foley": {},
-    },
-    "geopolitics": {
-        "keywords": (
-            "perbatasan", "negara", "perjanjian", "wilayah", "ekonomi", "miliar", "strategis",
-            "border", "treaty", "territory", "sovereignty", "geopolitics", "billion", "enclave",
-        ),
-        "curious_query": "investigative minimal documentary marimba",
-        "tension_query": "dark investigative tension orchestral",
-        "ambience_query": "subtle outdoor air room ambience",
-        "ambience_gain_db": -30.0,
-        "foley": {},
-    },
-}
+_THEME_PROFILES: dict[str, dict[str, Any]] = DEFAULT_AUDIO_THEMES
 
 
 def _transcript_text(transcript: dict[str, Any] | None) -> str:
@@ -109,8 +38,11 @@ def _transcript_text(transcript: dict[str, Any] | None) -> str:
 def classify_audio_theme(
     transcript: dict[str, Any] | None,
     scene: dict[str, Any] | None = None,
+    *,
+    brand_dir: Path | None = None,
 ) -> str:
     """Classify documentary domain theme from narration text and declarative scene layers."""
+    themes = load_audio_themes(brand_dir=brand_dir) if brand_dir is not None else _THEME_PROFILES
     haystack = _transcript_text(transcript).lower()
     if scene:
         for act in scene.get("acts") or []:
@@ -123,7 +55,7 @@ def classify_audio_theme(
 
     best_theme = "geopolitics"
     best_score = 0
-    for theme, cfg in _THEME_PROFILES.items():
+    for theme, cfg in themes.items():
         score = sum(haystack.count(kw) for kw in cfg["keywords"])
         if score > best_score:
             best_score = score
