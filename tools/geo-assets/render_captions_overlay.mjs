@@ -20,15 +20,13 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+import puppeteer from "puppeteer-core";
+import sharp from "sharp";
 import { getChromeArgs } from "./fast_capture.mjs";
 import { isMainModule } from "./entry_point.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
-const puppeteer = require("puppeteer-core");
-const sharp = require("sharp");
 
 const FONTS_DIR = join(REPO_ROOT, "assets/geo/fonts");
 

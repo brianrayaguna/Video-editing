@@ -10,15 +10,13 @@ import { dirname, extname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+import puppeteer from "puppeteer-core";
+import sharp from "sharp";
 import { lintHyperframesProjectDir } from "../../packages/hf-compiler-ts/dist/lint.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, "../..");
-
-const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
-export const puppeteer = require("puppeteer-core");
-export const sharp = require("sharp");
+export { puppeteer, sharp };
 
 const MIME_BY_EXT = {
   ".html": "text/html; charset=utf-8",

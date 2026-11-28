@@ -11,13 +11,11 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+import sharp from "sharp";
 import { isMainModule } from "./entry_point.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
-const sharp = require("sharp");
 
 const GEO_ROOT = join(REPO_ROOT, "assets/geo");
 const RAW_DIR = join(GEO_ROOT, "raw");

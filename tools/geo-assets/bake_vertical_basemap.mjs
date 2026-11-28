@@ -25,7 +25,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+import puppeteer from "puppeteer-core";
 import {
   concatMp4Slices,
   createCdpScreenshotter,
@@ -37,8 +37,6 @@ import { DEFAULT_DEM_BOUNDS, parseCenterEnv } from "./geo_defaults.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
-const puppeteer = require("puppeteer-core");
 
 function isExecutable(p) {
   try {

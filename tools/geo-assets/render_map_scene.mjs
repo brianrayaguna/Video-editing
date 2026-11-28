@@ -25,7 +25,8 @@ import {
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+import puppeteer from "puppeteer-core";
+import sharp from "sharp";
 import {
   createCdpScreenshotter,
   getChromeArgs,
@@ -34,15 +35,13 @@ import {
 import { coverageReport, startTileServer } from "./serve_tiles.mjs";
 import { cutBlurAmount, shutterSubframeSchedule } from "./map_draw_math.mjs";
 import { DEFAULT_MAP_CENTER } from "./geo_defaults.mjs";
+import { readTtfWeightAxis } from "./lib/ttf_metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const require = createRequire(join(REPO_ROOT, "packages/hf-compiler-ts/package.json"));
 // Pure geometry helpers shared with Node tests; inlined into the page with `export` removed.
 const DRAW_MATH_SRC = readFileSync(join(__dirname, "map_draw_math.mjs"), "utf8").replace(/^export\s+/gm, "");
 const FLAG_RASTER_WIDTH = 1600;
-const puppeteer = require("puppeteer-core");
-const sharp = require("sharp");
 
 function isExecutable(p) {
   try {
@@ -142,44 +141,6 @@ const __FONT_KNOWN_FAMILIES = Object.freeze({
   permanentmarker: "Permanent Marker",
   patrickhand: "Patrick Hand",
 });
-
-function readTtfWeightAxis(filePath) {
-  try {
-    const buf = readFileSync(filePath);
-    if (buf.length < 12) return null;
-    const numTables = buf.readUInt16BE(4);
-    let fvarOff = 0;
-    let os2Off = 0;
-    for (let i = 0; i < numTables; i++) {
-      const rec = 12 + i * 16;
-      if (rec + 16 > buf.length) break;
-      const tag = buf.toString("ascii", rec, rec + 4);
-      if (tag === "fvar") fvarOff = buf.readUInt32BE(rec + 8);
-      else if (tag === "OS/2") os2Off = buf.readUInt32BE(rec + 8);
-    }
-    if (fvarOff && fvarOff + 12 <= buf.length) {
-      const axesOff = buf.readUInt16BE(fvarOff + 4);
-      const axisCount = buf.readUInt16BE(fvarOff + 8);
-      const axisSize = buf.readUInt16BE(fvarOff + 10);
-      for (let i = 0; i < axisCount; i++) {
-        const off = fvarOff + axesOff + i * axisSize;
-        if (off + 16 > buf.length) break;
-        if (buf.toString("ascii", off, off + 4) === "wght") {
-          const minW = Math.max(1, Math.min(1000, Math.round(buf.readInt32BE(off + 4) / 65536)));
-          const maxW = Math.max(minW, Math.min(1000, Math.round(buf.readInt32BE(off + 12) / 65536)));
-          return { isVariable: true, minWeight: minW, maxWeight: maxW };
-        }
-      }
-    }
-    if (os2Off && os2Off + 6 <= buf.length) {
-      const w = Math.max(100, Math.min(900, buf.readUInt16BE(os2Off + 4)));
-      return { isVariable: false, minWeight: w, maxWeight: w };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 let __cachedDynamicFontFaces = null;
 

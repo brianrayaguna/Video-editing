@@ -1,16 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 
 import { gapForTile, isValidTileCoord, pickTileSource, startTileServer } from "./serve_tiles.mjs";
-
-const require = createRequire(new URL("../../packages/hf-compiler-ts/package.json", import.meta.url));
-const sharp = require("sharp");
 
 /** Build an existence predicate from a list of `"z/x/y"` keys. */
 function tiles(...keys) {
