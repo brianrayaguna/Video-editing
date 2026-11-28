@@ -1084,7 +1084,8 @@ def test_validate_scene_supports_3d_layers_and_gloss_warp_flags(tmp_path: Path) 
         mod_url = (repo / "tools" / "geo-assets" / "scene" / "html_map_scene.mjs").as_uri()
         check_js = (
             f'import({mod_url!r}).then(({{ buildMapSceneHtml }}) => {{'
-            'const html = buildMapSceneHtml("http://x", 1080, 1920, "{}", {has_3d: true, origin_coord: [106, -6]});'
+            'const html = buildMapSceneHtml("http://x", 1080, 1920, "{}", '
+            '{has_3d: true, origin_coord: [106, -6]});'
             r"const scripts = [...html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)];"
             r"new Function(scripts[scripts.length - 1][1]);"
             "});"
