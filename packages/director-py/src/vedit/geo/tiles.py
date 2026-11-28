@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+import httpx
 import typer
 
 from vedit.contracts import find_repo_root
@@ -30,6 +31,7 @@ from vedit.geo_imagery import (
     s2_cloudless_url,
     tiles_to_bbox,
 )
+from vedit.providers.config import load_providers_config
 
 
 def _deg2num(lat: float, lon: float, z: int) -> tuple[int, int]:
@@ -169,6 +171,21 @@ def _has_image_magic(path: Path) -> bool:
     return head.startswith(b"\xff\xd8\xff") or head.startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def _has_image_magic_bytes(head: bytes) -> bool:
+    return head.startswith(b"\xff\xd8\xff") or head.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def _load_geo_imagery_options(root: Path) -> dict[str, Any]:
+    try:
+        cfg = load_providers_config(repo_root=root)
+        cap = cfg.defaults.get("geo_imagery")
+        if cap is not None:
+            return dict(cap.options)
+    except Exception:
+        pass
+    return {}
+
+
 def _fetch_tile_set(
     root: Path,
     coords: set[tuple[int, int, int]],
@@ -177,81 +194,106 @@ def _fetch_tile_set(
     grade_tiles: bool,
     missing: set[tuple[int, int, int]] | None = None,
     provider: str = "auto",
+    max_tiles_per_run: int | None = None,
 ) -> tuple[int, int]:
-    """Fetch satellite tiles: z<=12 from Sentinel-2 2024 (graded), z>=13 high-resolution.
+    """Fetch satellite tiles using configured `geo_imagery` (`google_tiles` -> `open_imagery`).
 
     When `provider` resolves to `google` (auto when `GOOGLE_MAPS_API_KEY` is configured),
-    high-resolution tiles use the Google Map Tiles API (2D satellite up to z18) with
-    automatic fallback to USGS National Map and Sentinel-2 cloudless 2024, and record
-    official copyright attribution in `assets/geo/tiles_hq/attribution.json`.
+    all zoom levels `>= google_min_zoom` (default `0` for full Google satellite coverage) use
+    Google Map Tiles API (`scaleFactor2x` + `highDpi`) over pooled `httpx`, with automatic
+    fallback to USGS National Map and Sentinel-2 cloudless 2024, and record official copyright
+    attribution in `assets/geo/tiles_hq/attribution.json`.
     """
     fetched_count = 0
     hq_fetched_count = 0
     raw_dir = root / "assets" / "geo" / "raw" / "tiles_s2_2016"
     hq_dir = root / "assets" / "geo" / "tiles_hq"
+    imagery_opts = _load_geo_imagery_options(root)
+    google_min_zoom = int(imagery_opts.get("google_min_zoom", 0))
+    scale_opt = str(imagery_opts.get("scale") or "scaleFactor2x")
+    high_dpi_opt = bool(imagery_opts.get("high_dpi", True))
+    image_format_opt = str(imagery_opts.get("image_format") or "jpeg")
+    tile_limit = (
+        int(max_tiles_per_run)
+        if max_tiles_per_run is not None
+        else int(imagery_opts.get("max_tiles_per_run", 500))
+    )
+
     resolved_provider, google_api_key = resolve_imagery_provider(provider, repo_root=root)
-    if hq_aerial is True or (hq_aerial is None and resolved_provider == "google"):
+    if hq_aerial is True:
         s2_coords = []
         hq_coords = sorted(coords)
     elif hq_aerial is False:
         s2_coords = sorted(coords)
         hq_coords = []
+    elif resolved_provider == "google":
+        s2_coords = sorted(c for c in coords if c[0] < google_min_zoom)
+        hq_coords = sorted(c for c in coords if c[0] >= google_min_zoom)
     else:
         s2_coords = sorted(c for c in coords if c[0] <= 12)
         hq_coords = sorted(c for c in coords if c[0] >= 13)
+
+    # Guardrail: count uncached tiles before making network calls to cap billing spikes.
+    uncached_hq = [
+        c for c in hq_coords
+        if not ((hq_dir / str(c[0]) / str(c[1]) / f"{c[2]}.jpg").is_file()
+                and (hq_dir / str(c[0]) / str(c[1]) / f"{c[2]}.jpg").stat().st_size >= 64)
+    ]
+    if tile_limit > 0 and len(uncached_hq) > tile_limit:
+        raise ValueError(
+            f"Requested {len(uncached_hq)} uncached satellite tiles exceeds "
+            f"max_tiles_per_run={tile_limit}. Narrow --bbox/--zoom or pass --max-tiles."
+        )
 
     google_session: str | None = None
     google_client: GoogleMapTilesClient | None = None
     if hq_coords and resolved_provider == "google" and google_api_key:
         try:
             google_client = GoogleMapTilesClient(google_api_key)
-            google_session = google_client.create_session(map_type="satellite")
+            google_session = google_client.create_session(
+                map_type=str(imagery_opts.get("map_type") or "satellite"),
+                scale=scale_opt,
+                high_dpi=high_dpi_opt,
+                image_format=image_format_opt,
+            )
         except Exception as exc:
             if provider.strip().lower() == "google":
                 raise RuntimeError(
                     "Google Map Tiles API session failed (verify Map Tiles API & Billing are "
                     f"enabled in Google Cloud Console): {exc}"
                 ) from exc
+            if google_client is not None:
+                google_client.close()
             google_client = None
             google_session = None
 
-    def _fetch_url(dest: Path, url: str) -> bool:
-        if dest.is_file() and dest.stat().st_size >= 64:
-            return True
+    open_http = httpx.Client(
+        timeout=httpx.Timeout(12.0, connect=5.0),
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=16),
+    )
+
+    def _write_tile_bytes(dest: Path, content: bytes) -> bool:
+        if len(content) < 64 or not _has_image_magic_bytes(content[:8]):
+            return False
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".jpg.part")
+        tmp.write_bytes(content)
+        tmp.replace(dest)
+        return True
+
+    def _fetch_open_url(dest: Path, url: str) -> bool:
+        if dest.is_file() and dest.stat().st_size >= 64:
+            return True
         for attempt in range(4):
-            proc = subprocess.run(
-                [
-                    "curl",
-                    "-sS",
-                    "-L",
-                    "--connect-timeout",
-                    "5",
-                    "--max-time",
-                    "12",
-                    "-w",
-                    "%{http_code}",
-                    "-o",
-                    str(tmp),
-                    url,
-                ],
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            status = proc.stdout.strip()
-            if (
-                proc.returncode == 0
-                and status.startswith("2")
-                and status not in _TILE_ABSENT_HTTP_CODES
-                and tmp.is_file()
-                and tmp.stat().st_size >= 64
-                and _has_image_magic(tmp)
-            ):
-                tmp.replace(dest)
+            try:
+                resp = open_http.get(url)
+            except httpx.HTTPError:
+                time.sleep(0.3 * (attempt + 1))
+                continue
+            status = str(resp.status_code)
+            if resp.status_code == 200 and _write_tile_bytes(dest, resp.content):
                 return True
-            tmp.unlink(missing_ok=True)
             if status in _TILE_ABSENT_HTTP_CODES:
                 return False
             time.sleep(0.3 * (attempt + 1))
@@ -261,53 +303,65 @@ def _fetch_tile_set(
         idx, (z, x, y) = item
         dest = raw_dir / str(z) / str(x) / f"{y}.jpg"
         sub = ("a", "b", "c", "d")[idx % 4]
-        return _fetch_url(dest, _s2_cloudless_url(z, x, y, sub))
+        return _fetch_open_url(dest, _s2_cloudless_url(z, x, y, sub))
 
     def _download_hq(item: tuple[int, tuple[int, int, int]]) -> bool:
         idx, (z, x, y) = item
         dest = hq_dir / str(z) / str(x) / f"{y}.jpg"
-        sub = ("a", "b", "c", "d")[idx % 4]
-        return any(
-            _fetch_url(dest, url)
-            for url in hq_tile_urls(
+        if dest.is_file() and dest.stat().st_size >= 64:
+            return True
+        if google_client is not None and google_session and z <= GOOGLE_TILES_MAX_Z:
+            raw_bytes, _status = google_client.fetch_tile_bytes(
                 z,
                 x,
                 y,
-                sub,
-                google_session=google_session,
-                google_api_key=google_api_key,
+                map_type=str(imagery_opts.get("map_type") or "satellite"),
+                scale=scale_opt,
+                high_dpi=high_dpi_opt,
+                image_format=image_format_opt,
             )
+            if raw_bytes is not None and _write_tile_bytes(dest, raw_bytes):
+                return True
+        sub = ("a", "b", "c", "d")[idx % 4]
+        return any(
+            _fetch_open_url(dest, url)
+            for url in hq_tile_urls(z, x, y, sub, google_session=None, google_api_key=None)
         )
 
-    if s2_coords:
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            s2_ok = list(pool.map(_download_s2, enumerate(s2_coords)))
-        fetched_count = sum(s2_ok)
-        if missing is not None:
-            missing.update(c for c, ok in zip(s2_coords, s2_ok, strict=True) if not ok)
+    try:
+        if s2_coords:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                s2_ok = list(pool.map(_download_s2, enumerate(s2_coords)))
+            fetched_count = sum(s2_ok)
+            if missing is not None:
+                missing.update(c for c, ok in zip(s2_coords, s2_ok, strict=True) if not ok)
 
-    if hq_coords:
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            hq_ok = list(pool.map(_download_hq, enumerate(hq_coords)))
-        hq_fetched_count = sum(hq_ok)
-        if missing is not None:
-            missing.update(c for c, ok in zip(hq_coords, hq_ok, strict=True) if not ok)
-        if hq_fetched_count > 0:
-            active_sources: list[str] = []
-            google_copyright: str | None = None
-            if google_client and google_session:
-                active_sources.append("google_map_tiles")
-                bbox_val = tiles_to_bbox(set(hq_coords))
-                if bbox_val is not None:
-                    max_z = max(c[0] for c in hq_coords)
-                    google_copyright = google_client.fetch_viewport_copyright(bbox_val, max_z)
-            else:
-                active_sources.append("usgs_national_map")
-            if s2_coords or not google_client:
-                active_sources.append("eox_s2_2024")
-            record_imagery_attribution(
-                hq_dir, sources=active_sources, google_copyright=google_copyright
-            )
+        if hq_coords:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                hq_ok = list(pool.map(_download_hq, enumerate(hq_coords)))
+            hq_fetched_count = sum(hq_ok)
+            if missing is not None:
+                missing.update(c for c, ok in zip(hq_coords, hq_ok, strict=True) if not ok)
+            if hq_fetched_count > 0:
+                active_sources: list[str] = []
+                google_copyright: str | None = None
+                if google_client and google_session:
+                    active_sources.append("google_map_tiles")
+                    bbox_val = tiles_to_bbox(set(hq_coords))
+                    if bbox_val is not None:
+                        max_z = max(c[0] for c in hq_coords)
+                        google_copyright = google_client.fetch_viewport_copyright(bbox_val, max_z)
+                else:
+                    active_sources.append("usgs_national_map")
+                if s2_coords or not google_client:
+                    active_sources.append("eox_s2_2024")
+                record_imagery_attribution(
+                    hq_dir, sources=active_sources, google_copyright=google_copyright
+                )
+    finally:
+        open_http.close()
+        if google_client is not None:
+            google_client.close()
 
     if grade_tiles and s2_coords:
         node_bin = shutil.which("node")
@@ -374,6 +428,7 @@ def prepare_geo_project(
     grade_tiles: bool = True,
     hq_aerial: bool | None = None,
     provider: str = "auto",
+    max_tiles: int | None = None,
     tile_list: Path | None = None,
     repo_root: Path | None = None,
     fetch_fn: Callable[..., tuple[int, int]] | None = None,
@@ -437,6 +492,8 @@ def prepare_geo_project(
             extra_kwargs: dict[str, Any] = {}
             if provider != "auto":
                 extra_kwargs["provider"] = provider
+            if max_tiles is not None:
+                extra_kwargs["max_tiles_per_run"] = max_tiles
             s2_more, hq_more = _fetch(
                 root,
                 merged_coords,

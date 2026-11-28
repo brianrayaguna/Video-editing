@@ -46,10 +46,11 @@ Storage / Raw Media
 5. Source music (`vocal_type="NONE"` under speech) and SFX via `AudioCatalogPort`.
 6. Apply spectral voiceover carving to music beds, mix stems, and master using two-pass FFmpeg `loudnorm` toward `-14.0 LUFS` integrated and `<= -1.0 dBTP` true peak (`48 kHz` stereo AAC-LC).
 
-### B. Target-Canvas Spatial Grounding
+### B. Target-Canvas Spatial Grounding & Visual Critique
 1. If source and target aspect ratios differ (e.g., `16:9` source → `9:16` vertical), perform reframing/cropping first (`MediaOpsPort.reframe` or crop tracks).
-2. Run `DecisionPort` bounding-box grounding (`box`/`boxes`) on target-aspect keyframes **once per shot carrying overlays** (max `1` image per spatial-box request; batch non-spatial questions up to `8` images / `128` questions).
+2. Run `DecisionPort` bounding-box grounding (`box`/`boxes`) on target-aspect keyframes **once per shot carrying overlays** (max `1` image per spatial-box request; batch non-spatial rubric scoring, `noul` defect detection, and `spans` extraction up to `8` images / `128` questions within the provider image patch budget).
 3. Place captions and cards exclusively within target platform safe zones and clear of detected subject/text boxes.
+4. Route satellite tile acquisition for cartographic bakes through `GeoImageryPort` (`google_tiles` with persistent session caching and `scaleFactor2x` high-DPI tiles, falling back automatically to `open_imagery`).
 
 ### C. HyperFrames Cloud Worker Constraints
 - CPU containers run `chrome-headless-shell` with `--no-browser-gpu` and `--use-gl=swiftshader` to avoid GPU probe stalls and guarantee deterministic rendering across workers.

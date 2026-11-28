@@ -17,7 +17,7 @@ It is designed for automated pipelines and AI directing clients to edit real foo
 | Package / Directory | Runtime | Responsibility |
 | :--- | :--- | :--- |
 | [`packages/media-probe-rs`](packages/media-probe-rs) | Rust (`vedit-probe`) | Single-pass `ffprobe` and `ffmpeg` pipe for SHA-256 CAS hashing, `scdet` shot cuts, `ebur128` loudness, `silencedetect`, Sobel sharpness, BT.709 band luminance, and CIELAB palette clustering. |
-| [`packages/director-py`](packages/director-py) | Python `>=3.12,<3.14` (`vedit`, `vedit-mcp`) | Capability ports (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`), YAML-configured provider registry, schema validation, external project workspace lifecycle (`vedit project`), durable job checkpoints, brand profiling, planning and verification, `HyperFrames` compilation, `FFmpeg` mastering, visual/technical QC audit, `OpenTimelineIO` export, FastMCP server, and CLI. |
+| [`packages/director-py`](packages/director-py) | Python `>=3.12,<3.14` (`vedit`, `vedit-mcp`) | Capability ports (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`, `GeoImageryPort`), YAML-configured provider registry, schema validation, external project workspace lifecycle (`vedit project`), durable job checkpoints, brand profiling, planning and verification, `HyperFrames` compilation, `FFmpeg` mastering, visual/technical QC audit, `OpenTimelineIO` export, FastMCP server, and CLI. |
 | [`packages/hf-compiler-ts`](packages/hf-compiler-ts) | Node.js `>=22` / TypeScript | Contracts and compilation bridge targeting pinned `@hyperframes/core`, `@hyperframes/lint`, and `@hyperframes/producer` (`0.9.68`). |
 | [`packages/cloud-modal`](packages/cloud-modal) | Python / Modal (Optional) | Serverless worker images and entrypoints for offloading headless Chromium / `HyperFrames` `BeginFrame` renders, `DeepFilterNet` speech denoising, and deterministic cloud reframing to `Modal`. |
 | [`contracts`](contracts) | JSON Schema (Draft 2020-12) | Shared cross-runtime contracts (`brand_memory`, `brand_style_policy`, `brand_template`, `critique_packet`, `directing_idioms`, `edit_plan`, `editorial_playbook`, `media_probe`, `platform_target`, `project_manifest`, `spatial_forensics`, `storyboard`, `transcript`, `video_breakdown`). |
@@ -72,11 +72,11 @@ All CLI commands are exposed through `vedit` (installed at `packages/director-py
 | `vedit decide` | Evaluate calibrated edit decisions against probe telemetry, transcripts, and brand policy via `DecisionPort`. |
 | `vedit storyboard readiness` | Audit a transcript for visualizability and breath-pause readiness prior to voiceover lock. |
 | `vedit storyboard context` | Retrieve advisory playbook exemplars, triggers, and brand memory warnings for a storyboard. |
-| `vedit storyboard auto` | Build a typed storyboard from narration and optionally layer director instructions on top. |
-| `vedit storyboard gate-prerender` | Run pre-render deterministic and optional semantic storyboard critique. |
+| `vedit storyboard auto` | Build a typed storyboard from narration (with `--decision auto\|on\|off` semantic enrichment) and optionally layer director instructions on top. |
+| `vedit storyboard gate-prerender` | Run pre-render deterministic and `DecisionPort` semantic storyboard critique (`--decision auto\|on\|off`). |
 | `vedit storyboard check` | Validate a storyboard against the brand's executable directing idioms. |
 | `vedit storyboard journey` | Compile route head, camera, route width, and callout positions from a journey storyboard. |
-| `vedit critique packet` | Run deterministic checks, render grid-anchored contact sheets, and emit the rubric review form. |
+| `vedit critique packet` | Run deterministic checks, render grid-anchored contact sheets, score visual rubrics via `DecisionPort` when enabled (`--decision auto\|on\|off`), and emit the review form. |
 | `vedit critique apply-fixes` | Apply typed surgical critique fixes onto unfrozen beats with regression rollback. |
 | `vedit critique gate` | Decide pass/fail from a completed critique packet and report remaining issues. |
 | `vedit director plan` | Generate structured `EditPlan` manifests. |
@@ -88,7 +88,7 @@ All CLI commands are exposed through `vedit` (installed at `packages/director-py
 | :--- | :--- |
 | `vedit camera list` | List reusable map camera move presets for basemap bakes. |
 | `vedit camera expand` | Expand camera move plans into smooth per-frame camera tracks. |
-| `vedit geo prepare` | Fetch project AOI satellite tiles (without dirtying `MANIFEST.json`) and extract GeoJSON vectors. |
+| `vedit geo prepare` | Fetch project AOI satellite tiles via `GeoImageryPort` (`google_tiles` primary with `open_imagery` fallback, without dirtying `MANIFEST.json`) and extract GeoJSON vectors. |
 | `vedit geo validate-scene` | Validate `map_scene.json` against brand craft, sharpness, and clutter guardrails. |
 | `vedit geo build-captions` | Generate locked boxless bottom-band ASS subtitles. |
 | `vedit geo mix-audio` | Mix voiceover, ducked documentary background music, and scene-synced kinetic SFX to `-14.0 LUFS`. |

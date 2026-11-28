@@ -34,7 +34,7 @@ class DecisionQuestion:
     name: str
     question_type: QuestionType
     instructions: str
-    criteria: dict[str, str] | None = None
+    criteria: dict[str, str] | list[str] | None = None
     multiple: bool = False
     value_range: tuple[float, float] | None = None
     step: float | None = None
@@ -58,6 +58,52 @@ class DecisionAnswer:
     question_type: QuestionType
     raw: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def confidence(self) -> float | None:
+        val = self.raw.get("confidence")
+        if val is None or isinstance(val, bool):
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def noul_prob(self) -> float | None:
+        val = self.raw.get("noul")
+        if val is None or isinstance(val, bool):
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def choice_value(self) -> str | None:
+        val = self.raw.get("choice")
+        if val is None:
+            val = self.raw.get("value")
+        return str(val).strip() if val is not None else None
+
+    @property
+    def score_value(self) -> float | None:
+        val = self.raw.get("score")
+        if val is None:
+            val = self.raw.get("value")
+        if val is None or isinstance(val, bool):
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def spans(self) -> list[dict[str, Any]]:
+        raw_spans = self.raw.get("spans")
+        if not isinstance(raw_spans, list):
+            return []
+        return [dict(item) for item in raw_spans if isinstance(item, dict)]
+
 
 @dataclass(slots=True)
 class DecisionBatchResult:
@@ -65,6 +111,7 @@ class DecisionBatchResult:
     model: str
     input_tokens: int
     answers: dict[str, DecisionAnswer]
+    cost_usd: float | None = None
 
 
 def validate_decision_batch(

@@ -13,7 +13,12 @@ from vedit.providers.http import ProviderAPIError
 T = TypeVar("T")
 
 Capability = Literal[
-    "transcription", "decision", "media_ops", "audio_catalog", "video_breakdown"
+    "transcription",
+    "decision",
+    "media_ops",
+    "audio_catalog",
+    "geo_imagery",
+    "video_breakdown",
 ]
 ProviderFactory = Callable[[dict[str, Any]], Any]
 
@@ -132,6 +137,7 @@ class ProviderRegistry:
             "decision",
             "media_ops",
             "audio_catalog",
+            "geo_imagery",
             "video_breakdown",
         ):
             cap_cfg = self._config.defaults.get(capability)

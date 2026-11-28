@@ -124,7 +124,7 @@ def _build_fixture_bundle(tmp_path: Path) -> tuple[
 
     transcript = NormalizedTranscript(
         source_hash="d" * 64,
-        provider="xai",
+        provider="external",
         language="en",
         duration_s=10.0,
         text="Retention reached 85% across four launches.",
@@ -405,7 +405,7 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
     )
     transcript = NormalizedTranscript(
         source_hash="d" * 64,
-        provider="xai",
+        provider="external",
         language="en",
         duration_s=65.0,
         text="Three tectonic plates, colliding slowly, formed 42 percent of Sulawesi.",
@@ -572,7 +572,7 @@ def test_verifier_map_content_type_visual_beats_program_mix_and_caption_glow() -
     target = PlatformTarget.model_validate(load_platform_targets()["shorts_9x16_1080p"])
     transcript = NormalizedTranscript(
         source_hash="a" * 64,
-        provider="xai",
+        provider="external",
         language="en",
         duration_s=12.0,
         text="the isthmus",

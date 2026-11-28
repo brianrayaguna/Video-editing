@@ -30,7 +30,11 @@ from vedit.director.storyboard import (
     load_directing_idioms,
     scaffold_storyboard,
 )
-from vedit.providers.registry import build_default_registry
+from vedit.providers.decision_mode import (
+    DecisionMode,
+    resolve_decision_confidence_threshold,
+    resolve_decision_port,
+)
 
 storyboard_app = typer.Typer(
     help="Typed storyboards: auto-direct from a transcript, merge director input, check idioms."
@@ -158,10 +162,16 @@ def storyboard_auto_cmd(
         DirectingTier,
         typer.Option("--tier", help="Directing tier: draft, standard, or flagship."),
     ] = "draft",
+    decision: Annotated[
+        DecisionMode,
+        typer.Option("--decision", help="DecisionPort mode: auto, on, or off."),
+    ] = "auto",
     use_decision: Annotated[
-        bool,
-        typer.Option("--use-decision", help="Enable DecisionPort semantic enrichment."),
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--use-decision/--no-use-decision", help="Legacy alias for --decision on/off."
+        ),
+    ] = None,
     playbook_file: Annotated[
         Path | None,
         typer.Option("--playbook-file", help="Optional editorial_playbook.json for retrieval."),
@@ -185,22 +195,28 @@ def storyboard_auto_cmd(
             sb["recent_episodes"] = recent
     if director_file is not None:
         sb = apply_director_storyboard(sb, _read(director_file))
+    effective_tier: DirectingTier = (
+        "standard" if (tier == "draft" and use_decision is True) else tier
+    )
     if reference:
         sb["directing_source"] = "reference"
-    elif tier != "draft" and use_decision:
-        brand_id = brand or idioms.get("brand_id")
-        pb_path = playbook_file.expanduser() if playbook_file else playbook_path(str(brand_id))
-        ctx = None
-        if pb_path.is_file():
-            ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path), memory=memory)
-        decision_port = build_default_registry().resolve("decision")
-        sb = enrich_storyboard_semantically(
-            sb,
-            idioms,
-            decision_port=decision_port,
-            context=ctx,
-            tier=tier,
-        ).storyboard
+    elif effective_tier != "draft":
+        decision_port = resolve_decision_port(decision, use_decision=use_decision)
+        if decision_port is not None:
+            brand_id = brand or idioms.get("brand_id")
+            pb_path = playbook_file.expanduser() if playbook_file else playbook_path(str(brand_id))
+            ctx = None
+            if pb_path.is_file():
+                ctx = retrieve_directing_context(
+                    sb, load_editorial_playbook(pb_path), memory=memory
+                )
+            sb = enrich_storyboard_semantically(
+                sb,
+                idioms,
+                decision_port=decision_port,
+                context=ctx,
+                tier=effective_tier,
+            ).storyboard
     _write(out, sb)
     report = check_storyboard(sb, idioms).to_dict()
     typer.echo(
@@ -209,7 +225,7 @@ def storyboard_auto_cmd(
                 "out": str(out),
                 "beats": len(sb["beats"]),
                 "shape": sb["story"]["shape"],
-                "tier": tier,
+                "tier": effective_tier,
                 "score": report["score"],
                 "passed": report["passed"],
             },
@@ -227,9 +243,16 @@ def storyboard_gate_prerender_cmd(
         DirectingTier, typer.Option("--tier", help="Critique tier: draft, standard, or flagship.")
     ] = "standard",
     min_score: Annotated[float, typer.Option("--min-score", help="Fail below score.")] = 75.0,
+    decision: Annotated[
+        DecisionMode,
+        typer.Option("--decision", help="DecisionPort mode: auto, on, or off."),
+    ] = "auto",
     use_decision: Annotated[
-        bool, typer.Option("--use-decision", help="Enable DecisionPort semantic gate scoring.")
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--use-decision/--no-use-decision", help="Legacy alias for --decision on/off."
+        ),
+    ] = None,
     candidates_file: Annotated[
         Path | None,
         typer.Option("--candidates-file", help="Optional JSON array of candidate hook dicts."),
@@ -244,7 +267,11 @@ def storyboard_gate_prerender_cmd(
         pb_path = playbook_path(str(brand_id))
         if pb_path.is_file():
             ctx = retrieve_directing_context(sb, load_editorial_playbook(pb_path))
-    decision_port = build_default_registry().resolve("decision") if use_decision else None
+    decision_port = (
+        resolve_decision_port(decision, use_decision=use_decision)
+        if tier != "draft"
+        else None
+    )
     candidates = _read(candidates_file) if candidates_file is not None else None
     result = critique_storyboard_prerender(
         sb,
@@ -381,6 +408,10 @@ def critique_packet_cmd(
     ] = None,
     iteration: Annotated[int, typer.Option("--iteration", min=1)] = 1,
     max_iterations: Annotated[int, typer.Option("--max-iterations", min=1)] = 3,
+    decision: Annotated[
+        DecisionMode,
+        typer.Option("--decision", help="DecisionPort auto-scoring mode: auto, on, or off."),
+    ] = "auto",
 ) -> None:
     """Run deterministic checks, render grid contact sheets, and emit the rubric review form."""
     sb = _read(storyboard_file) if storyboard_file else None
@@ -393,6 +424,8 @@ def critique_packet_cmd(
         if raw_energy is not None
         else None
     )
+    decision_port = resolve_decision_port(decision) if video is not None else None
+    conf_thresh = resolve_decision_confidence_threshold() if decision_port is not None else 0.75
     packet = build_critique_packet(
         idioms=idioms,
         storyboard=sb,
@@ -406,6 +439,8 @@ def critique_packet_cmd(
         spatial_forensics=spatial_forensics.expanduser() if spatial_forensics else None,
         iteration=iteration,
         max_iterations=max_iterations,
+        decision_port=decision_port,
+        confidence_threshold=conf_thresh,
     )
     _write(out, packet)
     typer.echo(

@@ -78,6 +78,7 @@ def geo_prepare_cmd(
     grade_tiles: Annotated[bool, typer.Option("--grade/--no-grade")] = True,
     hq_aerial: Annotated[bool | None, typer.Option("--hq/--no-hq")] = None,
     provider: Annotated[str, typer.Option("--provider")] = "auto",
+    max_tiles: Annotated[int | None, typer.Option("--max-tiles")] = None,
     tile_list: Annotated[Path | None, typer.Option("--tile-list")] = None,
 ) -> None:
     """Fetch project AOI satellite tiles (without dirtying MANIFEST.json) and extract GeoJSON."""
@@ -92,6 +93,7 @@ def geo_prepare_cmd(
         grade_tiles=grade_tiles,
         hq_aerial=hq_aerial,
         provider=provider,
+        max_tiles=max_tiles,
         tile_list=tile_list,
         repo_root=find_repo_root(),
         fetch_fn=_fetch_tile_set,

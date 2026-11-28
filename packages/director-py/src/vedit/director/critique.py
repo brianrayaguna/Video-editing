@@ -34,10 +34,150 @@ from vedit.director.storyboard import (
     validate_storyboard_contract,
 )
 from vedit.director.temporal_audit import audit_temporal_sync
+from vedit.ports.decision import (
+    DecisionPort,
+    DecisionQuestion,
+    ImageInput,
+    validate_decision_batch,
+)
 
 GRID_COLS = "ABCDEF"
 GRID_ROWS = 10
 CELL_W, CELL_H = 270, 480
+
+_VISUAL_RUBRIC_LEVELS: list[str] = [
+    "Fails criterion with clear visible defects",
+    "Weak execution with noticeable issues",
+    "Acceptable baseline quality",
+    "Strong visual clarity and brand alignment",
+    "Broadcast-grade execution with zero visual flaws",
+]
+
+_VISUAL_DEFECT_PROBES: tuple[tuple[str, str], ...] = (
+    ("text_clipped", "Is any on-screen text, label, or caption clipped or cut off by frame edges?"),
+    (
+        "caption_overlap",
+        "Do captions overlap primary graphic callouts, map labels, or key subjects?",
+    ),
+    ("blurry_map_tiles", "Are any satellite map tiles noticeably pixelated, blocky, or blurry?"),
+    (
+        "cluttered_frame",
+        "Are multiple competing visual signals cluttering the frame simultaneously?",
+    ),
+)
+
+
+def score_critique_packet_with_decision(
+    packet: dict[str, Any],
+    decision_port: DecisionPort,
+    *,
+    confidence_threshold: float = 0.75,
+) -> dict[str, Any]:
+    """Auto-score contact-sheet critique rubric via `d1.2-ultra` with confidence gating."""
+    out = copy.deepcopy(packet)
+    sheets = list(out.get("sheets") or [])
+    review = out.get("review") or {}
+    rubric = list(review.get("rubric") or [])
+    if not sheets or not rubric:
+        return out
+
+    images: list[ImageInput] = []
+    for entry in sheets[:8]:
+        p = Path(str(entry.get("path") or ""))
+        if p.is_file():
+            images.append(ImageInput(path=p, content_type="image/jpeg"))
+    if not images:
+        return out
+
+    questions: list[DecisionQuestion] = []
+    for item in rubric:
+        cid = str(item["criterion_id"])
+        q_text = str(item.get("question") or item.get("description") or cid)
+        questions.append(
+            DecisionQuestion(
+                name=f"rubric__{cid}",
+                question_type="score",
+                instructions=f"Evaluate the rendered video frames for criterion '{cid}': {q_text}",
+                criteria=list(_VISUAL_RUBRIC_LEVELS),
+            )
+        )
+    for defect_code, defect_prompt in _VISUAL_DEFECT_PROBES:
+        questions.append(
+            DecisionQuestion(
+                name=f"defect__{defect_code}",
+                question_type="noul",
+                instructions=defect_prompt,
+            )
+        )
+
+    validate_decision_batch(questions, images)
+    res = decision_port.evaluate(
+        state={
+            "grid_legend": out.get("grid_legend"),
+            "frames": [s.get("frames") for s in sheets[:8]],
+            "deterministic_summary": out.get("deterministic"),
+        },
+        questions=questions,
+        images=images,
+    )
+
+    scores = dict(review.get("scores") or {})
+    needs_human_review: list[str] = []
+    criterion_confidences: dict[str, float | None] = {}
+    for item in rubric:
+        cid = str(item["criterion_id"])
+        ans = res.answers.get(f"rubric__{cid}")
+        if ans is None or ans.score_value is None:
+            needs_human_review.append(cid)
+            criterion_confidences[cid] = None
+            continue
+        legend = ans.raw.get("legend")
+        denom = (
+            float(len(legend) - 1)
+            if isinstance(legend, dict) and len(legend) >= 2
+            else float(len(_VISUAL_RUBRIC_LEVELS) - 1)
+        )
+        raw_val = ans.score_value
+        norm_score = (
+            raw_val / denom
+            if raw_val <= denom
+            else (raw_val / 100.0 if raw_val > 1.0 else raw_val)
+        )
+        norm_score = round(max(0.0, min(1.0, norm_score)), 3)
+        conf = ans.confidence
+        criterion_confidences[cid] = conf
+        if conf is None or conf >= confidence_threshold:
+            scores[cid] = norm_score
+        else:
+            scores[cid] = None
+            needs_human_review.append(cid)
+
+    detected_defects: list[dict[str, Any]] = []
+    for defect_code, _prompt in _VISUAL_DEFECT_PROBES:
+        ans = res.answers.get(f"defect__{defect_code}")
+        prob = ans.noul_prob if ans is not None else None
+        if prob is not None and prob >= 0.65:
+            detected_defects.append(
+                {
+                    "code": defect_code,
+                    "probability": round(prob, 3),
+                    "confidence": ans.confidence if ans is not None else None,
+                }
+            )
+
+    review["scores"] = scores
+    review["needs_human_review"] = needs_human_review
+    review["detected_defects"] = detected_defects
+    review["decision_meta"] = {
+        "provider": res.provider,
+        "model": res.model,
+        "input_tokens": res.input_tokens,
+        "cost_usd": res.cost_usd,
+        "confidence_threshold": confidence_threshold,
+        "criterion_confidences": criterion_confidences,
+    }
+    out["review"] = review
+    return out
 
 
 def _render_cell(video: Path, t: float, label: str, out: Path) -> bool:
@@ -216,6 +356,8 @@ def build_critique_packet(
     spatial_forensics: dict[str, Any] | Path | None = None,
     iteration: int = 1,
     max_iterations: int = 3,
+    decision_port: DecisionPort | None = None,
+    confidence_threshold: float = 0.75,
 ) -> dict[str, Any]:
     """Collect deterministic results, contact sheets and an empty rubric review form."""
     frozen_beat_ids: list[str] = []
@@ -310,6 +452,12 @@ def build_critique_packet(
         "fixes": [],
         "rubric": idioms["critique_rubric"],
     }
+    if decision_port is not None and packet["sheets"]:
+        packet = score_critique_packet_with_decision(
+            packet,
+            decision_port,
+            confidence_threshold=confidence_threshold,
+        )
     return packet
 
 

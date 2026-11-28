@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from vedit.ports.decision import DecisionQuestion, ImageInput, validate_decision_batch
+from vedit.ports.geo_imagery import GeoImageryPort
 from vedit.ports.media_ops import MediaOpsPort
 from vedit.ports.video_breakdown import VideoBreakdownPort
 from vedit.providers.registry import ProviderNotFoundError, ProviderSpec, build_default_registry
@@ -21,9 +22,11 @@ def test_registry_resolves_custom_capability_provider_without_core_changes() -> 
         "decision",
         "media_ops",
         "audio_catalog",
+        "geo_imagery",
         "video_breakdown",
     }
     assert isinstance(registry.resolve("video_breakdown"), VideoBreakdownPort)
+    assert isinstance(registry.resolve("geo_imagery"), GeoImageryPort)
 
     class FakeSTT:
         @property

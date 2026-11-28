@@ -142,7 +142,7 @@ def providers_auth(
         typer.Option("--overwrite", help="Re-prompt even for keys already present."),
     ] = False,
 ) -> None:
-    """Interactively configure missing API keys and report OpenEdit OAuth login state."""
+    """Interactively configure missing API keys for registered providers."""
     root = find_repo_root()
     cfg = load_providers_config(repo_root=root)
     target_env = env_file or (root / ".env")
@@ -150,19 +150,6 @@ def providers_auth(
     typer.echo(f"Credential store target: {target_env} (input is hidden; press Enter to skip)")
     seen_envs: set[str] = set()
     for capability, cap_cfg in cfg.defaults.items():
-        if cap_cfg.auth_type == "openedit_oauth":
-            token_path = cap_cfg.oauth_token_path()
-            if cap_cfg.has_credentials():
-                typer.echo(
-                    f"  {capability} ({cap_cfg.primary}): OpenEdit OAuth READY ({token_path})"
-                )
-            else:
-                typer.echo(
-                    f"  {capability} ({cap_cfg.primary}): OpenEdit OAuth MISSING. "
-                    "Run `npx @veedstudio/openedit-cli login` to authenticate in browser."
-                )
-            continue
-
         if cap_cfg.auth_type == "local":
             typer.echo(f"  {capability} ({cap_cfg.primary}): local binary (no credentials needed)")
             continue

@@ -115,11 +115,11 @@ def test_modal_cloud_media_ops_reframe_and_guardrails(tmp_path: Path) -> None:
     assert out_mp4.read_bytes() == b"reframed-mp4-bytes"
     assert fn.calls[0][1] == {"target_aspect_ratio": "9:16"}
 
-    with pytest.raises(ProviderAPIError, match="veed"):
+    with pytest.raises(ProviderAPIError, match="not supported"):
         provider.remove_background(src_mp4, tmp_path / "matte.mov")
 
 
 def test_modal_cloud_registered_in_default_registry() -> None:
     registry = build_default_registry()
     names = {spec.name for spec in registry.list_specs("media_ops")}
-    assert {"veed", "modal_cloud", "ffmpeg"}.issubset(names)
+    assert {"modal_cloud", "ffmpeg"}.issubset(names)

@@ -9,6 +9,7 @@ from vedit.ports.decision import (
     ImageInput,
     SpatialBox,
 )
+from vedit.ports.geo_imagery import GeoImageryPort, ImagerySessionInfo
 from vedit.ports.media_ops import MediaOpResult, MediaOpsPort
 from vedit.ports.transcription import TranscriptionOptions, TranscriptionPort
 from vedit.ports.video_breakdown import (
@@ -28,7 +29,9 @@ __all__ = [
     "DecisionBatchResult",
     "DecisionPort",
     "DecisionQuestion",
+    "GeoImageryPort",
     "ImageInput",
+    "ImagerySessionInfo",
     "MediaOpResult",
     "MediaOpsPort",
     "SpatialBox",

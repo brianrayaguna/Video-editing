@@ -1,4 +1,4 @@
-"""Offline mocked HTTP tests for capability provider adapters and OpenEdit OAuth handling."""
+"""Offline mocked HTTP tests for capability provider adapters and registry plumbing."""
 
 from __future__ import annotations
 
@@ -11,35 +11,31 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from vedit.contracts import validate_against_contract
 from vedit.ports.decision import DecisionQuestion, ImageInput
-from vedit.ports.media_ops import GenerativeVideoProhibitedError
-from vedit.ports.transcription import TranscriptionOptions
 from vedit.providers.audio_catalog.epidemic import EpidemicAudioCatalogProvider
 from vedit.providers.decision.liquid_d1 import LiquidDecisionProvider, extract_spatial_boxes
 from vedit.providers.env import load_dotenv_safe, upsert_env_var
 from vedit.providers.http import ProviderAPIError
 from vedit.providers.media_ops.ffmpeg_local import FfmpegMediaOpsProvider
-from vedit.providers.media_ops.veed import VeedMediaOpsProvider
 from vedit.providers.registry import build_default_registry
-from vedit.providers.transcription.veed import VeedTranscriptionProvider
-from vedit.providers.transcription.xai import XaiTranscriptionProvider
-from vedit.providers.veed_oauth import VeedOAuthTokenStore
 
 
-def test_builtin_registry_marks_all_providers_implemented() -> None:
+def test_builtin_registry_marks_all_active_providers_implemented() -> None:
     registry = build_default_registry()
     report = registry.status_report()
-    assert {s["name"] for s in report["transcription"]["registered"]} == {
-        "veed",
-        "xai",
-    }
+    assert report["transcription"]["registered"] == []
     assert {s["name"] for s in report["media_ops"]["registered"]} == {
         "ffmpeg",
         "modal_cloud",
-        "veed",
     }
-    for capability in ("transcription", "decision", "media_ops", "audio_catalog"):
+    assert {s["name"] for s in report["decision"]["registered"]} == {"liquid_d1"}
+    assert {s["name"] for s in report["audio_catalog"]["registered"]} == {"epidemic"}
+    assert {s["name"] for s in report["geo_imagery"]["registered"]} == {
+        "google_tiles",
+        "open_imagery",
+    }
+    for capability in ("decision", "media_ops", "audio_catalog", "video_breakdown", "geo_imagery"):
+        assert report[capability]["registered"]
         assert all(s["implemented"] for s in report[capability]["registered"])
 
 
@@ -59,215 +55,24 @@ def test_dotenv_upsert_and_load_preserves_existing_env(tmp_path: Path, monkeypat
     assert os.environ["KEEP_EXISTING"] == "from-shell"
 
 
-def test_openedit_oauth_store_refreshes_expired_token_atomically(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.delenv("VEED_ACCESS_TOKEN", raising=False)
-    token_file = tmp_path / "token.json"
-    token_file.write_text(
-        json.dumps(
-            {
-                "accessToken": "old-access",
-                "refreshToken": "refresh-123",
-                "expiresAt": 1000,
-                "origin": "https://www.veed.io",
-                "clientId": "client-xyz",
-                "tokenEndpoint": "https://www.veed.io/api/v1/oauth2/token",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert str(request.url) == "https://www.veed.io/api/v1/oauth2/token"
-        body = parse_qs(request.read().decode("utf-8"))
-        assert body["grant_type"] == ["refresh_token"]
-        assert body["refresh_token"] == ["refresh-123"]
-        assert body["client_id"] == ["client-xyz"]
-        return httpx.Response(
-            200,
-            json={
-                "access_token": "fresh-access-999",
-                "refresh_token": "refresh-456",
-                "expires_in": 3600,
-            },
-        )
-
-    store = VeedOAuthTokenStore(
-        token_path=token_file,
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
-        now_ms_fn=lambda: 500_000,
-    )
-    resolved = store.resolve_token()
-    assert resolved == "fresh-access-999"
-
-    persisted = json.loads(token_file.read_text(encoding="utf-8"))
-    assert persisted["accessToken"] == "fresh-access-999"
-    assert persisted["refreshToken"] == "refresh-456"
-    assert (token_file.stat().st_mode & 0o777) == 0o600
-
-
-def test_xai_transcription_multipart_order_itn_and_contract(tmp_path: Path) -> None:
-    audio_file = tmp_path / "speech.wav"
-    audio_file.write_bytes(b"RIFF0000WAVEfmt ")
-
-    captured_body = b""
-    captured_auth = ""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal captured_body, captured_auth
-        captured_auth = request.headers["Authorization"]
-        captured_body = request.read()
-        return httpx.Response(
-            200,
-            json={
-                "text": "Halo um dunia.",
-                "language": "id",
-                "duration": 2.5,
-                "words": [
-                    {"text": "Halo", "start": 0.1, "end": 0.5, "speaker": 0},
-                    {"text": "um", "start": 0.55, "end": 0.7, "speaker": 0},
-                    {"text": "dunia.", "start": 0.8, "end": 1.3, "speaker": 0},
-                ],
-            },
-        )
-
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    stt = XaiTranscriptionProvider({"api_key": "xai-secret-token"}, client=client)
-    transcript = stt.transcribe(
-        audio_file,
-        TranscriptionOptions(language="id", diarize=True, include_fillers=True, keyterms=["Vedit"]),
-    )
-
-    assert captured_auth == "Bearer xai-secret-token"
-    assert captured_body.rfind(b'name="keyterm"') < captured_body.rfind(b'name="file"')
-    assert b'name="format"' not in captured_body
-    assert transcript.words[1].is_filler is True
-    assert validate_against_contract(
-        transcript.model_dump(exclude_none=True), "transcript.schema.json"
-    ) == []
-
-
-def test_veed_edge_requests_send_origin_header(tmp_path: Path, monkeypatch) -> None:
-    """The VEED REST edge rejects authenticated calls without an `Origin` header."""
-    monkeypatch.setenv("VEED_ACCESS_TOKEN", "veed-oauth-jwt")
-    monkeypatch.delenv("VEED_ORIGIN", raising=False)
-    video = tmp_path / "clip.mp4"
-    video.write_bytes(b"mp4-bytes")
-    seen: list[tuple[str, str, str | None]] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        url = str(request.url)
-        seen.append((request.method, url, request.headers.get("origin")))
-        if url.endswith("/api/v1/workspace"):
-            return httpx.Response(200, json={"data": [{"id": "ws-1"}]})
-        if url.endswith("/api/v1/asset") and request.method == "POST":
-            return httpx.Response(
-                200,
-                json={"data": {"asset": {"id": "ast-1"}, "url": "https://gcs.example/upload/ast-1"}},
-            )
-        if url == "https://gcs.example/upload/ast-1":
-            return httpx.Response(200)
-        if url.endswith("/api/v1/asset/ast-1"):
-            return httpx.Response(
-                200,
-                json={"data": {"id": "ast-1", "uploadState": "UPLOADED", "cdnUrl": "https://cdn.veed.test/a.mp4"}},
-            )
-        if url.endswith("/transcribe"):
-            return httpx.Response(200, json={"data": {"id": "sub-1", "status": "pending"}})
-        if url.endswith("/api/v1/subtitles/sub-1"):
-            return httpx.Response(
-                200,
-                json={"data": {"id": "sub-1", "status": "active", "subtitles": {
-                    "a": {"from": 0.0, "to": 0.5, "words": [{"value": "Halo"}]}}}},
-            )
-        return httpx.Response(404)
-
-    stt = VeedTranscriptionProvider(
-        {"poll_interval_s": 0.0},
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-    stt.transcribe(video, TranscriptionOptions(language="id"))
-
-    edge_calls = [s for s in seen if s[1].startswith("https://www.veed.io/api/v1/")]
-    assert edge_calls
-    assert all(origin == "https://www.veed.io" for _, _, origin in edge_calls)
-    signed_upload = [s for s in seen if s[1].startswith("https://gcs.example/")]
-    assert signed_upload and all(origin is None for _, _, origin in signed_upload)
-
-
-def test_veed_oauth_transcription_uploads_and_maps_chronologically(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setenv("VEED_ACCESS_TOKEN", "veed-oauth-jwt")
-    video = tmp_path / "clip.mp4"
-    video.write_bytes(b"mp4-bytes")
-
-    asset_polls = 0
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal asset_polls
-        url = str(request.url)
-        if url.endswith("/api/v1/workspace") and request.method == "GET":
-            return httpx.Response(200, json={"data": [{"id": "ws-1"}]})
-        if url.endswith("/api/v1/asset") and request.method == "POST":
-            return httpx.Response(
-                200,
-                json={"data": {"asset": {"id": "ast-1"}, "url": "https://gcs.example/upload/ast-1"}},
-            )
-        if url == "https://gcs.example/upload/ast-1" and request.method == "PUT":
-            return httpx.Response(200)
-        if url.endswith("/api/v1/asset/ast-1") and request.method == "GET":
-            asset_polls += 1
-            if asset_polls == 1:
-                return httpx.Response(404)
-            return httpx.Response(
-                200,
-                json={"data": {"id": "ast-1", "uploadState": "UPLOADED", "cdnUrl": "https://cdn.veed.test/ast-1.mp4"}},
-            )
-        if url.endswith("/api/v1/subtitles/assets/ast-1/transcribe") and request.method == "POST":
-            return httpx.Response(200, json={"data": {"id": "sub-1", "status": "pending"}})
-        if url.endswith("/api/v1/subtitles/sub-1") and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "id": "sub-1",
-                        "status": "active",
-                        "subtitles": {
-                            "b": {"from": 1.0, "to": 1.6, "words": [{"value": "world."}]},
-                            "a": {"from": 0.2, "to": 0.8, "words": [{"value": "Hello"}]},
-                        },
-                    }
-                },
-            )
-        return httpx.Response(404)
-
-    stt = VeedTranscriptionProvider(
-        {"poll_interval_s": 0.0},
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-    transcript = stt.transcribe(video, TranscriptionOptions(language="en"))
-    assert transcript.provider == "veed"
-    assert [w.text for w in transcript.words] == ["Hello", "world."]
-    assert transcript.words[0].start_s == pytest.approx(0.2)
-    assert validate_against_contract(
-        transcript.model_dump(exclude_none=True), "transcript.schema.json"
-    ) == []
-
-
-def test_xai_transcription_redacts_secret_in_error(tmp_path: Path) -> None:
-    audio_file = tmp_path / "speech.wav"
-    audio_file.write_bytes(b"RIFF")
-
+def test_liquid_decision_redacts_secret_in_error() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(401, text="Invalid token sk-super-secret-999")
+        return httpx.Response(401, text="Invalid token liq-super-secret-999")
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    stt = XaiTranscriptionProvider({"api_key": "sk-super-secret-999"}, client=client)
+    engine = LiquidDecisionProvider({"api_key": "liq-super-secret-999"}, client=client)
     with pytest.raises(ProviderAPIError) as exc_info:
-        stt.transcribe(audio_file)
-    assert "sk-super-secret-999" not in str(exc_info.value)
+        engine.evaluate(
+            state="hello",
+            questions=[
+                DecisionQuestion(
+                    name="ok",
+                    question_type="noul",
+                    instructions="Is this valid?",
+                )
+            ],
+        )
+    assert "liq-super-secret-999" not in str(exc_info.value)
     assert "***REDACTED***" in str(exc_info.value)
 
 
@@ -319,64 +124,6 @@ def test_liquid_decision_handles_typed_questions_and_boxes(tmp_path: Path) -> No
     assert len(boxes) == 1
     assert boxes[0].left == pytest.approx(0.3)
     assert result.input_tokens == 120
-
-
-def test_veed_oauth_remove_background_and_blocks_generative(tmp_path: Path, monkeypatch) -> None:
-    with pytest.raises(GenerativeVideoProhibitedError):
-        VeedMediaOpsProvider({"allow_generative_video": True})
-
-    monkeypatch.setenv("VEED_ACCESS_TOKEN", "veed-oauth-jwt")
-    src = tmp_path / "talking.mp4"
-    src.write_bytes(b"mp4-data")
-    out = tmp_path / "matte.mp4"
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        url = str(request.url)
-        if url.endswith("/api/v1/workspace"):
-            return httpx.Response(200, json=[{"id": "ws-1"}])
-        if url.endswith("/api/v1/workspace/ws-1/space/default"):
-            return httpx.Response(200, json={"id": "sp-1"})
-        if url.endswith("/api/v1/project") and request.method == "POST":
-            return httpx.Response(200, json={"id": "proj-1"})
-        if url.endswith("/api/v1/asset") and request.method == "POST":
-            return httpx.Response(
-                200,
-                json={"asset": {"id": "ast-2"}, "url": "https://gcs.example/upload/ast-2"},
-            )
-        if url == "https://gcs.example/upload/ast-2" and request.method == "PUT":
-            return httpx.Response(200)
-        if url.endswith("/api/v1/asset/ast-2"):
-            return httpx.Response(
-                200,
-                json={"id": "ast-2", "uploadState": "UPLOADED", "cdnUrl": "https://cdn.veed.test/ast-2.mp4"},
-            )
-        if url.endswith("/api/v1/remove-background") and request.method == "POST":
-            return httpx.Response(200, json={"workflowId": "wf-1"})
-        if "/api/v1/remove-background/status" in url:
-            return httpx.Response(
-                200,
-                json={
-                    "statuses": [
-                        {
-                            "workflowId": "wf-1",
-                            "projectId": "proj-1",
-                            "status": "COMPLETED",
-                            "result": {"url": "https://cdn.veed.test/matte.mp4"},
-                        }
-                    ]
-                },
-            )
-        if url == "https://cdn.veed.test/matte.mp4":
-            return httpx.Response(200, content=b"matte-video-bytes")
-        return httpx.Response(404)
-
-    veed = VeedMediaOpsProvider(
-        {"poll_interval_s": 0.0},
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-    res = veed.remove_background(src, out)
-    assert res.output_path == out
-    assert out.read_bytes() == b"matte-video-bytes"
 
 
 def test_ffmpeg_local_media_ops_clean_audio_and_reframe(tmp_path: Path) -> None:
@@ -609,7 +356,7 @@ def test_registry_call_with_fallback_promotes_secondary_provider() -> None:
 
     cfg = ProvidersConfig(
         defaults={
-            "transcription": CapabilityProviderConfig(
+            "media_ops": CapabilityProviderConfig(
                 primary="primary",
                 fallback=["backup"],
                 options={},
@@ -617,10 +364,10 @@ def test_registry_call_with_fallback_promotes_secondary_provider() -> None:
         }
     )
     reg = ProviderRegistry(config=cfg)
-    reg.register(ProviderSpec("transcription", "primary", _FailProvider))
-    reg.register(ProviderSpec("transcription", "backup", _OkProvider))
+    reg.register(ProviderSpec("media_ops", "primary", _FailProvider))
+    reg.register(ProviderSpec("media_ops", "backup", _OkProvider))
 
-    value = reg.call_with_fallback("transcription", lambda p: p.ping())
+    value = reg.call_with_fallback("media_ops", lambda p: p.ping())
     assert value == "recovered"
 
 
@@ -643,7 +390,7 @@ def test_all_registered_media_ops_providers_implement_full_media_ops_port(
     from vedit.providers.media_ops.modal_cloud import ModalCloudMediaOpsProvider
 
     registry = build_default_registry()
-    for name in ("ffmpeg", "modal_cloud", "veed"):
+    for name in ("ffmpeg", "modal_cloud"):
         provider = registry.resolve("media_ops", provider_name=name)
         assert isinstance(provider, MediaOpsPort), (
             f"media_ops provider {name!r} must satisfy MediaOpsPort"
@@ -653,13 +400,13 @@ def test_all_registered_media_ops_providers_implement_full_media_ops_port(
     src.write_bytes(b"fake")
     out = tmp_path / "out.mp4"
 
-    for remote_provider in (ModalCloudMediaOpsProvider(), VeedMediaOpsProvider()):
-        with pytest.raises(ProviderAPIError, match="ffmpeg"):
-            remote_provider.trim(src, out, start_s=0.0, end_s=1.0)
-        with pytest.raises(ProviderAPIError, match="ffmpeg"):
-            remote_provider.remove_silence(src, out)
-        with pytest.raises(ProviderAPIError, match="ffmpeg"):
-            remote_provider.restore_footage(src, out)
+    remote_provider = ModalCloudMediaOpsProvider()
+    with pytest.raises(ProviderAPIError, match="ffmpeg"):
+        remote_provider.trim(src, out, start_s=0.0, end_s=1.0)
+    with pytest.raises(ProviderAPIError, match="ffmpeg"):
+        remote_provider.remove_silence(src, out)
+    with pytest.raises(ProviderAPIError, match="ffmpeg"):
+        remote_provider.restore_footage(src, out)
 
 
 def test_cli_modules_route_strictly_through_registry_and_config_ports() -> None:
@@ -668,11 +415,11 @@ def test_cli_modules_route_strictly_through_registry_and_config_ports() -> None:
     cli_dir = Path(__file__).resolve().parents[1] / "src" / "vedit" / "cli"
     forbidden_prefixes = (
         "vedit.providers.media_ops",
-        "vedit.providers.veed_oauth",
         "vedit.providers.transcription",
         "vedit.providers.decision",
         "vedit.providers.audio_catalog",
         "vedit.providers.video_breakdown",
+        "vedit.providers.geo_imagery",
     )
     for py_file in sorted(cli_dir.glob("*.py")):
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
@@ -690,7 +437,7 @@ def test_cli_modules_route_strictly_through_registry_and_config_ports() -> None:
                         ), f"{py_file.name} imports concrete provider module {alias.name!r}"
 
 
-def test_cli_media_local_ops_and_auth_use_ports_without_direct_vendor_imports(
+def test_cli_media_local_ops_use_ports_without_direct_vendor_imports(
     tmp_path: Path, monkeypatch
 ) -> None:
     from typer.testing import CliRunner
@@ -749,10 +496,5 @@ def test_cli_media_local_ops_and_auth_use_ports_without_direct_vendor_imports(
         "restore_footage",
     ]
 
-    oauth_cfg = CapabilityProviderConfig(
-        primary="veed",
-        options={"auth_type": "openedit_oauth"},
-    )
-    assert isinstance(oauth_cfg.oauth_token_path(), Path)
     local_cfg = CapabilityProviderConfig(primary="ffmpeg", options={"auth_type": "local"})
-    assert local_cfg.oauth_token_path() is None
+    assert local_cfg.has_credentials() is True

@@ -221,7 +221,7 @@ class FfmpegMediaOpsProvider:
             self.provider_name,
             None,
             "Local FFmpeg does not perform neural background matting; "
-            "use `--provider veed` with OpenEdit OAuth.",
+            "Background matting is not supported by the local ffmpeg provider.",
         )
 
     def _run(self, cmd: list[str], operation: str) -> subprocess.CompletedProcess[str]:

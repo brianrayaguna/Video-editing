@@ -39,7 +39,7 @@ from vedit.project_workspace import (
     resolve_plan_asset_paths,
     validate_project_workspace,
 )
-from vedit.providers.registry import build_default_registry
+from vedit.providers.decision_mode import DecisionMode, resolve_decision_port
 
 director_app = typer.Typer(help="Assemble and verify EditPlan specifications.")
 project_app = typer.Typer(help="Initialize, inspect, and validate external editing projects.")
@@ -74,9 +74,16 @@ def director_plan_cmd(
         Path | None, typer.Option("--template-catalog", help="Brand template catalog JSON.")
     ] = None,
     render_strategy: Annotated[Literal["hybrid", "full_hf"], typer.Option("--strategy")] = "hybrid",
+    decision: Annotated[
+        DecisionMode,
+        typer.Option("--decision", help="DecisionPort spatial grounding mode: auto, on, or off."),
+    ] = "auto",
     use_decision: Annotated[
-        bool, typer.Option("--use-decision", help="Enable DecisionPort spatial box grounding.")
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--use-decision/--no-use-decision", help="Legacy alias for --decision on/off."
+        ),
+    ] = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
     storyboard_file: Annotated[
         Path | None,
@@ -111,7 +118,7 @@ def director_plan_cmd(
         if sibling_catalog.is_file():
             effective_brand_dir = policy_file.parent
     catalog = _load_optional_template_catalog(template_catalog, effective_brand_dir)
-    decision_port = build_default_registry().resolve("decision") if use_decision else None
+    decision_port = resolve_decision_port(decision, use_decision=use_decision)
     extra_overlays = None
     storyboard_report: dict | None = None
     storyboard_obj: dict | None = None

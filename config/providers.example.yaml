@@ -1,18 +1,7 @@
 # Capability-to-Provider Configuration (copy to config/providers.yaml)
-# Never put raw API keys in this file; reference environment variable names or OAuth stores only.
+# Never put raw API keys in this file; reference environment variable names only.
 
 defaults:
-  transcription:
-    primary: xai
-    fallback:
-      - veed
-    options:
-      auth_type: api_key
-      model: grok-voice-transcribe-2.0
-      diarize: true
-      filler_words: true
-      api_key_env: XAI_API_KEY
-
   decision:
     primary: liquid_d1
     fallback: []
@@ -22,16 +11,16 @@ defaults:
       endpoint: https://api.liquid.ai/decisions/v1/systemone
       max_images_per_batch: 8
       max_body_mb: 4.5
+      auto_enable: true
+      confidence_threshold: 0.75
       api_key_env: LIQUID_API_KEY
 
   media_ops:
-    primary: veed
+    primary: ffmpeg
     fallback:
       - modal_cloud
-      - ffmpeg
     options:
-      auth_type: openedit_oauth
-      origin: https://www.veed.io
+      auth_type: local
       allow_generative_video: false
       fallback_options:
         modal_cloud:
@@ -50,6 +39,20 @@ defaults:
       default_quality: high
       instrumental_only_under_speech: true
       api_key_env: EPIDEMIC_API_KEY
+
+  geo_imagery:
+    primary: google_tiles
+    fallback:
+      - open_imagery
+    options:
+      auth_type: api_key
+      api_key_env: GOOGLE_MAPS_API_KEY
+      map_type: satellite
+      scale: scaleFactor2x
+      high_dpi: true
+      image_format: jpeg
+      google_min_zoom: 0
+      max_tiles_per_run: 500
 
   video_breakdown:
     primary: rea_video

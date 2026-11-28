@@ -135,7 +135,7 @@ def test_synthesize_multi_reference_policy_and_exemplars(tmp_path: Path) -> None
     p2 = _make_probe(sha="b" * 64, shot_durations=[1.0, 2.2, 3.0, 2.6, 1.8, 2.5], kf_paths=[kf2])
     transcript = NormalizedTranscript(
         source_hash="a" * 64,
-        provider="xai",
+        provider="external",
         language="en",
         duration_s=10.9,
         text="Revenue grew 42% this quarter.",

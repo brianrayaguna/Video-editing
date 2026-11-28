@@ -185,7 +185,7 @@ class ModalCloudMediaOpsProvider:
             self.provider_name,
             None,
             "Modal CPU media_ops handles `clean_audio` (DeepFilterNet) and `reframe`. "
-            "Use `--provider veed` with OpenEdit OAuth for cloud background matting.",
+            "Background matting is not supported by the modal_cloud provider.",
         )
 
     def trim(

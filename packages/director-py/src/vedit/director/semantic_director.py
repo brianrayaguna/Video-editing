@@ -98,9 +98,32 @@ def _extract_text(ans: DecisionAnswer | None) -> str:
     return str(val or "").strip()
 
 
-def _extract_score(ans: DecisionAnswer | None) -> float | None:
+_HOOK_RUBRIC_LEVELS: list[str] = [
+    "Generic or vague hook with weak visual specificity",
+    "Basic hook with limited visual tension",
+    "Clear hook with adequate visual anchor",
+    "Strong visual hook with immediate narrative curiosity",
+    "Broadcast-grade visual hook with unmistakable concrete imagery",
+]
+
+_COHERENCE_RUBRIC_LEVELS: list[str] = [
+    "Disjointed beats with weak visual progression",
+    "Uneven pacing or mostly generic visual devices",
+    "Coherent narrative-to-visual alignment",
+    "Tight pacing escalation and strong visual specificity",
+    "Broadcast-grade visual storytelling with clear escalation",
+]
+
+
+def _extract_score(ans: DecisionAnswer | None, *, scale_levels: int | None = None) -> float | None:
     if ans is None:
         return None
+    legend = ans.raw.get("legend")
+    max_level = (
+        max(1, len(legend) - 1)
+        if isinstance(legend, dict) and len(legend) >= 2
+        else (max(1, scale_levels - 1) if scale_levels and scale_levels >= 2 else None)
+    )
     for key in ("score", "value"):
         if key in ans.raw and ans.raw[key] is not None:
             raw_val = ans.raw[key]
@@ -112,11 +135,88 @@ def _extract_score(ans: DecisionAnswer | None) -> float | None:
                 return None
             if not math.isfinite(num):
                 return None
+            if max_level is not None and 0.0 <= num <= float(max_level):
+                return round((num / float(max_level)) * 100.0, 2)
             # Normalize 0..1 calibrated probabilities onto 0..100 scale.
             if 0.0 <= num <= 1.0:
                 return round(num * 100.0, 2)
             return round(max(0.0, min(100.0, num)), 2)
     return None
+
+
+def extract_narrative_signals(
+    transcript: dict[str, Any] | str,
+    decision_port: DecisionPort,
+) -> dict[str, list[str]]:
+    """Extract places, numeric claims, and narrative pivots in one `d1.2-ultra` spans call."""
+    if isinstance(transcript, str):
+        text = transcript.strip()
+    else:
+        raw_text = str(transcript.get("text") or "").strip()
+        if not raw_text:
+            segs = transcript.get("segments") or []
+            raw_text = " ".join(str(s.get("text") or "") for s in segs).strip()
+        if not raw_text:
+            words = transcript.get("words") or []
+            raw_text = " ".join(str(w.get("word") or w.get("text") or "") for w in words).strip()
+        text = raw_text
+
+    if not text:
+        return {"places": [], "numeric_claims": [], "narrative_pivots": []}
+
+    questions = [
+        DecisionQuestion(
+            name="places",
+            question_type="spans",
+            instructions=(
+                "Extract every geographic place, country, city, waterway, or region "
+                "named in the narration."
+            ),
+            max_items=24,
+        ),
+        DecisionQuestion(
+            name="numeric_claims",
+            question_type="spans",
+            instructions=(
+                "Extract every quantified statistic, measurement, distance, currency figure, "
+                "or percentage."
+            ),
+            max_items=24,
+        ),
+        DecisionQuestion(
+            name="narrative_pivots",
+            question_type="spans",
+            instructions=(
+                "Extract every turning-point or contrast clause that shifts narrative tension "
+                "or reveals a twist."
+            ),
+            max_items=12,
+        ),
+    ]
+    validate_decision_batch(questions, [])
+    res = decision_port.evaluate(state=text, questions=questions, images=None)
+
+    def _collect(q_name: str) -> list[str]:
+        ans = res.answers.get(q_name)
+        if ans is None:
+            return []
+        seen: set[str] = set()
+        out_items: list[str] = []
+        for sp in ans.spans:
+            found = sp.get("found")
+            if found is not None and float(found) < 0.5:
+                continue
+            item = str(sp.get("text") or "").strip()
+            if item and item.lower() not in seen:
+                seen.add(item.lower())
+                out_items.append(item)
+        return out_items
+
+    return {
+        "places": _collect("places"),
+        "numeric_claims": _collect("numeric_claims"),
+        "narrative_pivots": _collect("narrative_pivots"),
+    }
 
 
 def _recompute_beat_timing(
@@ -329,9 +429,9 @@ def _score_candidate_hooks(
                     name=f"hook_{offset + k}__score",
                     question_type="score",
                     instructions=(
-                        f"Score hook candidate {offset + k} for visual specificity and retention."
+                        f"Rate hook candidate {offset + k} for visual specificity and retention."
                     ),
-                    value_range=(0.0, 100.0),
+                    criteria=list(_HOOK_RUBRIC_LEVELS),
                 )
                 for k in range(len(chunk))
             ]
@@ -421,10 +521,10 @@ def critique_storyboard_prerender(
             name="prerender_coherence",
             question_type="score",
             instructions=(
-                "Score overall narrative–visual coherence, pacing escalation, and concrete "
-                "visual specificity of this storyboard from 0 to 100."
+                "Rate overall narrative-visual coherence, pacing escalation, and concrete "
+                "visual specificity of this storyboard."
             ),
-            value_range=(0.0, 100.0),
+            criteria=list(_COHERENCE_RUBRIC_LEVELS),
         )
         validate_decision_batch([q], [])
         res = decision_port.evaluate(

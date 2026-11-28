@@ -3,7 +3,7 @@
 These rules govern all media pipelines, composition compilers, and provider integrations within this repository.
 
 ## 1. Capability-First Abstraction (Ports & Adapters)
-- Core modules (`analyzers`, `director`, `mastering`, `cli`) and documentation must depend exclusively on capability interfaces in `vedit.ports` (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`).
+- Core modules (`analyzers`, `director`, `mastering`, `cli`) and documentation must depend exclusively on capability interfaces in `vedit.ports` (`TranscriptionPort`, `DecisionPort`, `MediaOpsPort`, `AudioCatalogPort`, `VideoBreakdownPort`, `GeoImageryPort`).
 - Concrete vendor integrations live under `vedit.providers` and are resolved solely through `ProviderRegistry` and YAML/environment configuration. Never hardcode vendor assumptions in core logic or agent skills.
 
 ## 2. Strict Prohibition on Generative Video
@@ -21,7 +21,7 @@ These rules govern all media pipelines, composition compilers, and provider inte
 - CPU cloud rendering workers must pass `--no-browser-gpu` with software WebGL (`swiftshader`), partition long timelines into short chunks (`150–240` frames) to bound Chromium memory growth, and recycle browser processes per chunk.
 - Compile native Linux `x86_64` binaries (`vedit-probe`) directly inside the cloud container image build; never copy macOS ARM64 binaries into Linux containers.
 - Keep `@hyperframes/core`, `@hyperframes/lint`, and `@hyperframes/producer` pinned explicitly (`0.9.68`) across `packages/hf-compiler-ts` and cloud container images.
-- Keep heavy ML and video rendering off the local host: route STT through cloud `TranscriptionPort` (`xai` / `veed`), neural speech denoising and heavy aspect reframing through `MediaOpsPort` (`--provider modal_cloud` on deployed Modal app `vedit-distributed-renderer`), background matting through cloud `veed`, and distributed HyperFrames rendering + EBU R128 mastering through `vedit cloud render`.
+- Keep heavy ML and video rendering off the local host: never install local ASR/STT packages, route neural speech denoising and heavy aspect reframing through `MediaOpsPort` (`--provider modal_cloud` on deployed Modal app `vedit-distributed-renderer`), and route distributed HyperFrames rendering + EBU R128 mastering through `vedit cloud render`.
 - Redeploy Modal workers with `packages/director-py/.venv/bin/modal deploy packages/cloud-modal/src/vedit_cloud/app.py` whenever container dependencies or worker functions change.
 
 ## 5. MapLibre A-Roll Bake (Cartography Tooling)

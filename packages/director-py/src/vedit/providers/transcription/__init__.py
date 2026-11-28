@@ -1,6 +1,3 @@
-"""Speech-to-text capability provider implementations."""
+"""Speech-to-text capability provider namespace (external plugins register via ProviderRegistry)."""
 
-from vedit.providers.transcription.veed import VeedTranscriptionProvider
-from vedit.providers.transcription.xai import XaiTranscriptionProvider
-
-__all__ = ["VeedTranscriptionProvider", "XaiTranscriptionProvider"]
+__all__: list[str] = []

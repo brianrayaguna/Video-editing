@@ -37,6 +37,7 @@ from vedit.models import (
     VideoBreakdownResult,
 )
 from vedit.ports.video_breakdown import BreakdownOptions
+from vedit.providers.decision_mode import DecisionMode, resolve_decision_port
 from vedit.providers.registry import build_default_registry
 
 probe_app = typer.Typer(help="Fast deterministic media hashing, shot & CIELAB analysis.")
@@ -526,9 +527,16 @@ def brand_analyze_cmd(
         Path | None,
         typer.Option("--playbook-out", help="Advisory EditorialPlaybook JSON path."),
     ] = None,
+    decision: Annotated[
+        DecisionMode,
+        typer.Option("--decision", help="DecisionPort enrichment mode: auto, on, or off."),
+    ] = "auto",
     use_decision: Annotated[
-        bool, typer.Option("--use-decision", help="Enrich with configured DecisionPort.")
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--use-decision/--no-use-decision", help="Legacy alias for --decision on/off."
+        ),
+    ] = None,
 ) -> None:
     """Synthesize runtime BrandStylePolicy and advisory EditorialPlaybook from probes."""
     loaded_breakdowns: list[tuple[Path, VideoBreakdownResult]] = []
@@ -559,7 +567,7 @@ def brand_analyze_cmd(
             )
         )
 
-    decision_port = build_default_registry().resolve("decision") if use_decision else None
+    decision_port = resolve_decision_port(decision, use_decision=use_decision)
     synthesized = synthesize_brand_artifacts(brand_id, samples, decision_port=decision_port)
     policy_payload = synthesized.policy.model_dump(exclude_none=True)
     playbook_payload = synthesized.playbook.model_dump(exclude_none=True)
