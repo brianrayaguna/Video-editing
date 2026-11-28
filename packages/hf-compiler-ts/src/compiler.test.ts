@@ -1808,7 +1808,7 @@ test("chevron_flow_band, cutaway_height_gauge, feathered_dark_wipe, page_unfold,
   }
 
   const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_halo.html"), "utf8");
-  assert.match(capHtml, /0 2px 10px rgba\(0, 0, 0, 0\.88\)/);
+  assert.match(capHtml, /0 3px 10px rgba\(0, 0, 0, 0\.78\)/);
 
   const wipeHtml = fs.readFileSync(path.join(tmpDir, "compositions", "wipe_1.html"), "utf8");
   assert.match(wipeHtml, /feathered_dark_wipe/);
@@ -2205,7 +2205,7 @@ test("compiler reads SFNT fvar weight ranges, deduplicates static+variable faces
   const archHtml = fs.readFileSync(path.join(tmpDir, "compositions", "arch_tokens.html"), "utf8");
   assert.match(archHtml, /font-family: 'Lora', 'Lora', 'EB Garamond'/);
   assert.match(archHtml, /font-family: 'IBM Plex Mono', 'IBM Plex Mono', monospace/);
-  assert.match(archHtml, /font-family: 'Archivo Black', 'Archivo Black'/);
+  assert.match(archHtml, /font-family: 'Archivo Black', 'Montserrat'/);
 
   const lintResult = await lintHyperframesProjectDir(tmpDir);
   assert.equal(
@@ -2299,7 +2299,7 @@ test("typography system separates CAPTION_FONT from BODY_FONT, emits root type_s
   assert.match(indexHtml, /--type-caption-tracking:\s*0\.015em;/);
 
   const capHtml = fs.readFileSync(path.join(tmpDir, "compositions", "cap_sep.html"), "utf8");
-  assert.match(capHtml, /font-family:\s*'Rubik', 'Rubik', 'Inter', sans-serif;/);
+  assert.match(capHtml, /font-family:\s*'Rubik', 'Inter', sans-serif;/);
   assert.match(capHtml, /letter-spacing:\s*0\.02em;/);
 
   const metricHtml = fs.readFileSync(path.join(tmpDir, "compositions", "metric_sep.html"), "utf8");

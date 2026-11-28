@@ -447,7 +447,7 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
         assert 1 <= len(words) <= max_words
         assert cap.props.get("caption_style") == "plain"
         # Captions fade in over a few frames and cut out hard.
-        assert cap.props.get("caption_fade_in_ms") == 120
+        assert cap.props.get("caption_fade_in_ms") == 110
         assert cap.props.get("caption_fade_out_ms") == 0
     assert not any(ov.template_id == "amber_fact_card" for ov in plan_9x16.overlay_compositions)
 
@@ -467,8 +467,8 @@ def test_planner_hold_cap_and_clause_caption_grouping_and_geoverum_formats(tmp_p
     ]
     assert amber_cards, "Expected amber_fact_card on 16:9 documentary plan"
     assert amber_cards[0].variables is not None
-    assert amber_cards[0].variables["bg_color"] == "#F5C542"
-    assert amber_cards[0].variables["fg_color"] == "#03161F"
+    assert amber_cards[0].variables["bg_color"] == "#F7DC28"
+    assert amber_cards[0].variables["fg_color"] == "#071D26"
 
 
 def test_verifier_detects_violet_scale_zero_collision_and_allows_corner_watermark(

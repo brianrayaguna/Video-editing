@@ -541,3 +541,35 @@ def test_ts_contracts_in_sync_with_schemas() -> None:
         "PlatformCanvasTarget",
     ):
         assert required_symbol in actual, f"Missing expected symbol: {required_symbol}"
+
+
+def test_geoverum_policy_and_templates_single_source_invariants() -> None:
+    root = find_repo_root()
+    gv = root / "profiles" / "brands" / "geoverum"
+    policy = json.loads((gv / "brand_style_policy.json").read_text(encoding="utf-8"))
+    typo = policy["soft_priors"]["visual_tokens"]["typography"]
+    pal = policy["soft_priors"]["visual_tokens"]["palette_roles"]
+
+    assert typo["display_family"] == "Montserrat, sans-serif"
+    assert typo["title_family"] == "Montserrat, sans-serif"
+    assert typo["caption_font_family"] == "Inter, sans-serif"
+    assert typo["caption_font_px_9x16"] == 46
+    assert typo["caption_fade_in_ms"] == 110
+    assert typo["type_scale"]["hero"]["weight"] == 900
+    assert typo["type_scale"]["caption"]["size_px_9x16"] == 46
+    assert typo["type_scale"]["caption"]["size_px_16x9"] == 42
+    assert pal["ground"] == "#071D26"
+    assert pal["surface_elevated"] == "#0E4352"
+    assert pal["ink"] == "#F5F7FA"
+    assert pal["accent"] == "#F7DC28"
+
+    banned = set(policy["hard_guardrails"]["banned_patterns"])
+    rejected = set(policy["calibration"]["rejected_patterns"])
+    assert banned.isdisjoint(rejected)
+
+    for html_path in sorted((gv / "templates" / "components").glob("*.html")):
+        txt = html_path.read_text(encoding="utf-8")
+        if "{{TITLE_FONT}}" in txt:
+            assert "font-weight: 400" not in txt, (
+                f"{html_path.name} uses font-weight: 400 with TITLE_FONT"
+            )

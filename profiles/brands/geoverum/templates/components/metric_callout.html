@@ -36,9 +36,9 @@
       padding: 0 calc(8px * {{SCALE_FACTOR}});
     }
     #{{SCENE_ID}}-primary {
-      font-family: '{{TITLE_FONT}}', 'Archivo Black', sans-serif;
+      font-family: '{{TITLE_FONT}}', 'Montserrat', sans-serif;
       font-size: calc(86px * {{SCALE_FACTOR}});
-      font-weight: 400;
+      font-weight: 900;
       line-height: 1;
       letter-spacing: -0.02em;
       color: var(--vedit-ink);
@@ -113,7 +113,7 @@
         try {
           const fitted = window.__hyperframes.fitTextFontSize(rawText, {
             fontFamily: "{{TITLE_FONT}}",
-            fontWeight: 400,
+            fontWeight: 900,
             maxWidth: maxWidthPx,
           });
           if (fitted && fitted.fontSize) {

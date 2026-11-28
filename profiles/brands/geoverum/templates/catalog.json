@@ -12,9 +12,9 @@
       "safe_band": "lower_third",
       "variables": [
         { "id": "text", "type": "string", "label": "Caption phrase (2-4 words)" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#071D26" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" },
         { "id": "highlight_text", "type": "string", "default": "" },
         {
           "id": "caption_style",
@@ -35,7 +35,7 @@
       "variables": [
         { "id": "text", "type": "string", "default": "geoverum" },
         { "id": "opacity", "type": "number", "min": 0.55, "max": 0.85, "default": 0.72 },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" }
       ]
     },
     {
@@ -50,8 +50,8 @@
         { "id": "label", "type": "string", "default": "20 KM" },
         { "id": "secondary_value", "type": "string", "default": "" },
         { "id": "subtitle", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -66,8 +66,8 @@
         { "id": "label", "type": "string", "default": "1.143 KM" },
         { "id": "secondary_value", "type": "string", "default": "" },
         { "id": "subtitle", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -81,8 +81,8 @@
       "variables": [
         { "id": "number", "type": "string", "default": "" },
         { "id": "text", "type": "string", "label": "Chapter fact title" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" },
-        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#071D26" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -96,7 +96,7 @@
       "variables": [
         { "id": "text", "type": "string", "label": "Source attribution" },
         { "id": "opacity", "type": "number", "min": 0.45, "max": 0.85, "default": 0.62 },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" }
       ]
     },
     {
@@ -111,8 +111,8 @@
         { "id": "headline", "type": "string", "default": "geoverum" },
         { "id": "prompt", "type": "string", "default": "" },
         { "id": "cta_tag", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -137,8 +137,8 @@
         { "id": "bar3_value", "type": "number", "default": 70 },
         { "id": "bar3_text", "type": "string", "default": "" },
         { "id": "source", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -156,8 +156,8 @@
         { "id": "layer3", "type": "string", "default": "DEEP BEDROCK" },
         { "id": "foot_label", "type": "string", "default": "" },
         { "id": "foot_metric", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -171,8 +171,8 @@
       "variables": [
         { "id": "title", "type": "string", "default": "MAIN CHAPTER" },
         { "id": "accent_word", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -203,9 +203,9 @@
           "enum_values": ["amber", "charcoal", "crimson"],
           "default": "amber"
         },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
-        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#03161F" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" },
+        { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#071D26" }
       ]
     },
     {
@@ -229,8 +229,8 @@
           "enum_values": ["double_arrow", "t_bracket", "dashed_amber", "radius_ring"],
           "default": "double_arrow"
         },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -239,7 +239,7 @@
       "overlay_kind": "full_scene",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Full-frame deep blueprint drafting grid (#14427A) defaulting to straight 0-degree framing across three authentic variants: boxless editorial grid typography, continent/territory silhouette cutout with T-bracket span, or crisp media plate.",
+      "description": "Full-frame deep blueprint drafting grid (#2059DC) defaulting to straight 0-degree framing across three authentic variants: boxless editorial grid typography, continent/territory silhouette cutout with T-bracket span, or crisp media plate.",
       "safe_band": "center_safe",
       "variables": [
         {
@@ -254,8 +254,8 @@
         { "id": "silhouette_svg_path", "type": "string", "default": "" },
         { "id": "image_src", "type": "string", "default": "" },
         { "id": "tilt_deg", "type": "number", "min": -8, "max": 8, "default": 0 },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -278,8 +278,8 @@
           "enum_values": ["vertical", "diagonal"],
           "default": "vertical"
         },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -323,8 +323,8 @@
         { "id": "correction_text", "type": "string", "default": "" },
         { "id": "acronym", "type": "string", "default": "" },
         { "id": "expansion_text", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -347,8 +347,8 @@
           "default": "amber"
         },
         { "id": "label", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -363,13 +363,13 @@
         { "id": "left_value", "type": "string", "default": "4,700°C" },
         { "id": "left_secondary", "type": "string", "default": "(8,492°F)" },
         { "id": "left_label", "type": "string", "default": "CAVITATION" },
-        { "id": "left_color", "type": "color", "default": "#7CE0F9" },
+        { "id": "left_color", "type": "color", "default": "#5EE2FF" },
         { "id": "right_value", "type": "string", "default": "5,500°C" },
         { "id": "right_secondary", "type": "string", "default": "(9,932°F)" },
         { "id": "right_label", "type": "string", "default": "SUN SURFACE" },
-        { "id": "right_color", "type": "color", "default": "#F5C542" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "right_color", "type": "color", "default": "#F7DC28" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -392,8 +392,8 @@
         { "id": "unit", "type": "string", "default": "°C" },
         { "id": "secondary_readout", "type": "string", "default": "" },
         { "id": "label", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -419,8 +419,8 @@
         { "id": "panel3_metric", "type": "string", "default": "" },
         { "id": "panel4_label", "type": "string", "default": "" },
         { "id": "panel4_metric", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -451,8 +451,8 @@
         { "id": "b4", "type": "string", "default": "UTC+8" },
         { "id": "b5", "type": "string", "default": "UTC+9" },
         { "id": "active_band", "type": "number", "min": 1, "max": 5, "default": 3 },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -478,8 +478,8 @@
         },
         { "id": "title", "type": "string", "default": "SOVEREIGNTY" },
         { "id": "accent_word", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -506,8 +506,8 @@
         { "id": "center_x_pct", "type": "number", "min": 20, "max": 80, "default": 50 },
         { "id": "center_y_pct", "type": "number", "min": 20, "max": 75, "default": 46 },
         { "id": "label", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -525,8 +525,8 @@
         { "id": "left_label", "type": "string", "default": "CITIZENS" },
         { "id": "right_pct", "type": "string", "default": "80%" },
         { "id": "right_label", "type": "string", "default": "EXPATS" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -544,8 +544,8 @@
         { "id": "clear_radius_pct", "type": "number", "min": 8, "max": 45, "default": 18 },
         { "id": "tint_mode", "type": "enum", "enum_values": ["dark", "amber_catastrophe"], "default": "dark" },
         { "id": "label", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -563,8 +563,8 @@
         { "id": "size_px", "type": "number", "min": 90, "max": 440, "default": 190 },
         { "id": "badge_color", "type": "color", "default": "#DC2626" },
         { "id": "label", "type": "string", "default": "" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -580,8 +580,8 @@
         { "id": "center_y_pct", "type": "number", "min": 15, "max": 78, "default": 46 },
         { "id": "max_radius", "type": "number", "min": 70, "max": 340, "default": 180 },
         { "id": "ring_color", "type": "color", "default": "#EF4444" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -601,8 +601,8 @@
         { "id": "end_y_pct", "type": "number", "min": 15, "max": 85, "default": 28 },
         { "id": "active_color", "type": "color", "default": "#38BDF8" },
         { "id": "loss_color", "type": "color", "default": "#EF4444" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -634,8 +634,8 @@
         { "id": "center_y_pct", "type": "number", "min": 18, "max": 72, "default": 46 },
         { "id": "angle_deg", "type": "number", "min": -45, "max": 45, "default": -18 },
         { "id": "stamp_color", "type": "color", "default": "#991B1B" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" }
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" }
       ]
     },
     {
@@ -656,8 +656,8 @@
           "default": "east"
         },
         { "id": "chevron_count", "type": "number", "min": 3, "max": 8, "default": 5 },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" }
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" }
       ]
     },
     {
@@ -676,9 +676,9 @@
         { "id": "axis_bottom_label", "type": "string", "default": "" },
         { "id": "fill_pct", "type": "number", "min": 10, "max": 95, "default": 68 },
         { "id": "side", "type": "enum", "enum_values": ["right", "left"], "default": "right" },
-        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F5C542" },
-        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F4F1EA" },
-        { "id": "muted_color", "type": "color", "token_ref": "palette_roles.muted_ink", "default": "#9CA3AF" }
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
+        { "id": "muted_color", "type": "color", "token_ref": "palette_roles.muted_ink", "default": "#9BB3C0" }
       ]
     }
   ]
