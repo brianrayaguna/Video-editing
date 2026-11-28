@@ -61,6 +61,11 @@ class SafeZoneMargins(StrictModel):
     right_pct: float = Field(ge=0.0, le=0.35)
 
 
+class TimebaseSpec(StrictModel):
+    num: int = Field(ge=1)
+    den: int = Field(ge=1, default=1)
+
+
 class PlatformTarget(StrictModel):
     platform_id: str = Field(min_length=1)
     display_name: str | None = None
@@ -68,6 +73,7 @@ class PlatformTarget(StrictModel):
     width: int = Field(ge=360, le=7680)
     height: int = Field(ge=360, le=7680)
     fps: float
+    timebase: TimebaseSpec | None = None
     purpose: Literal["long_form", "short_form", "social_square", "archive_master"] | None = None
     video: VideoMasteringSpec
     audio: AudioMasteringSpec
@@ -383,6 +389,9 @@ class VideoClipOp(StrictModel):
     timeline_start_s: float = Field(ge=0.0)
     timeline_duration_s: float = Field(gt=0.0)
     source_start_s: float = Field(ge=0.0)
+    start_frame: int | None = Field(default=None, ge=0)
+    duration_frames: int | None = Field(default=None, ge=1)
+    source_start_frame: int | None = Field(default=None, ge=0)
     role: Literal["a_roll", "b_roll", "screen_recording", "cutaway"]
     content_type: Literal["live_action", "map", "landscape", "diagram", "archival"] | None = None
     visual_beat_count: int = Field(ge=0, default=0)
@@ -426,6 +435,8 @@ class OverlayCompositionOp(StrictModel):
     ]
     timeline_start_s: float = Field(ge=0.0)
     timeline_duration_s: float = Field(gt=0.0)
+    start_frame: int | None = Field(default=None, ge=0)
+    duration_frames: int | None = Field(default=None, ge=1)
     transparent: bool = True
     safe_band: Literal[
         "lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"
@@ -451,6 +462,9 @@ class AudioTrackOp(StrictModel):
     timeline_start_s: float = Field(ge=0.0)
     timeline_duration_s: float = Field(gt=0.0)
     source_start_s: float = Field(ge=0.0)
+    start_frame: int | None = Field(default=None, ge=0)
+    duration_frames: int | None = Field(default=None, ge=1)
+    source_start_frame: int | None = Field(default=None, ge=0)
     gain_db: float = Field(ge=-60.0, le=24.0, default=0.0)
     carve_against_group: str | None = None
     carve_strength: float = Field(ge=0.0, le=1.0, default=0.8)
@@ -481,6 +495,7 @@ class EditPlan(StrictModel):
     render_strategy: Literal["hybrid", "full_hf"]
     duration_s: float = Field(gt=0.0)
     fps: float = Field(gt=0.0)
+    timebase: TimebaseSpec | None = None
     width: int = Field(ge=360)
     height: int = Field(ge=360)
     assets: list[AssetRef]
@@ -488,6 +503,55 @@ class EditPlan(StrictModel):
     overlay_compositions: list[OverlayCompositionOp]
     audio_tracks: list[AudioTrackOp]
     verifier_passed: bool = False
+
+    @model_validator(mode="after")
+    def _validate_rational_frame_fields(self) -> EditPlan:
+        from vedit.timebase import Timebase
+
+        tb = (
+            Timebase(self.timebase.num, self.timebase.den)
+            if self.timebase is not None
+            else Timebase.from_fps(self.fps)
+        )
+        if self.timebase is not None and abs(self.fps - tb.fps_float) > 0.01:
+            raise ValueError(
+                f"EditPlan fps={self.fps} conflicts with timebase="
+                f"{tb.num}/{tb.den} ({tb.fps_float:.4f})"
+            )
+
+        rate = tb.fps_float
+        tol = 0.5001
+
+        def _check_frame(
+            item_label: str, field_name: str, frame_val: int | None, sec_val: float
+        ) -> None:
+            if frame_val is None:
+                return
+            expected = sec_val * rate
+            if abs(frame_val - expected) > tol:
+                raise ValueError(
+                    f"{item_label}.{field_name}={frame_val} conflicts with "
+                    f"{sec_val}s at {tb.ffmpeg_rate_str} fps (expected ~{expected:.2f} frames)"
+                )
+
+        for clip in self.video_tracks:
+            lbl = f"video_tracks[{clip.clip_id}]"
+            _check_frame(lbl, "start_frame", clip.start_frame, clip.timeline_start_s)
+            _check_frame(lbl, "duration_frames", clip.duration_frames, clip.timeline_duration_s)
+            _check_frame(lbl, "source_start_frame", clip.source_start_frame, clip.source_start_s)
+
+        for ov in self.overlay_compositions:
+            lbl = f"overlay_compositions[{ov.overlay_id}]"
+            _check_frame(lbl, "start_frame", ov.start_frame, ov.timeline_start_s)
+            _check_frame(lbl, "duration_frames", ov.duration_frames, ov.timeline_duration_s)
+
+        for trk in self.audio_tracks:
+            lbl = f"audio_tracks[{trk.track_id}]"
+            _check_frame(lbl, "start_frame", trk.start_frame, trk.timeline_start_s)
+            _check_frame(lbl, "duration_frames", trk.duration_frames, trk.timeline_duration_s)
+            _check_frame(lbl, "source_start_frame", trk.source_start_frame, trk.source_start_s)
+
+        return self
 
 
 class TimeInterval(StrictModel):

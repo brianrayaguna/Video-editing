@@ -30,6 +30,15 @@
     "render_strategy": { "type": "string", "enum": ["hybrid", "full_hf"] },
     "duration_s": { "type": "number", "exclusiveMinimum": 0 },
     "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["num", "den"],
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
     "width": { "type": "integer", "minimum": 360 },
     "height": { "type": "integer", "minimum": 360 },
     "assets": {
@@ -60,6 +69,9 @@
           "timeline_start_s": { "type": "number", "minimum": 0 },
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "source_start_s": { "type": "number", "minimum": 0 },
+          "start_frame": { "type": ["integer", "null"], "minimum": 0 },
+          "duration_frames": { "type": ["integer", "null"], "minimum": 1 },
+          "source_start_frame": { "type": ["integer", "null"], "minimum": 0 },
           "role": { "type": "string", "enum": ["a_roll", "b_roll", "screen_recording", "cutaway"] },
           "content_type": {
             "type": "string",
@@ -129,6 +141,8 @@
           "kind": { "type": "string", "enum": ["caption_rail", "kinetic_callout", "lower_third", "data_card", "title_scene", "full_scene"] },
           "timeline_start_s": { "type": "number", "minimum": 0 },
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+          "start_frame": { "type": ["integer", "null"], "minimum": 0 },
+          "duration_frames": { "type": ["integer", "null"], "minimum": 1 },
           "transparent": { "type": "boolean" },
           "safe_band": { "type": "string", "enum": ["lower_third", "upper_safe", "left_rail", "right_rail", "center_safe", "fullscreen"] },
           "blend_mode": { "type": ["string", "null"], "enum": ["normal", "screen", "multiply", "overlay", "lighten", null] },
@@ -177,6 +191,9 @@
           "timeline_start_s": { "type": "number", "minimum": 0 },
           "timeline_duration_s": { "type": "number", "exclusiveMinimum": 0 },
           "source_start_s": { "type": "number", "minimum": 0 },
+          "start_frame": { "type": ["integer", "null"], "minimum": 0 },
+          "duration_frames": { "type": ["integer", "null"], "minimum": 1 },
+          "source_start_frame": { "type": ["integer", "null"], "minimum": 0 },
           "gain_db": { "type": "number", "minimum": -60, "maximum": 24 },
           "carve_against_group": { "type": ["string", "null"] },
           "carve_strength": { "type": "number", "minimum": 0, "maximum": 1 },

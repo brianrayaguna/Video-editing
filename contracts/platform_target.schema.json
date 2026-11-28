@@ -39,7 +39,16 @@
     },
     "fps": {
       "type": "number",
-      "enum": [24, 25, 30, 48, 50, 60]
+      "enum": [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60]
+    },
+    "timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["num", "den"],
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
     },
     "purpose": {
       "type": "string",
