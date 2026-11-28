@@ -573,3 +573,43 @@ def test_geoverum_policy_and_templates_single_source_invariants() -> None:
             assert "font-weight: 400" not in txt, (
                 f"{html_path.name} uses font-weight: 400 with TITLE_FONT"
             )
+
+
+def test_geoverum_profile_token_budget_and_playbook_curation() -> None:
+    root = find_repo_root()
+    gv = root / "profiles" / "brands" / "geoverum"
+    pb = json.loads((gv / "editorial_playbook.json").read_text(encoding="utf-8"))
+
+    triggers = pb["grammar_triggers"]
+    exemplars = pb["exemplar_bank"]
+    assert 16 <= len(triggers) <= 24
+    assert 18 <= len(exemplars) <= 26
+    weights = [float(t["weight"]) for t in triggers]
+    assert max(weights) - min(weights) >= 0.30
+    roles = {e["role"] for e in exemplars}
+    assert roles == {"hook", "setup", "proof", "data_callout", "broll_bridge", "climax", "outro"}
+
+    readme_tok = len((gv / "README.md").read_text(encoding="utf-8")) // 4
+    directing_tok = len((gv / "DIRECTING.md").read_text(encoding="utf-8")) // 4
+    craft_tok = len((gv / "CRAFT.md").read_text(encoding="utf-8")) // 4
+    total_tok = sum(
+        len((gv / name).read_text(encoding="utf-8")) // 4
+        for name in (
+            "README.md",
+            "DIRECTING.md",
+            "CRAFT.md",
+            "brand_style_policy.json",
+            "directing_idioms.json",
+            "editorial_playbook.json",
+        )
+    )
+    assert readme_tok < 1000
+    assert directing_tok < 3500
+    assert craft_tok < 3500
+    assert total_tok < 25000
+
+    for md in ("README.md", "DIRECTING.md", "CRAFT.md"):
+        txt = (gv / md).read_text(encoding="utf-8")
+        assert "Rubik" not in txt, f"stale Rubik reference in {md}"
+        assert "56 px" not in txt and "56px" not in txt, f"stale 56px reference in {md}"
+        assert "MarginV=348" not in txt and "MarginV = 348" not in txt

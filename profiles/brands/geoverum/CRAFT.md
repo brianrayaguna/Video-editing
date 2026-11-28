@@ -1,286 +1,76 @@
-# Geoverum Craft
+# Geoverum Visual & Audio Craft (Layer 1 — Brand DNA)
 
-Brand-specific visual, typographic, storytelling, audio, and cartographic documentary rules across two documentary formats (`9:16` portrait and `16:9` landscape). Engine-wide motion and layer boundaries live in [`../../../DESIGN.md`](../../../DESIGN.md). Runtime pacing, tokens, and guardrails live in [`brand_style_policy.json`](brand_style_policy.json). Story structure, storyboard derivation, and variation rules live in [`DIRECTING.md`](DIRECTING.md); read it first. Advisory directing heuristics and concrete exemplars live in [`editorial_playbook.json`](editorial_playbook.json).
-
----
-
-## Two documentary formats
-
-Both formats share the same Geoverum cartographic documentary visual DNA and differ in canvas geometry, pacing envelope, transition grammar, and chapter layout:
-
-- **`9:16` (`1080x1920` @ `30 fps`, short documentary)**: Vertical cartographic explainer of roughly 60–100 seconds driven by dense narration (`180–200` words per minute, `<= 4%` silence). Most films run on one dominant surface—graded satellite relief—for `70–90%` of runtime, often as a single continuous virtual-camera take with `0–4` hard cuts per minute, and switch surface only when the narrative mode changes (see [`DIRECTING.md`](DIRECTING.md) §6). Graphic state changes land every `0.25–1.5s` (about one event per stressed noun), the camera is active across `>= 94%` of `0.5s` windows, `min_shot >= 0.75s`, `max_hold <= 45.0s`, and generative video is `0%`.
-- **`16:9` (`1920x1080` / `3840x2160` @ `30 fps`, long documentary)**: Landscape documentary alternating cartographic context with archival and live field evidence (`min_shot >= 1.5s`, `max_hold <= 20.0s`).
+Permanent art-direction standards for Geoverum across `9:16` portrait (`1080x1920`) and `16:9` landscape (`1920x1080` / `3840x2160`). Exact hex codes, font stacks, pixel sizes, and guardrails live in a single source of truth: [`brand_style_policy.json`](brand_style_policy.json). Story structure and concept divergence live in [`DIRECTING.md`](DIRECTING.md); engine-wide compositing rules live in [`../../../DESIGN.md`](../../../DESIGN.md).
 
 ---
 
-## Storytelling architecture
+## 1. Color Grading & Five Surface Registers
 
-Structure is derived from each narration, never from a fixed beat timetable. [`DIRECTING.md`](DIRECTING.md) defines the story brief, the repertoire of story shapes and hook mechanisms, the clause-level storyboard method, and the variation contract. Brand-wide invariants that hold for every shape:
+Geoverum is **rich, vivid, and dimensional—never muddy or artificially crushed to black**. Choose only the surfaces required by the episode's narrative modes:
 
-1. **Story world at frame `0`**: the first frame is the map, shape, or route the story is about; no intro bumper, title card, or logo sting.
-2. **A central question within `3s`**, spoken or performed by the image, and at least one curiosity loop that outlives the hook.
-3. **One signature image** that appears in the hook, mutates through the body, and is still on screen, transformed, at the end.
-4. **Hinge words change something visible** (mood, register, clean frame, or an executed decision).
-5. **No call-to-action, outro plate, or recap**: the film ends on its ending note (irony, consequence, callback, open projection, reversal, measurement, or hard stop on the worst fact) unless the brief requests otherwise.
-
----
-
-## Basemap surface vocabulary & semantic color system
-
-The surfaces below are a vocabulary. A film uses as many as its narrative modes require—frequently one or two—and switches only when the mode changes (where → satellite, history → parchment, mechanism → cross-section, vertical fact → horizon terrain view). Additional surfaces in the vocabulary:
-
-- **Pale high-key headline map**: flat light-cyan land and sea for a stated headline fact before the camera returns to satellite evidence.
-- **Horizon-level 3D terrain view**: oblique or horizon camera over relief with screen-fixed dual-unit altitude chips anchored to horizontal reference lines from the left edge, for altitude, depth, and barrier stories.
-- **High-resolution aerial ortho**: for features under a few kilometres (islets, enclaves, villages), reached by dive-zoom.
-- **Globe**: for planetary totals and summaries.
-- **Flat ground-level illustration**: for atmospheric events seen from the ground (storms, crowds) with a height line.
-
-### Tier 1 — Ground & Basemap Surfaces (70–80% calm energy)
-
-1. **Graded Marine-Teal Satellite Relief (primary spine)**:
-   - Deep marine teal ocean **`#083847`**–`#154957` (`surface_elevated: #083847`; band luminance `75–115`), natural desaturated vegetation/desert relief with subtle 3D hillshade, paired with abyssal `#03161F` for dark surface backing and shadow anchors.
-2. **Deep Blueprint Drafting Grid (`#14427A`)** (hooks, scale proofs, and spatial comparisons):
-   - Default to straight `0°` framing across four concrete visual modes:
-     - *Boxless editorial grid typography*: Direct Archivo Black numbers and titles over the architectural grid.
-     - *Lifted relief cutout*: A satellite continent or territory cutout floating with soft drop shadow over faint monochrome world coastline outlines on the grid.
-     - *White-bordered map or media card*: A crisp `8–12px` white-framed satellite world map or photographic plate with soft drop shadow (a subtle `±2–3°` angle is permitted solely on framed photographic/map cards, never on text HUD cards).
-     - *Glowing footprint compare & calibrated scale ruler*: Side-by-side glowing cobalt/cyan true-scale architectural footprints or horizontal height/size comparison hairlines (`0 m`, `1 m`, `2 m` with dual imperial units).
-3. **Dark Obsidian Vector Basemap (`#0B0E11` / `#101318`)** (route networks & urban district systems):
-   - Deep charcoal landmass (`#16191D`), near-black water (`#080A0D`), and ultra-faint vector road grids (`#262B32`), engineered to maximize figure-ground separation for luminous dual-color route corridors or vivid `45°` diagonal-hatched city districts.
-4. **Historical Parchment Relief & Parchment Drafting Grid (`#B9A386` / `#9E8B70`)** (historical origins & schematic rules):
-   - Warm sepia landmass (`#B9A386`) with muted slate-teal ocean (`#5A7D80`), vintage compass rose anchored in open water, crisp white-rimmed historical territory blocks, and a thin **horizontal golden era timeline bar** (`start – end` year ticks) in the upper safe band.
-   - Warm textured **parchment drafting grid** (`#8F7D66`) for schematic branching/numbering route diagrams with glowing vector branches, plus straight `0°` full archival treaty/manuscript sheets and boxless serif era stamps over footage.
-5. **Full-Bleed 2D Vector Cutaways & Depth Columns (`inset: 0`)** (geology, volcanoes, ecology, underwater depth):
-   - Flat-vector edge-to-edge cross-sections with sky/ocean/crust/mantle or seabed bands, crisp thin white outlines around active magma plumes or subsurface channels, concise horizontal surface labels, and an understated uppercase **`NOT TO SCALE`** micro-disclaimer in the bottom-left safe area when vertical exaggeration is applied.
-
-### Tier 2 — Orientation Context (10–15%)
-
-Low-contrast regional labels with crisp dark halos, subtle coastline strokes, faint reference grids, and quiet attribution labels.
-
-### Tier 3 — Focal Signal Palette (synced to narration)
-
-- **Amber / gold `#F5C542`**: Glowing border seams, routes, geodesic arcs, dual-unit distance brackets, UTC/etymology headers, counters, era timeline bars, vertical depth split dividers, and `16:9` chapter plates.
-- **Crimson `#C2412D` / luminous `#EF4444`**: Primary territory highlight, glowing corridor dividers, pulsing hazard beacons, circular myth-debunk markers, and stark ortho border strokes.
-- **Cobalt `#2E74E6`**: Secondary comparative territory fill, elevation zones, glowing blueprint footprints, and vertical longitude columns.
-- **Hydro cyan `#7CE0F9` / `#38BDF8`**: Meridian/parallel lasers, altitude ladders, river and waterbody highlights, north–south schematic corridors, below-sea-level masks, and curved open-water labels.
-- **Ecological emerald `#2E9E44`** *(domain accent)*: Rainforest, park/landmark masks, shelterbelt, and low-elevation ecological fills.
-- **Border-trace lemon `#F3FA23` / `#FDFD09`**: the travelling head of a border reveal and a single land-border line on satellite relief; it settles to the white rim once the outline closes.
-- **Per-story casting**: The accents above are the default cast. Each film assigns one hue per entity at first mention and keeps it across every surface; flags may serve as fills when nationality is the point; problem and cure, or blocked and permitted, may take opposite hues; one single-use colour may be reserved for the key metric. An opaque saturated pair (lime `#58BC16` / cobalt `#1B5BA8`, `0.9–1.0` alpha, `3 px` white rims) stays legible on busy satellite relief for a two-country contrast. Record the cast in the project storyboard.
-- **Grade as emotion**: Warm brown grading may carry a catastrophe sequence and release to full colour on the human-stakes beat; progressive vignette and desaturation may prove darkness or dread at the ending.
-- Avoid violet or magenta default accents (`OKLCH` / `HSL` hue `265°–335°`) except when differentiating 5+ simultaneous administrative districts on a dark vector basemap.
+1. **Bathymetric Satellite Relief Spine (Primary, 70–90% of most films)**:
+   - Deep marine-teal ocean (`#093B4B`–`#134F5F`) with clearly visible **cyan-turquoise continental shelves** (`#227282`–`#3A8F9D`) and coastal shading.
+   - Warm, natural 3D landmass relief: textured olive greens, warm ochre/sand deserts, crisp polar snow, and gentle directional hillshade.
+2. **Cobalt Blueprint Backdrop (`#2059DC`)**:
+   - Vivid royal-cobalt drafting grid with crisp translucent white coordinate lines (`theme: "cobalt"` or `blueprint_tabletop_frame`) for global rules, tilted 3D map framing, lifted territory cutouts, and true-scale comparisons.
+3. **Matte Slate Radar / Traffic Canvas (`#2C3137`–`#3A4047`)**:
+   - Neutral matte charcoal ground engineered so dense yellow vehicle swarms, crisp white-rimmed circular zoom loupes, and neon green vs crimson coverage zones read instantaneously.
+4. **Daylight 3D Horizon Terrain (`surface_register: "daylight_terrain"`)**:
+   - Natural sunlit sky gradient (`#2B7AE4` -> `#A3CEF5`) over bright snow/mountain relief for vertical altitude, barrier, and clearance proofs—never darkened into night mud.
+5. **Deep Tactical 2D / Historical Parchment Canvas**:
+   - Abyssal slate-teal (`#091E26`) for stylized 2D systems diagrams, full-bleed mechanism cutaways (`cutaway_2d`), and quiet geometric closers; warm sepia parchment (`#B9A386`) with slate ocean (`#5A7D80`) for treaty history and era timelines.
 
 ---
 
-## Map blocks, territory fills, glowing seams & split grids
+## 2. Adaptive Ink, Glow & Territory Styling
 
-Use disciplined cartographic geometry so territory blocks always preserve spatial clarity and never look like flat mud washes:
+Typography and map fills adapt to their underlying luminance and narrative role rather than locking every label to flat white:
 
-1. **World-Space Progressive Hatched Terrain Blocks**: Overlay semi-transparent `45°` (or custom-angle) world-space surface-locked stripes (`hatch_space: "world"`, logarithmic octave spacing) on satellite or dark-vector polygons so stripes remain glued to geographic coordinates and foreshorten naturally under camera pitch. Reveal interior lines progressively with `hatch_reveal_mode` (`"staggered_draw"` for staggered sweeping strokes across `"ltr"`, `"rtl"`, `"center_out"`, or `"alternate"` directions, `"venetian_grow"` for animated line thickness growth, or `"contour_ripple"` for concentric interior Euclidean iso-contours); seal every block with a crisp **`2–3px` pure white exterior rim (`#F4F1EA`)**, optional tactile `lift_px` + `bevel_light` + directional `cast_shadow`, and two-stage pyramid `screen` bloom.
-2. **Three-Layer Luminous Glowing Borders, Comet Trace & Optical Lighting**: Construct glowing borders, coastlines, island chains, and highway corridors as a three-layer stack—wide soft outer bloom (`12–18px`, `opacity 0.30`), mid glow (`6–8px`, `opacity 0.65`), and hot white-tinted inner core (`2.5–3.5px`, `opacity 1.0`)—in amber, crimson, or hydro-blue. Trace country perimeters in Web Mercator arc-length space (`border_trace_ease: "editorial_out"`) with a tapered electric comet draw-head, overlapping interior fill entry at `75%` completion (`fill_bloom_overshoot: 1.18`). Accent held focal territories with opt-in diagonal specular `light_sweep`, travelling perimeter `rim_glint`, and shape-aware `focus_spotlight` dimming, all synchronized to one scene sun azimuth and elevation (`sun_azimuth_deg`, `sun_elevation_deg`).
-3. **Multi-Bloc Geopolitical Fills & Luminance Spotlight**: Dissolve internal administrative seams into unified exterior coastlines unless explicitly explaining internal federal subdivisions or multi-country blocs. When mapping multi-country blocs, separate internal borders with thin `1.5px` white lines, seal the exterior perimeter at `2.5px`, stagger fills in narration mention order (`>= 0.5s`), and spotlight active sub-groups by boosting saturation/luminance while dimming surrounding regions.
-4. **`2×2` Quad & Diagonal Multi-Panel Map Grids**: Split the `9:16` canvas with sharp `4–6px` solid white dividers into 2, 3, or 4 simultaneous map views (each showing a hatched/rimmed block and bold label), then expand the active pane full-screen as narration dives into it.
-5. **High-Resolution Urban Ortho + Landmark Footprint Masks**: On zoomed city imagery, draw a bright white exterior perimeter around the focal island or enclave and tint individual landmarks (parks in luminous emerald, corridors in crimson, financial districts in amber) linked by ultra-thin white leader lines.
-
----
-
-## Watermark (disabled by default)
-
-- Disabled by default (`watermark_default: false`) to keep vertical and widescreen masters clean.
-- When explicitly enabled for distribution: **text-only lowercase `geoverum`** (no logo or globe icon), `24 px` at 1080p (`48 px` at 4K), `Inter` `600`, `letter-spacing: 0.12em`, `opacity: 0.72` (range `0.55–0.85`), subtle dark shadow for legibility, positioned top-right slightly down (`9:16`: `top: 16.0%`, `right: 5.5%`; `16:9`: `top: 7.5%`, `right: 5.0%`). Never use pill containers or glowing status dots.
+| Element | Visual Rule |
+| :--- | :--- |
+| **Primary light ink** | Crisp snow-white (`palette_roles.ink`) with soft directional drop shadow (`strokeWidth: 0`) over ocean, dark terrain, or slate radar. |
+| **Dark ink on bright fills** | Deep charcoal (`#140E0E`, `dark_on_fill` preset) with subtle soft lift whenever bold country/territory labels sit on high-luma crimson or amber fills. |
+| **Hero acronyms & offsets** | Vivid editorial yellow (`palette_roles.accent`, `acronym_hero` preset) for system acronyms, UTC/numeric offsets, and single-location highlights. |
+| **Atmospheric speed & altitude** | Luminous sky-cyan (`palette_roles.hydro_accent`, `velocity_cyan` italic) for wind speeds, and left-anchored translucent cyan dual-unit altitude chips (`33,000 ft (10,000 m)`) tied to horizontal white T-cap hairlines. |
+| **Semantic contrast pairs** | Vivid green (`#4ADE4A`) vs crimson-red (`#EF233C`) for opposing directions, open vs blocked corridors, or faster vs slower legs. |
+| **Open-water labels** | Subdued translucent cyan-teal italic `Lora` (`water_subtle` preset) integrated quietly into ocean bathymetry so water names never fight foreground graphics. |
+| **Territory fills** | Trace exterior coastlines first; land either a crisp `2–3 px` white-rimmed fill, a **molten crimson fill with bright amber-gold rim glow** for focal hazards/plateaus, or a **full-territory animated waving flag** (`flag_fill`, never small floating rectangular flag pins). |
+| **Focus lassos** | Hand-drawn overlapping electric-yellow Bezier ovals (`organic_focus_lasso`), optionally paired with subtle surrounding desaturation. |
 
 ---
 
-## Dual-layer typography & layout
+## 3. Typography & Layout Composition
 
-Maintain a strict visual separation between screen-fixed documentary captions and in-world cartographic labels:
+All font families, sizes, and weights derive from `brand_style_policy.json` (`soft_priors.visual_tokens.typography`):
 
-### Layer A — Screen-Fixed Documentary Captions
-
-- **Style**: Plain documentary subtitle style (`caption_style: "plain"`) — high-luma warm snow-white `#F7F9FB` bold geometric sans (`Inter` `700`) anchored on luminance contrast via multi-layer Gaussian drop shadow rendered through the fast Chromium HTML/CSS strip overlay (`render_captions_overlay.mjs`, falling back to static-font `libass` with `0.55 px` hairline edge and `2.2 px` soft shadow when headless Chromium is unavailable); no pill box, no bar background, no thick black karaoke outline, and no slide/bounce entrance.
-- **Phrasing & Reading Rate**: Natural clause-split **sentence case**, **2–4 words per group** (`max_words_per_caption_group: 4`), dynamically capped to `2–3` words during rapid narration (`> 2.8–3.6 words/s`) so reading speed stays within `12–17 cps` (hard ceiling `<= 20 cps`). Mid-sentence continuations naturally begin lowercase; never force Title Case or ALL-CAPS on captions.
-- **Alignment & Anchor**: True horizontal center (`x = 50%`) using symmetric horizontal margins (`max(left_pct, right_pct)`). On `9:16` (`1080x1920`), render **`Inter` Bold `52 px`** with `MarginV = 525 px` (`line-height: 1.22`, `-0.012em` geometric tracking, anchored at `y ≈ 72.5%` inside the protected clearance band `y = 66–84%`, smooth `110 ms` fade-in, hard cut out `0 ms`, and a `67 ms` / `2`-frame perceptual gap between touching cues), matching `brand_style_policy.json` as single source of truth; on `16:9` (`1920x1080` / `3840x2160`), anchor at the lower-third (`bottom ≈ 10%`) in `Inter` Bold `48 px` (`96 px` on 4K). When the focal subject must occupy the caption band, move the caption group to a clear band (`y ≈ 20%` or `y ≈ 45%`) for that group only, then return.
-- **Proportional Sizing & Transitions**: `52 px` (`Inter` Bold) on `1080x1920`, `48 px` on `1920x1080`, `96 px` on `3840x2160`, swapped by a short fade-in (`110–130 ms`) and hard cut with a `2`-frame visual break; never slide or scale. A new phrase lands about every `1.0–1.5 s`.
-
-### Layer B — In-World Cartographic & Diagram Typography (Editorial Matte Standard)
-
-- **Zero Neon WordArt & Zero Heavy Black Strokes**: Match editorial documentary typography cleanly—use wide geometric sans (**`Montserrat`** `800–900` / **`Outfit`** `700–800`) in calm **Title Case** (`Rocky Mountains`, `Great Plains`, `Dermaga CT3 Sabang`) paired with **soft directional drop shadows** (`shadow_alpha: 0.45`, `shadow_blur_mult: 0.22`, **`stroke_width: 0`**) and **matte environment-harmonized colors** (`#F4F1EA` warm white, `#E5E1D6` matte cream for stat counters, `#95B05E` muted olive or `#CBE7F5` pale sea-mist when laid directly onto terrain). Ban loud neon `luminous` yellow/red text glows and heavy `3–4 px` black outlines on map labels.
-- **Six Built-In Editorial Typography Presets (`carto_role` in `render_map_scene.mjs`)**:
-  - `editorial_title`: Geometric `Montserrat` `900` Title Case (`#F4F1EA`, `strokeWidth: 0`, soft shadow, optional subtle `tracking_from_em` → `tracking_to_em` expansion paired with a thin curved pointer).
-  - `clean_region`: Tilted `Montserrat` `800` Title Case (`#F4F1EA`, `strokeWidth: 0`, soft shadow, organic `-12°..+18°` tilt) for mountain ranges, islands, and regions.
-  - `era_marquee`: Oversized `Montserrat` `900` (`160–210 px`, `#EFECE4`, `strokeWidth: 0`) sweeping gently horizontally (`slide_from_x_px` → `slide_to_x_px`) for historical year spans.
-  - `integrated_stat`: Matte `Montserrat` `900` (`#E5E1D6`, `tabularDigits: true`, `strokeWidth: 0`) placed at **`z_layer: "under_sprites"`** so moving ships, people, or icons physically pass in front of the counter for cinema Z-depth.
-  - `map_integrated_number`: Muted terrain-integrated `Montserrat` `900` (`map_plane`, `strokeWidth: 0`) lying flat along a corridor or belt in 3D perspective.
-  - `dual_unit_stack`: Two-line stacked metric/imperial figure with a crisp centered horizontal divider rule (`divider_rule: true`, `strokeWidth: 0`).
-- **Cartographic Feature Hierarchy (`carto_role`)**:
-  - *Countries & Continents (`country`)*: `Montserrat` `800` `UPPERCASE`, tracking `+0.10em`, `#F4F1EA` with soft directional shadow and zero black outline.
-  - *Regions & Sub-territories (`region`)*: `Inter` SemiBold `UPPERCASE`, tracking `+0.14em`, muted slate `#D4E0E8` so regional names recede behind primary targets.
-  - *Cities & Landmarks (`city`)*: `Inter` Bold Title Case, soft drop shadow; avoid upside-down placements.
-  - *Hydrography — Oceans, Seas, Straits & Rivers (`water`)*: `Lora` **True Italic** in pale ice-cyan `#B8E1FF` along curved river/strait splines (`curved_label`, arc-length sampled, `max_char_angle_deg <= 22°`, automatically oriented left-to-right).
-  - *Coordinates, Elevations & Telemetry (`coord`)*: `IBM Plex Mono` Bold `UPPERCASE`, intrinsically tabular digits with slashed zeros, `#DCE8F5`.
-- **Direct Axis-Aligned Map Labels & Tabular Counters**: Place dark-haloed `Barlow Condensed` / `Inter` labels directly on or beside the focal territory (`glowStrength: "none"` by default; enable multi-ring luminous glow only for deliberate focal emphasis). Animated numeric count-ups and odometers use fixed-width tabular slots (`tabularDigits: true` on Canvas 2D; `font-variant-numeric: tabular-nums` in CSS) and critically damped `expo.out` easing (zero overshoot) so digits never jitter horizontally or flash false overshot values. Typewriter labels measure full string width prior to drawing so centered text expands cleanly left-to-right with zero horizontal creep.
-- **Tight Color-Matched District Tags**: On dense satellite or dark-vector maps, use tight `0–2px`-radius solid amber, emerald, cobalt, charcoal, or crimson label tags sized strictly to text width directly over the matching hatched polygon—zero borders, zero glass blur, zero oversized cards.
-- **Stacked Dual-Unit Counters & Era Markers**: Pair large primary figures with compact stacked `IBM Plex Mono` secondary units (`700 m / 2300 ft`, `9,537 mi / 15,349 km`, `137 islands and atolls`, `19.9M / 8.5M (42.8%)`), and anchor bold standalone years (`1803`, `1929`, `1971`) or horizontal golden timeline bars directly in the upper safe zone.
-- **Non-Overlapping 4-Role Typography System (38 local OFL families catalogued in `assets/geo/fonts/FONTS_MANIFEST.json`)**: Chromium stages variable faces with exact SFNT `fvar` weight ranges (`tech(variations)` + `font-synthesis: none; font-optical-sizing: auto;`), while `libass` stages static weight binaries for deterministic FreeType matching:
-  - **Editorial display (`display_family` / `title_family`)**: `Barlow Condensed` (`700–800`, compact horizontal width for `9:16` frames with `tnum`) for headlines, country labels, and data callouts; `Archivo Black` strictly for massive 1–2 word stamps and hero numerals.
-  - **UI, body & captions (`body_family` / `caption_font_family`)**: `Inter` (`opsz 14–32`, `wght 100–900`, `tnum`) for sub-labels, diagrams, and city markers; `Rubik` Bold (`700`, high `0.743` x-height) for plain centered captions.
-  - **Cartographic hydrography & archival serif (`serif_family`)**: `Lora` (upright + true italic, sturdy strokes that survive YUV 4:2:0 encoding and include `²`) with `EB Garamond` fallback for water bodies, etymology callouts, and historical parchment plates.
-  - **Technical telemetry (`mono_family`)**: `IBM Plex Mono` (`600–700`, slashed `0`, high `0.739` x-height) with `JetBrains Mono` fallback for coordinates, elevation ladders, gauges, and dual-unit conversions.
-- **Modular Type Scale (`type_scale` in `brand_style_policy.json`)**: Follow the inverse leading and tracking curve below across all HTML templates and Canvas 2D map graphics; never omit explicit `font-weight` on `Barlow Condensed` (which collapses to `400` under `font-synthesis: none`) and never request weight `900` on fonts bounded at `800`:
-
-| Level | Role | Family | Size (`9:16` / `16:9`) | Weight | Leading | Tracking | Contrast Floor |
-| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| `hero` | Hero numerals, stamps, portals | `Archivo Black` (`{{TITLE_FONT}}`) | `112 px` / `108 px` | `400` | `0.98` | `-0.02em` | `>= 4.5:1` (AA) |
-| `display` | Primary headlines, country labels | `Barlow Condensed` (`{{DISPLAY_FONT}}`) | `76 px` / `72 px` | `800` | `1.04` | `-0.01em` | `>= 4.5:1` (AA) |
-| `title` | Section & chart headers, pins | `Barlow Condensed` (`{{DISPLAY_FONT}}`) | `48 px` / `44 px` | `700` | `1.12` | `+0.01em` | `>= 4.5:1` (AA) |
-| `caption` | Screen-fixed documentary captions | `Inter` (`{{CAPTION_FONT}}`) | `52 px` / `48 px` | `700` | `1.22` | `-0.012em` | `>= 7.0:1` (AAA) |
-| `telemetry` | Secondary units, coords, gauges | `IBM Plex Mono` (`{{MONO_FONT}}`) | `34 px` / `30 px` | `600` | `1.22` | `+0.02em` | `>= 7.0:1` (AAA) |
-| `body` | Subtitles, bar labels, descriptions | `Inter` (`{{BODY_FONT}}`) | `28 px` / `26 px` | `500` | `1.32` | `+0.01em` | `>= 7.0:1` (AAA) |
-| `micro` | Source credits, opt-in watermark | `Inter` (`{{BODY_FONT}}`) | `22 px` / `20 px` | `600` | `1.35` | `+0.06em` | `>= 7.0:1` (AAA) |
+- **Role separation**: `Montserrat` (`800`–`900`, never `400`!) for hero numerals, acronyms, and map display titles; `Inter` (`500`–`700`) for captions, city labels, and diagram body copy; `Lora` italic for hydrography and archival headers; `IBM Plex Mono` (`600`–`700`) for tabular telemetry and coordinates.
+- **Calm, broadcast-scale lower-band captions**: Plain sentence-case `Inter` Bold (`46 px` on `1080x1920`, `42 px` on `1920x1080`), 2–4 words per cue (`12–17 cps`), true horizontal center (`x = 50%`), anchored inside `y = 66%–84%` (`MarginV = 525 px` on `9:16`, `y ≈ 72.7%`), `110 ms` fade-in, `0 ms` hard cut out with `67 ms` gap. Render via the Chromium HTML/CSS strip overlay with a **4-layer soft Gaussian drop shadow** (tight dark contact halo + wide soft ambient falloff, zero pill box, zero harsh black karaoke stroke) so text stays crisp even over bright sunlit snow.
+- **Upper-Center Action Stage (`y = 22%–62%`, `x = 8%–92%`)**: Concentrate the single dominant visual signal in the upper-center zone with generous geographic negative space around it. Keep `<= 1.5` competing Tier-1 signals per frame, `<= 3` transient callouts (one in, one out), and zero overlap with the protected caption band.
+- **Watermark**: Disabled by default (`watermark_default: false`).
 
 ---
 
-## Core motion, transition & storytelling grammar
+## 4. Motion, Camera & Spatial Grounding
 
-1. **Continuous Camera Motion (`>= 94%` active)**: Keep virtual map cameras smoothly pushing, pulling, tilting, or tracking across nearly every `0.5s` window using Van Wijk & Nuij `fly_to` arcs or scale-coupled Mercator pans, `C¹` velocity blending across chained moves (`blend_s`), subtle `ambient_drift` during holds, and damped impulse `shake` on verdict stamps. Avoid abrupt velocity corners or unmotivated static holds.
-   - *Velocity shapes*: every camera key is a rest point reached at zero velocity. Reframes are bells peaking `30–60 %` into a `1–2 s` move (pans up to about one screen width per second, informational zooms `3–6 log2/s`; `curve: "glide"` or `"orbit_cruise"`). Dives accelerate exponentially to `12–22 log2/s` and end on a cut at peak speed: place the destination key past the act end so the act cuts while the move is still accelerating (`"snap_dive"` or `"whip_snap"`). Snap pull-outs start at peak speed and decay: place the origin key before `t = 0`. Cross-region hops use `"hyperbolic_fly"`; mark `"through": true` only on keys inside one continuous flight.
-   - *Crisp frames*: map frames carry no sub-frame shutter blur at any camera speed (`optical_shutter_blur` and `auto_shutter` stay off). Blur belongs only to designed transitions (a radial zoom blur peaking on the cut frame and decaying over `8–14` frames, whip-pans), transient **1-axis directional SVG `<feGaussianBlur>`** (`stdDeviation="0 blurY"` or `"blurX 0"` across `2–4` peak-velocity frames on rapid odometer digit rolls or directional sweeps), brief `0.25–0.42 s` `expo.out` rack-focus entry/exit decays on register swaps, and sprite entrances—returning cleanly to `0` on held frames, with CSS `filter: blur()` and `backdrop-filter` always banned.
-   - *No tile pops*: bake with `vedit geo bake-scene --fill-tiles` so no frame is captured on upscaled ancestor tiles; hide an unavoidable imagery-resolution swap inside a fast zoom, a disc sweep, or a dark feathered ellipse around the high-resolution patch.
-   - *Measured tracks are denoised before baking*: a camera track solved from reference frames or hand-keyed at irregular times carries small direction flips that monotone interpolation turns into visible shake. Run `vedit geo camera-track <track.json> -o <smoothed.json> --cut <t> --anchor <t>` (Gaussian window `0.6 s`, per-key correction capped at `24 px` and `0.08` zoom so deliberate snap moves keep their timing). Pass every hard cut as `--cut` and every deliberate story-beat framing as `--anchor`.
-   - *Shake budget*: shake is measured as direction flips, not as acceleration (a snap zoom is large but one-directional). Accept a baked track with at most one pan flip per `15 s` and one zoom flip per `30 s` of continuous camera; fast moves are always one-directional with eased ends.
-   - *Zoom and route width move together*: when a move changes zoom regime, the route stroke eases across the same frames (see *Journey route & overlay scale*), so the line neither pops nor thins mid-move.
-   - *Non-map camera continuity (`#cam`)*: wrap full-bleed cross-sections, archival plates, and multi-panel splits in a unified `#cam` container (`perspective: 1400–1600px`) that inherits incoming dive or whip momentum (`expo.out` decay into a flat `0°` hold) and keeps content and callout/pointer layers locked to the same transform during internal pans or zooms.
-2. **Luminous Cartographic Typography**: Pair dark contrast grounding with multi-ring `text-shadow` / Canvas shadow halos (`glow_color`, `glow_strength`) on hero place names and route titles so high-energy labels radiate against satellite relief without runtime CSS `filter: blur()`.
-3. **Transition Grammar (`9:16`)**:
-   - **Continuous Match-Framed Acts (default)**: For multi-act stories sharing the same map world, preserve seamless spatial continuity by matching the outgoing act's final camera coordinates (`center`, `zoom`, `bearing`, `pitch`) to the incoming act's opening frame (`hard_cut` invisible join) instead of inserting decorative wipes or artificial resets. Reserve stylized transitions strictly for genuine scale discontinuities or narrative register shifts:
-   - **Radial whip-zoom blur (`0.3–1.0s`)** for regional leaps and plunges into 2D cross-sections or aerial B-roll.
-   - **Vertical white-bar split wipe (`0.3–0.6s`)** between satellite relief and dark obsidian vector or blueprint measurement surfaces.
-   - **Feathered dark curtain sweep & optical spyglass iris (`0.4–0.7s`)** using pure alpha gradients (zero CSS blur) or circular SVG masks so `y = 66–84%` plain captions remain legible in front.
-   - **Oversized kinetic letter portal (`0.5–0.8s`)** scaling bold display lettering cleanly into the next cartographic view, or **3D horizontal card-flip** shifting between flat-map projections and a 3D spherical globe.
-   - **Zoom-through icon** from map to diagram, **dip to black** for chapter resets, **page curl** for archive pivots, **wash dissolve** for weather, **colour-flash cut** for hook flips, **lens/iris dissolve** between map level and character level, and **whip into a real aerial** to resolve an abstraction. Keep one device per jump type within a film.
-   - **Feathered black-disc sweep (`5–6` frames)**: a soft black disc (`~1000–1300 px`, feather `~15 %` of the width) crosses right to left (`transition_in: "disc_sweep"`, black on roughly `6 %`, `70 %`, `100 %`, `90 %`, `20 %`, `0 %` of the frame across the six frames); swap the basemap register while the frame is fully black, match-frame both sides, and leave captions unmasked.
-   - **Projection switch inside a zoom**: continue the zoom through a radial blur that peaks on the cut frame into the other projection (flat map ↔ globe), already framed on the same place: the outgoing act keeps accelerating into the cut (destination key after `duration_s`, `cut_blur_out_s` `0.3–0.45 s`) and the incoming act opens blurred (`cut_blur_in_s` `0.3–0.45 s`).
-   - **Clean crossfade (`0.4–0.5s`)** and **hard cuts** for rapid proof bursts. Reserve `amber_light_leak` strictly for `16:9` long-form transitions.
-4. **Dual-Unit Dimension Brackets, T-Brackets & Radius Rings**: Stack imperial and metric units (`2.4 mi (3.8 km)`, `50.5 km (31.38 mi)`, `700 m / 2300 ft`) along white double-headed arrows, technical T-bracket callipers, dashed amber corridors, or expanding concentric acoustic/distance radius rings drawn via `SVG stroke-dashoffset`.
-5. **Full-Bleed 2D Animated Cross-Sections (`cutaway_2d`), Scale Ladders & Expressive Map Sprites**: Use full-bleed (`inset: 0`) flat-vector 2D cross-sections (`5–19s`, built-in presets or project-scoped `html_file`) whenever vertical depth, subsurface strata, root/erosion mechanics, keel clearance, or ground-level atmospheric scale communicates the story more vividly than a top-down map. On the pitched 3D satellite map itself, pair crisp coastlines and waving flags with expressive colored vector `map_sprites` (built-in or project-scoped `svg_url` with wakes/trails), 3D unfolding `parchment_sheet` plans, `country_block_3d`, `volume_3d`, and `cable_3d` (avoid untextured grey procedural `model_3d` placeholder blobs when a sharp vector sprite or verified `.glb` reads better). Never enclose a 2D cross-section inside a floating dark dashboard panel.
-6. **Quad/Diagonal Multi-Panel, Horizontal Analogy & Demographic Splits**: Disambiguate nested political entities with crisp white-seamed `2×2` quad splits, 2- or 3-panel diagonal splits, or top/bottom analogy splits, and quantify population ratios with boxless 10-figure SVG silhouette grids directly over a soft scrim.
-7. **Boxless Coordinate Pins, Tight Highlight Tags, Etymology Arrows, Lassos, Gauges & Myth Debunks**:
-   - Place crisp `2px` white vertical or angled elbow leader pins (`SVG stroke-dashoffset` draw-on from a minimal anchor dot) leading directly to shadowed bold text with zero HUD box; add a compact dark-and-amber population badge only when citing discrete headcounts.
-   - Link place-name origins with a curved hand-drawn white SVG etymology arrow; isolate islands or subregions with hand-drawn overlapping SVG focus lassos (`amber`, `white`, or `crimson`); quantify extremes with live boxless physical gauges (mercury thermometer, acoustic decibel meter) and crimson circular `X` myth-debunk stamps.
-8. **Rapid Field B-Roll, Choropleths & Radar Evidence**: Follow a whip-zoom dive with `3–4` concise real aerial/field proof clips (`0.85–2.2s` each), clean light-neutral data choropleths/heatmaps, or dark-mode traffic/radar visualizations; add quiet `source_credit` attribution when external imagery or archival footage requires it.
-9. **Story devices** (selected by story need per [`DIRECTING.md`](DIRECTING.md) §5.3):
-   - *Signature-image persistence*: the focal line or shape survives zooms and surface cuts and is re-purposed later (a divider becomes the mechanism's barrier edge).
-   - *Count-up measurement*: a dimension arrow whose number counts up and lands on the spoken value, re-proven at each new zoom level.
-   - *Live misconception counter*: a large counter that shows a believed number and keeps ticking as ghost shapes appear.
-   - *Familiar-silhouette tiling and shape transplant*: tile a familiar country silhouette across a zone, or lift the focal shape and drop it onto a familiar region at true scale.
-   - *Full-frame tint flash* (`0.4–0.5s`) on an owning or time-changing verb, with the camera locked.
-   - *Mood dip on "why"*: vignette or darkening for the question phrase, answer opened by a whip-zoom.
-   - *Edge-grown state mask*: ice, drought, or flood masks growing from the edges over the basemap while borders stay on top.
-   - *Particles for invisible qualities*: clouds, snow, wind streaks, turbulence spirals, dust billows tied to the place.
-   - *Abstract people markers*: dots or pictograms that converge, change colour on loss, scatter, and return.
-   - *Tool action*: a stamp, stylus, or cursor performing the spoken verb on the map. Calibrate `transform-origin` and negative offsets to the active contact hotspot (tip of stylus/cursor or center of stamp), move along curved approach arcs with directional banking (`±6°–16°`), land a brief contact squash synced `0 ms` to the map reaction (border trace, stamp, or debunk mark), match sprite scale across scale-jump handoffs, and sweep out `40–50%` faster than entry.
-   - *Repetition marker*: pulse rings repeating at one spot for loops, then a duration numeral.
-   - *Travelling avatar*: a portrait marker that rides the route tip; its count matches the companions remaining.
-   - *Paired values across a line*: clocks, dates, or owners shown on each side of a thin glowing boundary.
-   - *Absence & spatial negation*: Default to physical and spatial proof directly on the 3D map—an unpowered tower grid (`powered: false`), a cable or corridor physically bypassing an excluded port, or a true-meter `volume_3d` architectural prism extending beyond a territory's coastline—so limitation and exclusion are visually self-evident without stamped red `X` graphics. Reserve prohibition marks strictly for literal regulatory bans or closed border blockades.
-   - *Real-data credibility*: the same focal outline redrawn over real imagery or a procedurally rebuilt data visualization.
-10. **Non-Generative Asset Policy**: Produce all cartography, 2D cross-sections, weather/ice animations, gauges, and charts deterministically via MapLibre and procedural HyperFrames HTML/SVG/GSAP alongside real archival or stock B-roll—never generative video synthesis.
+- **Continuous, rest-to-rest camera craft**: Keep virtual map cameras smoothly active (`>= 94%` of `0.5 s` windows) with rest-to-rest C² curves (`glide`, `snap_dive`, `hyperbolic_fly`, `orbit_cruise`), zero velocity corners, and crisp sharp map frames (`optical_shutter_blur` off; reserve blur strictly for radial zoom cuts, whip-pans, and brief register-swap transitions). Bake with `--fill-tiles` to prevent mid-move tile pops, and denoise measured camera tracks before baking.
+- **3-tier spatial lock**: Declare `map_plane` for ground-locked titles/flags/measurements, `world_billboard` for upright coordinate pins/pointers/sprites, and `screen` strictly for viewport HUDs (altitude rails, odometers, captions).
+- **One transition device per jump type**: Match-framed `hard_cut` between contiguous map acts; radial `whip_zoom_blur` (`0.3–0.8 s`) into cutaways or B-roll triplets; 6-frame `disc_sweep` / `feathered_dark_wipe` for match-framed register swaps; `split_wipe_divider` for satellite-vs-dark comparisons.
+- **Physicality**: Enter from `scale(0.92–0.96)`, `clip-path` wipes, or `SVG stroke-dashoffset` draw-ons with `expo.out` (`180–360 ms`), never `scale(0)`. Hold landed text dead still. Exit `40–50%` faster with `power3.in`.
 
 ---
 
-## Journey route & overlay scale (`9:16`)
+## 5. Audio, Scoring & Foley (`audio_themes.json`)
 
-Route-driven films (story shape *Journey chain* in [`DIRECTING.md`](DIRECTING.md) §3) read on a phone only when the route and its markers are drawn at screen-constant, generous sizes. Measured on `1080x1920` frames:
-
-- **Route stroke follows the camera regime, not the map scale**: `4–8 px` on continental and recap shots, `10–16 px` on regional legs, `20–30 px` on close obstacle shots, up to `40 px` on a held close-up of a single event (arrest, crossing point). Ease the width between regimes in step with the zoom so the line never thins to a hairline mid-move. Pure saturated yellow (`#FBEA12`), round joins, no casing.
-- **The drawn head is the camera's subject**: the camera keeps the growing route tip inside the middle `60%` of the frame and leads it slightly in the direction of travel; the line never draws off-screen except when a whip-out reveals the full leg.
-- **Duration numerals ride the leg they measure**: `2 years`, `6 years`, `11 years`, `32 days` in heavy (optionally italic) white with a soft dark shadow, `60–120 px` cap height, placed along the measured segment and kept close to upright (`|angle| <= 12°`) unless the numeral is set parallel to a straight crossing.
-- **Character and icon scale**: travelling portrait avatar `180–240 px` diameter with a `4–6 px` white rim; detention cage or stamp icon `~300 px`; speech bubble `~380 px` wide with `38–48 px` black heavy text; hazard icon clusters (rebels, viruses) `80–140 px` each, popping one per stressed noun. Markers smaller than `~100 px` read as noise at phone scale.
-- **Repetition marker**: a forced periodic return ("every 90 days") shows as pulse rings at the exit point, then one solid route dot per return, each dot popping as the head passes it.
-- **Obstacle → fill pairing**: each obstacle on the route gets one distinct territory treatment (glowing jungle-green region, edge-grown ice mask, flat national red fill, cyan water body with glow, hatched red/green neighbour pair for "can't go through X or Y"), so no two consecutive obstacles share a colour or texture.
-- **Recap globe**: totals are spoken over the whole route on a globe filling `80–90%` of the frame width, with the totals stacked top-centre as solid saturated blue chips with yellow heavy text (`~60 px`). The globe then flies down into the flat map for the remaining leg.
-- **Future path**: the not-yet-walked remainder is a dashed white line (`4–6 px`, `10/10` dash) from the current position to a yellow destination label carrying the year.
-- **Journey captions**: inherit the single-source caption rail from `brand_style_policy.json` (`Inter` Bold `52 px`, `line-height: 1.22`, `#F7F9FB` with multi-layer Gaussian drop shadow via HTML/Chromium overlay, `MarginV = 525 px`), optionally stepping up to `56–60 px` when continuous route graphics cross bright snow, clouds, desert, or sunlit ocean so local contrast stays `>= 7.0:1` (hard floor `>= 4.5:1`). Keep the protected caption band (`y = 66–84%`) free of route heads and callouts.
-
-### Visual hierarchy
-
-Every frame has one reading order, enforced by size, contrast, safe margins, and numeric accuracy:
-
-1. **Route head and the leg being drawn**: the only element allowed to move continuously; highest saturation in frame.
-2. **Travelling avatar or event icon** at the head: the human subject of the current clause.
-3. **Duration numeral or measurement gauge** on the measured zone: the largest type in frame while present. Spoken figures must never disagree with on-screen callouts (enforce numeric parity and paired dual-unit labels where appropriate).
-4. **Place labels and territory fills**: lower contrast than the route; fills sit under the route, never over it.
-5. **Caption rail**: screen-fixed, neutral white with a clean dark halo, never competing in colour with the route yellow.
-
-At most **three transient callouts** (avatar, icon cluster, bubble, numeral, gauge) are on screen at once; a new one entering on a stressed word retires the oldest within `0.3 s` (one in, one out). Callouts that belong to a finished leg exit before the camera leaves that leg.
-
-### Layout relative to the route head & safe zones
-
-- Callouts **trail the head**: place them `200–320 px` from the head on the side the route came from (opposite the direction of travel) and slightly above it, so the next `1 s` of route stays visible.
-- Keep a `~120 px` clear radius around the head; a callout never overlaps the head or the segment drawn in the next second.
-- Keep callout centers inside broadcast safe zones (`8%–92%` horizontal, `12%–88%` vertical) with scale rulers placed center- or bottom-safe (`y >= 12%`) rather than crowded into upper corner margins.
-- Numerals sit on the midpoint of the leg they measure, offset `~30–40 px` perpendicular to the line and rotated with it (within the `|angle| <= 12°` rule).
-- Speech bubbles point their tail at the speaker and stay inside the upper `60%` of the frame; dashed connector arrows (`~20 px` width, `2:1` dash) link a callout to a remote place instead of moving the callout there.
-- Horizontal side margins of `>= 60 px` for every callout; nothing crosses into the caption band.
-
-### Directional corridors, vertical gauges & parchment transitions
-
-- **Wind and atmospheric corridors (`chevron_flow_band`)**: Use staggered animated directional chevrons along a dashed streamline to visualize jet streams, prevailing winds, or corridor deflection over shaded relief maps.
-- **Elevation, altitude & geological depth gauges (`cutaway_height_gauge`)**: Pair vertical graduated tick rails inside right/left safe margins (`8%–92%` x) with animated column fills and dual-unit readouts (metric + imperial) locked to narration clauses.
-- **Feathered dark sweeps & archival page unfolds**: Use a `3–5` frame feathered dark curtain wipe (`soft_curtain_transition`, `mode: "feathered_dark_wipe"`, default right-to-left) to bridge macro-scale or projection jumps without masking captions, and use an upright `0°` parchment unfold (`historical_parchment_plate`, `variant: "page_unfold"`) when entering archival map history.
+- **Clean continuous VO**: Pre-audit dialogue (`vedit inspect-audio`), denoise before transcription, maintain `50–80%` speech density (`<= 4%` silence) over a subtle `-52 dBFS` room-tone floor.
+- **Studio BGM & narrative pivot scoring**: Resolve domain-matched real instrumental tracks via `vedit geo auto-audio --brand geoverum` (`audio_themes.json`)—switching through a crisp `250–300 ms` breath into a tension bed at the narrative pivot. Apply vocal pocket carving (`380 Hz` / `2.4 kHz`), heavy sidechain ducking (`ducking_strength: 0.90`), and two-pass linear `loudnorm` to `-14.0 LUFS` / `<= -1.4 dBTP` (`48 kHz` stereo AAC-LC).
+- **Recorded kinetic foley**: Sync real recorded pops, clicks, whooshes, paper unfolds, and environmental ambiences `0 ms` to visual actions (`15–28 hits/min`)—never oscillator/sine-wave synthetic audio.
 
 ---
 
-## World-space & object-tracked overlays
+## 6. Rejected Chrome (Hard Bans)
 
-- **Camera-locked 3-tier spatial tracking (`map_plane`, `world_billboard`, `screen`)**: Every graphic element must declare its spatial relationship to the moving 3D camera rather than floating statically at frozen pixel sizes:
-  - `map_plane` (MapLibre local projection Jacobian `ctx.transform`): Country/region names, ground flags, territory emblems, and ground measurements lie physically on the map surface, automatically scaling with `zoom`, rotating with `bearing`, and foreshortening with `pitch` using continuous floating-point transform scaling (never integer-rounded font sizes that jitter by `1 px` during smooth zooms).
-  - `world_billboard` (world-anchored upright with damped zoom coupling): Vertical coordinate pins, curved hand-drawn pointers, and compact metric pills stay glued to `[lng, lat]` at sub-pixel precision while remaining upright during orbits and scaling smoothly via `2^((zoom - ref_zoom) * scale_coupling)` (`scale_coupling: 0.35–0.50`).
-  - `screen`: Strictly viewport-locked HUD elements (odometer counters, vertical dark-void wipers, bottom captions).
-  - For HyperFrames overlays composited over pitched map footage, project `[lng, lat]` anchors through the 3D camera track (`project_world_anchor_to_track`) into `OverlayCompositionOp.track_keyframes` with optional `rotateX_deg` and `perspective_px`.
-- **3D cinema camera choreography (beyond zoom-only)**: Combine lateral trucking (sideways sweeps), gentle orbital `bearing` rotation (`±8°–18°`), targeted 3D `pitch`, and subtle optical banking (`roll: ±1°–4°` with automatic overscan scaling) so held beats remain alive in 3D space. Use van Wijk & Nuij hyperbolic geodesics (`curve: "hyperbolic_fly"`) for cross-region hops, exponential `snap_dive` curves for landmark approaches, optional low-frequency stabilized-rig `micro_drift`, and rest-to-rest keyframes (zero velocity at each key unless it is marked `"through": true`). Map frames stay crisp at every speed: no sub-frame shutter blur on camera moves (`optical_shutter_blur` off); motion blur belongs only to whip and plunge transitions. Keep dense pin/radar clusters and wide continental reveals upright (`pitch: 0–10°`), reserving deeper oblique tilt (`pitch: 24–52°`) for corridor flyovers, river/isthmus reveals, and dramatic mood-dip vignettes.
-- **Territory reveal: trace, then fill**: Introduce a focal territory by drawing its outline along the real perimeter (`border_trace_s` `0.8–2.0 s`, constant world speed): two heads leave the story anchor (a summit, a border point, the northern tip) in opposite directions, bright lemon at `7–8 px` constant screen width with round caps and no glow, cross-fading to a `3–4 px` white rim within `~0.1 s` of closing. Fill only after the outline closes: a flat tint at `0.85–0.95` alpha fading in over `3–6` frames, or a seed-grown radial reveal (`~0.7 s`). Keep relief readable through the tint; drop to `0.48–0.58` translucent fills only where terrain detail is the point. A border shared by two filled countries is one line: draw it with one head along the true polyline, north to south, on top of both fills (dashed with round caps where it continues at sea). Transition fill hue on narrative turns (for example emerald green `#15803D` shifting to crimson `#991B1B` when danger is introduced).
-- **Full-territory waving & glowing flag fills (no small flag pins)**: When nationality or sovereignty is the point, cover the entire territory coastline with its flag (`flag_fill` on `country_block_3d` or `polygon`)—never attach small floating rectangular flag stickers (`flag_pin`) over a country. Map upright onto territory bounds (or `flag_rotate_deg: 90`, `flag_fit: "cover"` for tall territories), clipped cleanly to the coast under a luminous glowing perimeter (`flag_glow: true`, `2–4 px` bright rim with HDR outer glow), revealed by an organic seed mask (`flag_reveal: "organic"`, `~0.7 s`), bottom-up wipe (`wipe_up`, `~0.27 s`), or tactile 3D rise (`country_block_3d`), and animated with continuous wind-gust cloth deformation (`flag_wave: 0.20–0.28`, `flag_wave_warp: true`, satin specular sheen `flag_gloss: true`, `flag_blend: "source-over"`). A flag may serve as a territory's opening fill and transition to the story's flat cast colour through a second organic reveal (`fill_reveal_mode: "organic"`).
-- **3D In-Map Infrastructure & Scale Geometry**: Whenever explaining real-world corridors, aviation/migration links, subsea cables, power grids, ports, maritime routes, or volumetric capacity over geography, render high-detail WebGL 3D geometry directly inside the pitched satellite map coordinate space with clean spatial separation (never stacking overlapping 3D models at the same coordinate):
-  - **`cable_3d`**: Procedurally stranded steel-wire and metallic armor `TubeGeometry` reserved strictly for literal physical cables, pipelines, and power lines—with ground/seabed shadow ribbons, animated induction pulse rings, optional overhead tower-to-tower catenary sag (`catenary: true`), clean terminal collars or ground tapers (`landing_collar`, `end_taper_m`), and minimum screen-space thickness. Do not use pipes/cables for air travel, diplomacy, or migration when a literal 3D vehicle or contrail flight path tells the story better.
-  - **`model_3d`**: Detailed multi-part PBR geographic assets (`aircraft`, `survey_vessel`, `transmission_tower`, `substation`, `solar_farm`, or verified `.glb`/`.gltf` assets via `gltf_url`) supporting parabolic 3D flight arcs (`altitude_arc_m`, automatic pitch/banking `bank_deg`, glowing `contrail` ribbon, terrain-projected ground shadow), continuous sub-part rotation (`spin_rps`), smooth zoom coupling, heading alignment along travel paths, and explicit `powered` emissive state (`true` vs `false`).
-  - **`volume_3d`**: True-meter architectural prisms positioned at exact `[lng, lat]` coordinates over graded terrain (`width_m`, `length_m`, `height_m`) to prove area deficits, urban density, or facility footprints geometrically against surrounding landmasses.
-  - **`country_block_3d`**: True extruded 3D country or region geometry with beveled upper edges (`bevel_px`), separate top and shaded side materials (vertical base ambient-occlusion darkening, animated wind-rippling + luminous glowing `flag_fill` top surfaces, world-space derivative-antialiased progressive interior hatching, and view-dependent Fresnel rim illumination), HDR glowing top-perimeter rim separation, dynamic soft cast shadows (`PCFSoftShadowMap`), and selective Dual-Kawase HDR bloom with filmic tone mapping synced to the map sun direction.
-- **Spatial hierarchy & calm ground**: Target `<= 1.5` competing Tier-1 visual signals per frame and `>= 85%` calm map/ocean ground. Maintain safe clearance above the protected `9:16` caption band (`y = 66–84%`, plain `Inter` Bold `52 px` at `MarginV = 525 px`, local WCAG contrast `>= 4.5:1`, no trailing mid-sentence punctuation) and keep all edge-anchored pins/labels inside `6%–94%` horizontal bounds.
-- **Atmospheric cutaway triplets**: When plunging from a map into real-world terrain proof, use a radial zoom-blur plunge followed by three rapid atmospheric B-roll cuts (`0.8–1.2 s` each) before pulling back to the satellite spine.
-- **Vertical wipe-to-void isolation**: When isolating a territory count or border anomaly from busy satellite terrain, sweep a crisp glowing white vertical wiper bar (`~250–300 ms`) across the frame to dim the basemap to matte charcoal (`#0C0E11`, `0.85–0.90` alpha) while keeping diagonal-hatched or rimmed focal polygons illuminated above the void layer. Pair with a tilted odometer counter (`fly-up ~280 ms`, vertical digit roll `~140 ms`, optionally applying a brief `2–4` frame vertical 1-axis SVG `<feGaussianBlur>` with `stdDeviation="0 blurY"` that decays cleanly to `0` on landing) when debunking a misconception count.
-- **Alternating ownership tint-flash & shifting border**: For alternating sovereignty or moving boundary stories, smoothly interpolate the glowing border spline between both alignments (`~500 ms` ease-in-out) while surging a luminous bank-and-island tint flash (`~650 ms` bell curve) on the active territory and anchoring waving SVG flag markers on each side.
-- **True-scale ghost silhouette & dual-unit callouts**: To prove microstate or corridor scale, slide a translucent cyan reference silhouette horizontally (`~260 ms` ease-out) directly over the focal landmass after retiring any numeric population pill. Pair dashed distance brackets and micro-border lines with stacked primary metric and parenthesized imperial units (`85 m` / `(279 ft)`).
-- **Directional geographic sweeps & demographic splits**: Reveal elongated natural corridors (mountain ranges, rift valleys, coast belts) with world-space directional clips (`north_south` / `west_east`) paired with character-by-character typewriter `map_plane` labels so the sweep stays locked to terrain during bearing rotations. For percentage splits across a glowing meridian or border, animate a 10-figure human silhouette row physically dividing across the line before swapping into compact color-matched population pills.
-- **Atmospheric kinematics, creative visual metaphors & spatial deficit proof**: Keep visual storytelling lively and expressive rather than repeating stiff stick-pin slideshows or generic grey 3D blocks across consecutive clauses. Represent meteorological barriers and wind deflection with multi-puff shaded clouds casting soft ground shadows along `[lng, lat]` spline paths paired with tapered white wind streamlines (`wind_streamlines`), volumetric rolling dust or storm fronts (`dust_storm_plume`), world-space cracked-earth drought textures clipped inside territory polygons (`texture_fill: "cracked_earth"`), volumetric forest/shelterbelt corridors with radiant emerald ground glow and diagonal planting hatches (`tree_belt`), and 3D perspective-projected archival parchment blueprint or treaty sheets unfolding directly onto the satellite map (`parchment_sheet`). Pair world-space map acts with procedural full-bleed `cutaway_2d` acts (`soil_root_cutaway` for subsurface root/erosion mechanics, `dust_wall_horizon` for ground-level atmospheric scale comparisons, and `port_depth_cutaway` for underwater port draft and seabed clearance cross-sections with animated vertical dashed depth rulers) joined via radial zoom-blur plunges (`cut_blur_in_s` / `cut_blur_out_s`) or 6-frame feathered black-disc sweeps (`disc_sweep`). Populate active geography with animated colorful top-down vehicle/ship swarms with wakes and domain pictograms (`map_sprites`: `cargo_ship`, `port_crane`, `cargo_crate`, `tractor`, `barn_farm`, `human_lung`, `human_migrate`, `alert_exclamation`, `thumbs_up`, `pointer_arrow`) alongside true-scale `volume_3d` prisms or dimmed/unpowered `model_3d` infrastructure; apply two-stage circular or teardrop prohibition slashes (`prohibition_pins`) when illustrating explicit non-existence, stalled construction, or regulatory bans.
-
----
-
-## Audio, VO & kinetic SFX craft
-
-- **Voiceover pacing & pre-ingest audio hygiene**: Inspect raw dialogue (`vedit inspect-audio`) for clipping, low SNR, sub-80 Hz rumble, and plosives prior to denoising; clean crisp continuous narration (`50–80%` speech density, minimal dead air `<= 4%` silence) with `highpass` (`75–120 Hz`) and short splice crossfades (`~12 ms`) over a subtle room-tone floor (`-52 dBFS`) so pauses never drop to dead zero. Cuts and graphic beats align to narration clauses (with J-cut/L-cut pre-laps and post-laps where dialogue/ambience bridges a cut) rather than rigid musical grid lines.
-- **Real studio BGM & narrative chapter scoring (zero oscillator slop)**: Source real instrumental documentary music tracks exclusively through `AudioCatalogPort` and the local studio library (`assets/audio/bgm/`)—never ship procedural sine-wave or oscillator-synthesized BGM beds, drones, or risers in production masters. Use two contrasting real instrumental tracks when the story pivots emotionally (e.g., curious rhythmic pluck/marimba documentary bed transitioning through a crisp `250–300 ms` silence breath into a dark suspense orchestral/hybrid bed at the turning point). Carve vocal pockets psychoacoustically (`380 Hz` low-mid cleanup + `2.4 kHz` presence dip) with smooth sidechain ducking (`ducking_strength: 0.90`, WPM-adaptive release `400 ms` to eliminate pumping), and master via two-pass linear `loudnorm` to `-14.0 LUFS` integrated (`streaming_web`), `<= -1.4 dBTP` true peak, and `>= +0.15` mono phase correlation (`48 kHz` stereo AAC-LC).
-- **Recorded foley & kinetic SFX (`sfx_policy: "kinetic_accents"`)**: Use real recorded foley and cinematic SFX files (`assets/audio/sfx/` and project `media/audio/sfx/`) locked `0 ms` to physical and graphic actions (`15–28` hits/min, never clustered mechanically above `1.5` cues/s): real paper-unfold foley synced to `parchment_sheet`, underwater dive wash synced to subsurface `cutaway_2d` plunges, real maritime/environmental ambience beds (ocean waves, wind, distant ship horns) tucked at `-25` to `-28 dB`, tactile pops/clicks on sprite clusters and labels, crisp risers before zoom plunges, and deep cinematic sub-thuds on verdict beats. Never substitute Python oscillator beeps or harsh synthesized buzzes for recorded foley.
-
----
-
-## Rejected chrome
-
-- **Banned Visual & Audio Slop**:
-  - Loud neon `luminous` yellow/red text glow halos, heavy `3–4 px` black outlines on map titles/stats, or shouting ALL-CAPS screen-pasted text stickers (use matte `Montserrat` / `Outfit` editorial presets with soft directional shadows and Z-depth layering)
-  - Synthetic oscillator / sine-wave BGM beds, robotic Python-synthesized risers/drones/impacts, or generic code-generated sound effects in rendered episodes
-- Stiff, repetitive stick-pin (`pin_label`) slideshows and generic untextured grey 3D block placeholders repeated across consecutive beats without expressive visual metaphors, animated sprites, or register shifts
-
-- Dark translucent rounded dashboard/HUD cards (`rgba(..., 0.85–0.92)`), thin cyan/neon outlines, decorative viewfinder corner-bracket KPI boxes (`┌ ┐ └ ┘`), and thick left- or top-accent border strips (`border-left: 4–7px`, `border-top: 4px`) wrapping map labels, charts, or diagrams
-- Forced decorative tilt (`-2°` to `-3°`) on text HUD containers or floating mini sepia quote cards with thin middle divider lines (reserve subtle angle solely for white-bordered framed map/photo cards on blueprint surfaces; keep text plates straight `0°`)
-- Presentation-style uppercase eyebrow/kicker labels (`PART 02`, `CHAPTER 1`, `TERRITORY SCALE`, `POLITICAL GEOGRAPHY`, `GEOLOGICAL MECHANISM`) stacked above short-form (`9:16`) display titles, charts, or cross-sections (reserve numbered chapter plates strictly for long-form `16:9` `amber_fact_card`)
-- Floating short horizontal decorative accent rules positioned above numbers, metrics, or titles (`.metric-rule`, `.outro-rule`) or decorative divider bars between blueprint numbers and titles
-- Uniform `power2.out` fade-and-slide-up entrances across every component; animate with purposeful `SVG stroke-dashoffset` draw-on, `clip-path` wipes, 3D perspective flips, or baseline mask reveals
-- Third-party basemap attribution watermarks or vendor UI chrome inside master frames (rebuild data visualizations such as air-traffic or weather layers procedurally)
-- Unbordered flat neon mud fills lacking crisp exterior coastline rims or terrain texture
-- Comic elements (characters, flag avatars with faces, reaction faces, speech bubbles, stickers) placed without a narrated action or covering the focal geography; comic register itself is part of the brand vocabulary (see [`DIRECTING.md`](DIRECTING.md) §10)
-- Unmotivated static map holds without camera motion or graphic progression
-- Heavy CSS `backdrop-filter` / `filter: blur()` glass cards and SaaS pill watermarks
-- Shouty full-width yellow `#FFD60A` fact bars and document/paper walls covering the focal subject
-- Isometric factory / money-bag raster props (flat vector pictograms and reaction faces tied to a spoken noun or beat are permitted)
-- Dual yellow light-beam spears
-- Film-strip / viewfinder chrome, film-reel archival frames, false-color thermal grades, and double-exposure faces on contemporary B-roll
+- Collapsed `weight: 400` hero/display typography or heavy `3–4 px` black outlines on map labels.
+- Dark translucent rounded dashboard/HUD cards, cyan-bordered KPI boxes, viewfinder corner brackets, thick left/top accent strips, floating short accent rule bars, or uppercase eyebrow/kicker headers on `9:16`.
+- Forced decorative tilt (`-2°..3°`) on text containers (permitted only on white-bordered photographic/map plates on blueprint grids).
+- Small floating rectangular flag pins instead of full-territory waving flag fills.
+- Boxed captions, harsh karaoke outlines, third-party basemap attribution chrome, heavy CSS `filter: blur()` / `backdrop-filter`, synthetic sine-wave audio, or generative AI video.

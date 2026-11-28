@@ -1,1713 +1,369 @@
 {
   "schema_version": "1.0",
   "brand_id": "geoverum",
-  "schema_note": "Advisory directing playbook only. Not consumed by planner, verifier, compile, master, or audit. Runtime BrandStylePolicy uses soft_priors, hard_guardrails, calibration, and provenance.",
+  "schema_note": "Advisory visual recipes and exemplars retrieved on demand by directors and exemplar_retrieval.py. Never executed as a rigid template; episodes may author open primitives bound by Layer 1 Brand DNA.",
   "grammar_triggers": [
     {
-      "trigger_id": "blueprint_tabletop_hook",
-      "condition": "timeline.section == 'hook' and timeline.t_s <= 10.0",
-      "action": "camera.open_blueprint_tabletop_and_dive_into_region()",
-      "weight": 0.55,
-      "rationale": "One hook option among several (see DIRECTING.md hook mechanisms): open on a straight 0-degree full-frame deep blueprint drafting grid (#14427A) with boxless editorial typography, continent silhouette cutout + T-bracket span, or clean media plate, then dive into the focal region. Prefer it only when the story's tension is a comparison of sizes or shapes."
-    },
-    {
-      "trigger_id": "kinetic_sfx_on_label_reveal",
-      "condition": "overlay.spawns_label_metric_or_fill",
-      "action": "audio.sync_short_sfx(kinds=['pop','ding','click'], offset_ms=0)",
-      "weight": 0.96,
-      "rationale": "Lock short acoustic accents directly to territory fills, text labels, metric counters, and transition cuts at 15-28 hits per minute."
-    },
-    {
-      "trigger_id": "whip_zoom_iris_or_card_flip_transition",
-      "condition": "transition.kind in {'whip_zoom_blur', 'wipe', 'soft_iris_wipe', '3d_card_flip'}",
-      "action": "audio.sync_whoosh_midpoint(duration_s_range=[0.3, 1.0])",
-      "weight": 0.93,
-      "rationale": "Use pre-rendered 0.3-1.0s radial whip-zooms, vertical white-bar split wipes, soft dark-iris wipes, and 3D card flips for vertical regional leaps."
-    },
-    {
-      "trigger_id": "continuous_map_glide_internal_beats",
-      "condition": "shot.duration_s >= 12.0 and shot.kind == 'cartographic'",
-      "action": "camera.maintain_continuous_motion(active_ratio>=0.94) and overlay.cycle_state_every_s(3.0, 6.0)",
-      "weight": 0.94,
-      "rationale": "Sustained continuous map takes (15-60s) maintain active camera motion across >= 94% of half-second windows while cycling graphic overlays every 3-6 seconds."
-    },
-    {
-      "trigger_id": "diagonal_multi_panel_and_analogy_split",
-      "condition": "speech.disambiguates_nested_entities_or_draws_country_analogy and platform.aspect == '9:16'",
-      "action": "layout.spawn(kind='diagonal_2_or_3_panel_split_or_horizontal_analogy', border='white_4px')",
-      "weight": 0.9,
-      "rationale": "Diagonal white-bordered 2- or 3-panel splits and horizontal top/bottom analogies disambiguate nested political entities and federal structures immediately."
-    },
-    {
-      "trigger_id": "split_wipe_basemap_compare",
-      "condition": "speech.contrasts_apparent_vs_actual_geography and platform.aspect == '9:16'",
-      "action": "transition.vertical_white_split_wipe(left='satellite', right='dark_vector_or_blueprint')",
-      "weight": 0.91,
-      "rationale": "Sweep a vertical white divider bar between satellite relief and dark monochrome vector or blueprint measurement cards to isolate border anomalies and metrics."
-    },
-    {
-      "trigger_id": "multi_territory_rimmed_compare",
-      "condition": "speech.compares_two_or_more_territories",
-      "action": "overlay.stagger_fills(order='mention_order', gap_s=0.5, border='white_2_3px', texture='terrain_multiply_or_hatch')",
-      "weight": 0.92,
-      "rationale": "Stagger comparative territory fills in narration mention order using 2-3px white exterior coastline rims and terrain-preserving multiply or diagonal-hatch fills."
-    },
-    {
-      "trigger_id": "dual_unit_distance_bracket",
-      "condition": "speech.states_distance_or_dimension",
-      "action": "overlay.spawn(kind='dual_unit_distance_bracket', style='white_double_arrow_or_dashed_amber', units=['imperial','metric'], angle='aligned_to_route')",
-      "weight": 0.94,
-      "rationale": "Pair white double-headed arrows or dashed amber lines with stacked imperial and metric values aligned to the geographic axis."
-    },
-    {
-      "trigger_id": "true_scale_silhouette_or_anchor_overlay",
-      "condition": "speech.compares_geographic_size_to_familiar_reference",
-      "action": "overlay.drag_silhouette_onto_reference_region_or_place_real_scale_anchor()",
-      "weight": 0.89,
-      "rationale": "Overlay a true-scale territory silhouette onto a familiar continent or place a scaled real-world aerial anchor beside a micro-feature."
-    },
-    {
-      "trigger_id": "animated_2d_mechanism_cross_section",
-      "condition": "speech.explains_physical_geological_underwater_or_ecological_cause",
-      "action": "scene.cut_via_whip_zoom_to(kind='2d_vector_cross_section', duration_s_range=[6.0, 19.0], optional_vertical_split_compare=True)",
-      "weight": 0.92,
-      "rationale": "Cut via radial whip-zoom from overhead maps into flat-vector 2D cross-sections (soil layers, elevation ladders, underwater trenches, or vertical split depth comparisons) to clarify physical mechanisms."
-    },
-    {
-      "trigger_id": "historical_parchment_mode_or_ink_cutaway",
-      "condition": "speech.steps_back_into_historical_era",
-      "action": "basemap.shift_to_parchment_texture(hex='#B9A386', ocean='#5A7D80', optional_ink_sketch_cutaway=True)",
-      "weight": 0.9,
-      "rationale": "Shift into straight 0-degree sepia parchment canvases, boxless serif era stamps directly over footage, full archival manuscript sheets, or monochrome 2D ink-sketch cutaways to separate historical eras from modern satellite geography."
-    },
-    {
-      "trigger_id": "myth_debunk_red_x_and_3d_model",
-      "condition": "speech.debunks_popular_geographic_misconception",
-      "action": "overlay.stamp_crimson_circle_x() and scene.transition_to_3d_scientific_globe_model()",
-      "weight": 0.87,
-      "rationale": "Stamp a high-contrast crimson circular X over the common assumption before revealing a 3D scientific globe or geoid model."
-    },
-    {
-      "trigger_id": "acronym_and_etymology_header_reveal",
-      "condition": "speech.explains_acronym_or_country_name_origin",
-      "action": "overlay.spawn(kind='yellow_initial_acronym_or_etymology_plate', band='upper_safe')",
-      "weight": 0.85,
-      "rationale": "Highlight amber initial letters during acronym expansion or display a bold amber etymology header in the upper safe band."
-    },
-    {
-      "trigger_id": "compact_population_pill_and_coordinate_pin",
-      "condition": "speech.cites_settlement_population_or_multi_party_presence",
-      "action": "overlay.spawn(kind='white_vertical_pin_plus_amber_pop_pill_or_portrait_tokens')",
-      "weight": 0.88,
-      "rationale": "Anchor compact dark-and-amber population pills above vertical white coordinate pins or connect portrait tokens with thin white leader lines without floating small flag boxes."
-    },
-    {
-      "trigger_id": "rapid_broll_sensory_proof_burst",
-      "condition": "speech.emphasizes_extreme_terrain_or_hazard and platform.aspect == '9:16'",
-      "action": "timeline.insert_aerial_broll_burst(clip_count=3_to_4, shot_duration_s_range=[0.85, 2.2], entry='whip_zoom_blur')",
-      "weight": 0.87,
-      "rationale": "Follow a whip-zoom dive with 3-4 concise real aerial landscape clips (0.85-2.2s each) to ground cartographic claims in real terrain."
-    },
-    {
-      "trigger_id": "vertical_elevation_or_longitude_bands",
-      "condition": "speech.explains_altitude_thresholds_or_longitude_zones",
-      "action": "overlay.spawn(kind='calibrated_scale_bars_or_vertical_columns', accent='hydro_or_amber')",
-      "weight": 0.88,
-      "rationale": "Use left-anchored altitude or depth ticks and alternating translucent longitude columns with a single active spotlight strip."
-    },
-    {
-      "trigger_id": "flag_masked_territory_sovereignty",
-      "condition": "speech.establishes_national_sovereignty_or_border_split",
-      "action": "scene.country_block_3d_or_polygon(flag_fill=<code>, flag_wave=0.22-0.28, flag_glow=true, flag_gloss=true, rim_width=3)",
-      "weight": 0.88,
-      "rationale": "Cover the full exterior territory coastline with an animated waving, luminous-rimmed national flag fill (2D polygon or 3D extruded country block); never use small floating rectangular flag pins to represent a country."
-    },
-    {
-      "trigger_id": "clause_pause_cut_anchor",
-      "condition": "audio.silence_gap_s >= 0.18",
-      "action": "timeline.prefer_cut_boundary()",
-      "weight": 0.91,
-      "rationale": "Align transitions cleanly to natural narration clause boundaries under continuous narration-led pacing."
-    },
-    {
-      "trigger_id": "numbered_fact_card_longform",
-      "condition": "platform.aspect == '16:9' and speech.starts_numbered_chapter",
-      "action": "overlay.spawn(kind='amber_fact_card', band='lower_third_safe')",
-      "weight": 0.8,
-      "rationale": "Long-form 16:9 chapter beats use compact amber #F5C542 plates with #03161F ink in the lower-third safe band."
-    },
-    {
-      "trigger_id": "tabular_metric_on_broll",
-      "condition": "speech.states_elevation_capacity_or_length and shot.kind == 'live_aerial_or_broll'",
-      "action": "overlay.spawn(kind='tabular_metric', band='dynamic_away_from_subject')",
-      "weight": 0.86,
-      "rationale": "Place boxless Archivo Black tabular metrics beside live evidence with clearance from the focal silhouette and zero dashboard card chrome."
-    },
-    {
-      "trigger_id": "exploded_2d_strata_cross_section",
-      "condition": "speech.explains_subsurface_aquifer_geology_or_mine_layers",
-      "action": "scene.cut_to(kind='full_bleed_exploded_2d_cross_section', curved_white_arrows=True)",
-      "weight": 0.91,
-      "rationale": "Separate subsurface strata vertically layer-by-layer across a full-bleed dark canvas with curved white hand-drawn leader arrows rather than enclosing a small diagram inside a card."
-    },
-    {
-      "trigger_id": "boxless_vertical_or_elbow_city_pin",
-      "condition": "speech.identifies_city_or_latitude_anchor_on_map",
-      "action": "overlay.spawn(kind='coordinate_pin_callout', style='white_vertical_or_elbow_pin_boxless')",
-      "weight": 0.93,
-      "rationale": "Draw a crisp 2px white vertical or angled elbow leader line from a minimal coordinate dot directly to shadowed bold text with zero HUD box."
-    },
-    {
-      "trigger_id": "boxless_dual_unit_numeric_comparison",
-      "condition": "speech.contrasts_two_physical_measurements",
-      "action": "overlay.spawn(kind='dual_unit_countup_pair', boxless=True, color_coded=True)",
-      "weight": 0.89,
-      "rationale": "Place color-coded primary and secondary unit measurements side by side directly on the dark visual canvas with live tabular count-up and zero dashboard frame."
-    },
-    {
-      "trigger_id": "giant_kinetic_title_sweep_or_portal",
-      "condition": "speech.introduces_competing_geopolitical_terms_or_core_concept",
-      "action": "overlay.spawn(kind='kinetic_portal_title', style='oversized_boxless_sweep_or_zoom_through')",
-      "weight": 0.88,
-      "rationale": "Sweep bold white display titles directly across glowing cobalt, crimson, or emerald rimmed territory highlights or use oversized lettering as a zoom-through scale portal."
-    },
-    {
-      "trigger_id": "tight_highlight_tag_and_etymology_arrow",
-      "condition": "speech.cites_single_line_map_fact_or_place_name_origin",
-      "action": "overlay.spawn(kind='coordinate_pin_callout', pin_style='highlight_tag_or_etymology_arrow')",
-      "weight": 0.9,
-      "rationale": "Use tight 0px-radius amber/charcoal/crimson highlight tags for compact single-line map facts and curved hand-drawn white SVG arrows for place-name etymology links."
-    },
-    {
-      "trigger_id": "organic_hand_drawn_focus_lasso",
-      "condition": "speech.isolates_island_archipelago_or_subregion_on_map",
-      "action": "overlay.spawn(kind='organic_focus_lasso', stroke_tone='amber_or_white')",
-      "weight": 0.89,
-      "rationale": "Draw an organic hand-drawn overlapping SVG Bezier oval via stroke-dashoffset directly around the focal landmass without enclosing it in a rigid rectangular box."
-    },
-    {
-      "trigger_id": "t_bracket_and_radius_ring_span",
-      "condition": "speech.measures_corridor_width_or_acoustic_blast_radius",
-      "action": "overlay.spawn(kind='dual_unit_distance_bracket', line_style='t_bracket_or_radius_ring')",
-      "weight": 0.9,
-      "rationale": "Use crisp T-bracket callipers on technical blueprint or map widths and expanding concentric radius rings for acoustic or geographic reach."
-    },
-    {
-      "trigger_id": "live_physical_gauge_callout",
-      "condition": "speech.describes_temperature_drop_or_extreme_sound_level",
-      "action": "overlay.spawn(kind='physical_gauge_callout', gauge_mode='thermometer_or_decibel')",
-      "weight": 0.87,
-      "rationale": "Pair narration of physical extremes with a boxless animated mercury thermometer or staggered SVG acoustic soundwave decibel counter directly over the map or dark footage."
-    },
-    {
-      "trigger_id": "soft_curtain_or_spyglass_transition",
-      "condition": "transition.kind in {'curtain_sweep', 'spyglass_iris'}",
-      "action": "overlay.spawn(kind='soft_curtain_transition', mode='curtain_sweep_or_spyglass_iris')",
-      "weight": 0.86,
-      "rationale": "Pivot between chapters with a pure alpha-gradient feathered dark curtain sweep (zero CSS blur) or circular optical spyglass iris while keeping captions crisp."
-    },
-    {
-      "trigger_id": "quad_panel_disambiguation_hook",
-      "condition": "timeline.section == 'hook' and speech.disambiguates_three_or_four_nested_entities and platform.aspect == '9:16'",
-      "action": "layout.spawn(kind='multi_panel_split', split_mode='quad_2x2', border='white_4_6px')",
-      "weight": 0.91,
-      "rationale": "Open with a crisp 2x2 white-seamed satellite map grid showing four color-coded 45-degree diagonal-hatched territory blocks simultaneously, then expand the active pane full-screen on narration dive-in."
-    },
-    {
-      "trigger_id": "dark_obsidian_vector_network_or_districts",
-      "condition": "speech.explains_highway_numbering_corridors_or_urban_district_blocks",
-      "action": "basemap.shift_to_dark_obsidian_vector(bg='#0B0E11', land='#16191D', road_grid='#262B32') and overlay.draw_glowing_routes_or_hatched_districts()",
-      "weight": 0.92,
-      "rationale": "Switch from satellite relief to a near-black vector road basemap so luminous dual-color route networks or 45-degree diagonal-hatched urban districts with tight solid color-matched labels pop cleanly."
-    },
-    {
-      "trigger_id": "three_layer_luminous_border_or_enclave_glow",
-      "condition": "speech.highlights_border_line_archipelago_chain_or_urban_enclave",
-      "action": "map.stroke_three_layer_glow(outer_px=14, mid_px=7, core_px=3, palette=['amber','crimson','hydro'])",
-      "weight": 0.93,
-      "rationale": "Render international borders, island chains, and highlighted enclaves with a three-layer luminous bloom, mid-glow, and hot white-tinted core over graded terrain."
-    },
-    {
-      "trigger_id": "historical_parchment_timeline_and_compass",
-      "condition": "speech.traces_multi_century_border_or_sovereignty_evolution",
-      "action": "basemap.shift_to_parchment_relief(compass_rose=True) and overlay.spawn(kind='historical_parchment_plate', variant='timeline_bar')",
-      "weight": 0.9,
-      "rationale": "Pair warm sepia relief cartography and an open-water vintage compass rose with a thin horizontal golden year timeline bar in the upper safe band to anchor multi-century territorial transitions."
-    },
-    {
-      "trigger_id": "blueprint_lifted_cutout_or_scale_ruler",
-      "condition": "speech.compares_physical_size_continent_outline_or_architectural_footprint",
-      "action": "basemap.shift_to_blueprint_grid(hex='#14427A', mode='lifted_cutout_or_framed_card_or_scale_ruler')",
-      "weight": 0.91,
-      "rationale": "Use the deep blueprint drafting grid for lifted relief cutouts over faint world outlines, white-bordered framed world map cards, glowing side-by-side footprint wireframes, or horizontal calibrated scale rulers."
-    },
-    {
-      "trigger_id": "axis_aligned_in_world_map_measurements",
-      "condition": "speech.states_dimensions_of_angled_crater_chain_or_border_segment",
-      "action": "overlay.spawn(kind='dual_unit_distance_bracket', angle='aligned_to_feature_axis', keep_captions_horizontal=True)",
-      "weight": 0.9,
-      "rationale": "Rotate dual-unit double-headed measurement arrows and short map annotations directly parallel to the geographic feature axis while keeping y=70% screen captions strictly horizontal."
-    },
-    {
-      "trigger_id": "story_brief_before_storyboard",
-      "condition": "plan.stage == 'storyboard' and not storyboard.has_story_brief",
-      "action": "director.write_story_brief(premise, central_question, tension_type, withheld_element, signature_image, register, ending_note)",
-      "weight": 0.98,
-      "rationale": "Structure, hook, surfaces, colours and ending are derived from the narration's own story; a storyboard drafted without a brief drifts toward a reusable template."
-    },
-    {
-      "trigger_id": "clause_need_visual_answer",
-      "condition": "storyboard.row.visual_answer and not storyboard.row.story_need",
-      "action": "director.reject_row_and_rederive_from_clause()",
+      "trigger_id": "bathymetric_satellite_spine",
+      "condition": "When the narration anchors geographic location, spatial reach, or regional context on the primary map spine",
+      "action": "Keep a continuous virtual-camera move over graded bathymetric marine-teal satellite relief with warm natural landmass relief, updating one focal graphic per stressed noun.",
       "weight": 0.95,
-      "rationale": "Every visual must answer a stated story need for its clause; rows that could be pasted into another narration unchanged are decoration."
+      "rationale": "A living bathymetric satellite spine carries 70-90% of runtime while letting foreground signals breathe."
     },
     {
-      "trigger_id": "signature_image_persistence",
-      "condition": "storyboard.signature_image is defined",
-      "action": "overlay.keep_signature_image_across_surfaces_and_mutate_it_per_beat()",
-      "weight": 0.9,
-      "rationale": "A line drawn on 'this line' or a focal shape that survives cuts becomes the story's anchor and can be re-purposed as the mechanism's edge or the ending callback."
-    },
-    {
-      "trigger_id": "wrong_answer_first_hook",
-      "condition": "story.tension_type == 'overturned_mental_map' and timeline.section == 'hook'",
-      "action": "overlay.animate_intuitive_answer_then_whip_camera_to_true_geometry()",
-      "weight": 0.82,
-      "rationale": "Showing the viewer's own wrong intuition and physically overturning it makes the true distance or adjacency astonishing."
-    },
-    {
-      "trigger_id": "draw_and_break_impossible_attempt",
-      "condition": "story.claim matches 'impossible|the only|cannot' and timeline.section == 'hook'",
-      "action": "overlay.draw_attempted_route_from_frame_0_then_break_it_red()",
-      "weight": 0.84,
-      "rationale": "The contradiction is felt before it is explained when the attempted link is drawn and visibly ruptured."
-    },
-    {
-      "trigger_id": "live_misconception_counter",
-      "condition": "story.tension_type == 'misconception_count'",
-      "action": "overlay.counter_shows_believed_value_then_keeps_ticking_with_ghost_shapes()",
-      "weight": 0.8,
-      "rationale": "A belief about a count is debunked most clearly by a counter that refuses to stop."
-    },
-    {
-      "trigger_id": "negation_ladder_deferred_reveal",
-      "condition": "narration.hook matches 'not .* not .* but'",
-      "action": "overlay.cross_out_expected_materials_on_words_then_flip_to_real_one(); story.defer_payoff()",
-      "weight": 0.78,
-      "rationale": "Defining the hook object by negation creates a question the film can hold for most of its runtime when a promise hinge grants permission to wait."
-    },
-    {
-      "trigger_id": "scale_ladder_discovery",
-      "condition": "story.mystery_size_px < 8 at establishing zoom",
-      "action": "camera.region_to_loupe_to_object_on('closer', 'even closer')",
-      "weight": 0.8,
-      "rationale": "When the anomaly is too small to see, the viewer should perform the discovery through a timed scale ladder."
-    },
-    {
-      "trigger_id": "why_hinge_mood_dip",
-      "condition": "narration.word in ['why', 'reason'] and narration.is_question",
-      "action": "grade.vignette_dim_for_phrase(); transition.whip_zoom_to_answer()",
-      "weight": 0.86,
-      "rationale": "A mood change for the question phrase marks the turn from setup to explanation in a chapterless short."
-    },
-    {
-      "trigger_id": "ordinal_visual_reset",
-      "condition": "narration.word in ['firstly', 'secondly', 'thirdly', 'finally']",
-      "action": "overlay.clear_prior_layers(); director.switch_visual_mode_for_reason()",
-      "weight": 0.84,
-      "rationale": "Ordinal words in enumerated stories are chapter marks; each reason gets its own visual mode, the strongest reason the richest surface."
-    },
-    {
-      "trigger_id": "show_before_name",
-      "condition": "narration.term is introduced",
-      "action": "overlay.reveal_phenomenon(lead_s=0.3..1.0)",
-      "weight": 0.88,
-      "rationale": "Seeing the effect first makes the spoken term feel like a label for something already understood."
-    },
-    {
-      "trigger_id": "count_up_lands_on_word",
-      "condition": "overlay.kind == 'counter' or overlay.kind == 'measurement'",
-      "action": "counter.span_spoken_phrase_and_land_on_number_word()",
-      "weight": 0.9,
-      "rationale": "The magnitude is read as it grows and lands exactly when the narrator says it."
-    },
-    {
-      "trigger_id": "contrasting_treatment_for_contrasting_entities",
-      "condition": "story.entities.count >= 2 and story.entities.contrast",
-      "action": "director.assign_distinct_treatment_per_entity()",
-      "weight": 0.72,
-      "rationale": "Contrasting entities read faster when they receive contrasting visual treatments, not just contrasting colours."
-    },
-    {
-      "trigger_id": "invisible_quality_as_particles",
-      "condition": "narration.noun in ['rain', 'wind', 'humidity', 'dust', 'snow', 'turbulence']",
-      "action": "overlay.spawn_place_bound_particles()",
-      "weight": 0.76,
-      "rationale": "Weather and other invisible qualities become map facts when represented by simple objects bound to the place."
-    },
-    {
-      "trigger_id": "tint_flash_for_ownership_or_time",
-      "condition": "narration.verb in ['belongs', 'shifts', 'switches', 'changes hands']",
-      "action": "camera.lock(); overlay.full_frame_tint_flash(duration_s=0.45, hue=owner_hue)",
-      "weight": 0.74,
-      "rationale": "Alternation over time is legible as colour when the camera holds still."
-    },
-    {
-      "trigger_id": "tool_performs_spoken_action",
-      "condition": "narration.verb in ['redrew', 'stamped', 'placed', 'signed', 'moved']",
-      "action": "overlay.tool_sprite_performs_action_on_map()",
-      "weight": 0.7,
-      "rationale": "A pencil, stamp or cursor performing the verb converts a decision into a visible event."
-    },
-    {
-      "trigger_id": "horizon_terrain_for_vertical_facts",
-      "condition": "story.fact_axis == 'vertical'",
-      "action": "surface.horizon_terrain_flight_with_screen_fixed_altitude_chips()",
-      "weight": 0.8,
-      "rationale": "Altitude and depth facts cannot be read top-down; a horizon view with persistent dual-unit chips makes them comparable."
-    },
-    {
-      "trigger_id": "ending_from_story_note",
-      "condition": "timeline.section == 'outro'",
-      "action": "director.end_on(story.ending_note)",
+      "trigger_id": "molten_or_rimmed_territory_reveal",
+      "condition": "When introducing a focal territory, country, or contested zone as the narrative subject",
+      "action": "Trace the exterior perimeter along real coastlines first, then land a crisp white-rimmed or molten crimson-with-amber-glow polygon fill while keeping terrain readable.",
       "weight": 0.92,
-      "rationale": "The ending is chosen from the story's ending note (irony, consequence, callback, open projection, reversal, measurement, hard stop); never a default pull-back, recap, or call-to-action."
+      "rationale": "Perimeter draw-on before fill makes geographic extent unmistakable before naming the subject."
     },
     {
-      "trigger_id": "variation_fingerprint_audit",
-      "condition": "plan.stage == 'storyboard_review'",
-      "action": "director.compare_fingerprint(story_shape, hook_mechanism, signature_image, surface_count, colour_cast, transition_set, ending_type)",
-      "weight": 0.94,
-      "rationale": "Consecutive episodes must not share both hook mechanism and ending type, and no signature image may repeat; within a film one device never answers two different needs."
+      "trigger_id": "dual_unit_distance_scale_bracket",
+      "condition": "When narration states a distance, corridor width, span, or comparative geographic measurement",
+      "action": "Render a dual_unit_distance_bracket (white double-headed arrow, T-bracket, or dashed corridor) aligned to the feature axis with paired metric and imperial figures matching spoken numbers.",
+      "weight": 0.91,
+      "rationale": "Axis-aligned dual-unit brackets make spatial scale legible immediately across audiences."
     },
     {
-      "trigger_id": "one_transition_device_per_jump_type",
-      "condition": "transition.jump_type is set",
-      "action": "transition.reuse_device_bound_to_jump_type()",
-      "weight": 0.82,
-      "rationale": "Binding each jump type (scale leap, map-to-diagram, chapter reset, archive pivot, weather, hook flip) to one device turns transitions into readable grammar."
-    },
-    {
-      "trigger_id": "comic_beat_from_narrated_irony",
-      "condition": "narration.tone in ['joke', 'euphemism', 'deadpan_irony'] or narration.has_pause_after_punchline",
-      "action": "overlay.flat_vector_character_or_reaction_performs_narrated_action(); director.return_to_map_after_beat()",
-      "weight": 0.74,
-      "rationale": "Characters, flag avatars with faces, reaction faces, and speech bubbles turn irony into a visible beat when they perform what the narration states, stand on their own territory, and hand back to the map after one beat."
-    },
-    {
-      "trigger_id": "duration_numeral_on_route_leg",
-      "condition": "narration.has_duration_phrase and scene.has_route",
-      "action": "overlay.place_duration_numeral_along_leg(); route.hold_width_regime_for_zoom()",
-      "weight": 0.78,
-      "rationale": "A spoken duration ('after two years', 'it took six years', 'in 30 days') becomes a large white numeral laid along the route segment it measures, so time is read as distance on the map."
-    },
-    {
-      "trigger_id": "route_width_by_camera_regime",
-      "condition": "scene.has_route and camera.zoom_regime_changes",
-      "action": "route.ease_stroke_width(continental=6, regional=14, close=26)",
-      "weight": 0.7,
-      "rationale": "A screen-constant stroke tied to the camera regime keeps the route legible on a phone at every zoom; a map-scaled hairline disappears on wide shots."
-    },
-    {
-      "trigger_id": "route_head_schedule_on_place_names",
-      "condition": "scene.has_route and narration.names_place_on_route",
-      "action": "route.head_reach(marker=place, lead_s=0.3); route.hold_until(clause_resolves_obstacle)",
-      "weight": 0.8,
-      "rationale": "Chronological narration over a route is followed by where the drawn tip is; the tip arriving with each place name lets the map tell the story without extra labels."
-    },
-    {
-      "trigger_id": "callouts_trail_route_head",
-      "condition": "scene.has_route and overlay.kind in ['avatar','icon_cluster','speech_bubble','numeral']",
-      "action": "overlay.place(relative_to='route_head', side='behind_travel', distance_px=[200,320], clear_radius_px=120); overlay.max_concurrent(3)",
-      "weight": 0.72,
-      "rationale": "Callouts placed behind the head keep the next second of route visible, and a three-callout cap keeps the route as the single dominant element."
-    },
-    {
-      "trigger_id": "denoise_measured_camera_track",
-      "condition": "camera.source in ['measured','hand_keyed'] and camera.direction_flips_per_15s > 1",
-      "action": "camera.denoise(window_s=0.6, max_shift_px=24, max_zoom_shift=0.08, keep=['cuts','anchors'])",
-      "weight": 0.75,
-      "rationale": "Solver or keying noise becomes visible shake after interpolation; capped smoothing removes direction flips while keeping deliberate fast moves and story-beat framings."
-    },
-    {
-      "trigger_id": "demographic_split_over_divider",
-      "condition": "story.premise_has_percentage_divide and scene.has_meridian_or_line",
-      "action": "overlay.pop_silhouette_row(10); overlay.split_row_across_divider(); overlay.pair_percentage_with_compact_population_pill()",
-      "weight": 0.82,
-      "rationale": "Physically splitting a 10-figure silhouette row across a glowing dividing line makes asymmetric population ratios instantly legible before introducing exact headcount pills."
-    },
-    {
-      "trigger_id": "delayed_prohibition_pin_escalation",
-      "condition": "narration.states_legal_ban_or_literal_blockade",
-      "action": "prefer physical spatial proof on the 3D map first (bypassed route, powered=false infrastructure, or oversized volume_3d footprint); use overlay.stagger_teardrop_domain_pins(pop_ms=260, slash_delay_ms=360) only when illustrating a literal ban or blocked resource",
-      "weight": 0.72,
-      "rationale": "Physical spatial proof on the map communicates geometric or engineering constraints directly without unmotivated red X graphics, reserving two-stage prohibition slashes for genuine bans."
-    },
-    {
-      "trigger_id": "three_d_in_map_infrastructure",
-      "condition": "narration.explains_cable_grid_pipeline_shipping_or_footprint_scale",
-      "action": "scene.cable_3d(armored sheath, catenary/subsea spans, landing_collar=true, pulse_speed>0) + scene.model_3d(transmission_tower|substation|solar_farm|survey_vessel|gltf_url, powered=true|false) + scene.volume_3d(width_m, length_m, height_m) directly inside the 3D pitched map",
+      "trigger_id": "silhouette_tile_scale_compare",
+      "condition": "When comparing an unfamiliar region's area or length to a familiar reference country or continent",
+      "action": "Tile bright sky-cyan reference country silhouettes directly inside the focal polygon (silhouette_tile) or transplant a true-scale cutout over a cobalt blueprint backdrop.",
       "weight": 0.88,
-      "rationale": "Rendering engineered corridors and scale prisms directly in the pitched map space replaces detached 2D cutaways with unified physical cartographic proof."
+      "rationale": "True-scale silhouette tiling proves magnitude instantaneously without abstract bar charts."
     },
     {
-      "trigger_id": "territory_border_trace_then_fill",
-      "condition": "narration.introduces_a_country_or_border_as_subject",
-      "action": "scene.polygon(border_trace_s=0.8-2.0, border_trace_heads=2, border_trace_start=story_anchor, border_trace_hex='#F3FA23', border_trace_width=7.5, border_trace_settle_s=0.1, rim_hex='#FFFFFF', rim_width=4); fill after the trace closes (fill_alpha=0.85-0.95, fill_draw_s=0.1-0.2)",
+      "trigger_id": "full_territory_waving_flag_fill",
+      "condition": "When national sovereignty, ownership, or border division is central to the clause",
+      "action": "Fill the entire exterior coastline with a waving, luminous-rimmed flag_fill (polygon or country_block_3d) revealed organically; never use small floating rectangular flag pins.",
+      "weight": 0.87,
+      "rationale": "Full-territory cloth flags communicate sovereignty cleanly over graded terrain or ocean."
+    },
+    {
+      "trigger_id": "daylight_3d_horizon_altitude_proof",
+      "condition": "When explaining vertical facts such as mountain barriers, cruising altitude, cabin depressurization, or steep terrain clearance",
+      "action": "Shift into a sunlit daylight 3D horizon terrain flight (surface_register: daylight_terrain) paired with left-anchored translucent cyan dual-unit altitude chips and crisp white T-cap hairlines.",
+      "weight": 0.86,
+      "rationale": "Vertical barriers cannot be felt top-down; daylight 3D relief with horizontal reference chips proves clearance physically."
+    },
+    {
+      "trigger_id": "radar_traffic_loupe_anomaly",
+      "condition": "When proving air/maritime traffic density, no-fly holes, parallel corridors, or coverage blackout zones",
+      "action": "Switch to a matte slate charcoal radar canvas populated with dense yellow vehicle icons, isolating anomalies with a circular white-rimmed zoom loupe or neon green vs crimson coverage zones.",
       "weight": 0.84,
-      "rationale": "Drawing the outline from the story anchor before any colour lands tells the viewer where the territory ends; a bright constant-width head travelling at constant world speed reads as measurement, and the settle to a thin white rim hands the frame over to the fill."
+      "rationale": "Matte charcoal strips geographic noise so real-world traffic flows and voids read at a glance."
     },
     {
-      "trigger_id": "nationality_flag_fill",
-      "condition": "narration.contrasts_nationality_or_ownership_of_territories",
-      "action": "scene.country_block_3d_or_polygon(flag_fill=<code>, flag_fit='stretch' or flag_rotate_deg=90 with flag_fit='cover' for tall territories, flag_reveal='organic' (noise-edged seed from the territory centre, fill_draw_s~0.7) or 'wipe_up' (fill_draw_s~0.27), flag_wave=0.20-0.28, flag_wave_warp=true, flag_gloss=true, flag_glow=true, flag_blend='normal' on satellite relief with calibrated flag_alpha, rim_width=3); optionally replace the flag with the story's flat cast colour through a second layer with fill_reveal_mode='organic'",
-      "weight": 0.86,
-      "rationale": "A full-territory waving cloth flag with animated wind ripples and luminous rim glow clipped cleanly to the coastline states sovereignty unmistakably over dark ocean or terrain, replacing small rectangular flag pins."
+      "trigger_id": "chevron_jet_stream_and_directional_split",
+      "condition": "When explaining prevailing winds, jet streams, ocean currents, or asymmetric directional travel times",
+      "action": "Animate translucent directional chevrons (chevron_flow_band) with glowing cyan speed typography and contrast opposing routes using semantic green vs crimson-pink dashed arcs and duration badges.",
+      "weight": 0.83,
+      "rationale": "Animated chevrons and color-coded return legs turn invisible atmospheric forces into tangible map physics."
     },
     {
-      "trigger_id": "border_line_single_head_draw",
-      "condition": "narration.names_the_border_between_two_filled_territories",
-      "action": "scene.route(border polyline ordered north to south, color='#FDFD09', width=8, draw_duration_s=0.85-1.5, draw_ease='in_out', width_ref_zoom=<act zoom>, width_coupling=0.6) layered above both fills; a maritime continuation is dashed with round caps",
-      "weight": 0.72,
-      "rationale": "A shared border is one line, so it draws with one head along the true polyline on top of both fills; width that follows the zoom with an exponent below 1 keeps the line legible through dives."
-    },
-    {
-      "trigger_id": "rest_to_rest_crisp_camera",
-      "condition": "scene.camera_move",
-      "action": "camera_keyframes(curve='glide' for reframes, 'snap_dive' for dives, 'hyperbolic_fly' for cross-region hops; destination key past the act end when a dive cuts at peak speed; origin key before t=0 for a snap pull-out; through=true only inside one continuous flight); optical_shutter_blur=false; bake-scene --fill-tiles",
-      "weight": 0.86,
-      "rationale": "Every reframe arrives with zero velocity and no velocity corner, map frames stay sharp at every speed, and no frame is captured on upscaled tiles; speed reads from motion, not from smear."
-    },
-    {
-      "trigger_id": "register_swap_disc_sweep",
-      "condition": "edit.changes_basemap_register_at_equal_framing",
-      "action": "clip.transition_in='disc_sweep' (feathered black disc crossing right to left over 6 frames at 30 fps); swap the register while the frame is fully black; match-frame both sides; captions stay unmasked",
-      "weight": 0.7,
-      "rationale": "A match-framed sweep reads as a restyle of the same place rather than a jump to a new one."
-    },
-    {
-      "trigger_id": "projection_switch_zoom_through",
-      "condition": "edit.switches_between_flat_map_and_globe",
-      "action": "outgoing act: destination camera key placed after duration_s so the dive is still accelerating at the cut, cut_blur_out_s=0.3-0.45; incoming act: cut_blur_in_s=0.3-0.45, opening already framed on the same place in the other projection; clip.transition_in='hard_cut'",
-      "weight": 0.68,
-      "rationale": "Continuing the zoom across the cut hides the projection change inside motion the viewer is already following."
-    },
-    {
-      "trigger_id": "chevron_flow_corridor_overlay",
-      "condition": "narration.describes_prevailing_wind_jet_stream_or_air_corridor",
-      "action": "overlay(template_id='chevron_flow_band', direction='ne'|'east'|'west', chevron_count=5, corridor_label='<CORRIDOR>', speed_label='<DUAL_OR_SINGLE_SPEED>') paired with dashed route arcs along the real flow axis",
-      "weight": 0.78,
-      "rationale": "Staggered directional chevrons communicate sustained atmospheric speed and flow direction without blocking terrain geography."
-    },
-    {
-      "trigger_id": "cutaway_altitude_or_depth_gauge",
-      "condition": "narration.states_plateau_elevation_flight_ceiling_or_depth_threshold",
-      "action": "overlay(template_id='cutaway_height_gauge', title='<THRESHOLD>', reading_value='<PRIMARY_UNIT>', secondary_value='<PAIRED_UNIT>', side='right'|'left') keeping primary and secondary numerals aligned with spoken figures",
+      "trigger_id": "organic_yellow_focus_lasso",
+      "condition": "When isolating a weird border zigzag, narrow traffic corridor, or small island anomaly during a hook or pivot",
+      "action": "Draw an overlapping hand-drawn electric-yellow Bezier oval (organic_focus_lasso) directly around the anomaly, optionally desaturating the surrounding map so the circled zone is the sole saturated signal.",
       "weight": 0.82,
-      "rationale": "A graduated vertical gauge with paired units anchors invisible height or depth limits immediately at phone scale."
+      "rationale": "A hand-drawn yellow lasso directs the eye immediately without enclosing geography in a rigid box."
     },
     {
-      "trigger_id": "feathered_dark_rtl_wipe",
-      "condition": "edit.bridges_disjoint_map_scales_or_data_views",
-      "action": "overlay(template_id='soft_curtain_transition', mode='feathered_dark_wipe', direction='auto') spanning 3-5 frames at 30 fps while caption_rail stays above the curtain layer",
+      "trigger_id": "acronym_hero_and_control_sectors",
+      "condition": "When introducing an institutional system, aviation/maritime acronym, or multi-agency control network",
+      "action": "Land an oversized yellow Montserrat Black acronym hero (acronym_hero) with yellow-initial expansion, then illuminate color-coded translucent control sector polygons and parallel directional lane arrows.",
+      "weight": 0.79,
+      "rationale": "Bold acronym typography followed by translucent spatial sectors demystifies complex coordination systems."
+    },
+    {
+      "trigger_id": "cobalt_blueprint_system_backdrop",
+      "condition": "When framing idealized global rules, longitudinal grids, architectural footprints, or scale comparisons",
+      "action": "Frame the pitched 3D map or lifted continent cutout over a vivid cobalt-blue drafting grid (blueprint_tabletop_frame or blueprint theme: cobalt) with crisp white coordinate lines.",
+      "weight": 0.77,
+      "rationale": "A royal-cobalt drafting backdrop signals analytical rules and scale proof distinct from everyday terrain."
+    },
+    {
+      "trigger_id": "full_bleed_2d_mechanism_cutaway",
+      "condition": "When explaining subsurface geology, ocean trenches, root erosion, or port draft clearance that top-down maps cannot show",
+      "action": "Cut via radial zoom-blur into a full-bleed edge-to-edge 2D flat-vector cutaway (cutaway_2d or cross_section_diagram) with clean horizontal labels and an understated NOT TO SCALE micro note when exaggerated.",
       "weight": 0.76,
-      "rationale": "A fast feathered alpha sweep covers large scale or visual-mode changes smoothly while preserving continuous caption readability."
+      "rationale": "Full-bleed 2D cutaways expose vertical or subsurface causes directly without cramped dashboard cards."
     },
     {
-      "trigger_id": "parchment_page_unfold_reveal",
-      "condition": "narration.pivots_to_historical_treaty_era_or_colonial_plan",
-      "action": "overlay(template_id='historical_parchment_plate', variant='page_unfold', year='<ERA_OR_YEAR>', title='<ARCHIVAL_HEADING>', tilt_deg=0)",
-      "weight": 0.74,
-      "rationale": "An upright unfolding parchment folio signals a shift into historical evidence without losing typographic alignment."
+      "trigger_id": "split_street_comic_human_scale",
+      "condition": "When narration uses deadpan irony, a hypothetical neighbor scenario, or human-scale absurdity across a boundary",
+      "action": "Zoom into a real street or border split with opposing hatched colors and stage two flat-vector circular avatars with crisp one-line speech bubbles for one bounded comedic beat, then return to the map.",
+      "weight": 0.73,
+      "rationale": "Brief, motivated human-scale comedy turns abstract border or time-zone rules into memorable intuition."
+    },
+    {
+      "trigger_id": "tactical_2d_system_closer",
+      "condition": "When closing a systems or logistics story on calm precision, coordination, or safety",
+      "action": "Transition to a deep abyssal slate-teal 2D editorial canvas showing stylized dark silhouettes or clean synchronized vector formations that visualize order directly.",
+      "weight": 0.71,
+      "rationale": "A quiet stylized 2D closing register gives systems stories an unmistakable signature finish."
+    },
+    {
+      "trigger_id": "demographic_silhouette_ratio_split",
+      "condition": "When narration hinges on an asymmetric population split or demographic percentage across a geographic divider",
+      "action": "Split a boxless 10-figure human silhouette row (demographic_icon_grid) physically across the glowing meridian or border before swapping to compact count readouts.",
+      "weight": 0.69,
+      "rationale": "Ten human silhouettes dividing across a line make ratios felt faster than raw percentages alone."
+    },
+    {
+      "trigger_id": "vertical_wipe_to_void_counter",
+      "condition": "When debunking a misconception count or isolating overlapping border/territory totals from busy terrain",
+      "action": "Sweep a vertical white divider bar (split_wipe_divider) to isolate focal hatched territories over matte dark obsidian while a tabular odometer counter ticks past the believed number.",
+      "weight": 0.67,
+      "rationale": "A counter that refuses to stop over a dark isolated map makes misconceptions visibly collapse."
+    },
+    {
+      "trigger_id": "historical_parchment_and_era_timeline",
+      "condition": "When narration rewinds into treaty history, colonial partitions, or multi-century border evolution",
+      "action": "Shift to warm sepia parchment relief or an upright 0-degree unfolding parchment sheet (historical_parchment_plate) paired with bold serif era stamps and a thin upper-safe golden timeline bar.",
+      "weight": 0.64,
+      "rationale": "Warm parchment visually separates historical intent from modern satellite evidence without narration clutter."
+    },
+    {
+      "trigger_id": "aerial_broll_sensory_proof_triplet",
+      "condition": "When terrain texture, weather severity, or physical hostility must be felt beyond cartography",
+      "action": "Plunge via radial whip-zoom into 3-4 concise real aerial or field proof clips (0.85-2.0 s each) cut on stressed nouns beneath steady lower-band captions, then return to the map.",
+      "weight": 0.62,
+      "rationale": "Short real-footage bursts ground abstract map claims in visceral physical texture."
+    },
+    {
+      "trigger_id": "three_d_in_map_corridor_infrastructure",
+      "condition": "When illustrating physical subsea cables, pipelines, power grids, maritime fleets, or volumetric urban footprints",
+      "action": "Place world-locked 3D map geometry (cable_3d strictly for physical conduits, model_3d or custom SVG map_sprites for vehicles/assets, volume_3d prisms for footprint proof) directly on the pitched map.",
+      "weight": 0.59,
+      "rationale": "Unified 3D spatial geometry proves engineering constraints directly inside the map world."
+    },
+    {
+      "trigger_id": "feathered_disc_register_swap",
+      "condition": "When switching basemap registers at identical camera framing (satellite to radar, parchment, or dark vector)",
+      "action": "Use a 6-frame feathered black-disc sweep (disc_sweep) or feathered_dark_wipe crossing right-to-left while match-framing both sides and keeping lower-band captions unmasked.",
+      "weight": 0.55,
+      "rationale": "A match-framed register sweep reads as re-examining the same place through a new analytical lens."
     }
   ],
   "exemplar_bank": [
     {
-      "exemplar_id": "ref_global_walk_hook_card_flip",
-      "source_video_id": "ref_global_walk",
+      "exemplar_id": "ref_timezones_ideal_to_weird_hook",
+      "source_video_id": "ref_time_zones",
       "role": "hook",
       "start_s": 0.0,
-      "end_s": 10.833,
-      "hyperframes_pattern": "avatar_pin_route_to_blueprint_card_flip",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 10.833,
-        "cuts_per_min_ref": 3.5,
-        "sfx_count_ref": 38,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Moving hexagonal photo pin and tilted crimson metric badge over Europe, transitioning to a blueprint tabletop icon flip and 3D horizontal card-flip whip."
+      "end_s": 5.5,
+      "hyperframes_pattern": "cobalt_blueprint_stripes_to_desat_lasso_anomaly",
+      "measured_metrics": { "duration_s": 5.5, "easing_feel": "smooth_editorial" },
+      "notes": "Opens on colored vertical time-zone bands framed by a vivid cobalt blueprint grid, then cuts to a desaturated close-up where only the zigzag border glows coral-red inside an electric-yellow hand-drawn oval lasso."
     },
     {
-      "exemplar_id": "ref_darien_gap_broll_burst",
+      "exemplar_id": "ref_timezones_phoenix_comic_split",
+      "source_video_id": "ref_time_zones",
+      "role": "proof",
+      "start_s": 27.0,
+      "end_s": 38.0,
+      "hyperframes_pattern": "street_split_hatch_and_two_avatar_dialogue",
+      "measured_metrics": { "duration_s": 11.0, "easing_feel": "smooth_editorial" },
+      "notes": "Zooms into an aerial city street divided by a crisp yellow line (yellow UTC-8 hatch vs cyan UTC-7 hatch) with two flat-vector circular avatars exchanging a one-line coffee joke before returning to global borders."
+    },
+    {
+      "exemplar_id": "ref_timezones_france_china_extremes",
+      "source_video_id": "ref_time_zones",
+      "role": "climax",
+      "start_s": 44.0,
+      "end_s": 60.0,
+      "hyperframes_pattern": "golden_overseas_hotspots_to_crimson_dark_ink_china",
+      "measured_metrics": { "duration_s": 16.0, "easing_feel": "smooth_editorial" },
+      "notes": "Illuminates France and twelve overseas zones with luminous gold hotspots, then shifts to crimson-filled China with high-contrast dark ink typography and five translucent blue bands collapsing into +8, closing on yellow Kashgar."
+    },
+    {
+      "exemplar_id": "ref_tibet_molten_silhouette_hook",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 8.5,
+      "hyperframes_pattern": "molten_crimson_amber_rim_and_cyan_silhouette_tiling",
+      "measured_metrics": { "duration_s": 8.5, "easing_feel": "smooth_editorial" },
+      "notes": "Ignites the Tibetan Plateau in molten crimson with a bright golden-amber rim over bathymetric satellite Asia, then tiles bright sky-cyan France silhouettes directly inside the plateau to prove its area."
+    },
+    {
+      "exemplar_id": "ref_tibet_radar_void_setup",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "setup",
+      "start_s": 8.6,
+      "end_s": 16.0,
+      "hyperframes_pattern": "matte_slate_radar_swarm_with_red_avoidance_ring",
+      "measured_metrics": { "duration_s": 7.4, "easing_feel": "smooth_editorial" },
+      "notes": "Cuts to a matte charcoal air-traffic canvas filled with dense yellow aircraft icons orbiting an empty crimson-ringed void over Tibet with clean white-on-red plateau typography."
+    },
+    {
+      "exemplar_id": "ref_tibet_daylight_3d_altitude_proof",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "data_callout",
+      "start_s": 18.0,
+      "end_s": 41.0,
+      "hyperframes_pattern": "daylight_3d_horizon_flight_and_cyan_altitude_chips",
+      "measured_metrics": { "duration_s": 23.0, "easing_feel": "smooth_editorial" },
+      "notes": "Sweeps through natural daylight 3D Himalayan peaks with left-edge translucent cyan dual-unit altitude chips (33,000 ft / 14,800 ft / 10,000 ft), a crisp side-profile 2D aircraft descending on a red warning triangle."
+    },
+    {
+      "exemplar_id": "ref_tibet_turbulence_airport_outro",
+      "source_video_id": "ref_tibetan_airspace",
+      "role": "outro",
+      "start_s": 42.0,
+      "end_s": 60.0,
+      "hyperframes_pattern": "wind_ribbons_and_runway_prohibition_closer",
+      "measured_metrics": { "duration_s": 18.0, "easing_feel": "smooth_editorial" },
+      "notes": "Returns top-down to escalate through animated white turbulence streamlines and a clean circular prohibition mark over a flat-vector runway icon, ending directly on the final hazard fact."
+    },
+    {
+      "exemplar_id": "ref_atlantic_stream_lasso_hook",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "hook",
+      "start_s": 0.0,
+      "end_s": 5.5,
+      "hyperframes_pattern": "aircraft_stream_yellow_lasso_and_subtle_water_label",
+      "measured_metrics": { "duration_s": 5.5, "easing_feel": "smooth_editorial" },
+      "notes": "Shows a curved stream of white aircraft crossing rich bathymetric Atlantic Ocean water, circled by an electric-yellow hand-drawn lasso above subdued translucent teal ocean typography."
+    },
+    {
+      "exemplar_id": "ref_atlantic_radar_loupe_setup",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "setup",
+      "start_s": 6.0,
+      "end_s": 15.0,
+      "hyperframes_pattern": "matte_radar_white_loupe_and_question_marks",
+      "measured_metrics": { "duration_s": 9.0, "easing_feel": "smooth_editorial" },
+      "notes": "Switches to dark charcoal radar traffic, punches a crisp white-rimmed circular zoom loupe over parallel flight tracks flanked by bold white question marks, then pivots via a deep-emerald 3D globe."
+    },
+    {
+      "exemplar_id": "ref_atlantic_jet_stream_speed_proof",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "proof",
+      "start_s": 18.0,
+      "end_s": 32.0,
+      "hyperframes_pattern": "chevron_corridor_cyan_velocity_and_8h_vs_7h_arcs",
+      "measured_metrics": { "duration_s": 14.0, "easing_feel": "smooth_editorial" },
+      "notes": "Sweeps translucent white jet-stream chevrons west-to-east with glowing cyan 320 km/h (200 mi/h) speed typography, a fuel gauge icon, and contrasting pink 8h westbound vs green 7h eastbound arcs."
+    },
+    {
+      "exemplar_id": "ref_atlantic_nat_sectors_climax",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "climax",
+      "start_s": 36.0,
+      "end_s": 52.0,
+      "hyperframes_pattern": "blackout_zone_to_yellow_acronym_and_parallel_arrows",
+      "measured_metrics": { "duration_s": 16.0, "easing_feel": "smooth_editorial" },
+      "notes": "Contrasts glowing green coastal radar with a crimson mid-ocean blackout zone, lands bold yellow NAT acronym typography, illuminates four translucent oceanic control sectors, and draws neon red/green parallel lane arrows."
+    },
+    {
+      "exemplar_id": "ref_atlantic_tactical_2d_outro",
+      "source_video_id": "ref_atlantic_tracks",
+      "role": "outro",
+      "start_s": 53.5,
+      "end_s": 60.0,
+      "hyperframes_pattern": "abyssal_teal_2d_controller_hands_and_aligned_grid",
+      "measured_metrics": { "duration_s": 6.5, "easing_feel": "smooth_editorial" },
+      "notes": "Closes on a calm deep slate-teal 2D editorial canvas where dark silhouetted controller hands position glowing white aircraft into a serene parallel grid."
+    },
+    {
+      "exemplar_id": "ref_chile_blueprint_scale_data",
+      "source_video_id": "ref_chile_length",
+      "role": "data_callout",
+      "start_s": 0.0,
+      "end_s": 14.0,
+      "hyperframes_pattern": "cobalt_blueprint_cutout_and_dual_unit_brackets",
+      "measured_metrics": { "duration_s": 14.0, "easing_feel": "smooth_editorial" },
+      "notes": "Lifts a crimson territory silhouette over a cobalt blueprint world grid onto Europe with perpendicular dual-unit metric/imperial distance brackets."
+    },
+    {
+      "exemplar_id": "ref_darien_gap_aerial_broll_triplet",
       "source_video_id": "ref_darien_gap",
       "role": "broll_bridge",
       "start_s": 19.2,
       "end_s": 24.7,
       "hyperframes_pattern": "whip_zoom_into_rapid_aerial_broll_quartet",
-      "measured_metrics": {
-        "shot_index": 3,
-        "duration_s": 5.5,
-        "subshot_durations_s": [
-          2.5,
-          1.2,
-          0.9,
-          0.9
-        ],
-        "cuts_per_min_ref": 10.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Radial whip-zoom plunge into four consecutive aerial rainforest, river-swamp, and mountain-ridge clips (0.9-2.5s each) beneath fixed plain centered captions."
+      "measured_metrics": { "duration_s": 5.5, "easing_feel": "smooth_editorial" },
+      "notes": "Radial whip-zoom plunge into four concise aerial rainforest, river, and mountain-ridge clips (0.9-2.2 s each) grounding cartographic obstacles beneath clean centered lower-band captions."
     },
     {
-      "exemplar_id": "ref_spain_borders_split_wipe",
+      "exemplar_id": "ref_spain_borders_wipe_to_void",
       "source_video_id": "ref_spain_borders",
       "role": "setup",
       "start_s": 3.8,
       "end_s": 10.2,
-      "hyperframes_pattern": "vertical_split_wipe_hatched_neighbor_counter",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 6.4,
-        "cuts_per_min_ref": 6.2,
-        "sfx_aligned_ref": 27,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Vertical white split-wipe from satellite relief to dark monochrome vector map featuring diagonal-hatched territory fills and an animated amber neighbor counter."
+      "hyperframes_pattern": "vertical_white_split_wipe_hatched_counter",
+      "measured_metrics": { "duration_s": 6.4, "easing_feel": "smooth_editorial" },
+      "notes": "Sweeps a crisp vertical white divider bar from satellite relief to matte dark vector with diagonal-hatched neighbor territories and a live yellow counter."
     },
     {
-      "exemplar_id": "ref_us_meridian_continuous_glide",
+      "exemplar_id": "ref_us_meridian_demographic_split",
       "source_video_id": "ref_us_meridian",
       "role": "proof",
       "start_s": 0.0,
-      "end_s": 60.0,
-      "hyperframes_pattern": "single_take_meridian_split_and_rain_shadow_clouds",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 60.0,
-        "cuts_per_min_ref": 0.0,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Unbroken 60s continuous satellite glide cycling a 20%/80% split human-icon infographic, hydro-cyan meridian divider, amber mountain mask, and drifting rain-shadow clouds."
+      "end_s": 18.0,
+      "hyperframes_pattern": "single_take_meridian_silhouette_row_split",
+      "measured_metrics": { "duration_s": 18.0, "easing_feel": "smooth_editorial" },
+      "notes": "Continuous satellite glide over North America splitting a 10-figure human silhouette row across a glowing cyan meridian before revealing drifting rain-shadow clouds."
     },
     {
-      "exemplar_id": "ref_shelterbelt_soil_cross_section",
+      "exemplar_id": "ref_shelterbelt_soil_2d_cutaway",
       "source_video_id": "ref_shelterbelt",
       "role": "proof",
       "start_s": 31.0,
       "end_s": 39.7,
-      "hyperframes_pattern": "whip_zoom_to_2d_layered_soil_root_cross_section",
-      "measured_metrics": {
-        "shot_index": 3,
-        "duration_s": 8.7,
-        "cuts_per_min_ref": 6.4,
-        "sfx_count_ref": 27,
-        "entrance_ms_median": 233,
-        "caption_cadence_s": 0.85,
-        "motion_active_ratio": 0.942,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Flat-vector 2D soil and root cross-section explaining prairie erosion, followed by a vertical dashed storm-height ruler and a tilted vintage parchment map plate."
-    },
-    {
-      "exemplar_id": "ref_chile_length_scale_overlay",
-      "source_video_id": "ref_chile_length",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 16.5,
-      "hyperframes_pattern": "blueprint_dive_and_true_scale_silhouette_overlay",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 16.5,
-        "cuts_per_min_ref": 11.9,
-        "bpm_ref": 90.7,
-        "entrance_ms_median": 300,
-        "caption_cadence_s": 0.72,
-        "motion_active_ratio": 0.698,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Blueprint world dive lifting a crimson country silhouette onto Europe with perpendicular stacked dual-unit dimension brackets."
-    },
-    {
-      "exemplar_id": "ref_tibetan_airspace_radar_altitude",
-      "source_video_id": "ref_tibetan_airspace",
-      "role": "data_callout",
-      "start_s": 8.6,
-      "end_s": 40.9,
-      "hyperframes_pattern": "dark_radar_capture_to_3d_elevation_ruler",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 32.3,
-        "cuts_per_min_ref": 4.0,
-        "entrance_ms_median": 167,
-        "caption_cadence_s": 0.78,
-        "motion_active_ratio": 0.942,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Dark air-traffic radar map with red avoidance oval transitioning to a 3D mountain altitude ladder (33,000 ft / 14,800 ft / 10,000 ft); strip external basemap attribution chrome."
-    },
-    {
-      "exemplar_id": "ref_time_zones_utc_columns",
-      "source_video_id": "ref_time_zones",
-      "role": "climax",
-      "start_s": 50.5,
-      "end_s": 60.0,
-      "hyperframes_pattern": "crimson_multiply_title_to_vertical_utc_stripes",
-      "measured_metrics": {
-        "shot_index": 4,
-        "duration_s": 9.5,
-        "cuts_per_min_ref": 5.0,
-        "bpm_ref": 132.5,
-        "sfx_aligned_ref": 14,
-        "entrance_ms_median": 450,
-        "caption_cadence_s": 0.8,
-        "motion_active_ratio": 0.875,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Crimson terrain-preserving country fill with bold multiply title wiping into five translucent vertical cobalt time-zone columns with amber UTC offsets."
-    },
-    {
-      "exemplar_id": "ref_atlantic_tracks_jet_stream",
-      "source_video_id": "ref_atlantic_tracks",
-      "role": "proof",
-      "start_s": 18.3,
-      "end_s": 33.2,
-      "hyperframes_pattern": "chevron_jet_stream_and_dual_flight_compare",
-      "measured_metrics": {
-        "shot_index": 4,
-        "duration_s": 14.9,
-        "cuts_per_min_ref": 7.0,
-        "sfx_aligned_ref": 15,
-        "entrance_ms_median": 300,
-        "caption_cadence_s": 0.76,
-        "motion_active_ratio": 0.95,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Translucent directional jet-stream chevrons comparing eastbound and westbound dashed flight arcs with duration callouts, exiting via soft dark iris wipe."
+      "hyperframes_pattern": "whip_zoom_to_full_bleed_2d_soil_cross_section",
+      "measured_metrics": { "duration_s": 8.7, "easing_feel": "smooth_editorial" },
+      "notes": "Cuts via radial zoom-blur into a full-bleed flat-vector 2D soil and root cross-section explaining prairie wind erosion, followed by a vertical storm-height ruler."
     },
     {
       "exemplar_id": "ref_chimborazo_geoid_debunk",
       "source_video_id": "ref_chimborazo_geoid",
       "role": "climax",
       "start_s": 29.1,
-      "end_s": 64.8,
-      "hyperframes_pattern": "red_x_myth_debunk_to_3d_geoid_gravity_globe",
-      "measured_metrics": {
-        "shot_index": 5,
-        "duration_s": 35.7,
-        "cuts_per_min_ref": 7.8,
-        "sfx_count_ref": 27,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Crimson circular X myth debunk transitioning to a rotating 3D geoid globe with polar compression arrows and an exaggerated gravity model with vertical scale bar."
+      "end_s": 54.0,
+      "hyperframes_pattern": "crimson_circle_x_debunk_to_3d_geoid_globe",
+      "measured_metrics": { "duration_s": 24.9, "easing_feel": "smooth_editorial" },
+      "notes": "Stamps a high-contrast crimson circular X over the common summit assumption before revealing a rotating 3D oblate geoid globe with polar compression arrows."
     },
     {
-      "exemplar_id": "ref_wallace_line_trench_proof",
+      "exemplar_id": "ref_wallace_line_trench_data",
       "source_video_id": "ref_wallace_line",
-      "role": "proof",
+      "role": "data_callout",
       "start_s": 14.3,
-      "end_s": 52.0,
-      "hyperframes_pattern": "glowing_dashed_divider_cutouts_to_2d_trench",
-      "measured_metrics": {
-        "shot_index": 2,
-        "duration_s": 37.7,
-        "cuts_per_min_ref": 6.0,
-        "sfx_count_ref": 21,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Glowing dashed biogeographic line with white-outlined regional fauna cutouts and stacked strait-distance brackets transitioning to a paleogeographic map and 2D underwater trench diagram."
-    },
-    {
-      "exemplar_id": "ref_uae_emirates_diagonal_split",
-      "source_video_id": "ref_uae_emirates",
-      "role": "hook",
-      "start_s": 3.4,
-      "end_s": 35.3,
-      "hyperframes_pattern": "diagonal_3panel_split_acronym_and_numbered_leaders",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 31.9,
-        "cuts_per_min_ref": 6.6,
-        "sfx_aligned_ref": 19,
-        "motion_active_ratio": 0.993,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Three-panel diagonal white-bordered split screen, amber-initial acronym expansion, dark blueprint area card, numbered vertical leaders, horizontal analogy split, and circular portrait pins."
-    },
-    {
-      "exemplar_id": "ref_gibraltar_strait_depth_split",
-      "source_video_id": "ref_gibraltar_strait",
-      "role": "proof",
-      "start_s": 27.2,
-      "end_s": 46.2,
-      "hyperframes_pattern": "2d_underwater_cross_section_amber_depth_split",
-      "measured_metrics": {
-        "shot_index": 5,
-        "duration_s": 19.0,
-        "cuts_per_min_ref": 6.0,
-        "sfx_count_ref": 14,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Flat-vector underwater engineering cross-section animating deep-water bridge piers, bedrock drilling, and an amber vertical split comparing 945 m vs 75 m crossing depths."
-    },
-    {
-      "exemplar_id": "ref_korea_division_frontline_glide",
-      "source_video_id": "ref_korea_division",
-      "role": "proof",
-      "start_s": 23.2,
-      "end_s": 67.8,
-      "hyperframes_pattern": "continuous_geopolitical_lasso_and_frontline_glide",
-      "measured_metrics": {
-        "shot_index": 2,
-        "duration_s": 44.6,
-        "cuts_per_min_ref": 2.0,
-        "sfx_count_ref": 31,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Continuous 44.6s geopolitical map glide pairing a hand-drawn white focus lasso, circular national flag beacons, and smooth animated territorial front-line transitions."
-    },
-    {
-      "exemplar_id": "ref_oklahoma_panhandle_ink_cutaway",
-      "source_video_id": "ref_oklahoma_panhandle",
-      "role": "setup",
-      "start_s": 38.3,
-      "end_s": 60.0,
-      "hyperframes_pattern": "parchment_decree_to_2d_ink_sketch_and_ortho_square",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 21.7,
-        "cuts_per_min_ref": 2.0,
-        "sfx_aligned_ref": 15,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Tilted archival decree plate transitioning into a monochrome 2D historical ink sketch, aerial agricultural ortho with amber plot square, and animated state-merger polygons."
-    },
-    {
-      "exemplar_id": "ref_north_border_exclaves_pop_pill",
-      "source_video_id": "ref_north_border_exclaves",
-      "role": "data_callout",
-      "start_s": 17.9,
-      "end_s": 60.0,
-      "hyperframes_pattern": "white_pin_amber_population_pill_and_ortho_crimson_line",
-      "measured_metrics": {
-        "shot_index": 2,
-        "duration_s": 42.1,
-        "cuts_per_min_ref": 6.0,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Vertical white coordinate pin topped by a compact dark-and-amber population pill, diagonal maritime border detour, and stark crimson border stroke across ortho town imagery."
-    },
-    {
-      "exemplar_id": "ref_longest_sea_line_card_flip",
-      "source_video_id": "ref_longest_sea_line",
-      "role": "climax",
-      "start_s": 0.0,
-      "end_s": 60.0,
-      "hyperframes_pattern": "flat_map_geodesic_3d_card_flip_to_sphere",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 60.0,
-        "cuts_per_min_ref": 1.0,
-        "sfx_aligned_ref": 15,
-        "motion_active_ratio": 0.992,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Continuous flat-map geodesic glide with dual-unit ocean measurements executing a 3D horizontal card-flip onto a spherical globe to reveal a straight great-circle path."
-    },
-    {
-      "exemplar_id": "ref_netherlands_holland_etymology",
-      "source_video_id": "ref_netherlands_holland",
-      "role": "outro",
-      "start_s": 18.0,
-      "end_s": 80.7,
-      "hyperframes_pattern": "archival_plate_elevation_mask_and_etymology_header",
-      "measured_metrics": {
-        "shot_index": 3,
-        "duration_s": 62.7,
-        "cuts_per_min_ref": 5.9,
-        "sfx_aligned_ref": 33,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Tilted archival map plate transitioning to emerald-vs-cyan elevation masking, parchment historical population icons, and an amber etymology closing header."
-    },
-    {
-      "exemplar_id": "ref_centralia_subsurface_fire_cutaway",
-      "source_video_id": "ref_centralia_mine_fire",
-      "role": "proof",
-      "start_s": 18.5,
-      "end_s": 38.9,
-      "hyperframes_pattern": "full_bleed_2d_subsurface_fire_and_sepia_street_grid",
-      "measured_metrics": {
-        "shot_index": 4,
-        "duration_s": 20.4,
-        "cuts_per_min_ref": 13.0,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Full-bleed 2D underground cross-section with boxless '1962' year header, direct '3,700 ac' glowing overlay, 1s field fissure clips, and a sepia street-grid depopulation graphic."
-    },
-    {
-      "exemplar_id": "ref_ny_washington_elbow_pin_acronym",
-      "source_video_id": "ref_ny_washington_names",
-      "role": "proof",
-      "start_s": 21.0,
-      "end_s": 60.0,
-      "hyperframes_pattern": "angled_elbow_leader_pin_and_parchment_acronym_arrows",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 39.0,
-        "cuts_per_min_ref": 1.0,
-        "motion_active_ratio": 0.958,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Continuous satellite cartography pairing angled elbow leader pins, tight single-line stat highlight bars, coast-to-coast city pins, and a sepia graph-grid acronym diagram with curved arrows."
-    },
-    {
-      "exemplar_id": "ref_europe_us_climate_latitude_pins",
-      "source_video_id": "ref_europe_vs_us_climate",
-      "role": "proof",
-      "start_s": 21.3,
-      "end_s": 74.6,
-      "hyperframes_pattern": "luminous_latitude_parallel_boxless_vertical_pins",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 53.3,
-        "cuts_per_min_ref": 1.4,
-        "sfx_aligned_ref": 17,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Glowing horizontal latitude parallel linking crisp boxless vertical white city pins (Madrid, Paris, Toronto) followed by animated warm/cold ocean current arrows and Arctic wind ribbons."
-    },
-    {
-      "exemplar_id": "ref_amazon_exploded_geological_strata",
-      "source_video_id": "ref_amazon_no_bridges",
-      "role": "proof",
-      "start_s": 39.0,
-      "end_s": 52.4,
-      "hyperframes_pattern": "exploded_2d_geological_strata_and_light_choropleth",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 13.4,
-        "cuts_per_min_ref": 4.0,
-        "sfx_aligned_ref": 14,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Full-bleed dark-indigo 2D isometric cross-section separating sedimentary layers vertically to reveal an underground river with curved white arrows, followed by a clean light-neutral population choropleth."
-    },
-    {
-      "exemplar_id": "ref_greenland_iceland_parchment_iris",
-      "source_video_id": "ref_greenland_iceland_names",
-      "role": "setup",
-      "start_s": 17.5,
-      "end_s": 30.4,
-      "hyperframes_pattern": "sepia_compass_map_to_circular_spyglass_iris",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 12.9,
-        "cuts_per_min_ref": 5.0,
-        "sfx_count_ref": 31,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Full-frame vintage sepia compass-grid map transitioning to a crisp circular black-masked iris aperture framing an ocean horizon."
-    },
-    {
-      "exemplar_id": "ref_louisiana_purchase_parchment_empires",
-      "source_video_id": "ref_louisiana_purchase",
-      "role": "climax",
-      "start_s": 62.4,
-      "end_s": 100.9,
-      "hyperframes_pattern": "color_coded_historical_parchment_empires",
-      "measured_metrics": {
-        "shot_index": 9,
-        "duration_s": 38.5,
-        "cuts_per_min_ref": 5.4,
-        "sfx_count_ref": 49,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Cohesive sepia parchment continent map using flat crimson, cobalt, teal, and amber historical empire blocks with crisp dark borders."
-    },
-    {
-      "exemplar_id": "ref_tornado_alley_neutral_heatmap",
-      "source_video_id": "ref_tornado_alley_geography",
-      "role": "proof",
-      "start_s": 3.7,
-      "end_s": 14.4,
-      "hyperframes_pattern": "light_neutral_choropleth_heatmap_and_vortex",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 10.7,
-        "cuts_per_min_ref": 3.0,
-        "motion_active_ratio": 1.0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Minimal light-grey continental vector map hosting a vivid tornado-frequency density heatmap without card chrome, returning to continuous satellite topography."
-    },
-    {
-      "exemplar_id": "ref_recursive_islands_letter_portal",
-      "source_video_id": "ref_recursive_islands_canada",
-      "role": "setup",
-      "start_s": 13.3,
-      "end_s": 25.8,
-      "hyperframes_pattern": "oversized_kinetic_letter_zoom_through_to_vector_map",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 12.5,
-        "cuts_per_min_ref": 7.0,
-        "sfx_count_ref": 20,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Oversized bold white display typography zooming through into a pastel topographic vector map with nested glowing amber and cyan island-lake outlines."
-    },
-    {
-      "exemplar_id": "ref_pistol_shrimp_boxless_dual_metrics",
-      "source_video_id": "ref_pistol_shrimp_cavitation",
-      "role": "data_callout",
-      "start_s": 40.9,
-      "end_s": 48.6,
-      "hyperframes_pattern": "boxless_dual_unit_countup_and_decibel_counter",
-      "measured_metrics": {
-        "shot_index": 4,
-        "duration_s": 7.7,
-        "cuts_per_min_ref": 8.0,
-        "sfx_count_ref": 19,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Dark-canvas scientific comparison placing color-coded dual-unit temperature count-ups and a boxless '210 dB' counter with speaker glyph directly on screen—zero HUD cards or floating accent bars."
-    },
-    {
-      "exemplar_id": "ref_uk_gb_england_kinetic_title_trio",
-      "source_video_id": "ref_uk_great_britain_england",
-      "role": "hook",
-      "start_s": 1.8,
-      "end_s": 5.4,
-      "hyperframes_pattern": "rapid_boxless_kinetic_title_sweeps_over_rimmed_fills",
-      "measured_metrics": {
-        "shot_index": 1,
-        "duration_s": 3.6,
-        "cuts_per_min_ref": 5.0,
-        "sfx_count_ref": 35,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Three rapid 1.2s beats sweeping giant bold white boxless titles over glowing cobalt, crimson, and emerald island outlines with crisp white exterior rims."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_hook_map_s0",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 30.0,
-      "hyperframes_pattern": "longform_map_dive_to_extreme_landscape",
-      "measured_metrics": {
-        "shot_index": 0,
-        "duration_s": 30.0,
-        "confidence": 0.85,
-        "cuts_per_min_ref": 10.13,
-        "asl_p50_s": 3.804,
-        "mad_events_section": 6,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Long-form 16:9 regional map opening into extreme-landscape B-roll; remap purple rims to crimson."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_body_fact_broll",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "broll_bridge",
-      "start_s": 180.0,
-      "end_s": 720.0,
-      "hyperframes_pattern": "numbered_fact_card_plus_live_broll_cluster",
-      "measured_metrics": {
-        "duration_s": 540.0,
-        "confidence": 0.9,
-        "cuts_per_min_ref": 10.13,
-        "asl_p50_s": 3.804,
-        "mad_events_section": 155,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Long-form 16:9 numbered amber fact plate followed by 2-8 live B-roll shots and optional cartographic return."
-    },
-    {
-      "exemplar_id": "ref_ethiopia_climax_afar",
-      "source_video_id": "ref_ethiopia_toba",
-      "role": "climax",
-      "start_s": 1080.0,
-      "end_s": 1450.0,
-      "hyperframes_pattern": "triple_junction_map_to_fissure_relief",
-      "measured_metrics": {
-        "duration_s": 370.0,
-        "confidence": 0.88,
-        "cuts_per_min_ref": 10.13,
-        "mad_events_section": 78,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Long-form 16:9 evidence-led tectonic climax pairing staggered plate vectors with high-resolution satellite relief."
-    },
-    {
-      "exemplar_id": "ref_penguin_equator_boundary",
-      "source_video_id": "ref_penguin_equator",
-      "role": "proof",
-      "start_s": 12.0,
-      "end_s": 43.0,
-      "hyperframes_pattern": "framed_blueprint_card_to_dive_cutaway_and_scale_ruler",
-      "measured_metrics": {
-        "duration_s": 31.0,
-        "cuts_per_min_ref": 9.9,
-        "sfx_count_ref": 30,
-        "voice_density_ref": 0.72,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "White-bordered framed world map card with glowing red habitat perimeter over #14427A blueprint grid, diving into a vertical underwater depth cutaway (130 m to 561 m) and a horizontal calibrated blueprint height ruler (0 m / 1 m / 2 m)."
-    },
-    {
-      "exemplar_id": "ref_us_canada_border_slash",
-      "source_video_id": "ref_us_canada_slash",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 26.0,
-      "hyperframes_pattern": "three_layer_amber_border_glow_and_aerial_broll_measure",
-      "measured_metrics": {
-        "duration_s": 26.0,
-        "cuts_per_min_ref": 17.0,
-        "sfx_count_ref": 16,
-        "voice_density_ref": 0.7,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Immediate map-first hook tracing a three-layer glowing amber continental border seam (5,525 mi) alternating with brisk aerial forest-corridor B-roll and a direct white double-headed 20 ft width bracket."
-    },
-    {
-      "exemplar_id": "ref_us_interstate_numbering",
-      "source_video_id": "ref_us_interstate_grid",
-      "role": "proof",
-      "start_s": 8.0,
-      "end_s": 58.0,
-      "hyperframes_pattern": "dark_obsidian_vector_corridors_to_parchment_branch_grid",
-      "measured_metrics": {
-        "duration_s": 50.0,
-        "cuts_per_min_ref": 4.0,
-        "bpm_ref": 95.7,
-        "sfx_count_ref": 27,
-        "voice_density_ref": 0.67,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Near-black obsidian vector map isolating luminous coral-crimson east-west and electric-blue north-south highway corridors with numbered shields, pivoting to a warm parchment drafting grid explaining three-digit loop vs spur branches."
-    },
-    {
-      "exemplar_id": "ref_hawaii_hotspot_chain",
-      "source_video_id": "ref_hawaii_archipelago",
-      "role": "proof",
-      "start_s": 18.0,
-      "end_s": 40.0,
-      "hyperframes_pattern": "glowing_archipelago_t_bracket_to_2d_volcanic_plume",
-      "measured_metrics": {
-        "duration_s": 22.0,
-        "cuts_per_min_ref": 14.0,
-        "bpm_ref": 95.7,
-        "sfx_count_ref": 23,
-        "voice_density_ref": 0.7,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Glowing amber 137-island chain paired with an angled 1,600 mi T-bracket cutting into a full-bleed 2D tectonic hotspot magma-plume cross-section featuring white plume outlines and a subtle bottom-left NOT TO SCALE disclaimer."
-    },
-    {
-      "exemplar_id": "ref_nyc_boroughs_quad_split",
-      "source_video_id": "ref_nyc_boroughs",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 48.0,
-      "hyperframes_pattern": "quad_2x2_hatched_split_to_dark_obsidian_districts",
-      "measured_metrics": {
-        "duration_s": 48.0,
-        "cuts_per_min_ref": 2.4,
-        "sfx_count_ref": 34,
-        "voice_density_ref": 0.61,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Opens on a 2x2 white-seamed quad split of four 45-degree diagonal-hatched satellite map blocks, glides through stacked population counts (19.9M / 8.5M 42.8%), and pivots to a dark obsidian vector road map with color-matched district tags."
-    },
-    {
-      "exemplar_id": "ref_europe_regions_blueprint",
-      "source_video_id": "ref_europe_subregions",
-      "role": "setup",
-      "start_s": 26.0,
-      "end_s": 68.0,
-      "hyperframes_pattern": "blueprint_lifted_continent_cutout_to_multi_bloc_fills",
-      "measured_metrics": {
-        "duration_s": 42.0,
-        "cuts_per_min_ref": 8.2,
-        "sfx_count_ref": 48,
-        "voice_density_ref": 0.62,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Lifted satellite continent cutout floating with drop shadow over faint world coastline outlines on a #14427A blueprint grid, pivoting into solid multi-bloc geopolitical fills using luminance spotlighting and crisp white internal borders."
-    },
-    {
-      "exemplar_id": "ref_vatican_parchment_timeline",
-      "source_video_id": "ref_vatican_sovereignty",
-      "role": "setup",
-      "start_s": 2.0,
-      "end_s": 56.0,
-      "hyperframes_pattern": "glowing_enclave_blueprint_compare_to_parchment_timeline",
-      "measured_metrics": {
-        "duration_s": 54.0,
-        "cuts_per_min_ref": 4.0,
-        "sfx_count_ref": 18,
-        "voice_density_ref": 0.49,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Luminous cobalt urban enclave outline and side-by-side glowing blueprint footprint comparison (0.17 mi2 vs 0.18 mi2), transitioning to warm sepia parchment relief with compass rose, golden top year timeline bar (756-1870), and full treaty sheet."
-    },
-    {
-      "exemplar_id": "ref_taiga_canal_crater_dims",
-      "source_video_id": "ref_taiga_nuclear_canal",
-      "role": "data_callout",
-      "start_s": 30.0,
       "end_s": 36.0,
-      "hyperframes_pattern": "axis_aligned_dual_unit_crater_measurements",
-      "measured_metrics": {
-        "duration_s": 6.0,
-        "cuts_per_min_ref": 6.0,
-        "sfx_count_ref": 7,
-        "voice_density_ref": 0.54,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "High-resolution aerial crater view annotated with rotated white double-headed arrows and stacked metric/imperial measurements (700 m / 2300 ft, 380 m / 1250 ft, 160 m / 527 ft) aligned directly along the crater axes."
+      "hyperframes_pattern": "dashed_divider_to_full_bleed_2d_ocean_trench",
+      "measured_metrics": { "duration_s": 21.7, "easing_feel": "smooth_editorial" },
+      "notes": "Draws a glowing dashed biogeographic boundary between islands before cutting to a full-bleed 2D underwater trench cross-section with paired metric/imperial depth callouts."
     },
     {
-      "exemplar_id": "ref_darien_gap_draw_and_break_hook",
-      "source_video_id": "ref_darien_gap",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 7.5,
-      "hyperframes_pattern": "draw_attempted_route_then_break",
-      "notes": "Continent-spanning road draws from frame 0, runs to the isthmus and turns red with an X before the place is named; both continents fill cyan on their own words and the middle stays unfilled."
-    },
-    {
-      "exemplar_id": "ref_darien_gap_why_mood_dip",
-      "source_video_id": "ref_darien_gap",
+      "exemplar_id": "ref_historical_treaty_parchment_setup",
+      "source_video_id": "ref_border_treaty",
       "role": "setup",
-      "start_s": 16.65,
-      "end_s": 19.5,
-      "hyperframes_pattern": "vignette_dim_then_whip_answer",
-      "notes": "On the spoken question the whole frame darkens with vignette and fog for the phrase, then a whip-zoom into the green polygon opens the answer."
+      "start_s": 12.0,
+      "end_s": 24.0,
+      "hyperframes_pattern": "upright_parchment_unfold_and_golden_era_bar",
+      "measured_metrics": { "duration_s": 12.0, "easing_feel": "smooth_editorial" },
+      "notes": "Shifts smoothly into warm sepia parchment cartography with an upright 0-degree treaty unfold, bold serif year stamp, and thin upper-safe golden era timeline."
     },
     {
-      "exemplar_id": "ref_us_meridian_proportion_fill_hook",
-      "source_video_id": "ref_us_meridian",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 3.5,
-      "hyperframes_pattern": "pictogram_row_counter_fill",
-      "notes": "A nine-person pictogram row and a counter racing to 80% fill while the country outline draws; the divider line draws on 'this line' and persists for the whole film."
+      "exemplar_id": "ref_arctic_shipping_broll_bridge",
+      "source_video_id": "ref_arctic_corridor",
+      "role": "broll_bridge",
+      "start_s": 22.0,
+      "end_s": 27.5,
+      "hyperframes_pattern": "icebreaker_broll_burst_with_boxless_metric",
+      "measured_metrics": { "duration_s": 5.5, "easing_feel": "smooth_editorial" },
+      "notes": "Three crisp real aerial icebreaker clips paired with one boxless tabular distance metric parked cleanly away from the vessel silhouette."
     },
     {
-      "exemplar_id": "ref_us_meridian_divider_reused_as_barrier",
-      "source_video_id": "ref_us_meridian",
-      "role": "proof",
-      "start_s": 38.0,
-      "end_s": 52.0,
-      "hyperframes_pattern": "persistent_line_repurposed_as_mechanism_edge",
-      "notes": "The opening divider becomes the moisture limit: cloud sprites stall against it from both oceans, and the leeward side darkens before 'rain shadow' is spoken."
-    },
-    {
-      "exemplar_id": "ref_chile_length_disambiguation_gag",
-      "source_video_id": "ref_chile_length",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 3.0,
-      "hyperframes_pattern": "confusable_prop_removed_then_fill",
-      "notes": "A literal pepper is dropped on the map and removed by a hand before the real country fills crimson; the elongated spoken vowel is drawn letter by letter along the coastline."
-    },
-    {
-      "exemplar_id": "ref_time_zones_ideal_then_anomaly",
-      "source_video_id": "ref_time_zones",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 7.0,
-      "hyperframes_pattern": "ideal_strips_then_desaturated_anomaly_lasso",
-      "notes": "Twenty-four straight strips wipe across a tilting world, then a hard cut to a pale grey relief where one jagged border cluster is lassoed as the only colour."
-    },
-    {
-      "exemplar_id": "ref_time_zones_decision_executed",
-      "source_video_id": "ref_time_zones",
-      "role": "climax",
-      "start_s": 38.0,
-      "end_s": 40.75,
-      "hyperframes_pattern": "scale_jump_with_new_boundaries",
-      "notes": "On 'it was decided to change the boundaries' the camera pulls from street scale to world scale while jagged real borders draw over the straight strips."
-    },
-    {
-      "exemplar_id": "ref_time_zones_grade_as_proof_ending",
-      "source_video_id": "ref_time_zones",
-      "role": "outro",
-      "start_s": 55.0,
-      "end_s": 59.75,
-      "hyperframes_pattern": "progressive_vignette_dim_consequence",
-      "notes": "A far-west city pin with a '10:00 am' tag while the frame progressively dims; the darkness claim is proven by grade and the film stops on the last word."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_scale_ladder",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "hook",
-      "start_s": 7.25,
-      "end_s": 12.5,
-      "hyperframes_pattern": "region_loupe_object_discovery",
-      "notes": "A hand-held loupe descends from the whole sea border to a one-pixel notch timed to 'closer, and even closer', then a circle highlight and question marks pop on the anomaly."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_time_passing",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "setup",
-      "start_s": 72.5,
-      "end_s": 77.5,
-      "hyperframes_pattern": "single_repeating_mechanism_year_ticker",
-      "notes": "A sweeping lighthouse beam and a motion-blurred year ticker sliding across a century are the only moving elements, conveying duration without events."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_pencil_redraw",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "climax",
-      "start_s": 85.0,
-      "end_s": 91.25,
-      "hyperframes_pattern": "tool_performs_spoken_action",
-      "notes": "A pencil enters and traces the zigzag around the lighthouse as the verb is spoken; the islet then fills in the opening's two colours to prove equal halves."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_real_aerial_ending",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "outro",
-      "start_s": 95.0,
-      "end_s": 98.3,
-      "hyperframes_pattern": "whip_into_real_aerial_same_overlay",
-      "notes": "A whip-zoom turns the satellite diagram into a real aerial of the lighthouse with the same boundary overlay, ending on an irony line with no outro."
-    },
-    {
-      "exemplar_id": "ref_global_walk_whole_route_preview",
-      "source_video_id": "ref_global_walk",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 8.25,
-      "hyperframes_pattern": "face_first_then_full_route_preview",
-      "notes": "Portrait marker pops before the name, then the entire promised loop draws once while the camera pans its length before restarting at the origin year."
-    },
-    {
-      "exemplar_id": "ref_global_walk_open_projection_ending",
+      "exemplar_id": "ref_global_walk_journey_outro",
       "source_video_id": "ref_global_walk",
       "role": "outro",
-      "start_s": 99.0,
-      "end_s": 102.9,
-      "hyperframes_pattern": "dashed_projection_to_vow_pin",
-      "notes": "The film returns to the flat map and draws a dashed projection to the destination pin set by the opening vow; the journey is left open."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_misconception_counter",
-      "source_video_id": "ref_spain_borders",
-      "role": "hook",
-      "start_s": 3.4,
-      "end_s": 9.0,
-      "hyperframes_pattern": "live_counter_with_ghost_polygons",
-      "notes": "On a dark vector surface a large counter shows the believed two neighbours, then keeps ticking as grey ghost polygons appear."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_tint_flash_ownership",
-      "source_video_id": "ref_spain_borders",
-      "role": "proof",
-      "start_s": 36.75,
-      "end_s": 39.5,
-      "hyperframes_pattern": "locked_camera_full_frame_tint_flash",
-      "notes": "With the camera locked on the river islet, full-frame orange and blue tint flashes land on the owning verbs to show the six-month alternation."
-    },
-    {
-      "exemplar_id": "ref_diomede_wrong_answer_first",
-      "source_video_id": "ref_diomede_islands",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 5.0,
-      "hyperframes_pattern": "intuitive_path_then_pole_whip",
-      "notes": "A glowing beam flies the long Atlantic route between two powers, then the camera whips over the pole to their true adjacency and writes the distance on the strait."
-    },
-    {
-      "exemplar_id": "ref_diomede_edge_grown_ice",
-      "source_video_id": "ref_diomede_islands",
-      "role": "climax",
-      "start_s": 41.7,
-      "end_s": 48.8,
-      "hyperframes_pattern": "edge_grown_state_mask",
-      "notes": "A blocky ice mask grows from the frame edges with snow particles while the border stays on top; a single walking silhouette crosses the line."
-    },
-    {
-      "exemplar_id": "ref_shelterbelt_negation_ladder",
-      "source_video_id": "ref_shelterbelt",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 7.5,
-      "hyperframes_pattern": "cross_out_expected_materials_then_flip",
-      "notes": "A north-south band is called a wall; concrete and steel roundels are crossed out on their words and a colour-flash cut turns the band green on 'trees'. The object is withheld as the solution for about sixty seconds."
-    },
-    {
-      "exemplar_id": "ref_shelterbelt_reverse_motion_ending",
-      "source_video_id": "ref_shelterbelt",
-      "role": "outro",
-      "start_s": 86.0,
-      "end_s": 94.4,
-      "hyperframes_pattern": "reverse_motion_callback",
-      "notes": "The displaced-people pictograms that scattered earlier stream back toward the restored green belt, closing the story without words."
-    },
-    {
-      "exemplar_id": "ref_tibetan_airspace_absence_by_behaviour",
-      "source_video_id": "ref_tibetan_airspace",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 8.4,
-      "hyperframes_pattern": "lasso_fill_then_avoidance_and_silhouette_tiling",
-      "notes": "An unnamed zone is lassoed and filled red while aircraft icons steer around it; familiar-country silhouettes then tile the zone to count its size."
-    },
-    {
-      "exemplar_id": "ref_tibetan_airspace_horizon_terrain",
-      "source_video_id": "ref_tibetan_airspace",
-      "role": "proof",
-      "start_s": 17.5,
-      "end_s": 40.3,
-      "hyperframes_pattern": "horizon_terrain_flight_altitude_chips",
-      "notes": "The longest reason gets the richest surface: a horizon-level terrain flight with screen-fixed dual-unit altitude chips, and an aircraft drawn under the terrain line before 'impossible' is spoken."
-    },
-    {
-      "exemplar_id": "ref_global_walk_route_width_regimes",
-      "source_video_id": "ref_global_walk",
-      "role": "proof",
-      "start_s": 18.0,
-      "end_s": 70.0,
-      "hyperframes_pattern": "screen_constant_route_width_by_zoom_regime",
-      "notes": "The route stroke widens from about 8 px on the continental leg to about 30 px in the jungle close-up and 40 px at the arrest point, then eases back to 6 px for the wide Siberian sweep; width changes ride the zoom, never a cut."
-    },
-    {
-      "exemplar_id": "ref_global_walk_ninety_day_returns",
-      "source_video_id": "ref_global_walk",
-      "role": "climax",
-      "start_s": 60.2,
-      "end_s": 66.5,
-      "hyperframes_pattern": "pulse_rings_then_route_dots",
-      "notes": "'Every 90 days' pulses rings at the exit point; the route then advances with one solid dot per forced return, each popping as the head passes it."
-    },
-    {
-      "exemplar_id": "ref_global_walk_rule_preserving_swim",
-      "source_video_id": "ref_global_walk",
-      "role": "climax",
-      "start_s": 79.0,
-      "end_s": 92.4,
-      "hyperframes_pattern": "blocked_neighbours_hatch_then_water_crossing",
-      "notes": "The two forbidden detours are hatched red and green with a white U-turn arrow; the chosen solution follows: the portrait pops at the shore, a ripple marks the entry, and white support-boat silhouettes trail the route across the water before a parallel '32 days' numeral lands."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_void_wipe_odometer",
-      "source_video_id": "ref_spain_borders",
-      "role": "hook",
-      "start_s": 3.0,
-      "end_s": 10.5,
-      "hyperframes_pattern": "vertical_wiper_dark_void_and_odometer_counter",
-      "notes": "A glowing white vertical wiper sweeps right-to-left over 260 ms to dim satellite relief to matte charcoal (#0C0E11) while keeping diagonal-hatched orange Spain isolated; a tilted amber odometer counter flies up and rolls 0 -> 1 -> 2 -> 4 -> 5 as neighbors illuminate."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_ownership_flip",
-      "source_video_id": "ref_spain_borders",
-      "role": "proof",
-      "start_s": 35.0,
-      "end_s": 40.5,
-      "hyperframes_pattern": "shifting_border_spline_with_alternating_tint_flash",
-      "notes": "On a high-zoom river island aerial with waving national flags on opposite banks, a bright warm-orange glow surges across the southern bank and island, then the glowing yellow border spline shifts to the opposite bank as an electric-blue flash surges across the northern bank and island."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_ghost_scale_compare",
-      "source_video_id": "ref_spain_borders",
-      "role": "proof",
-      "start_s": 48.0,
-      "end_s": 52.5,
-      "hyperframes_pattern": "population_pill_then_ghost_silhouette_slide",
-      "notes": "An emerald-highlighted microstate displays a compact cyan population pill (80,000), which fades before a translucent cyan city silhouette slides horizontally from the left (~260 ms ease-out) directly over the country to demonstrate relative scale."
-    },
-    {
-      "exemplar_id": "ref_spain_borders_isthmus_climax",
-      "source_video_id": "ref_spain_borders",
-      "role": "climax",
-      "start_s": 91.5,
-      "end_s": 96.6,
-      "hyperframes_pattern": "micro_isthmus_glow_line_and_dual_unit_stack",
-      "notes": "A slow aerial pull-out reveals an orange-rimmed peninsula joined to turquoise mainland by a narrow sandy neck; a luminous golden border line glows across the neck before stacked white dual-unit text ('85 m' / '(279 ft)') pops cleanly over the line."
-    },
-    {
-      "exemplar_id": "ref_us_rain_shadow_divide_hook_split",
-      "source_video_id": "ref_us_rain_shadow_divide",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 18.5,
-      "hyperframes_pattern": "silhouette_row_split_meridian_and_subzone_breakdown",
-      "notes": "Ten white human silhouettes pop sequentially beneath a cyan count-up to 80% as a glowing national perimeter draws on; a cyan meridian slices north-to-south while the silhouette row splits 2-vs-8 across warm-orange west and cyan east zones, followed by yellow coastal state highlights with typewriter labels and compact population pills (50M, 30M, 250M)."
-    },
-    {
-      "exemplar_id": "ref_us_rain_shadow_divide_rain_shadow_mechanism",
-      "source_video_id": "ref_us_rain_shadow_divide",
-      "role": "proof",
-      "start_s": 27.0,
-      "end_s": 51.5,
-      "hyperframes_pattern": "directional_mountain_sweep_cloud_barrier_and_wind_deflection",
-      "notes": "A gold mountain-range polygon sweeps north-to-south during an oblique bearing dive with typewriter map-plane labels; sunlit volumetric clouds with ground shadows drift from the highlighted ocean and stall against the range, then eastern clouds travel inland before tapered white wind streamlines from the gulf deflect them northward along the persistent meridian."
-    },
-    {
-      "exemplar_id": "ref_us_rain_shadow_divide_prohibition_cluster",
-      "source_video_id": "ref_us_rain_shadow_divide",
-      "role": "outro",
-      "start_s": 51.8,
+      "start_s": 51.0,
       "end_s": 60.0,
-      "hyperframes_pattern": "arid_region_fill_and_two_stage_prohibition_pins",
-      "notes": "Warm arid-ochre shading fades across the western half while four teardrop water-drop pins pop and receive crimson prohibition slashes ~350 ms later, followed by four wheat-crop pins undergoing the same two-stage negation during a wide continental pull-out."
-    },
-    {
-      "exemplar_id": "ref_chimborazo_geoid_two_head_border_trace",
-      "source_video_id": "ref_chimborazo_geoid",
-      "role": "proof",
-      "start_s": 16.67,
-      "end_s": 23.17,
-      "hyperframes_pattern": "two_head_border_trace_then_tint_fill",
-      "measured_metrics": {
-        "trace_hex": "#F3FA23",
-        "trace_width_px": [
-          7,
-          8
-        ],
-        "trace_heads": 2,
-        "trace_speed": "constant world length per frame while the camera zooms out",
-        "trace_to_rim_crossfade_frames": 3,
-        "rim_width_px": 4,
-        "fill_alpha": 0.9,
-        "fill_fade_frames": [
-          3,
-          6
-        ],
-        "zoom_out_peak_log2_per_frame": 0.185,
-        "zoom_out_peak_position": 0.55
-      },
-      "notes": "The border draws from the summit marker in both directions at once with round caps and no glow while the camera keeps zooming out; only after it reaches the frame edges does it cross-fade to a thin white rim, and the two country tints fade in one after the other with their names."
-    },
-    {
-      "exemplar_id": "ref_chimborazo_geoid_projection_zoom_through",
-      "source_video_id": "ref_chimborazo_geoid",
-      "role": "broll_bridge",
-      "start_s": 24.67,
-      "end_s": 26.17,
-      "hyperframes_pattern": "flat_map_to_globe_zoom_through_cut",
-      "measured_metrics": {
-        "radial_blur_frames_before_cut": 8,
-        "globe_zoom_out_start_log2_per_frame": -0.39,
-        "globe_diameter_px": 860,
-        "background_fade_frames": 10
-      },
-      "notes": "An accelerating zoom-out on the flat map gains radial blur, cuts at its peak to a globe of the same view, and the zoom-out continues and settles on the globe while the space background fades in."
-    },
-    {
-      "exemplar_id": "ref_diomede_flag_bottom_up_wipe",
-      "source_video_id": "ref_diomede_islands",
-      "role": "proof",
-      "start_s": 21.87,
-      "end_s": 24.5,
-      "hyperframes_pattern": "flag_fill_bottom_up_wipe_during_zoom",
-      "measured_metrics": {
-        "zoom_in_log2": 1.5,
-        "flag_reveal_frames": 8,
-        "flag_fit": "upright, stretched to the territory bounds",
-        "flag_blend": "terrain-blended (white stripe renders tan)",
-        "rim_width_px": [
-          3,
-          4
-        ]
-      },
-      "notes": "During a zoom-in on the island its flag wipes in from the bottom edge, clipped to the coast and blended with the terrain, then cross-dissolves into high-resolution imagery under the next zoom so the imagery swap is never seen."
-    },
-    {
-      "exemplar_id": "ref_diomede_disc_sweep_register_swap",
-      "source_video_id": "ref_diomede_islands",
-      "role": "broll_bridge",
-      "start_s": 5.13,
-      "end_s": 5.3,
-      "hyperframes_pattern": "feathered_black_disc_sweep",
-      "measured_metrics": {
-        "duration_frames": 6,
-        "black_fraction_by_frame": [
-          0.13,
-          0.59,
-          0.99,
-          0.8,
-          0.26,
-          0.0
-        ],
-        "direction": "right_to_left",
-        "disc_diameter_px": [
-          1000,
-          1300
-        ],
-        "feather_px": [
-          150,
-          250
-        ]
-      },
-      "notes": "A feathered black disc crosses the frame right to left and the basemap register swaps underneath while the frame is fully black; both sides are framed identically, so the cut reads as a restyle, and the captions are never masked."
-    },
-    {
-      "exemplar_id": "ref_diomede_world_scaled_date_line",
-      "source_video_id": "ref_diomede_islands",
-      "role": "outro",
-      "start_s": 49.7,
-      "end_s": 60.0,
-      "hyperframes_pattern": "world_scaled_line_draw_and_zoom_along",
-      "measured_metrics": {
-        "draw_speed_px_per_frame": [
-          20,
-          25
-        ],
-        "line_width_px_by_zoom": {
-          "z4.4": 1.5,
-          "z8": 5,
-          "z9.1": 8.5
-        },
-        "zoom_in_log2": 4.66,
-        "zoom_in_peak_log2_per_s": 3.9
-      },
-      "notes": "The date line draws top to bottom with its label typed along it, then the camera zooms along the line; the stroke width follows the map scale above a thin floor, so the line thickens with the zoom instead of staying a hairline."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_flag_seed_reveal",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "hook",
-      "start_s": 0.0,
-      "end_s": 4.87,
-      "hyperframes_pattern": "rotated_flag_seed_reveal_then_flat_recolour",
-      "measured_metrics": {
-        "flag_rotate_deg": 90,
-        "flag_reveal_frames": [
-          20,
-          22
-        ],
-        "flag_reveal_seed": "country centre",
-        "recolour_frames": [
-          14,
-          24
-        ],
-        "recolour_hex": [
-          "#58BC16",
-          "#1B5BA8"
-        ],
-        "rim_width_px": 3,
-        "land_border_hex": "#FDFD09",
-        "land_border_draw_frames": 26,
-        "land_border_head_px_per_frame": 30
-      },
-      "notes": "Each country's flag, turned a quarter so its long axis follows the country, grows from a seed at the centre until it fills the coastline; the flags are then replaced by flat saturated colours by a second region growth, and only then does the shared land border draw north to south on top of both fills."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_lens_dive_cut",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "setup",
-      "start_s": 7.3,
-      "end_s": 9.7,
-      "hyperframes_pattern": "lens_dive_ending_on_cut_at_peak_speed",
-      "measured_metrics": {
-        "dive_log2": 4.6,
-        "dive_peak_log2_per_frame": 0.42,
-        "dive_shape": "exponential ease-in, cut at peak speed",
-        "line_width_zoom_exponent": 0.6,
-        "post_cut_dissolve_frames": 5
-      },
-      "notes": "A magnifier fills the frame as the zoom accelerates into the cut; frames stay sharp at peak speed, the cut lands on a framing slightly wider than the last one, and the imagery change is covered by a five-frame dissolve into the dark plate."
-    },
-    {
-      "exemplar_id": "ref_baltic_lighthouse_glow_redraw",
-      "source_video_id": "ref_baltic_lighthouse_border",
-      "role": "proof",
-      "start_s": 12.87,
-      "end_s": 16.0,
-      "hyperframes_pattern": "single_head_line_redraw_with_zone_glow",
-      "measured_metrics": {
-        "head_speed_px_per_frame": [
-          28,
-          54,
-          28
-        ],
-        "head_speed_shape": "ease-in-out bell over 23 frames",
-        "zigzag_head_px_per_frame": [
-          25,
-          30
-        ],
-        "glow_hex": "#FF2020",
-        "glow_radius_px": [
-          60,
-          80
-        ],
-        "glow_fade_frames": 14
-      },
-      "notes": "A white line redraws the border from the top of the frame over the old dashed line; a red glow switches on exactly when the head enters the islet and fades after the zig-zag closes, so the glow marks the zone of interest rather than the whole line."
-    },
-    {
-      "exemplar_id": "ref_atlantic_feathered_wipe",
-      "source_video_id": "ref_atlantic_tracks",
-      "role": "broll_bridge",
-      "start_s": 17.8,
-      "end_s": 18.4,
-      "hyperframes_pattern": "feathered_dark_rtl_wipe_between_map_registers",
-      "measured_metrics": {
-        "wipe_frames": 4,
-        "duration_ms": 133,
-        "direction": "rtl",
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "A rapid 4-frame right-to-left feathered alpha curtain bridges the transition between shaded-relief satellite geography and clean graphic tracks while captions remain pinned unmasked above."
-    },
-    {
-      "exemplar_id": "ref_shelterbelt_parchment_unfold",
-      "source_video_id": "ref_shelterbelt",
-      "role": "setup",
-      "start_s": 54.0,
-      "end_s": 57.2,
-      "hyperframes_pattern": "upright_parchment_page_unfold_historical_plan",
-      "measured_metrics": {
-        "unfold_frames": 14,
-        "unfold_ms": 467,
-        "tilt_deg": 0,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Historical conservation corridor plan enters on warm sepia parchment via a top-anchored perspective unfold at 0-degree framing, giving archival context without angled HUD chrome."
-    },
-    {
-      "exemplar_id": "ref_atlantic_chevron_corridor",
-      "source_video_id": "ref_atlantic_tracks",
-      "role": "proof",
-      "start_s": 21.0,
-      "end_s": 26.4,
-      "hyperframes_pattern": "staggered_chevron_flow_band_over_corridor",
-      "measured_metrics": {
-        "entrance_ms_median": 300,
-        "chevron_stagger_ms": 55,
-        "motion_active_ratio": 0.95,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Luminous directional chevron sequence sweeps along a dashed air-corridor guide to turn invisible tailwind mechanics into immediate foreground direction."
-    },
-    {
-      "exemplar_id": "ref_tibetan_cutaway_altitude_gauge",
-      "source_video_id": "ref_tibetan_airspace",
-      "role": "data_callout",
-      "start_s": 22.5,
-      "end_s": 28.0,
-      "hyperframes_pattern": "graduated_vertical_altitude_gauge_dual_units",
-      "measured_metrics": {
-        "entrance_ms_median": 167,
-        "fill_grow_ms": 320,
-        "motion_active_ratio": 0.942,
-        "easing_feel": "smooth_editorial"
-      },
-      "notes": "Vertical graduated ruler animates upward inside safe right margins displaying paired metric and imperial plateau ceilings synchronized with spoken elevation limits."
+      "hyperframes_pattern": "globe_totals_recap_to_dashed_open_projection",
+      "measured_metrics": { "duration_s": 9.0, "easing_feel": "smooth_editorial" },
+      "notes": "Pulls out to a whole-route globe tallying elapsed years and distance, then dives back onto the remaining dashed white projection to close on an open future horizon."
     }
   ]
 }
