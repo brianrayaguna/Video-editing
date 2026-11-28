@@ -101,25 +101,38 @@ export function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts =
   const sunAzimuth = Number.isFinite(Number(mapOpts.sun_azimuth_deg)) ? Number(mapOpts.sun_azimuth_deg) : 335;
   const sunElevation = Number.isFinite(Number(mapOpts.sun_elevation_deg)) ? Number(mapOpts.sun_elevation_deg) : 42;
   const maxPitch = Math.max(Number(mapOpts.max_pitch || 0), Number(mapOpts.initial_camera?.pitch || 0));
-  const enableSky = mapOpts.atmosphere === false ? false : Boolean(terrain3d || maxPitch >= 25 || mapOpts.atmosphere);
+  const bgColor = typeof mapOpts.background_color === "string" && mapOpts.background_color.trim()
+    ? mapOpts.background_color.trim()
+    : "#0E4352";
+  const isDaylightTerrain = mapOpts.surface_register === "daylight_terrain";
+  const enableSky = mapOpts.atmosphere === false ? false : Boolean(terrain3d || maxPitch >= 25 || mapOpts.atmosphere || isDaylightTerrain);
   const hdrBloomEnabled = mapOpts.hdr_bloom !== false;
   const skySpec = mapOpts.atmosphere && typeof mapOpts.atmosphere === "object"
     ? {
-        "sky-color": mapOpts.atmosphere.sky_color || "#071E2E",
+        "sky-color": mapOpts.atmosphere.sky_color || (isDaylightTerrain ? "#2B7AE4" : "#071E2E"),
         "sky-horizon-blend": mapOpts.atmosphere.sky_horizon_blend ?? 0.55,
-        "horizon-color": mapOpts.atmosphere.horizon_color || "#1E5B70",
-        "horizon-fog-blend": mapOpts.atmosphere.horizon_fog_blend ?? 0.45,
-        "fog-color": mapOpts.atmosphere.fog_color || "#0C2C3B",
-        "fog-ground-blend": mapOpts.atmosphere.fog_ground_blend ?? 0.35,
+        "horizon-color": mapOpts.atmosphere.horizon_color || (isDaylightTerrain ? "#A3CEF5" : "#1E5B70"),
+        "horizon-fog-blend": mapOpts.atmosphere.horizon_fog_blend ?? (isDaylightTerrain ? 0.35 : 0.45),
+        "fog-color": mapOpts.atmosphere.fog_color || (isDaylightTerrain ? "#CBE4F9" : "#0C2C3B"),
+        "fog-ground-blend": mapOpts.atmosphere.fog_ground_blend ?? (isDaylightTerrain ? 0.22 : 0.35),
       }
-    : {
-        "sky-color": "#071E2E",
-        "sky-horizon-blend": 0.55,
-        "horizon-color": "#1E5B70",
-        "horizon-fog-blend": 0.45,
-        "fog-color": "#0C2C3B",
-        "fog-ground-blend": 0.35,
-      };
+    : isDaylightTerrain
+      ? {
+          "sky-color": "#2B7AE4",
+          "sky-horizon-blend": 0.55,
+          "horizon-color": "#A3CEF5",
+          "horizon-fog-blend": 0.35,
+          "fog-color": "#CBE4F9",
+          "fog-ground-blend": 0.22,
+        }
+      : {
+          "sky-color": "#071E2E",
+          "sky-horizon-blend": 0.55,
+          "horizon-color": "#1E5B70",
+          "horizon-fog-blend": 0.45,
+          "fog-color": "#0C2C3B",
+          "fog-ground-blend": 0.35,
+        };
   return `<!doctype html>
 <html>
 <head>
@@ -144,7 +157,7 @@ export function buildMapSceneHtml(baseUrl, width, height, vectorsJson, mapOpts =
   <style>
 ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUrl) : ""}
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #083847; }
+    html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }
     #stage, #map, #ov, #comp { position: absolute; inset: 0; width: ${width}px; height: ${height}px; }
     #stage { transform-origin: 50% 50%; will-change: transform; }
     #ov, #comp { pointer-events: none; }
@@ -206,7 +219,7 @@ ${DRAW_MATH_SRC}
           }` : ""}
         },
         layers: [
-          { id: "bg", type: "background", paint: { "background-color": "#0A3A4A" } },
+          { id: "bg", type: "background", paint: { "background-color": ${JSON.stringify(bgColor)} } },
           { id: "sat", type: "raster", source: "sat", paint: { "raster-contrast": ${mapOpts.tile_source === "realistic" ? 0.08 : mapOpts.tile_source === "project" ? 0.06 : 0}, "raster-saturation": ${mapOpts.tile_source === "realistic" ? 0.06 : mapOpts.tile_source === "project" ? 0.04 : 0} } }${terrain3d ? `,
           { id: "hillshade", type: "hillshade", source: "dem", paint: { "hillshade-exaggeration": 0.28, "hillshade-illumination-direction": ${sunAzimuth}, "hillshade-illumination-anchor": "map", "hillshade-shadow-color": "#041620", "hillshade-highlight-color": "#FFF5D6" } }` : ""}
         ]${terrain3d ? `,

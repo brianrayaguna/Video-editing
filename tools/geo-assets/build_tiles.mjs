@@ -85,24 +85,26 @@ export function gradeRgb(data, z, bmngData = null) {
     }
 
     if (isOcean) {
-      // Preserve marine-teal bathymetry shelf (#083847 -> #164F60) without crushing to pure black.
+      // Preserve marine-teal deep ocean (#093B4B -> #134F5F) and vibrant cyan-turquoise coastal shelves.
       const nodataStrength = maxCh < 24 ? Math.min(1, (24 - maxCh) / 16) : 0;
-      const waterStrength = Math.max(
+      const isShallowShelf = luma > 75 && g > r + 15 && b > r + 18;
+      const baseStrength = Math.max(
         nodataStrength,
-        Math.min(1, Math.max(0, blueDominance) / 28) * Math.min(1, (160 - luma) / 95)
+        Math.min(1, Math.max(0, blueDominance) / 28) * Math.min(1, (165 - luma) / 95)
       );
-      const targetR = 7 + r * 0.28;
-      const targetG = 46 + g * 0.42;
-      const targetB = 60 + b * 0.46;
+      const waterStrength = isShallowShelf ? baseStrength * 0.42 : baseStrength;
+      const targetR = isShallowShelf ? 22 + r * 0.34 : 9 + r * 0.28;
+      const targetG = isShallowShelf ? 82 + g * 0.46 : 54 + g * 0.48;
+      const targetB = isShallowShelf ? 94 + b * 0.46 : 64 + b * 0.44;
       r = r * (1 - waterStrength) + targetR * waterStrength;
       g = g * (1 - waterStrength) + targetG * waterStrength;
       b = b * (1 - waterStrength) + targetB * waterStrength;
     } else {
-      // Landmass relief: subtle contrast and natural vegetation/terrain warmth.
-      const c = 1.07;
-      r = (r - 110) * c + 107;
-      g = (g - 110) * (c * 1.02) + 109;
-      b = (b - 110) * (c * 0.96) + 103;
+      // Landmass relief: natural warm olive/ochre elevation clarity without crushing midtones.
+      const c = 1.09;
+      r = (r - 108) * c + 111;
+      g = (g - 108) * (c * 1.01) + 111;
+      b = (b - 108) * (c * 0.93) + 101;
     }
 
     out[i] = Math.max(0, Math.min(255, Math.round(r)));

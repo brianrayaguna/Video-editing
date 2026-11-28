@@ -2,6 +2,8 @@ import { DEFAULT_MAP_CENTER } from "../geo_defaults.mjs";
 import { buildDynamicFontFaceCss } from "./font_css.mjs";
 
 export function buildBlueprintHtml(baseUrl, width, height, vectorsJson, actSpec) {
+  const isCobalt = actSpec?.theme === "cobalt";
+  const bodyBg = isCobalt ? "#2059DC" : "#1E1B18";
   return `<!doctype html>
 <html>
 <head>
@@ -9,7 +11,7 @@ export function buildBlueprintHtml(baseUrl, width, height, vectorsJson, actSpec)
   <style>
 ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUrl) : ""}
     * { margin: 0; padding: 0; }
-    html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #1E1B18; }
+    html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bodyBg}; }
     canvas { display: block; width: ${width}px; height: ${height}px; }
   </style>
 </head>
@@ -86,11 +88,18 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
     maskX.beginPath(); traceLocal(maskX, regionGeom, 600, 850); maskX.fill(); maskX.stroke();
 
     window.__renderBlueprint = function(t) {
-      ctx.fillStyle = "#1E1B18";
+      const isCobalt = SPEC.theme === "cobalt";
+      ctx.fillStyle = isCobalt ? "#2059DC" : "#1E1B18";
       ctx.fillRect(0, 0, W, H);
+      if (isCobalt) {
+        ctx.strokeStyle = "rgba(245, 247, 250, 0.16)";
+        ctx.lineWidth = 1.2;
+        for (let gx = 0; gx <= W; gx += 60) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+        for (let gy = 0; gy <= H; gy += 60) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+      }
       const pull = easeInOutCubic(seg(t, 0.2, 5.6));
       const scale = lerp(2.35, 1.18, pull);
-      const rot = lerp(-0.16, 0.08, pull);
+      const rot = isCobalt ? 0 : lerp(-0.16, 0.08, pull);
       const ox = lerp(W * 0.54, W * 0.50, pull);
       const oy = lerp(H * 0.52, H * 0.49, pull);
       const stampAt = SPEC.stamp_at_s ?? 5.65;
@@ -108,20 +117,22 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
       ctx.scale(scale, scale);
 
       const pw = 1160, ph = 1660;
-      ctx.fillStyle = "#D9D2C3";
+      ctx.fillStyle = isCobalt ? "#1B4EC7" : "#D9D2C3";
       ctx.shadowColor = "rgba(0,0,0,0.65)"; ctx.shadowBlur = 40;
       ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
       ctx.shadowBlur = 0;
 
-      ctx.fillStyle = "#8C939A";
+      ctx.fillStyle = isCobalt ? "#2059DC" : "#8C939A";
       ctx.fillRect(-pw / 2 + 44, -ph / 2 + 195, pw - 88, ph - 265);
 
       ctx.save();
       ctx.beginPath(); ctx.rect(-pw / 2 + 44, -ph / 2 + 195, pw - 88, ph - 265); ctx.clip();
-      ctx.fillStyle = "#CFC8B8"; ctx.strokeStyle = "#6B675E"; ctx.lineWidth = 2;
+      ctx.fillStyle = isCobalt ? "rgba(245, 247, 250, 0.22)" : "#CFC8B8";
+      ctx.strokeStyle = isCobalt ? "rgba(245, 247, 250, 0.65)" : "#6B675E";
+      ctx.lineWidth = 2;
       for (const g of landGeoms) { ctx.beginPath(); traceLocal(ctx, g); ctx.fill(); ctx.stroke(); }
 
-      ctx.strokeStyle = "rgba(92, 88, 80, 0.26)"; ctx.lineWidth = 1.2;
+      ctx.strokeStyle = isCobalt ? "rgba(245, 247, 250, 0.18)" : "rgba(92, 88, 80, 0.26)"; ctx.lineWidth = 1.2;
       for (let gx = -560; gx <= 560; gx += 85) { ctx.beginPath(); ctx.moveTo(gx, -650); ctx.lineTo(gx, 760); ctx.stroke(); }
       for (let gy = -620; gy <= 760; gy += 85) { ctx.beginPath(); ctx.moveTo(-560, gy); ctx.lineTo(560, gy); ctx.stroke(); }
 
