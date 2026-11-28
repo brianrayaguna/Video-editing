@@ -6,11 +6,29 @@
 import { spawn, spawnSync } from "node:child_process";
 
 /**
- * Return platform-appropriate Chromium flags (Metal ANGLE on macOS, SwiftShader on Linux).
+ * Return platform-appropriate Chromium flags with optional backend parity override
+ * (`"auto" | "metal" | "swiftshader"`, or `VEDIT_RENDER_BACKEND` env var).
  */
-export function getChromeArgs(width, height) {
+export function getChromeArgs(
+  width,
+  height,
+  { backend = "auto", platform = process.platform } = {}
+) {
   const winArg = width && height ? [`--window-size=${width},${height}`] : [];
-  if (process.platform === "darwin") {
+  const rawBackend = String(
+    backend === "auto" ? process.env.VEDIT_RENDER_BACKEND || "auto" : backend
+  )
+    .trim()
+    .toLowerCase();
+  if (!["auto", "metal", "swiftshader"].includes(rawBackend)) {
+    throw new Error(
+      `Unsupported render backend '${rawBackend}'. Expected 'auto', 'metal', or 'swiftshader'.`
+    );
+  }
+  const resolved =
+    rawBackend === "auto" ? (platform === "darwin" ? "metal" : "swiftshader") : rawBackend;
+
+  if (resolved === "metal") {
     return [
       "--no-sandbox",
       "--hide-scrollbars",
@@ -22,6 +40,7 @@ export function getChromeArgs(width, height) {
   return [
     "--no-sandbox",
     "--disable-dev-shm-usage",
+    "--hide-scrollbars",
     "--use-gl=angle",
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",

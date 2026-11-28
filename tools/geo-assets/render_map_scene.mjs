@@ -103,6 +103,13 @@ async function main() {
 
   const rawPreview = args["preview-keyframes"];
   const previewTotal = rawPreview === true ? 12 : (typeof rawPreview === "string" ? Math.max(1, Number(rawPreview) || 12) : 0);
+  const renderBackend =
+    typeof args["render-backend"] === "string"
+      ? args["render-backend"]
+      : spec.render_backend || "auto";
+  const cliCaptureFormat =
+    typeof args["capture-format"] === "string" ? args["capture-format"] : undefined;
+  const dedupStaticFrames = !Boolean(args["no-dedup-static-frames"]);
 
   const server = await startTileServer(0, "127.0.0.1", {
     recordGaps: Boolean(coverageOut),
@@ -117,7 +124,7 @@ async function main() {
     browser = await puppeteer.launch({
       executablePath: resolveChrome(),
       headless: "new",
-      args: getChromeArgs(width, height),
+      args: getChromeArgs(width, height, { backend: renderBackend }),
     });
     for (const act of selectedActs) {
       if (coverageOnly) {
@@ -128,8 +135,9 @@ async function main() {
           baseDir,
           previewKeyframes: perActPreview,
           ovScale: spec.ov_scale,
-          captureFormat: spec.capture_format,
+          captureFormat: cliCaptureFormat || spec.capture_format,
           captureQuality: spec.capture_quality,
+          dedupStaticFrames,
           sunAzimuthDeg: spec.sun_azimuth_deg,
           sunElevationDeg: spec.sun_elevation_deg,
           hdrBloom: spec.hdr_bloom,

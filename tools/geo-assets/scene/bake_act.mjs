@@ -7,6 +7,7 @@ import { buildDynamicFontFaceCss } from "./font_css.mjs";
 import { buildBlueprintHtml } from "./html_blueprint.mjs";
 import { buildCutaway2dHtml } from "./html_cutaway.mjs";
 import { buildMapSceneHtml, defaultTileSource } from "./html_map_scene.mjs";
+import { computeMapFrameStateKey } from "./static_hold.mjs";
 
 export function wrapDeltaDeg(fromDeg, toDeg) {
   return ((((toDeg - fromDeg) + 180) % 360) + 360) % 360 - 180;
@@ -68,9 +69,11 @@ export async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps,
 
   const captureFormat = act.capture_format || opts.captureFormat || "jpeg";
   const captureQuality = act.capture_quality ?? opts.captureQuality ?? 95;
+  const dedupStaticFrames = opts.dedupStaticFrames !== false && act.dedup_static_frames !== false;
   const t0 = Date.now();
   const trackLog = [];
   const previewFrames = [];
+  let dedupedFrames = 0;
   let succeeded = false;
   let page = null;
   let shotter = null;
@@ -109,14 +112,36 @@ export async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps,
       await page.setContent(buildBlueprintHtml(baseUrl, width, height, vectorsJson, act), { waitUntil: "load" });
       await page.evaluate(() => document.fonts.ready);
       const framesToRun = sampleIndices || Array.from({ length: totalFrames }, (_, i) => i);
+      let prevStateKey = null;
+      let prevBuf = null;
       for (const f of framesToRun) {
-        await page.evaluate((sec) => window.__renderBlueprint(sec), f / fps);
-        const buf = await shotter.captureJpegBuffer();
-        if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
-        else await encoder.writeFrame(buf);
+        const sec = f / fps;
+        const stateKey =
+          !isPreview && dedupStaticFrames
+            ? await page.evaluate(
+                (tSec) => (typeof window.__frameStateKey === "function" ? window.__frameStateKey(tSec) : null),
+                sec
+              )
+            : null;
+        if (!isPreview && typeof stateKey === "string" && stateKey === prevStateKey && prevBuf !== null) {
+          await encoder.writeFrame(prevBuf);
+          dedupedFrames++;
+        } else {
+          await page.evaluate((tSec) => window.__renderBlueprint(tSec), sec);
+          const buf = await shotter.captureBuffer();
+          if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: sec, buf });
+          else {
+            await encoder.writeFrame(buf);
+            prevStateKey = typeof stateKey === "string" ? stateKey : null;
+            prevBuf = prevStateKey !== null ? buf : null;
+          }
+        }
         if (!isPreview && (f % 60 === 0 || f === totalFrames - 1)) {
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
+      }
+      if (!isPreview && dedupedFrames > 0) {
+        console.log(`  [${act.act_id}] deduped static frames: ${dedupedFrames}/${totalFrames}`);
       }
     } else if (actKind === "cutaway_2d") {
       let cutawayHtml;
@@ -149,18 +174,40 @@ export async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps,
       }, act, baseUrl);
       await page.evaluate(() => document.fonts.ready);
       const framesToRun = sampleIndices || Array.from({ length: totalFrames }, (_, i) => i);
+      let prevStateKey = null;
+      let prevBuf = null;
       for (const f of framesToRun) {
-        await page.evaluate((sec) => {
-          if (typeof window.__renderCutaway === "function") window.__renderCutaway(sec);
-          else if (typeof window.__renderFrame === "function") window.__renderFrame(sec);
-          else throw new Error("Custom cutaway_2d HTML must define window.__renderCutaway(t) or window.__renderFrame(t).");
-        }, f / fps);
-        const buf = await shotter.captureJpegBuffer();
-        if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
-        else await encoder.writeFrame(buf);
+        const sec = f / fps;
+        const stateKey =
+          !isPreview && dedupStaticFrames
+            ? await page.evaluate(
+                (tSec) => (typeof window.__frameStateKey === "function" ? window.__frameStateKey(tSec) : null),
+                sec
+              )
+            : null;
+        if (!isPreview && typeof stateKey === "string" && stateKey === prevStateKey && prevBuf !== null) {
+          await encoder.writeFrame(prevBuf);
+          dedupedFrames++;
+        } else {
+          await page.evaluate((tSec) => {
+            if (typeof window.__renderCutaway === "function") window.__renderCutaway(tSec);
+            else if (typeof window.__renderFrame === "function") window.__renderFrame(tSec);
+            else throw new Error("Custom cutaway_2d HTML must define window.__renderCutaway(t) or window.__renderFrame(t).");
+          }, sec);
+          const buf = await shotter.captureBuffer();
+          if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: sec, buf });
+          else {
+            await encoder.writeFrame(buf);
+            prevStateKey = typeof stateKey === "string" ? stateKey : null;
+            prevBuf = prevStateKey !== null ? buf : null;
+          }
+        }
         if (!isPreview && (f % 60 === 0 || f === totalFrames - 1)) {
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
+      }
+      if (!isPreview && dedupedFrames > 0) {
+        console.log(`  [${act.act_id}] deduped static frames: ${dedupedFrames}/${totalFrames}`);
       }
     } else {
       const has3d = (act.layers || []).some(
@@ -280,14 +327,25 @@ export async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps,
       }
 
       const framesToRun = sampleIndices || Array.from({ length: totalFrames }, (_, i) => i);
+      let prevStateKey = null;
+      let prevBuf = null;
+      let prevT = null;
       for (const f of framesToRun) {
+        const sec = f / fps;
         const cam = sampleCameraAt(samples, f, 0);
         const subN = !isPreview && enableShutter ? Math.min(16, Math.max(1, cam.shutter_samples || 1)) : 1;
         const blurAmt = cutBlurAmount(f, totalFrames, fps, cutBlurIn, cutBlurOut, cutBlurStrength);
         const applyCutBlur = async () => {
           if (blurAmt > 0.002) await page.evaluate((a) => window.__cutBlurComposite(a, 12), blurAmt);
         };
-        if (subN > 1 && f > 0) {
+        const stateKey =
+          !isPreview && dedupStaticFrames
+            ? computeMapFrameStateKey({ cam, layers, t: sec, prevT, blurAmt, subN })
+            : null;
+        if (!isPreview && stateKey !== null && stateKey === prevStateKey && prevBuf !== null) {
+          await encoder.writeFrame(prevBuf);
+          dedupedFrames++;
+        } else if (subN > 1 && f > 0) {
           let pending = false;
           const schedule = shutterSubframeSchedule(subN, act.shutter_angle_deg ?? 180, act.shutter_profile || "cosine");
           let cumWeight = 0;
@@ -299,31 +357,48 @@ export async function bakeAct(browser, baseUrl, vectorsJson, width, height, fps,
             const subT = Math.max(0, (f + subOff) / fps);
             await page.evaluate((c) => window.__setSceneCamera(c), subCam);
             pending = (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) || pending;
-            await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, subT]);
+            await page.evaluate(([ls, sSec]) => window.__drawSceneLayers(ls, sSec), [layers, subT]);
             await page.evaluate(([w, cw]) => window.__accumSubframe(w, cw), [entry.weight, cumWeight]);
           }
           if (pending) pendingFrames++;
           await applyCutBlur();
           await encoder.writeFrame(await shotter.captureBuffer());
           await page.evaluate(() => window.__endShutterAccum());
+          prevStateKey = null;
+          prevBuf = null;
         } else {
           await page.evaluate((c) => window.__setSceneCamera(c), cam);
-          if (await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS)) pendingFrames++;
-          await page.evaluate(([ls, sec]) => window.__drawSceneLayers(ls, sec), [layers, f / fps]);
+          const tilesPending = await page.evaluate((ms) => window.__waitIdle(ms), IDLE_WAIT_MS);
+          if (tilesPending) pendingFrames++;
+          await page.evaluate(([ls, sSec]) => window.__drawSceneLayers(ls, sSec), [layers, sec]);
           await applyCutBlur();
           const buf = await shotter.captureBuffer();
-          if (isPreview) previewFrames.push({ act_id: act.act_id, frame: f, t_s: f / fps, buf });
-          else await encoder.writeFrame(buf);
+          if (isPreview) {
+            previewFrames.push({ act_id: act.act_id, frame: f, t_s: sec, buf });
+          } else {
+            await encoder.writeFrame(buf);
+            if (!tilesPending && dedupStaticFrames) {
+              prevStateKey = computeMapFrameStateKey({ cam, layers, t: sec, prevT: sec, blurAmt, subN });
+              prevBuf = prevStateKey !== null ? buf : null;
+            } else {
+              prevStateKey = null;
+              prevBuf = null;
+            }
+          }
           if (blurAmt > 0.002) await page.evaluate(() => window.__endShutterAccum());
         }
+        prevT = sec;
         if (!isPreview && act.export_camera_track) {
-          trackLog.push({ frame: f, t: Number((f / fps).toFixed(4)), ...cam });
+          trackLog.push({ frame: f, t: Number(sec.toFixed(4)), ...cam });
         }
         if (!isPreview && (f % 60 === 0 || f === totalFrames - 1)) {
           console.log(`  [${act.act_id}] frame ${f + 1}/${totalFrames} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
       }
-      console.log(`  [${act.act_id}] frames captured with tiles still pending: ${pendingFrames}`);
+      console.log(
+        `  [${act.act_id}] frames captured with tiles still pending: ${pendingFrames}` +
+          (dedupedFrames > 0 ? ` | deduped static frames: ${dedupedFrames}/${totalFrames}` : "")
+      );
       if (!isPreview && act.export_camera_track) {
         writeFileSync(join(outDir, `${act.act_id}_camera_track.json`), JSON.stringify(trackLog));
       }
