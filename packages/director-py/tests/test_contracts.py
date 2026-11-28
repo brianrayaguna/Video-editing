@@ -519,3 +519,25 @@ def test_schema_drift_fixes_for_idioms_media_probe_and_manifest() -> None:
         },
     }
     assert validate_against_contract(bad_manifest, "project_manifest.schema.json")
+
+
+def test_ts_contracts_in_sync_with_schemas() -> None:
+    from vedit.contract_codegen import generate_ts_contracts
+
+    root = find_repo_root()
+    expected = generate_ts_contracts(root)
+    actual = (root / "packages" / "hf-compiler-ts" / "src" / "contracts.ts").read_text(
+        encoding="utf-8"
+    )
+    assert actual == expected, (
+        "packages/hf-compiler-ts/src/contracts.ts drifted from JSON Schemas. "
+        "Run `vedit contracts generate-ts` to regenerate."
+    )
+    for required_symbol in (
+        "TimebaseSpec",
+        "VideoMasteringSpec",
+        "AudioMasteringSpec",
+        "start_frame",
+        "PlatformCanvasTarget",
+    ):
+        assert required_symbol in actual, f"Missing expected symbol: {required_symbol}"

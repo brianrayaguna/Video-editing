@@ -1,6 +1,8 @@
 /**
- * TypeScript contract types mirrored from `contracts/edit_plan.schema.json`
- * and `contracts/platform_target.schema.json`.
+ * AUTO-GENERATED FILE — DO NOT EDIT MANUALLY.
+ *
+ * Generated from `contracts/platform_target.schema.json` and
+ * `contracts/edit_plan.schema.json` via `vedit contracts generate-ts`.
  */
 
 export type RenderStrategy = "hybrid" | "full_hf";
@@ -28,12 +30,9 @@ export type SafeBand =
   | "center_safe"
   | "fullscreen";
 
-export interface BoundingBox {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-  label?: string;
+export interface TimebaseSpec {
+  num: number;
+  den: number;
 }
 
 export interface SafeZoneMargins {
@@ -43,14 +42,56 @@ export interface SafeZoneMargins {
   right_pct: number;
 }
 
+export interface VideoMasteringSpec {
+  container: "mp4" | "mov";
+  codec: "h264" | "hevc" | "prores";
+  profile: string;
+  pixel_format: "yuv420p" | "yuv422p10le" | "yuva444p10le";
+  color_space: "bt709" | "bt2020nc";
+  color_primaries: "bt709" | "bt2020";
+  color_trc: "bt709" | "smpte2084";
+  target_bitrate_mbps: number;
+  max_bitrate_mbps: number;
+  high_fps_target_bitrate_mbps?: number;
+  gop_seconds: number;
+  faststart: boolean;
+}
+
+export interface AudioMasteringSpec {
+  codec: "aac";
+  sample_rate_hz: 48000;
+  channels: 1 | 2;
+  bitrate_kbps: number;
+  target_lufs: number;
+  lufs_tolerance: number;
+  max_true_peak_dbtp: number;
+  target_lra: number;
+}
+
 export interface PlatformTarget {
   platform_id: string;
   display_name?: string;
   aspect_ratio: "16:9" | "9:16" | "1:1" | "4:5";
   width: number;
   height: number;
-  fps: number;
+  fps: 23.976 | 24 | 25 | 29.97 | 30 | 48 | 50 | 59.94 | 60;
+  timebase?: TimebaseSpec;
+  purpose?: "long_form" | "short_form" | "social_square" | "archive_master";
+  video: VideoMasteringSpec;
+  audio: AudioMasteringSpec;
   safe_zone: SafeZoneMargins;
+  notes?: string;
+}
+
+export type PlatformCanvasTarget = Omit<PlatformTarget, "video" | "audio"> &
+  Partial<Pick<PlatformTarget, "video" | "audio">>;
+
+export interface BoundingBox {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  label?: string;
 }
 
 export interface AssetRef {
@@ -74,14 +115,7 @@ export interface ColorCorrectionSpec {
 }
 
 export interface ColorGradeSpec {
-  preset?:
-    | "neutral"
-    | "catastrophe_warm"
-    | "dread_dim_vignette"
-    | "anomaly_desat"
-    | "archival_sepia"
-    | "cool_investigative"
-    | null;
+  preset?: "neutral" | "catastrophe_warm" | "dread_dim_vignette" | "anomaly_desat" | "archival_sepia" | "cool_investigative" | null;
   lut_path?: string | null;
   vignette_strength?: number | null;
   intensity?: number;
@@ -93,6 +127,9 @@ export interface VideoClipOp {
   timeline_start_s: number;
   timeline_duration_s: number;
   source_start_s: number;
+  start_frame?: number | null;
+  duration_frames?: number | null;
+  source_start_frame?: number | null;
   role: ClipRole;
   content_type?: "live_action" | "map" | "landscape" | "diagram" | "archival";
   visual_beat_count?: number;
@@ -103,15 +140,7 @@ export interface VideoClipOp {
   l_cut_trail_s?: number | null;
   shot_scale?: "ews" | "ws" | "ms" | "mcu" | "cu" | "ecu" | null;
   camera_angle?: "eye_level" | "low_angle" | "high_angle" | "birds_eye" | "dutch" | null;
-  motion_direction?:
-    | "static"
-    | "left_to_right"
-    | "right_to_left"
-    | "push_in"
-    | "pull_out"
-    | "up"
-    | "down"
-    | null;
+  motion_direction?: "static" | "left_to_right" | "right_to_left" | "push_in" | "pull_out" | "up" | "down" | null;
   focal_length_mm?: number | null;
   lighting_key?: "high_key" | "normal_key" | "low_key" | "chiaroscuro" | null;
   color_correction?: ColorCorrectionSpec | null;
@@ -137,6 +166,8 @@ export interface OverlayCompositionOp {
   kind: OverlayKind;
   timeline_start_s: number;
   timeline_duration_s: number;
+  start_frame?: number | null;
+  duration_frames?: number | null;
   transparent: boolean;
   safe_band?: SafeBand;
   blend_mode?: "normal" | "screen" | "multiply" | "overlay" | "lighten" | null;
@@ -158,22 +189,15 @@ export interface AudioTrackOp {
   timeline_start_s: number;
   timeline_duration_s: number;
   source_start_s: number;
+  start_frame?: number | null;
+  duration_frames?: number | null;
+  source_start_frame?: number | null;
   gain_db?: number;
   carve_against_group?: string | null;
   carve_strength?: number;
   cleaned_speech_stem?: boolean;
   diegetic?: boolean | null;
-  layer_role?:
-    | "sub"
-    | "body"
-    | "detail"
-    | "tail"
-    | "riser"
-    | "drone"
-    | "pulse"
-    | "stinger"
-    | "hit"
-    | null;
+  layer_role?: "sub" | "body" | "detail" | "tail" | "riser" | "drone" | "pulse" | "stinger" | "hit" | null;
   pan?: number | null;
   reverb_preset?: "dry" | "close" | "medium" | "wide" | null;
   fade_in_s?: number | null;
@@ -195,6 +219,7 @@ export interface EditPlan {
   render_strategy: RenderStrategy;
   duration_s: number;
   fps: number;
+  timebase?: TimebaseSpec;
   width: number;
   height: number;
   assets: AssetRef[];

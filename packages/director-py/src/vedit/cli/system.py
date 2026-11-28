@@ -59,6 +59,48 @@ def contracts_validate(
         )
 
 
+@contracts_app.command("generate-ts")
+def contracts_generate_ts(
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check",
+            help="Exit non-zero if generated TypeScript contracts differ from disk.",
+        ),
+    ] = False,
+    out_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--out-file",
+            help="Target TypeScript path (defaults to packages/hf-compiler-ts/src/contracts.ts).",
+        ),
+    ] = None,
+    repo_root: Annotated[Path | None, typer.Option("--repo-root", hidden=True)] = None,
+) -> None:
+    """Generate TypeScript contract types from JSON Schemas (or verify sync with `--check`)."""
+    from vedit.contract_codegen import generate_ts_contracts
+
+    root = repo_root or find_repo_root()
+    target = out_file or (root / "packages" / "hf-compiler-ts" / "src" / "contracts.ts")
+    generated = generate_ts_contracts(root)
+
+    if check:
+        existing = target.read_text(encoding="utf-8") if target.is_file() else ""
+        if existing != generated:
+            typer.echo(
+                f"Contract drift detected: {target} is out of sync with JSON Schemas. "
+                "Run `vedit contracts generate-ts` to regenerate.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        typer.echo(f"OK: {target} matches JSON Schema contracts.")
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(generated, encoding="utf-8")
+    typer.echo(f"Generated TypeScript contracts -> {target}")
+
+
 @platforms_app.command("list")
 def platforms_list(json_output: JsonOption = False) -> None:
     """List available platform mastering presets."""

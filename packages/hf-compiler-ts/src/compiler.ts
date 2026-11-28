@@ -5,7 +5,7 @@ import { GSAP_CDN } from "@hyperframes/core";
 import {
   type EditPlan,
   type OverlayCompositionOp,
-  type PlatformTarget,
+  type PlatformCanvasTarget,
   type SafeBand,
   type SafeZoneMargins,
 } from "./contracts.js";
@@ -14,7 +14,7 @@ import { lintPlanPerformance, NON_FATAL_WARNING_CODES } from "./lint.js";
 import { readTtfMetadata } from "./ttf_metadata.js";
 
 export interface CompileOptions {
-  platformTarget?: PlatformTarget;
+  platformTarget?: PlatformCanvasTarget;
   copyAssets?: boolean;
 }
 

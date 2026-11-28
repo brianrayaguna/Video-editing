@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { captionFadeMs, compileEditPlanToHyperframes } from "./compiler.js";
-import type { EditPlan, PlatformTarget } from "./contracts.js";
+import type { EditPlan, PlatformCanvasTarget } from "./contracts.js";
 import { buildDistributedConfig, clampChunkFrameBudget } from "./distributed.js";
 import { lintHyperframesProjectDir, lintPlanPerformance } from "./lint.js";
 
@@ -81,7 +81,7 @@ function makeSamplePlan(overrides: Partial<EditPlan> = {}): EditPlan {
 
 test("compileEditPlanToHyperframes produces lint-clean hybrid composition", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-compile-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "reels_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -286,7 +286,7 @@ test("compileEditPlanToHyperframes resolves font family across CAS SHA paths", (
 });
 
 test("caption centering is symmetric (x=50%) with y=70% portrait band and proportional scaling", async () => {
-  const shortsTarget: PlatformTarget = {
+  const shortsTarget: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -350,7 +350,7 @@ test("caption centering is symmetric (x=50%) with y=70% portrait band and propor
   assert.match(cardHtml, /font-family: 'Archivo Black', sans-serif;/);
 
   // 4K 16:9 proportional scaling check.
-  const uhdTarget: PlatformTarget = {
+  const uhdTarget: PlatformCanvasTarget = {
     platform_id: "youtube_16x9_4k",
     aspect_ratio: "16:9",
     width: 3840,
@@ -385,7 +385,7 @@ test("caption centering is symmetric (x=50%) with y=70% portrait band and propor
 
 test("parameterized Geoverum brand templates compile cleanly without SVG logo on watermark", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-geoverum-tpl-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -561,7 +561,7 @@ test("buildDistributedConfig defaults to 48 maxParallelChunks and forwards quali
 
 test("hero explainer Geoverum templates support data-motion-blur and pass official HyperFrames lint", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-hero-explainers-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -672,7 +672,7 @@ test("hero explainer Geoverum templates support data-motion-blur and pass offici
 
 test("all cartographic editorial Geoverum templates compile cleanly with zero dashboard slop", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-carto-suite-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -852,7 +852,7 @@ test("all cartographic editorial Geoverum templates compile cleanly with zero da
 
 test("expanded documentary components and multi-family italic fonts compile lint-clean", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-expanded-suite-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -1191,7 +1191,7 @@ test("expanded documentary components and multi-family italic fonts compile lint
 
 test("template_id auto-resolves catalog, multi-ring text glow compiles, single caption lane has zero lint warnings, and VFX suite passes lint", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-vfx-autoresolve-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -2218,7 +2218,7 @@ test("compiler reads SFNT fvar weight ranges, deduplicates static+variable faces
 
 test("typography system separates CAPTION_FONT from BODY_FONT, emits root type_scale/grid vars, and flags craft violations", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-typo-sys-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
@@ -2380,7 +2380,7 @@ test("all 32 Geoverum brand templates compile with zero typography lint warnings
   }));
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vedit-hf-all-gv-"));
-  const target: PlatformTarget = {
+  const target: PlatformCanvasTarget = {
     platform_id: "shorts_9x16_1080p",
     aspect_ratio: "9:16",
     width: 1080,
