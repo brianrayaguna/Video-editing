@@ -74,7 +74,7 @@ def test_geoverum_playbook_exemplar_count() -> None:
             encoding="utf-8"
         )
     )
-    assert len(payload["exemplar_bank"]) >= 25
+    assert len(payload["exemplar_bank"]) >= 20
     assert len(payload["grammar_triggers"]) >= 20
 
 

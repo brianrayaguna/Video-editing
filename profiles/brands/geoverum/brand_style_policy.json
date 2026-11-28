@@ -130,7 +130,7 @@
         "caption_fade_in_ms": 110,
         "caption_fade_out_ms": 0,
         "caption_gap_ms": 67,
-        "caption_letter_spacing_em": -0.01,
+        "caption_letter_spacing_em": 0.01,
         "max_words_per_caption_group": 4,
         "default_caption_band": "lower_third",
         "caption_font_family": "Inter, sans-serif",
@@ -173,7 +173,7 @@
             "size_px_16x9": 42,
             "weight": 700,
             "line_height": 1.22,
-            "letter_spacing_em": -0.01,
+            "letter_spacing_em": 0.01,
             "family_role": "caption",
             "min_wcag_contrast": 7.0
           },
