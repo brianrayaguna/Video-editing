@@ -1,0 +1,79 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      font-variant-numeric: tabular-nums;
+      font-kerning: normal;
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-stack {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(8px * {{SCALE_FACTOR}});
+      text-align: center;
+    }
+    #{{SCENE_ID}}-metric {
+      font-family: '{{TITLE_FONT}}', 'Montserrat', sans-serif;
+      font-size: calc(92px * {{SCALE_FACTOR}});
+      font-weight: 800;
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+      color: {{ACCENT_COLOR}};
+      text-shadow: 0 4px 18px rgba(15, 23, 42, 0.94), 0 2px 4px rgba(15, 23, 42, 0.98);
+      will-change: transform, opacity;
+    }
+    #{{SCENE_ID}}-label {
+      font-family: '{{MONO_FONT}}', 'IBM Plex Mono', monospace;
+      font-size: calc(32px * {{SCALE_FACTOR}});
+      font-weight: 600;
+      line-height: 1.24;
+      letter-spacing: 0.04em;
+      color: {{FG_COLOR}};
+      text-shadow: 0 2px 12px rgba(15, 23, 42, 0.94);
+      will-change: transform, opacity;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-stack">
+        <div id="{{SCENE_ID}}-metric" data-var-text="metric">{{VAR_METRIC|89%}}</div>
+        <div id="{{SCENE_ID}}-label" data-var-text="label">{{VAR_LABEL|COST DROP}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.2), dur * 0.35);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.14), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.1, dur - exitS);
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-stack",
+        { scale: 0.94, opacity: 0 },
+        { scale: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+        0
+      );
+      tl.to(
+        "#{{SCENE_ID}}-stack",
+        { opacity: 0, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

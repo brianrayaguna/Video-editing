@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "editorial_explainer",
+  "idioms": [
+    {
+      "idiom_id": "hook_event_early",
+      "severity": "error",
+      "weight": 0.9,
+      "params": { "max_first_event_s": 1.0 },
+      "rationale": "The opening visual beat must appear within the first second to anchor viewer attention."
+    },
+    {
+      "idiom_id": "story_need_stated",
+      "severity": "error",
+      "weight": 0.8,
+      "params": { "placeholder_markers": ["todo", "tbd", "?"] },
+      "rationale": "Every beat must state a concrete viewer takeaway instead of placeholder copy."
+    },
+    {
+      "idiom_id": "event_cadence",
+      "severity": "warning",
+      "weight": 0.7,
+      "params": {
+        "min_gap_s": 0.4,
+        "max_gap_s": { "calm": 6.0, "default": 4.5, "dense": 3.0 }
+      },
+      "rationale": "Explainer pacing introduces fresh visual evidence at steady intervals without dead air."
+    },
+    {
+      "idiom_id": "numeric_parity",
+      "severity": "error",
+      "weight": 1.0,
+      "params": { "ignore_years": true, "rel_tolerance": 0.02 },
+      "rationale": "Spoken statistics must match on-screen callout numerals within tolerance."
+    },
+    {
+      "idiom_id": "ending_present",
+      "severity": "warning",
+      "weight": 0.5,
+      "params": { "functions": ["outro", "recap"] },
+      "rationale": "Episodes close on an intentional summary or outro beat rather than cutting abruptly."
+    }
+  ],
+  "device_classes": {
+    "editorial_overlay": {
+      "devices": ["title_card", "stat_callout"],
+      "lead_s": [0.0, 0.45]
+    }
+  },
+  "device_realization": {
+    "title_card": {
+      "surface": "overlay",
+      "template_id": "title_card",
+      "variables": {
+        "headline": "$clause",
+        "subtitle": "$story_need"
+      },
+      "min_duration_s": 1.2,
+      "max_duration_s": 3.5
+    },
+    "stat_callout": {
+      "surface": "overlay",
+      "template_id": "stat_callout",
+      "variables": {
+        "metric": "$number",
+        "label": "$sync_word"
+      },
+      "min_duration_s": 1.0,
+      "max_duration_s": 3.0
+    }
+  },
+  "auto_director": {
+    "default_device": "title_card",
+    "default_story_shape": "claim -> evidence -> conclusion",
+    "default_pacing": "default",
+    "clause_split": {
+      "punctuation": [".", "!", "?", ";"],
+      "pause_s": 0.35,
+      "max_words": 10
+    },
+    "stopwords": ["the", "a", "an", "in", "of", "to", "by", "and", "or", "is", "now"],
+    "question_words": ["why", "how", "what", "when", "where"],
+    "shape_signals": {
+      "claim_evidence_conclusion": ["dropped", "scaled", "leads", "because", "therefore"]
+    },
+    "device_rules": [
+      {
+        "match": "number",
+        "device": "stat_callout",
+        "function": "data_callout",
+        "need": "anchor the spoken statistic on screen"
+      },
+      {
+        "match": "year",
+        "device": "stat_callout",
+        "function": "setup",
+        "need": "place the milestone year clearly on screen"
+      },
+      {
+        "match": "proper_noun",
+        "device": "title_card",
+        "function": "proof",
+        "need": "highlight the subject named by narration"
+      },
+      {
+        "match": "default",
+        "device": "title_card",
+        "function": "proof",
+        "need": "reinforce the clause claim cleanly"
+      }
+    ]
+  },
+  "critique_rubric": [
+    {
+      "criterion_id": "legibility",
+      "question": "Are all headlines and metrics crisp, high-contrast, and clear of safe-zone edges?",
+      "weight": 0.5
+    },
+    {
+      "criterion_id": "visual_restraint",
+      "question": "Does each beat isolate one clear visual signal without dashboard clutter?",
+      "weight": 0.5
+    }
+  ]
+}

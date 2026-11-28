@@ -1,0 +1,82 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      font-kerning: normal;
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    #{{SCENE_ID}}-clip {
+      position: absolute;
+      top: calc({{SAFE_TOP_PCT}}% + calc(36px * {{SCALE_FACTOR}}));
+      left: {{SYM_X_PCT}}%;
+      right: {{SYM_X_PCT}}%;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #{{SCENE_ID}}-stack {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(10px * {{SCALE_FACTOR}});
+      text-align: center;
+      max-width: 86%;
+    }
+    #{{SCENE_ID}}-headline {
+      font-family: '{{DISPLAY_FONT}}', 'Montserrat', sans-serif;
+      font-size: calc(64px * {{SCALE_FACTOR}});
+      font-weight: 700;
+      line-height: 1.08;
+      letter-spacing: -0.01em;
+      color: {{FG_COLOR}};
+      text-shadow: 0 3px 16px rgba(15, 23, 42, 0.92), 0 1px 4px rgba(15, 23, 42, 0.98);
+      will-change: transform, opacity;
+    }
+    #{{SCENE_ID}}-sub {
+      font-family: '{{BODY_FONT}}', 'Inter', sans-serif;
+      font-size: calc(28px * {{SCALE_FACTOR}});
+      font-weight: 500;
+      line-height: 1.32;
+      letter-spacing: 0.01em;
+      color: {{ACCENT_COLOR}};
+      text-shadow: 0 2px 12px rgba(15, 23, 42, 0.92);
+      will-change: transform, opacity;
+    }
+  </style>
+  <div id="root" data-composition-id="{{SCENE_ID}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}">
+    <div id="{{SCENE_ID}}-clip" class="clip" data-start="0" data-duration="{{DURATION_S}}">
+      <div id="{{SCENE_ID}}-stack">
+        <div id="{{SCENE_ID}}-headline" data-var-text="headline">{{VAR_HEADLINE|Key Finding}}</div>
+        <div id="{{SCENE_ID}}-sub" data-var-text="subtitle">{{VAR_SUBTITLE|}}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const subEl = document.getElementById("{{SCENE_ID}}-sub");
+      if (subEl && !subEl.textContent.trim()) subEl.style.display = "none";
+      const dur = Number({{DURATION_S}});
+      const enterS = Math.min(Math.max(Number({{ENTRANCE_S}}), 0.2), dur * 0.35);
+      const exitS = Math.min(Math.max(enterS * 0.45, 0.14), dur * 0.22);
+      const exitAt = Math.max(enterS + 0.1, dur - exitS);
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#{{SCENE_ID}}-stack",
+        { scale: 0.94, opacity: 0 },
+        { scale: 1, opacity: 1, duration: enterS, ease: "expo.out" },
+        0
+      );
+      tl.to(
+        "#{{SCENE_ID}}-stack",
+        { opacity: 0, duration: exitS, ease: "power3.in" },
+        exitAt
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["{{SCENE_ID}}"] = tl;
+    })();
+  </script>
+</template>

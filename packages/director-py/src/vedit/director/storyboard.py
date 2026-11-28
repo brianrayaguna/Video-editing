@@ -215,14 +215,17 @@ def _split_clauses(
     words: list[dict[str, Any]], rules: dict[str, Any]
 ) -> list[list[dict[str, Any]]]:
     kept = [w for w in words if not w.get("is_filler")]
+    puncts = rules.get("punctuation") or [".", "!", "?", ";"]
+    pause_s = float(rules.get("pause_s", 0.35))
+    max_words = int(rules.get("max_words", 10))
     clauses: list[list[dict[str, Any]]] = []
     cur: list[dict[str, Any]] = []
     for i, w in enumerate(kept):
         cur.append(w)
         nxt = kept[i + 1] if i + 1 < len(kept) else None
-        ends_punct = any(w["text"].rstrip().endswith(p) for p in rules["punctuation"])
-        pause = nxt is not None and nxt["start_s"] - w["end_s"] >= rules["pause_s"]
-        if ends_punct or pause or len(cur) >= rules["max_words"] or nxt is None:
+        ends_punct = any(w["text"].rstrip().endswith(p) for p in puncts)
+        pause = nxt is not None and nxt["start_s"] - w["end_s"] >= pause_s
+        if ends_punct or pause or len(cur) >= max_words or nxt is None:
             clauses.append(cur)
             cur = []
     return clauses
@@ -231,8 +234,8 @@ def _split_clauses(
 def _classify(
     clause: list[dict[str, Any]], auto: dict[str, Any], sentence_start: bool
 ) -> tuple[str, dict[str, Any]]:
-    stop = {s.lower() for s in auto["stopwords"]}
-    questions = {q.lower() for q in auto["question_words"]}
+    stop = {s.lower() for s in auto.get("stopwords") or []}
+    questions = {q.lower() for q in auto.get("question_words") or []}
     clause_tokens = [_clean(w["text"]).lower() for w in clause]
     clause_text = " ".join(t for t in clause_tokens if t)
     found: dict[str, dict[str, Any]] = {}
@@ -277,7 +280,7 @@ def detect_story_shape(text: str, auto: dict[str, Any]) -> str:
     low = f" {text.lower()} "
     scores = {
         shape: sum(low.count(f" {sig} ") for sig in signals)
-        for shape, signals in auto["shape_signals"].items()
+        for shape, signals in (auto.get("shape_signals") or {}).items()
     }
     best = max(scores, key=scores.get) if scores else ""
     return best if best and scores[best] > 0 else "free_form"
@@ -321,16 +324,17 @@ def scaffold_storyboard(
     emphasis = {w.lower() for w in emphasis_words or []}
     beats: list[dict[str, Any]] = []
     prev_end_punct = True
-    for n, clause in enumerate(_split_clauses(words, auto["clause_split"])):
+    for n, clause in enumerate(_split_clauses(words, auto.get("clause_split") or {})):
         match, sync = _classify(clause, auto, sentence_start=prev_end_punct)
         stressed = [w for w in clause if _clean(w["text"]).lower() in emphasis]
         if stressed:
             sync = stressed[0]
         prev_end_punct = clause[-1]["text"].rstrip().endswith((".", "?", "!"))
-        rule = rules[match]
+        default_lead = float(auto.get("default_lead_s", 0.2))
+        rule = rules.get(match) or rules["default"]
         found = _device_lead_window(idioms, rule["device"])
-        lo, hi = found[1] if found else (0.0, auto["default_lead_s"])
-        lead = min(max(auto["default_lead_s"], lo), hi)
+        lo, hi = found[1] if found else (0.0, default_lead)
+        lead = min(max(default_lead, lo), hi)
         start = max(0.0, sync["start_s"] - lead)
         beats.append(
             {
@@ -359,9 +363,9 @@ def scaffold_storyboard(
     if beats:
         beats[0]["start_s"] = 0.0
         beats[0]["function"] = "hook"
-        hook_until = auto["hook_window_s"]
+        hook_until = float(auto.get("hook_window_s", 3.0))
         setup_until = duration * 0.25 if duration >= 180.0 and len(beats) >= 6 else 0.0
-        outro_from = duration * (1.0 - auto["outro_fraction"])
+        outro_from = duration * (1.0 - float(auto.get("outro_fraction", 0.12)))
         for b in beats[1:]:
             if b["start_s"] < hook_until and b["function"] == "proof":
                 b["function"] = "hook"

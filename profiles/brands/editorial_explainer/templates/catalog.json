@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "brand_id": "editorial_explainer",
+  "templates": [
+    {
+      "template_id": "title_card",
+      "composition_path": "profiles/brands/editorial_explainer/templates/components/title_card.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["16:9", "9:16"],
+      "render_mode": "parameterized_html",
+      "description": "Clean boxless editorial headline card with subtle scale entrance and zero background chrome.",
+      "safe_band": "upper_safe",
+      "variables": [
+        { "id": "headline", "type": "string", "default": "Key Finding" },
+        { "id": "subtitle", "type": "string", "default": "" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F8FAFC" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#EAB308" }
+      ]
+    },
+    {
+      "template_id": "stat_callout",
+      "composition_path": "profiles/brands/editorial_explainer/templates/components/stat_callout.html",
+      "overlay_kind": "kinetic_callout",
+      "supported_aspects": ["16:9", "9:16"],
+      "render_mode": "parameterized_html",
+      "description": "High-contrast tabular statistic callout with monospace unit label.",
+      "safe_band": "center_safe",
+      "variables": [
+        { "id": "metric", "type": "string", "default": "89%" },
+        { "id": "label", "type": "string", "default": "COST DROP" },
+        { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F8FAFC" },
+        { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#EAB308" }
+      ]
+    }
+  ]
+}
