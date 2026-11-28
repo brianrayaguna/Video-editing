@@ -294,10 +294,18 @@ def geo_auto_audio_cmd(
     out_dir: Annotated[Path, typer.Option("--out-dir", "-o")],
     transcript_file: Annotated[Path | None, typer.Option("--transcript")] = None,
     seed: Annotated[str | None, typer.Option("--seed")] = None,
+    brand: Annotated[str | None, typer.Option("--brand")] = None,
+    brand_dir: Annotated[Path | None, typer.Option("--brand-dir")] = None,
 ) -> None:
     """Select and cache theme-matched studio BGM (primary + pivot), ambience, and foley."""
     from vedit.geo_production import plan_and_fetch_thematic_audio
 
+    root = find_repo_root()
+    resolved_brand_dir = (
+        brand_dir.expanduser().resolve()
+        if brand_dir is not None
+        else ((root / "profiles" / "brands" / brand) if brand else None)
+    )
     spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
     tr = (
         json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))
@@ -305,7 +313,12 @@ def geo_auto_audio_cmd(
         else None
     )
     plan = plan_and_fetch_thematic_audio(
-        spec, tr, out_dir, repo_root=find_repo_root(), seed_key=seed
+        spec,
+        tr,
+        out_dir,
+        repo_root=root,
+        seed_key=seed,
+        brand_dir=resolved_brand_dir,
     )
     typer.echo(json.dumps(plan, indent=2))
 

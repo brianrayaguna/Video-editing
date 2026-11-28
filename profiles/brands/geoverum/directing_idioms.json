@@ -247,6 +247,8 @@
         "label",
         "icon_pop",
         "pin_and_label",
+        "coordinate_pin",
+        "focus_lasso",
         "hazard_icons",
         "avatar_pop",
         "prohibition_badge",
@@ -254,6 +256,9 @@
         "swarm_flow",
         "chevron_flow_band",
         "flag_fill",
+        "silhouette_tile",
+        "radar_traffic",
+        "sector_polygons",
         "model_3d",
         "volume_3d"
       ],
@@ -265,7 +270,8 @@
     "continuous_camera": {
       "devices": [
         "cable_3d",
-        "camera_3d_move"
+        "camera_3d_move",
+        "horizon_3d_flight"
       ],
       "lead_s": [
         -0.2,
@@ -277,10 +283,18 @@
         "numeral",
         "title_card",
         "portal_title",
+        "acronym_reveal",
         "measurement_line",
         "era_marker",
         "duration_numeral",
-        "cutaway_gauge"
+        "cutaway_gauge",
+        "dual_metric",
+        "physical_gauge",
+        "scale_ladder",
+        "demographic_split",
+        "blueprint_frame",
+        "cross_section",
+        "tactical_2d_canvas"
       ],
       "lead_s": [
         0.3,
@@ -293,7 +307,11 @@
         "pull_out",
         "whip_pan",
         "globe_recap",
-        "route_draw"
+        "route_draw",
+        "loupe_zoom",
+        "split_compare",
+        "multi_panel_grid",
+        "curtain_wipe"
       ],
       "lead_s": [
         0.3,
@@ -617,6 +635,144 @@
       },
       "min_duration_s": 1.4,
       "max_duration_s": 3.6
+    },
+    "coordinate_pin": {
+      "surface": "overlay",
+      "template_id": "coordinate_pin_callout",
+      "variables": {
+        "label": "$sync_word",
+        "anchor_x_pct": "$x_pct",
+        "anchor_y_pct": "$y_pct",
+        "pin_style": "vertical"
+      },
+      "min_duration_s": 1.0,
+      "max_duration_s": 2.8
+    },
+    "focus_lasso": {
+      "surface": "overlay",
+      "template_id": "organic_focus_lasso",
+      "variables": {
+        "center_x_pct": "$x_pct",
+        "center_y_pct": "$y_pct",
+        "label": "$sync_word",
+        "stroke_tone": "amber"
+      },
+      "min_duration_s": 1.0,
+      "max_duration_s": 3.0
+    },
+    "blueprint_frame": {
+      "surface": "overlay",
+      "template_id": "blueprint_tabletop_frame",
+      "variables": {
+        "variant": "editorial_grid",
+        "metric": "$number",
+        "title": "$sync_word_upper"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.5
+    },
+    "split_compare": {
+      "surface": "overlay",
+      "template_id": "split_wipe_divider",
+      "variables": {
+        "left_label": "$sync_word_upper",
+        "right_label": "$clause",
+        "layout_mode": "vertical"
+      },
+      "min_duration_s": 1.2,
+      "max_duration_s": 3.2
+    },
+    "multi_panel_grid": {
+      "surface": "overlay",
+      "template_id": "multi_panel_split",
+      "variables": {
+        "split_mode": "quad_2x2",
+        "panel1_label": "$sync_word_upper"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.6
+    },
+    "cross_section": {
+      "surface": "overlay",
+      "template_id": "cross_section_diagram",
+      "variables": {
+        "title": "$sync_word_upper",
+        "foot_metric": "$number"
+      },
+      "min_duration_s": 1.6,
+      "max_duration_s": 4.5
+    },
+    "demographic_split": {
+      "surface": "overlay",
+      "template_id": "demographic_icon_grid",
+      "variables": {
+        "title": "$clause",
+        "left_pct": "$number"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.6
+    },
+    "dual_metric": {
+      "surface": "overlay",
+      "template_id": "dual_metric_compare",
+      "variables": {
+        "left_value": "$number",
+        "left_label": "$sync_word_upper"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.4
+    },
+    "physical_gauge": {
+      "surface": "overlay",
+      "template_id": "physical_gauge_callout",
+      "variables": {
+        "gauge_mode": "thermometer",
+        "label": "$sync_word_upper"
+      },
+      "min_duration_s": 1.4,
+      "max_duration_s": 3.4
+    },
+    "scale_ladder": {
+      "surface": "overlay",
+      "template_id": "scale_ladder_and_bands",
+      "variables": {
+        "mode": "altitude_ladder",
+        "title": "$sync_word_upper",
+        "t1_val": "$number"
+      },
+      "min_duration_s": 1.5,
+      "max_duration_s": 3.8
+    },
+    "curtain_wipe": {
+      "surface": "overlay",
+      "template_id": "soft_curtain_transition",
+      "variables": {
+        "mode": "feathered_dark_wipe",
+        "direction": "auto"
+      },
+      "min_duration_s": 0.4,
+      "max_duration_s": 1.2
+    },
+    "silhouette_tile": {
+      "surface": "scene"
+    },
+    "radar_traffic": {
+      "surface": "scene"
+    },
+    "horizon_3d_flight": {
+      "surface": "scene"
+    },
+    "loupe_zoom": {
+      "surface": "scene"
+    },
+    "acronym_reveal": {
+      "surface": "scene"
+    },
+    "sector_polygons": {
+      "surface": "scene"
+    },
+    "tactical_2d_canvas": {
+      "surface": "scene"
     }
   },
   "auto_director": {
@@ -805,6 +961,145 @@
         "need": "show vertical elevation, depth, or geological strata on a graduated gauge"
       },
       {
+        "match": "radar_traffic",
+        "words": [
+          "radar",
+          "air traffic",
+          "flights",
+          "blackout",
+          "lalu lintas udara",
+          "penerbangan",
+          "jalur udara"
+        ],
+        "device": "radar_traffic",
+        "function": "proof",
+        "need": "prove real-world traffic density or avoidance zones on a matte slate radar canvas"
+      },
+      {
+        "match": "horizon_altitude",
+        "words": [
+          "mountain",
+          "everest",
+          "depressur",
+          "cruising",
+          "turbulence",
+          "pegunungan",
+          "gunung",
+          "ketinggian jelajah",
+          "turbulensi"
+        ],
+        "device": "horizon_3d_flight",
+        "function": "proof",
+        "need": "show vertical clearance against sunlit 3D terrain instead of a flat top-down map"
+      },
+      {
+        "match": "silhouette_scale",
+        "words": [
+          "size of",
+          "fits inside",
+          "as big as",
+          "sebesar",
+          "seluas",
+          "seukuran"
+        ],
+        "device": "silhouette_tile",
+        "function": "proof",
+        "need": "make area scale unmistakable by tiling a familiar country silhouette inside the subject"
+      },
+      {
+        "match": "sovereignty_flag",
+        "words": [
+          "sovereign",
+          "nation",
+          "flag",
+          "overseas",
+          "kedaulatan",
+          "bendera",
+          "wilayah seberang"
+        ],
+        "device": "flag_fill",
+        "function": "proof",
+        "need": "fill the full territory coastline with an animated flag to state ownership at a glance"
+      },
+      {
+        "match": "subsurface_cutaway",
+        "words": [
+          "underground",
+          "subsurface",
+          "strata",
+          "crust",
+          "trench",
+          "seabed",
+          "bawah tanah",
+          "dasar laut",
+          "lapisan tanah"
+        ],
+        "device": "cross_section",
+        "function": "proof",
+        "need": "cut into a full-bleed 2D cross-section to expose a non-surface physical mechanism"
+      },
+      {
+        "match": "demographic_ratio",
+        "words": [
+          "population",
+          "percent",
+          "citizens",
+          "inhabitants",
+          "populasi",
+          "persen",
+          "penduduk"
+        ],
+        "device": "demographic_split",
+        "function": "data_callout",
+        "need": "make population proportions tangible across a visual divide"
+      },
+      {
+        "match": "temperature_extreme",
+        "words": [
+          "celsius",
+          "fahrenheit",
+          "temperature",
+          "decibel",
+          "freezing",
+          "suhu",
+          "derajat",
+          "desibel"
+        ],
+        "device": "physical_gauge",
+        "function": "data_callout",
+        "need": "quantify an environmental extreme on a live physical meter"
+      },
+      {
+        "match": "time_zone_bands",
+        "words": [
+          "time zone",
+          "timezone",
+          "longitude",
+          "meridian",
+          "utc",
+          "zona waktu",
+          "garis bujur"
+        ],
+        "device": "scale_ladder",
+        "function": "proof",
+        "need": "visualize longitudinal bands or vertical threshold zones directly over geography"
+      },
+      {
+        "match": "focus_anomaly",
+        "words": [
+          "weird",
+          "strange",
+          "anomaly",
+          "isolated",
+          "aneh",
+          "janggal",
+          "anomali"
+        ],
+        "device": "focus_lasso",
+        "function": "hook",
+        "need": "circle the geographic anomaly immediately so the viewer spots the puzzle"
+      },
+      {
         "match": "scale_dimension",
         "words": [
           "miles",
@@ -976,7 +1271,50 @@
       }
     ]
   },
+  "readiness_phrases": {
+    "throat_clearing": [
+      "hey guys",
+      "welcome back",
+      "in this video",
+      "today we are going to",
+      "today we're going to",
+      "halo semuanya",
+      "di video kali ini",
+      "hari ini kita akan membahas",
+      "selamat datang kembali"
+    ],
+    "trailing_bloat": [
+      "thanks for watching",
+      "don't forget to",
+      "subscribe",
+      "like and comment",
+      "terima kasih sudah menonton",
+      "jangan lupa like",
+      "jangan lupa subscribe",
+      "tulis di kolom komentar"
+    ],
+    "telling_exposition": [
+      "basically",
+      "actually means",
+      "simply put",
+      "in other words",
+      "pada dasarnya",
+      "artinya adalah",
+      "sederhananya",
+      "dengan kata lain"
+    ]
+  },
   "critique_rubric": [
+    {
+      "criterion_id": "concept_distinctiveness",
+      "question": "Does this episode establish a unique visual anchor and surface mix derived from its narration (rather than repeating generic stick-pin slideshows or reusing the prior episode's concept)?",
+      "weight": 0.95,
+      "fail_signs": [
+        "consecutive clauses rely on generic pin labels without expressive visual metaphors",
+        "same hook mechanism and surface sequence as recent episodes",
+        "no evolving signature visual anchor carrying the story"
+      ]
+    },
     {
       "criterion_id": "narration_visual_match",
       "question": "Does what is on screen at each timestamp perform the emotional truth and show what the narration at that timestamp is saying (place, number, obstacle)?",
@@ -1055,15 +1393,15 @@
     },
     {
       "criterion_id": "brand_finish",
-      "question": "Are colours, typography and chrome consistent with the brand craft (plain captions, no pills or HUD boxes, saturated focal colour on a calm basemap)?",
-      "weight": 0.55,
+      "question": "Are grading, adaptive ink colors, typography weights, and chrome faithful to Geoverum Brand DNA (bathymetric marine-teal ocean, natural relief land, crisp Montserrat 800-900 display, calm 46 px Inter soft-shadow captions, adaptive dark ink over bright fills, zero HUD cards)?",
+      "weight": 0.7,
       "fail_signs": [
-        "boxed captions",
-        "low-contrast caption shadow over bright snow or ocean",
-        "glow on everything",
-        "generic interface chrome",
-        "display headline collapsed to Regular 400 weight",
-        "flat 700 weight hierarchy across primary and secondary labels"
+        "boxed captions or oversized harsh black karaoke strokes",
+        "low-contrast caption shadow over bright snow or clouds",
+        "crushed dark mud ocean or artificially darkened daylight 3D terrain",
+        "generic HUD/dashboard card chrome",
+        "display or hero headline collapsed to Regular 400 weight",
+        "white text washed out over bright crimson or yellow fills instead of dark ink"
       ]
     },
     {

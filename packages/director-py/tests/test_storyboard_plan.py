@@ -165,3 +165,51 @@ def test_build_edit_plan_realises_storyboard_without_collisions(brand, tmp_path:
         or (e.code == "OVERLAY_COLLISION" and "sb_" in e.message)
     ]
     assert sb_issues == []
+
+
+def test_geoverum_idioms_wire_high_value_templates_scene_devices_and_readiness(
+    brand: tuple[dict, BrandTemplateCatalog, BrandStylePolicy, PlatformTarget],
+) -> None:
+    idioms, catalog, _, _ = brand
+    assert check_realization_catalog(idioms, catalog) == []
+
+    real = idioms["device_realization"]
+    realized_templates = {
+        r["template_id"] for r in real.values() if r.get("surface") == "overlay"
+    }
+    expected_templates = {
+        "coordinate_pin_callout",
+        "organic_focus_lasso",
+        "blueprint_tabletop_frame",
+        "split_wipe_divider",
+        "multi_panel_split",
+        "cross_section_diagram",
+        "demographic_icon_grid",
+        "dual_metric_compare",
+        "physical_gauge_callout",
+        "scale_ladder_and_bands",
+        "soft_curtain_transition",
+    }
+    assert expected_templates.issubset(realized_templates)
+
+    cls_devices = {d for c in idioms["device_classes"].values() for d in c["devices"]}
+    expected_scene = {
+        "silhouette_tile",
+        "radar_traffic",
+        "horizon_3d_flight",
+        "loupe_zoom",
+        "acronym_reveal",
+        "sector_polygons",
+        "tactical_2d_canvas",
+    }
+    assert expected_scene.issubset(cls_devices)
+    for dev in expected_scene:
+        assert real[dev]["surface"] == "scene"
+
+    phrases = idioms.get("readiness_phrases") or {}
+    for key in ("throat_clearing", "trailing_bloat", "telling_exposition"):
+        assert len(phrases.get(key) or []) >= 4
+
+    auto = idioms["auto_director"]
+    for dead_key in ("default_device", "default_story_shape", "default_pacing"):
+        assert dead_key not in auto

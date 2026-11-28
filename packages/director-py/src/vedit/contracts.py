@@ -179,6 +179,7 @@ def validate_brand_tree(
         "playbook": None,
         "directing_idioms": None,
         "templates": None,
+        "audio_themes": None,
     }
 
     idioms_path = brand_dir / "directing_idioms.json"
@@ -260,6 +261,36 @@ def validate_brand_tree(
             str(catalog_path.relative_to(root))
             if catalog_path.is_relative_to(root)
             else str(catalog_path)
+        )
+
+    audio_themes_path = brand_dir / "audio_themes.json"
+    if audio_themes_path.is_file():
+        raw_themes = json.loads(audio_themes_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_themes, dict) or not raw_themes:
+            raise ValueError("audio_themes.json must be a non-empty JSON object of theme profiles")
+        for theme_name, cfg in raw_themes.items():
+            if not isinstance(cfg, dict):
+                raise ValueError(f"audio_themes.json theme {theme_name!r} must be a JSON object")
+            kws = cfg.get("keywords")
+            valid_kws = (
+                isinstance(kws, list)
+                and bool(kws)
+                and all(isinstance(k, str) and k.strip() for k in kws)
+            )
+            if not valid_kws:
+                raise ValueError(
+                    f"audio_themes.json theme {theme_name!r} requires non-empty keywords"
+                )
+            for req_field in ("curious_query", "tension_query", "ambience_query"):
+                val = cfg.get(req_field)
+                if not isinstance(val, str) or not val.strip():
+                    raise ValueError(
+                        f"audio_themes.json theme {theme_name!r} missing non-empty {req_field!r}"
+                    )
+        validated["audio_themes"] = (
+            str(audio_themes_path.relative_to(root))
+            if audio_themes_path.is_relative_to(root)
+            else str(audio_themes_path)
         )
 
     return validated

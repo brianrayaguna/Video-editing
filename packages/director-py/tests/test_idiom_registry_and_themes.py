@@ -141,3 +141,35 @@ def test_plan_and_fetch_thematic_audio_applies_brand_dir_override(tmp_path: Path
     )
     assert res["theme"] == "orbital_doc"
     assert res["ambience_gain_db"] == -26.0
+
+
+def test_geoverum_audio_themes_override_loads_and_validates(tmp_path: Path) -> None:
+    import pytest
+    from typer.testing import CliRunner
+
+    from vedit.cli import app
+    from vedit.contracts import find_repo_root, validate_brand_tree
+
+    root = find_repo_root()
+    gv_dir = root / "profiles" / "brands" / "geoverum"
+    themes = load_audio_themes(brand_dir=gv_dir)
+    assert "time_and_systems" in themes
+    assert "aviation" in themes
+    validated = validate_brand_tree(gv_dir, repo_root=root)
+    assert validated["audio_themes"] == "profiles/brands/geoverum/audio_themes.json"
+
+    # Malformed audio_themes.json fails validate_brand_tree loudly.
+    broken = tmp_path / "broken_brand"
+    broken.mkdir()
+    (broken / "brand_style_policy.json").write_text(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (broken / "audio_themes.json").write_text('{"bad_theme": {"keywords": []}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="audio_themes.json"):
+        validate_brand_tree(broken, repo_root=root)
+
+    # CLI help exposes --brand and --brand-dir on `vedit geo auto-audio`.
+    help_res = CliRunner().invoke(app, ["geo", "auto-audio", "--help"])
+    assert help_res.exit_code == 0
+    assert "--brand" in help_res.output
+    assert "--brand-dir" in help_res.output

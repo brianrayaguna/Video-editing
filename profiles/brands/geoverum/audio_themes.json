@@ -1,0 +1,187 @@
+{
+  "maritime": {
+    "keywords": [
+      "pelabuhan",
+      "kapal",
+      "selat",
+      "laut",
+      "dermaga",
+      "samudra",
+      "kargo",
+      "maritim",
+      "port",
+      "ship",
+      "strait",
+      "ocean",
+      "sea",
+      "maritime",
+      "vessel",
+      "canal",
+      "harbor"
+    ],
+    "curious_query": "mysterious rhythmic marimba documentary",
+    "tension_query": "dark suspense orchestral hybrid documentary",
+    "ambience_query": "ocean waves sea ambience",
+    "ambience_gain_db": -27.5,
+    "foley": {
+      "maritime_horn": ["distant cargo ship fog horn", -17.0, 2.4, 0.8],
+      "underwater_dive": ["underwater dive splash submerge", -9.5, 2.2, 0.7]
+    }
+  },
+  "aviation": {
+    "keywords": [
+      "pesawat",
+      "bandara",
+      "penerbangan",
+      "udara",
+      "rute terbang",
+      "jet stream",
+      "turbulensi",
+      "radar",
+      "aircraft",
+      "airport",
+      "flight",
+      "airspace",
+      "airline",
+      "aviation",
+      "turbulence",
+      "altitude"
+    ],
+    "curious_query": "modern investigative electronic pulse documentary",
+    "tension_query": "suspenseful orchestral hybrid aviation documentary",
+    "ambience_query": "distant high altitude jet cabin wind ambience",
+    "ambience_gain_db": -28.0,
+    "foley": {
+      "jet_pass": ["distant jet flyby whoosh", -14.0, 1.8, 0.7],
+      "radar_ping": ["subtle sonar radar ping", -16.0, 1.0, 0.6]
+    }
+  },
+  "time_and_systems": {
+    "keywords": [
+      "zona waktu",
+      "waktu",
+      "jam",
+      "meridian",
+      "garis bujur",
+      "kalender",
+      "utc",
+      "time zone",
+      "timezone",
+      "clock",
+      "longitude",
+      "meridian",
+      "standard time",
+      "schedule",
+      "grid"
+    ],
+    "curious_query": "ticking investigative minimalist marimba documentary",
+    "tension_query": "driving rhythmic clockwork suspense documentary",
+    "ambience_query": "subtle crisp mechanical clock ticking room tone",
+    "ambience_gain_db": -29.0,
+    "foley": {
+      "clock_tick": ["crisp analog clock tick click", -16.0, 0.8, 0.6],
+      "zone_switch": ["clean mechanical switch click", -15.0, 0.5, 0.6]
+    }
+  },
+  "weather": {
+    "keywords": [
+      "badai",
+      "debu",
+      "angin",
+      "kering",
+      "kekeringan",
+      "hujan",
+      "salju",
+      "iklim",
+      "storm",
+      "dust",
+      "wind",
+      "drought",
+      "blizzard",
+      "hurricane",
+      "climate",
+      "monsoon"
+    ],
+    "curious_query": "minimal documentary acoustic investigative",
+    "tension_query": "ominous dark ambient tension documentary",
+    "ambience_query": "wind blowing prairie mountain ambience",
+    "ambience_gain_db": -26.5,
+    "foley": {
+      "wind_gust": ["strong wind dust gust", -14.0, 2.2, 0.7]
+    }
+  },
+  "infrastructure": {
+    "keywords": [
+      "kereta",
+      "jembatan",
+      "terowongan",
+      "bendungan",
+      "jalan",
+      "tol",
+      "pipa",
+      "kabel",
+      "railway",
+      "train",
+      "bridge",
+      "tunnel",
+      "dam",
+      "highway",
+      "pipeline",
+      "cable"
+    ],
+    "curious_query": "pulsing minimal tech documentary",
+    "tension_query": "tense pulse investigative documentary",
+    "ambience_query": "distant industrial city hum ambience",
+    "ambience_gain_db": -28.0,
+    "foley": {}
+  },
+  "geology": {
+    "keywords": [
+      "gunung",
+      "gempa",
+      "lempeng",
+      "vulkanik",
+      "magma",
+      "patahan",
+      "sungai",
+      "lembah",
+      "dataran tinggi",
+      "volcano",
+      "earthquake",
+      "tectonic",
+      "fault",
+      "plateau",
+      "canyon",
+      "glacier",
+      "river"
+    ],
+    "curious_query": "cinematic atmospheric wonder documentary",
+    "tension_query": "deep rumble suspense documentary",
+    "ambience_query": "deep mountain wind nature ambience",
+    "ambience_gain_db": -27.5,
+    "foley": {}
+  },
+  "geopolitics": {
+    "keywords": [
+      "perbatasan",
+      "negara",
+      "perjanjian",
+      "wilayah",
+      "ekonomi",
+      "miliar",
+      "strategis",
+      "border",
+      "treaty",
+      "territory",
+      "sovereignty",
+      "geopolitics",
+      "billion",
+      "enclave"
+    ],
+    "curious_query": "investigative minimal documentary marimba",
+    "tension_query": "dark investigative tension orchestral",
+    "ambience_query": "subtle outdoor air room ambience",
+    "ambience_gain_db": -30.0,
+    "foley": {}
+  }
+}
