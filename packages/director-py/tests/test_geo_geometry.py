@@ -270,7 +270,7 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     }
     ass = build_geoverum_ass_captions(transcript, speed=1.3, max_words=4)
     assert "WrapStyle: 0" in ass
-    assert "Style: Default,Inter,52,&H00EAF1F4,&H00EAF1F4,&H1F1F1603,&H1F000000," in ass
+    assert "Style: Default,Inter,46,&H00FAF7F5,&H00FAF7F5,&H1F261D07,&H1F000000," in ass
     assert ",1,0.55,2.2,2,84,84,525,1" in ass
     # 2.6s / 1.3 == 2.00s, 5.2s / 1.3 == 4.00s; touching earlier cue trims by 67ms gap (0:00:01.93)
     assert "0:00:01.93,Default," in ass
@@ -282,7 +282,7 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
         transcript, width=1920, height=1080, font_size=None, margin_v=None
     )
     assert "PlayResX: 1920" in ass_16x9 and "PlayResY: 1080" in ass_16x9
-    assert "Style: Default,Inter,48," in ass_16x9
+    assert "Style: Default,Inter,42," in ass_16x9
 
     # Centisecond rollover near 60s must format 0:01:00.00 (never 0:00:60.00) and escape ASS tags
     edge_ass = build_geoverum_ass_captions(
@@ -291,7 +291,7 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert "0:00:60.00" not in edge_ass
     assert "0:01:00.00,0:01:01.00" in edge_ass
     assert r"\{tag\}" in edge_ass
-    assert r"\N" not in edge_ass.split("{\\fad(130,0)\\blur1.1}", 1)[1]
+    assert r"\N" not in edge_ass.split("{\\fad(110,0)\\blur1.1}", 1)[1]
 
 
 def test_build_captions_for_brand_geoverum_uses_46px_portrait_and_42px_landscape(
@@ -323,12 +323,18 @@ def test_build_captions_for_brand_geoverum_uses_46px_portrait_and_42px_landscape
     txt_16x9 = out_16x9.read_text(encoding="utf-8")
     assert "Style: Default,Inter,42,&H00FAF7F5," in txt_16x9
 
+    # Unbranded call uses calibrated positive letter-spacing (+0.01em -> 0.46 at 46px).
+    out_unbranded = tmp_path / "cap_unbranded.ass"
+    build_captions_for_brand(tr_file, out_unbranded, width=1080, height=1920)
+    txt_unbranded = out_unbranded.read_text(encoding="utf-8")
+    assert ",100,100,0.46,0,1," in txt_unbranded
+
 
 def test_build_geoverum_ass_captions_fades_in_and_cuts_out() -> None:
     from vedit.mastering.ass_captions import validate_ass_captions_readability
 
     seg = {"segments": [{"start": 0.0, "end": 1.0, "text": "Garis batas"}]}
-    assert "{\\fad(130,0)\\blur1.1}Garis batas" in build_geoverum_ass_captions(seg)
+    assert "{\\fad(110,0)\\blur1.1}Garis batas" in build_geoverum_ass_captions(seg)
     custom = build_geoverum_ass_captions(seg, fade_in_ms=100, fade_out_ms=60)
     assert "{\\fad(100,60)\\blur1.1}Garis batas" in custom
     clamped = build_geoverum_ass_captions(seg, fade_in_ms=900, fade_out_ms=-5)
@@ -1404,7 +1410,7 @@ def test_geo_captions_16x9_scaling_and_back_to_back_scene_labels() -> None:
         width=1920,
         height=1080,
     )
-    assert "Style: Default,Inter,48," in ass_16x9
+    assert "Style: Default,Inter,42," in ass_16x9
     assert ",108,1" in ass_16x9
 
     # Back-to-back non-overlapping labels ([0,2] and [2,4]) must not sum to 5 concurrent at t=2.0,

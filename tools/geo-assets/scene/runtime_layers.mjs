@@ -358,7 +358,8 @@ export function buildLayersRuntime({ allowWorldVoid }) {
             const trU = easeOutExpo(seg(t, tStart, tStart + (layer.tracking_duration_s ?? 0.9)));
             letterSpacing = lerp(layer.tracking_from_em, layer.tracking_to_em, trU).toFixed(4) + "em";
           }
-          const hasExplicitGlow = layer.glow_hex != null || (layer.glow_strength != null && layer.glow_strength !== "none");
+          const effGlowStrength = layer.glow_strength ?? (layer.glow_hex ? "subtle" : (preset.glowStrength ?? "none"));
+          const hasExplicitGlow = layer.glow_hex != null || effGlowStrength !== "none";
           const strokeMult = preset.strokeMult ?? 0;
           const defaultHaloW = strokeMult > 0 ? Math.max(1.2, Math.min(3.2, baseFont * strokeMult)) : 0;
           const slideX = layer.slide_from_x_px != null || layer.slide_to_x_px != null
@@ -366,8 +367,8 @@ export function buildLayersRuntime({ allowWorldVoid }) {
             : 0;
           const textOpts = {
             fill: layer.fill || preset.fill || "#F4F1EA",
-            glowHex: hasExplicitGlow ? (layer.glow_hex ?? "#F5C542") : null,
-            glowStrength: layer.glow_strength ?? (layer.glow_hex ? "subtle" : (preset.glowStrength ?? "none")),
+            glowHex: hasExplicitGlow ? (layer.glow_hex ?? preset.glowHex ?? "#F5C542") : null,
+            glowStrength: effGlowStrength,
             angle: angRad,
             scale: sc,
             alpha: baseAlpha,
@@ -428,14 +429,17 @@ export function buildLayersRuntime({ allowWorldVoid }) {
             let txt = String(layer.text ?? "");
             if (preset.uppercase && !layer.preserve_case) txt = txt.toUpperCase();
             const lsEm = layer.letter_spacing_em ?? preset.letterSpacingEm ?? 0.08;
+            const curvedStrokeHex = layer.stroke_hex !== undefined ? layer.stroke_hex : (preset.strokeHex !== undefined ? preset.strokeHex : "rgba(3,22,31,0.78)");
+            const curvedStrokeMult = preset.strokeMult !== undefined ? preset.strokeMult : 0.042;
+            const curvedStrokeWidth = layer.stroke_width !== undefined ? layer.stroke_width : (curvedStrokeHex && curvedStrokeMult > 0 ? Math.max(1.6, Math.min(3.5, fPx * curvedStrokeMult)) : 0);
             drawCurvedMapLabel(segs[0], txt, fPx, {
               fill: layer.fill || preset.fill || "#A8D8FF",
               family: layer.family || preset.family || "Lora",
               weight: layer.weight || preset.weight || 600,
               fontStyle: layer.font_style || preset.fontStyle || "italic",
               letterSpacingPx: lsEm * fPx,
-              strokeHex: layer.stroke_hex ?? preset.strokeHex ?? "rgba(3,22,31,0.78)",
-              strokeWidth: layer.stroke_width ?? Math.max(1.6, Math.min(3.5, fPx * (preset.strokeMult ?? 0.042))),
+              strokeHex: curvedStrokeHex,
+              strokeWidth: curvedStrokeWidth,
               alpha: baseAlpha,
               offsetPx: layer.offset_px ?? 0,
               revealProgress: revealP,
@@ -1109,10 +1113,13 @@ export function buildLayersRuntime({ allowWorldVoid }) {
           ctx.restore();
           const pinFontPx = layer.font_px || 40;
           const pinPreset = layer.carto_role ? (CARTO_TYPO_PRESETS[layer.carto_role] || {}) : CARTO_TYPO_PRESETS.city;
+          const pinStrokeHex = layer.stroke_hex !== undefined ? layer.stroke_hex : (pinPreset.strokeHex !== undefined ? pinPreset.strokeHex : "rgba(3,22,31,0.82)");
+          const pinStrokeMult = pinPreset.strokeMult !== undefined ? pinPreset.strokeMult : 0.045;
+          const pinStrokeWidth = layer.stroke_width !== undefined ? layer.stroke_width : (pinStrokeHex && pinStrokeMult > 0 ? Math.max(1.8, pinFontPx * pinStrokeMult) : 0);
           drawGlowingText(String(layer.text || ""), pt.x + (layer.dx || 0), pt.y - stemH - pinFontPx * 0.65 * zSc + (layer.dy || 0), pinFontPx, {
             fill: layer.fill || pinPreset.fill || "#F4F1EA",
-            strokeHex: layer.stroke_hex ?? pinPreset.strokeHex ?? "rgba(3,22,31,0.82)",
-            strokeWidth: layer.stroke_width ?? Math.max(1.8, pinFontPx * 0.045),
+            strokeHex: pinStrokeHex,
+            strokeWidth: pinStrokeWidth,
             glowStrength: layer.glow_strength || "none",
             scale: zSc,
             alpha: baseAlpha * pop,

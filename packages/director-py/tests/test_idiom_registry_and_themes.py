@@ -149,6 +149,7 @@ def test_geoverum_audio_themes_override_loads_and_validates(tmp_path: Path) -> N
 
     from vedit.cli import app
     from vedit.contracts import find_repo_root, validate_brand_tree
+    from vedit.geo_production import plan_and_fetch_thematic_audio
 
     root = find_repo_root()
     gv_dir = root / "profiles" / "brands" / "geoverum"
@@ -168,8 +169,174 @@ def test_geoverum_audio_themes_override_loads_and_validates(tmp_path: Path) -> N
     with pytest.raises(ValueError, match="audio_themes.json"):
         validate_brand_tree(broken, repo_root=root)
 
-    # CLI help exposes --brand and --brand-dir on `vedit geo auto-audio`.
-    help_res = CliRunner().invoke(app, ["geo", "auto-audio", "--help"])
-    assert help_res.exit_code == 0
-    assert "--brand" in help_res.output
-    assert "--brand-dir" in help_res.output
+    # Invalid JSON and invalid foley/ambience_gain_db also fail validate_brand_tree cleanly.
+    (broken / "audio_themes.json").write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(ValueError, match="audio_themes.json"):
+        validate_brand_tree(broken, repo_root=root)
+
+    (broken / "audio_themes.json").write_text(
+        json.dumps(
+            {
+                "bad_types": {
+                    "keywords": ["orbit"],
+                    "curious_query": "synth",
+                    "tension_query": "pulse",
+                    "ambience_query": "hum",
+                    "ambience_gain_db": "loud",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ambience_gain_db"):
+        validate_brand_tree(broken, repo_root=root)
+
+    (broken / "audio_themes.json").write_text(
+        json.dumps(
+            {
+                "bad_foley": {
+                    "keywords": ["orbit"],
+                    "curious_query": "synth",
+                    "tension_query": "pulse",
+                    "ambience_query": "hum",
+                    "foley": {"ping": ["only_one_item"]},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="foley"):
+        validate_brand_tree(broken, repo_root=root)
+
+    # Minimal valid audio_themes.json (omitting optional foley/ambience_gain_db) must validate
+    # AND succeed at runtime in plan_and_fetch_thematic_audio without KeyError.
+    minimal = tmp_path / "minimal_brand"
+    minimal.mkdir()
+    (minimal / "brand_style_policy.json").write_text(
+        (gv_dir / "brand_style_policy.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (minimal / "audio_themes.json").write_text(
+        json.dumps(
+            {
+                "maritime": {
+                    "keywords": ["harbor", "vessel", "port", "ship"],
+                    "curious_query": "maritime curiosity",
+                    "tension_query": "maritime tension",
+                    "ambience_query": "ocean wind",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert validate_brand_tree(minimal, repo_root=root)["audio_themes"] is not None
+
+    class _EmptyCatalog:
+        def search(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return []
+
+    min_scene = {
+        "acts": [
+            {
+                "act_id": "a1",
+                "duration_s": 4.0,
+                "kind": "cutaway_2d",
+                "preset": "port_cutaway",
+                "layers": [
+                    {
+                        "type": "map_sprites",
+                        "start_s": 0.5,
+                        "sprites": [{"kind": "cargo_ship"}] * 3,
+                    }
+                ],
+            }
+        ]
+    }
+    min_plan = plan_and_fetch_thematic_audio(
+        min_scene,
+        {"text": "The vessel entered the harbor."},
+        tmp_path / "min_out",
+        brand_dir=minimal,
+        catalog=_EmptyCatalog(),
+    )
+    assert min_plan["ok"] is True
+    assert min_plan["theme"] == "maritime"
+    assert min_plan["ambience_gain_db"] == -28.0
+
+    # CLI execution: invalid --brand / traversal / missing --brand-dir fail loudly; valid
+    # --brand geoverum resolves Geoverum's time_and_systems theme end-to-end.
+    runner = CliRunner()
+    scene_file = tmp_path / "scene.json"
+    tr_file = tmp_path / "tr.json"
+    scene_file.write_text(
+        json.dumps({"acts": [{"act_id": "a1", "duration_s": 5.0}]}),
+        encoding="utf-8",
+    )
+    tr_file.write_text(
+        json.dumps({"text": "Why do UTC time zone meridian offsets look so jagged?"}),
+        encoding="utf-8",
+    )
+
+    bad_brand = runner.invoke(
+        app,
+        [
+            "geo",
+            "auto-audio",
+            "--scene-file",
+            str(scene_file),
+            "--out-dir",
+            str(tmp_path / "bad_out"),
+            "--brand",
+            "nonexistent_brand_xyz",
+        ],
+    )
+    assert bad_brand.exit_code != 0
+
+    trav_brand = runner.invoke(
+        app,
+        [
+            "geo",
+            "auto-audio",
+            "--scene-file",
+            str(scene_file),
+            "--out-dir",
+            str(tmp_path / "trav_out"),
+            "--brand",
+            "../platforms",
+        ],
+    )
+    assert trav_brand.exit_code != 0
+
+    bad_dir = runner.invoke(
+        app,
+        [
+            "geo",
+            "auto-audio",
+            "--scene-file",
+            str(scene_file),
+            "--out-dir",
+            str(tmp_path / "baddir_out"),
+            "--brand-dir",
+            str(tmp_path / "does_not_exist"),
+        ],
+    )
+    assert bad_dir.exit_code != 0
+
+    ok_res = runner.invoke(
+        app,
+        [
+            "geo",
+            "auto-audio",
+            "--scene-file",
+            str(scene_file),
+            "--transcript",
+            str(tr_file),
+            "--out-dir",
+            str(tmp_path / "gv_out"),
+            "--brand",
+            "geoverum",
+        ],
+    )
+    assert ok_res.exit_code == 0, ok_res.output
+    cli_payload = json.loads(ok_res.output)
+    assert cli_payload["ok"] is True
+    assert cli_payload["theme"] == "time_and_systems"

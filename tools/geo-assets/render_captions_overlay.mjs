@@ -72,7 +72,7 @@ function parseAssTime(raw) {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + frac;
 }
 
-function assColorToHex(assColor, fallback = "#F7F9FB") {
+function assColorToHex(assColor, fallback = "#F5F7FA") {
   const m = /^&H([0-9A-Fa-f]{2})?([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})&?$/.exec(
     String(assColor || "").trim()
   );
@@ -92,7 +92,7 @@ export function parseAssCaptions(assText) {
     fontSize: null,
     marginV: null,
     marginX: null,
-    colorHex: "#F7F9FB",
+    colorHex: "#F5F7FA",
     fadeInMs: 110,
   };
   const cues = [];
@@ -160,7 +160,7 @@ export function parseJsonCaptions(rawObj) {
       fontSize: null,
       marginV: null,
       marginX: null,
-      colorHex: "#F7F9FB",
+      colorHex: "#F5F7FA",
       fadeInMs: 110,
     },
     cues,
@@ -383,7 +383,7 @@ html, body {
   font-weight: 700;
   font-size: ${fontSize}px;
   line-height: 1.22;
-  letter-spacing: -0.012em;
+  letter-spacing: 0.01em;
   color: ${colorHex};
   text-wrap: balance;
   white-space: pre-wrap;

@@ -239,6 +239,7 @@ def plan_and_fetch_thematic_audio(
 
     # Map scene beats to domain-specific real recorded foley
     repo_sfx = root / "assets" / "audio" / "sfx"
+    foley_map = cfg.get("foley") if isinstance(cfg.get("foley"), dict) else {}
     t_off = 0.0
     for act in scene.get("acts") or []:
         dur = float(act.get("duration_s") or 0.0)
@@ -250,8 +251,8 @@ def plan_and_fetch_thematic_audio(
                 extra_sfx.append(
                     {"t_s": round(max(0.0, t_off - 0.12), 3), "path": str(sw), "gain_db": -9.5}
                 )
-        if act_kind == "cutaway_2d" and "port" in preset and "underwater_dive" in cfg["foley"]:
-            q, g_db, tr_s, fo_s = cfg["foley"]["underwater_dive"]
+        if act_kind == "cutaway_2d" and "port" in preset and "underwater_dive" in foley_map:
+            q, g_db, tr_s, fo_s = foley_map["underwater_dive"]
             dive_wav = _fetch_sfx(q, sfx_out / "underwater_dive.wav", "underwater_dive")
             if dive_wav is not None:
                 extra_sfx.append(
@@ -274,11 +275,11 @@ def plan_and_fetch_thematic_audio(
                     ) or p_wav
                 if p_wav.is_file():
                     extra_sfx.append({"t_s": round(t0, 3), "path": str(p_wav), "gain_db": -8.5})
-            elif ltype == "map_sprites" and theme == "maritime" and "maritime_horn" in cfg["foley"]:
+            elif ltype == "map_sprites" and theme == "maritime" and "maritime_horn" in foley_map:
                 sprites = layer.get("sprites") or layer.get("items") or []
                 has_ships = any(str(sp.get("kind") or "") == "cargo_ship" for sp in sprites)
                 if has_ships and len(sprites) >= 3:
-                    q, g_db, tr_s, fo_s = cfg["foley"]["maritime_horn"]
+                    q, g_db, tr_s, fo_s = foley_map["maritime_horn"]
                     horn_wav = _fetch_sfx(q, sfx_out / "ship_horn.wav", "ship_horn")
                     if horn_wav is not None:
                         extra_sfx.append(
@@ -303,7 +304,7 @@ def plan_and_fetch_thematic_audio(
         "bgm_second": str(bgm_second) if bgm_second else None,
         "bgm_switch_s": pivot_s,
         "ambience_file": str(ambience_wav) if ambience_wav else None,
-        "ambience_gain_db": cfg["ambience_gain_db"],
+        "ambience_gain_db": float(cfg.get("ambience_gain_db", -28.0)),
         "extra_sfx_file": str(extra_sfx_path),
         "extra_sfx_count": len(extra_sfx),
         "sources": source_notes,

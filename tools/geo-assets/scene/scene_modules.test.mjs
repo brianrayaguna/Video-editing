@@ -74,7 +74,15 @@ test("html_blueprint supports cobalt theme and html_map_scene supports daylight_
     theme: "cobalt",
   });
   assert.match(cobaltHtml, /#2059DC/);
+  assert.match(cobaltHtml, /isCobalt \? "#F5F7FA" : "#48433B"/);
+  assert.match(cobaltHtml, /isCobalt \? "#DCE8F5" : "#6B655B"/);
   assert.doesNotMatch(cobaltHtml, /background:\s*undefined/);
+
+  const { buildLayersRuntime } = await import("./runtime_layers.mjs");
+  const layersSrc = buildLayersRuntime({ allowWorldVoid: false });
+  assert.match(layersSrc, /preset\.glowHex/);
+  assert.match(layersSrc, /preset\.strokeHex !== undefined \? preset\.strokeHex/);
+  assert.match(layersSrc, /pinPreset\.strokeHex !== undefined \? pinPreset\.strokeHex/);
 
   const paperHtml = buildBlueprintHtml("http://127.0.0.1:9999", 1080, 1920, "{}", {
     act_id: "bp_paper",

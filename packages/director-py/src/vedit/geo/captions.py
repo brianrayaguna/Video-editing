@@ -126,25 +126,35 @@ def build_geoverum_ass_captions(
     max_words: int = 4,
     font_size: int | None = None,
     margin_v: int | None = None,
-    fade_in_ms: int = 130,
+    fade_in_ms: int = 110,
     fade_out_ms: int = 0,
     gap_ms: int = 67,
     font_name: str = "Inter",
-    fg_color: str = "#F4F1EA",
-    outline_color: str = "#03161F",
+    fg_color: str = "#F5F7FA",
+    outline_color: str = "#071D26",
     outline_px: float | None = 0.55,
     shadow_px: float | None = 2.2,
-    letter_spacing: float = 0.25,
+    letter_spacing: float | None = None,
     blur_px: float = 1.1,
 ) -> str:
-    """Backward-compatible alias delegating to `build_brand_ass_captions`."""
+    """Build Geoverum-calibrated boxless bottom-band ASS subtitles."""
+    is_portrait = height > width
+    scale = min(width, height) / 1080.0
+    eff_font_size = (
+        font_size
+        if font_size is not None
+        else max(16, round((46 if is_portrait else 42) * scale))
+    )
+    eff_letter_spacing = (
+        letter_spacing if letter_spacing is not None else round(0.01 * eff_font_size, 2)
+    )
     return build_brand_ass_captions(
         transcript_data,
         width=width,
         height=height,
         speed=speed,
         max_words=max_words,
-        font_size=font_size,
+        font_size=eff_font_size,
         margin_v=margin_v,
         fade_in_ms=fade_in_ms,
         fade_out_ms=fade_out_ms,
@@ -154,7 +164,7 @@ def build_geoverum_ass_captions(
         outline_color=outline_color,
         outline_px=outline_px,
         shadow_px=shadow_px,
-        letter_spacing=letter_spacing,
+        letter_spacing=eff_letter_spacing,
         blur_px=blur_px,
     )
 
@@ -191,7 +201,7 @@ def build_captions_for_brand(
     eff_font = "Inter"
     eff_fg = "#F5F7FA"
     eff_outline = "#071D26"
-    eff_letter_spacing = -0.01 * eff_font_size
+    eff_letter_spacing = round(0.01 * eff_font_size, 2)
     if brand:
         try:
             policy_path = (

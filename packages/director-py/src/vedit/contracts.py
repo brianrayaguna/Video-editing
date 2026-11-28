@@ -265,7 +265,10 @@ def validate_brand_tree(
 
     audio_themes_path = brand_dir / "audio_themes.json"
     if audio_themes_path.is_file():
-        raw_themes = json.loads(audio_themes_path.read_text(encoding="utf-8"))
+        try:
+            raw_themes = json.loads(audio_themes_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"audio_themes.json invalid JSON: {exc}") from exc
         if not isinstance(raw_themes, dict) or not raw_themes:
             raise ValueError("audio_themes.json must be a non-empty JSON object of theme profiles")
         for theme_name, cfg in raw_themes.items():
@@ -287,6 +290,41 @@ def validate_brand_tree(
                     raise ValueError(
                         f"audio_themes.json theme {theme_name!r} missing non-empty {req_field!r}"
                     )
+            if "ambience_gain_db" in cfg:
+                gain = cfg["ambience_gain_db"]
+                is_finite_num = (
+                    isinstance(gain, (int, float))
+                    and not isinstance(gain, bool)
+                    and float("-inf") < float(gain) < float("inf")
+                )
+                if not is_finite_num:
+                    raise ValueError(
+                        f"audio_themes.json theme {theme_name!r} has invalid ambience_gain_db"
+                    )
+            if "foley" in cfg:
+                foley = cfg["foley"]
+                if not isinstance(foley, dict):
+                    raise ValueError(
+                        f"audio_themes.json theme {theme_name!r} foley must be a JSON object"
+                    )
+                for foley_key, foley_spec in foley.items():
+                    valid_entry = (
+                        isinstance(foley_spec, list)
+                        and len(foley_spec) == 4
+                        and isinstance(foley_spec[0], str)
+                        and bool(foley_spec[0].strip())
+                        and all(
+                            isinstance(x, (int, float))
+                            and not isinstance(x, bool)
+                            and float("-inf") < float(x) < float("inf")
+                            for x in foley_spec[1:]
+                        )
+                    )
+                    if not valid_entry:
+                        raise ValueError(
+                            f"audio_themes.json theme {theme_name!r} foley[{foley_key!r}] "
+                            "must be [query, gain_db, trim_s, fade_out_s]"
+                        )
         validated["audio_themes"] = (
             str(audio_themes_path.relative_to(root))
             if audio_themes_path.is_relative_to(root)

@@ -152,25 +152,26 @@ ${typeof buildDynamicFontFaceCss === "function" ? buildDynamicFontFaceCss(baseUr
       drawPartial(failPts, easeInOutCubic(seg(t, 0.4, 5.2)), "#8B0000", 9);
       ctx.restore();
 
-      ctx.fillStyle = "#48433B";
+      ctx.fillStyle = isCobalt ? "#F5F7FA" : "#48433B";
       ctx.font = "600 56px 'EB Garamond', Georgia, serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(SPEC.header || "PAN AMERICAN HIGHWAY", 0, -ph / 2 + 104);
       ctx.font = "400 18px 'EB Garamond', Georgia, serif";
-      ctx.fillStyle = "#6B655B";
+      ctx.fillStyle = isCobalt ? "#DCE8F5" : "#6B655B";
       ctx.fillText(SPEC.subheader || "ENGINEERING ROUTE SURVEY", 0, -ph / 2 + 150);
 
       // Subtle paper fold lines
-      ctx.strokeStyle = "rgba(40, 35, 28, 0.2)"; ctx.lineWidth = 3;
+      ctx.strokeStyle = isCobalt ? "rgba(245, 247, 250, 0.16)" : "rgba(40, 35, 28, 0.2)"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-pw / 2, -60); ctx.lineTo(pw / 2, -60); ctx.moveTo(0, -ph / 2); ctx.lineTo(0, ph / 2); ctx.stroke();
 
       if (t >= stampAt - 0.03) {
         const stA = seg(t, stampAt - 0.03, stampAt + 0.07);
+        const stampInk = isCobalt ? "#F7DC28" : "#991B1B";
         ctx.save();
         ctx.translate(18, 22); ctx.rotate(-0.50); ctx.globalAlpha = stA * 0.94;
-        ctx.strokeStyle = "#991B1B"; ctx.lineWidth = 8; ctx.strokeRect(-142, -52, 284, 104);
+        ctx.strokeStyle = stampInk; ctx.lineWidth = 8; ctx.strokeRect(-142, -52, 284, 104);
         ctx.lineWidth = 3; ctx.strokeRect(-130, -40, 260, 80);
-        ctx.fillStyle = "#991B1B"; ctx.font = "900 56px 'Archivo Black', sans-serif";
+        ctx.fillStyle = stampInk; ctx.font = "900 56px 'Montserrat', sans-serif";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(SPEC.stamp_text || "FAILED", 0, 3);
         ctx.restore();

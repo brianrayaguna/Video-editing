@@ -301,11 +301,19 @@ def geo_auto_audio_cmd(
     from vedit.geo_production import plan_and_fetch_thematic_audio
 
     root = find_repo_root()
-    resolved_brand_dir = (
-        brand_dir.expanduser().resolve()
-        if brand_dir is not None
-        else ((root / "profiles" / "brands" / brand) if brand else None)
-    )
+    resolved_brand_dir: Path | None = None
+    if brand_dir is not None:
+        resolved_brand_dir = brand_dir.expanduser().resolve()
+        if not resolved_brand_dir.is_dir():
+            raise typer.BadParameter(f"Brand directory not found: {resolved_brand_dir}")
+    elif brand:
+        if "/" in brand or "\\" in brand or ".." in brand or not brand.strip():
+            raise typer.BadParameter(f"Invalid brand identifier: {brand!r}")
+        brands_root = (root / "profiles" / "brands").resolve()
+        candidate = (brands_root / brand.strip()).resolve()
+        if not candidate.is_relative_to(brands_root) or not candidate.is_dir():
+            raise typer.BadParameter(f"Unknown brand: {brand!r}")
+        resolved_brand_dir = candidate
     spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
     tr = (
         json.loads(transcript_file.expanduser().resolve().read_text(encoding="utf-8"))

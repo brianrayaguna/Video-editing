@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildConcatTimeline, parseAssCaptions } from "./render_captions_overlay.mjs";
+import { buildConcatTimeline, parseAssCaptions, parseJsonCaptions } from "./render_captions_overlay.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +14,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Inter,46,&H00FAF7F5,&H00FAF7F5,&H1F261D07,&H1F000000,-1,0,0,0,100,100,-0.46,0,1,0.55,2.2,2,84,84,525,1
+Style: Default,Inter,46,&H00FAF7F5,&H00FAF7F5,&H1F261D07,&H1F000000,-1,0,0,0,100,100,0.46,0,1,0.55,2.2,2,84,84,525,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -34,10 +34,15 @@ Dialogue: 0,0:00:00.00,0:00:05.00,SourceCredit,,0,0,0,,Imagery ©Google
   assert.equal(parsed.cues[1].text, "di ujung barat\nAceh");
 });
 
-test("render_captions_overlay uses calibrated 46/42 fallback sizes and 4-layer snow-safe shadow", () => {
+test("render_captions_overlay uses calibrated 46/42 fallback sizes, #F5F7FA ink, +0.01em tracking, and 4-layer snow-safe shadow", () => {
   const src = readFileSync(join(__dirname, "render_captions_overlay.mjs"), "utf8");
   assert.match(src, /isPortrait \? 46 \* scale : 42 \* scale/);
   assert.match(src, /0 0 24px rgba\(0, 0, 0, 0\.32\)/);
+  assert.match(src, /letter-spacing:\s*0\.01em;/);
+  const parsedJson = parseJsonCaptions({ segments: [{ start: 0, end: 1.5, text: "Test" }] });
+  assert.equal(parsedJson.style.colorHex, "#F5F7FA");
+  const parsedNoStyle = parseAssCaptions("Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Hi");
+  assert.equal(parsedNoStyle.style.colorHex, "#F5F7FA");
 });
 
 test("buildConcatTimeline stays drift-free and inserts two fade-in ramp frames per cue", () => {
