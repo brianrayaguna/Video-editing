@@ -60,9 +60,20 @@ def test_filter_polygons_by_bbox_isolates_contiguous_mainland() -> None:
     assert len(mainland["coordinates"]) == 1
 
 
+def _read_map_scene_sources(repo: Path) -> str:
+    geo_dir = repo / "tools" / "geo-assets"
+    parts = [(geo_dir / "render_map_scene.mjs").read_text(encoding="utf-8")]
+    scene_dir = geo_dir / "scene"
+    if scene_dir.is_dir():
+        for p in sorted(scene_dir.glob("*.mjs")):
+            if not p.name.endswith(".test.mjs"):
+                parts.append(p.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 def test_render_map_scene_contains_atmospheric_and_demographic_primitives() -> None:
     repo = find_repo_root()
-    src = Path(repo / "tools" / "geo-assets" / "render_map_scene.mjs").read_text(encoding="utf-8")
+    src = _read_map_scene_sources(repo)
     for token in (
         'layer.type === "human_silhouette_row"',
         'layer.type === "landmark_silhouette"',
@@ -76,25 +87,19 @@ def test_render_map_scene_contains_atmospheric_and_demographic_primitives() -> N
 
     node_bin = shutil.which("node")
     if node_bin:
-        mjs_path = str(repo / "tools" / "geo-assets" / "render_map_scene.mjs")
-        math_path = str(repo / "tools" / "geo-assets" / "map_draw_math.mjs")
-        # The page builder reads two module-level constants: the inlined draw-math source
-        # (export keywords stripped, as the module does) and the flag raster width.
+        mod_url = (repo / "tools" / "geo-assets" / "scene" / "html_map_scene.mjs").as_uri()
         check_js = (
-            'const fs = require("fs");'
-            f'const src = fs.readFileSync({mjs_path!r}, "utf8");'
-            f'const mathSrc = fs.readFileSync({math_path!r}, "utf8")'
-            r'.replace(/^export\s+/gm, "");'
-            r"const flagWidth = Number(src.match(/const FLAG_RASTER_WIDTH = (\d+)/)[1]);"
-            r"const m = src.match(/function buildMapSceneHtml[\s\S]*?\n\}\n/);"
-            'const fn = new Function("DRAW_MATH_SRC", "FLAG_RASTER_WIDTH", '
-            'm[0] + "\\nreturn buildMapSceneHtml('
-            '\\"http://x\\", 1080, 1920, \\"{}\\", {});");'
-            r"const script = fn(mathSrc, flagWidth).match(/<script>([\s\S]*?)<\/script>/)[1];"
+            f'import({mod_url!r}).then(({{ buildMapSceneHtml }}) => {{'
+            'const html = buildMapSceneHtml("http://x", 1080, 1920, "{}", {});'
+            r'const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];'
             "new Function(script);"
+            "});"
         )
         proc = subprocess.run(
-            [node_bin, "-e", check_js], capture_output=True, text=True, check=False
+            [node_bin, "--input-type=module", "-e", check_js],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert proc.returncode == 0, proc.stderr
 
@@ -444,7 +449,7 @@ def test_planner_compact_metric_avoids_verbatim_caption_duplication() -> None:
 
 def test_map_plane_jacobian_has_near_plane_determinant_guard() -> None:
     repo = find_repo_root()
-    src = Path(repo / "tools" / "geo-assets" / "render_map_scene.mjs").read_text(encoding="utf-8")
+    src = _read_map_scene_sources(repo)
     assert "const stepZoom = Math.max(refZoom, curZoom);" in src
     assert "const det = a * d - b * c;" in src
 
@@ -1076,24 +1081,19 @@ def test_validate_scene_supports_3d_layers_and_gloss_warp_flags(tmp_path: Path) 
     repo = find_repo_root()
     node_bin = shutil.which("node")
     if node_bin:
-        mjs_path = str(repo / "tools" / "geo-assets" / "render_map_scene.mjs")
-        math_path = str(repo / "tools" / "geo-assets" / "map_draw_math.mjs")
+        mod_url = (repo / "tools" / "geo-assets" / "scene" / "html_map_scene.mjs").as_uri()
         check_js = (
-            'const fs = require("fs");'
-            f'const src = fs.readFileSync({mjs_path!r}, "utf8");'
-            f'const mathSrc = fs.readFileSync({math_path!r}, "utf8")'
-            r'.replace(/^export\s+/gm, "");'
-            r"const flagWidth = Number(src.match(/const FLAG_RASTER_WIDTH = (\d+)/)[1]);"
-            r"const m = src.match(/function buildMapSceneHtml[\s\S]*?\n\}\n/);"
-            'const fn = new Function("DRAW_MATH_SRC", "FLAG_RASTER_WIDTH", '
-            'm[0] + "\\nreturn buildMapSceneHtml('
-            '\\"http://x\\", 1080, 1920, \\"{}\\", {has_3d: true, origin_coord: [106, -6]});");'
-            r"const html = fn(mathSrc, flagWidth);"
+            f'import({mod_url!r}).then(({{ buildMapSceneHtml }}) => {{'
+            'const html = buildMapSceneHtml("http://x", 1080, 1920, "{}", {has_3d: true, origin_coord: [106, -6]});'
             r"const scripts = [...html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)];"
             r"new Function(scripts[scripts.length - 1][1]);"
+            "});"
         )
         proc = subprocess.run(
-            [node_bin, "-e", check_js], capture_output=True, text=True, check=False
+            [node_bin, "--input-type=module", "-e", check_js],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert proc.returncode == 0, proc.stderr
 
@@ -1621,9 +1621,7 @@ def test_google_map_tiles_attribution_enforced_for_realistic_graded(tmp_path: Pa
     assert any("show_credit=false ignored" in w for w in rep["warnings"]), rep["warnings"]
 
     # Renderer source enforces realistic_graded lookup and mandatory Google credit.
-    js_src = (find_repo_root() / "tools" / "geo-assets" / "render_map_scene.mjs").read_text(
-        encoding="utf-8"
-    )
+    js_src = _read_map_scene_sources(find_repo_root())
     assert 'sourceMode === "realistic_graded"' in js_src
     assert 'hqAttr.sources.includes("google_map_tiles")' in js_src
     assert "item.svg_url || item.image_url" in js_src

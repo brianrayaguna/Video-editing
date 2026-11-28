@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -583,7 +583,14 @@ test("cubicBezier preserves x2 = 0 and clipHomogeneousPolyline drops non-finite 
 });
 
 test("render_map_scene and fast_capture satisfy WebGL, compositing, and pipe error invariants", async () => {
-  const renderSrc = readFileSync(new URL("./render_map_scene.mjs", import.meta.url), "utf8");
+  const sceneDirUrl = new URL("./scene/", import.meta.url);
+  const sceneFiles = readdirSync(sceneDirUrl)
+    .filter((f) => f.endsWith(".mjs") && !f.endsWith(".test.mjs"))
+    .sort();
+  const renderSrc = [
+    readFileSync(new URL("./render_map_scene.mjs", import.meta.url), "utf8"),
+    ...sceneFiles.map((f) => readFileSync(new URL(`./scene/${f}`, import.meta.url), "utf8")),
+  ].join("\n");
   assert.doesNotMatch(
     renderSrc,
     /smoothstep\(\s*localP\s*\+\s*0\.04\s*,\s*localP\s*-\s*0\.04/,
