@@ -494,6 +494,17 @@ def _build_overlays(
                 caption_props["caption_font_px"] = max(
                     16, round(typo.caption_font_px_9x16 * (platform_target.height / 1920.0))
                 )
+            elif (
+                not is_portrait
+                and typo.type_scale is not None
+                and typo.type_scale.caption is not None
+            ):
+                caption_props["caption_font_px"] = max(
+                    16,
+                    round(
+                        typo.type_scale.caption.size_px_16x9 * (platform_target.height / 1080.0)
+                    ),
+                )
             if is_portrait and typo.caption_margin_v_px_9x16 is not None:
                 caption_props["caption_bottom_pct"] = round(
                     typo.caption_margin_v_px_9x16 / 1920.0, 5

@@ -294,6 +294,36 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
     assert r"\N" not in edge_ass.split("{\\fad(130,0)\\blur1.1}", 1)[1]
 
 
+def test_build_captions_for_brand_geoverum_uses_46px_portrait_and_42px_landscape(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from vedit.geo.captions import build_captions_for_brand
+
+    tr_file = tmp_path / "tr.json"
+    tr_file.write_text(
+        json.dumps(
+            {
+                "segments": [
+                    {"start": 0.0, "end": 2.0, "text": "Calm broadcast caption."},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out_9x16 = tmp_path / "cap_9x16.ass"
+    build_captions_for_brand(tr_file, out_9x16, width=1080, height=1920, brand="geoverum")
+    txt_9x16 = out_9x16.read_text(encoding="utf-8")
+    assert "Style: Default,Inter,46,&H00FAF7F5,&H00FAF7F5,&H1F261D07," in txt_9x16
+    assert ",525,1\n" in txt_9x16
+
+    out_16x9 = tmp_path / "cap_16x9.ass"
+    build_captions_for_brand(tr_file, out_16x9, width=1920, height=1080, brand="geoverum")
+    txt_16x9 = out_16x9.read_text(encoding="utf-8")
+    assert "Style: Default,Inter,42,&H00FAF7F5," in txt_16x9
+
+
 def test_build_geoverum_ass_captions_fades_in_and_cuts_out() -> None:
     from vedit.mastering.ass_captions import validate_ass_captions_readability
 

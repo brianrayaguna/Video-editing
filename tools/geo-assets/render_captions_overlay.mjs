@@ -302,7 +302,7 @@ export async function renderCaptionsOverlay({
   const fontSize = Math.round(
     Number(fontSizeOverride) ||
       parsed.style.fontSize ||
-      (isPortrait ? 52 * scale : 48 * scale)
+      (isPortrait ? 46 * scale : 42 * scale)
   );
   const marginV = Math.round(
     Number(marginVOverride) ||
@@ -316,7 +316,7 @@ export async function renderCaptionsOverlay({
     fadeInMsOverride !== null && fadeInMsOverride !== undefined
       ? Number(fadeInMsOverride)
       : parsed.style.fadeInMs;
-  const colorHex = parsed.style.colorHex || "#F7F9FB";
+  const colorHex = parsed.style.colorHex || "#F5F7FA";
 
   const bandHeight = Math.min(height, Math.max(240, Math.round(fontSize * 4.6)));
   const padBottom = Math.round(fontSize * 0.95);
@@ -388,9 +388,10 @@ html, body {
   text-wrap: balance;
   white-space: pre-wrap;
   text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.90),
-    0 3px 10px rgba(0, 0, 0, 0.72),
-    0 8px 24px rgba(0, 0, 0, 0.44);
+    0 1px 2px rgba(0, 0, 0, 0.94),
+    0 2px 6px rgba(0, 0, 0, 0.82),
+    0 6px 18px rgba(0, 0, 0, 0.56),
+    0 0 24px rgba(0, 0, 0, 0.32);
 }
 </style>
 </head>

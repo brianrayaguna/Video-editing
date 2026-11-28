@@ -592,13 +592,29 @@ def test_cross_commit_caption_ssot_3d_audio_cues_and_single_pass_grade(tmp_path:
     cap_ovs = [o for o in plan.overlay_compositions if o.kind == "caption_rail"]
     assert cap_ovs
     assert str(cap_ovs[0].props["caption_font_family"]).startswith("Inter")
-    assert cap_ovs[0].props["caption_font_px"] == 52
+    assert cap_ovs[0].props["caption_font_px"] == 46
     assert cap_ovs[0].props["caption_bottom_pct"] == round(525 / 1920.0, 5)
 
     ass_out = write_ass_overlays_file(cap_ovs, shorts, tmp_path / "ssot_caps.ass")
     ass_txt = ass_out.read_text(encoding="utf-8")
-    assert "Style: CaptionLower,Inter,52," in ass_txt
+    assert "Style: CaptionLower,Inter,46," in ass_txt
     assert ",525,1\n" in ass_txt
+
+    # Landscape 16:9 Geoverum plan propagates type_scale.caption.size_px_16x9 (42 px).
+    yt_16x9 = PlatformTarget.model_validate(load_platform_targets()["youtube_16x9_1080p"])
+    plan_16x9, report_16x9 = build_edit_plan(
+        job_id="job_ssot_16x9",
+        project_id="proj_ssot",
+        probe=probe,
+        policy=policy,
+        platform_target=yt_16x9,
+        transcript=transcript,
+        template_catalog=catalog,
+    )
+    assert report_16x9.passed
+    cap_16x9 = [o for o in plan_16x9.overlay_compositions if o.kind == "caption_rail"]
+    assert cap_16x9
+    assert cap_16x9[0].props["caption_font_px"] == 42
 
     # 3D map layers trigger procedural audio cues cleanly.
     cues_3d = plan_narrative_audio_cues(

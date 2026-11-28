@@ -183,15 +183,15 @@ def build_captions_for_brand(
     is_portrait = height > width
     scale = min(width, height) / 1080.0
     eff_max_words = 4
-    eff_font_size: int | None = round(52 * scale) if is_portrait else None
+    eff_font_size: int | None = round(46 * scale) if is_portrait else round(42 * scale)
     eff_margin_v: int | None = round(525 * (height / 1920.0)) if is_portrait else None
     eff_fade_in = 110
     eff_fade_out = 0
     eff_gap_ms = 67
     eff_font = "Inter"
-    eff_fg = "#F4F1EA"
-    eff_outline = "#03161F"
-    eff_letter_spacing = 0.25
+    eff_fg = "#F5F7FA"
+    eff_outline = "#071D26"
+    eff_letter_spacing = -0.01 * eff_font_size
     if brand:
         try:
             policy_path = (
@@ -204,10 +204,14 @@ def build_captions_for_brand(
                 pal = vtok.get("palette_roles") or {}
                 eff_max_words = int(typo.get("max_words_per_caption_group", eff_max_words))
                 if is_portrait:
-                    raw_px = int(typo.get("caption_font_px_9x16", 52))
+                    raw_px = int(typo.get("caption_font_px_9x16", 46))
                     raw_mv = int(typo.get("caption_margin_v_px_9x16", 525))
                     eff_font_size = max(16, round(raw_px * scale))
                     eff_margin_v = round(raw_mv * (height / 1920.0))
+                else:
+                    cap_step = (typo.get("type_scale") or {}).get("caption") or {}
+                    if cap_step.get("size_px_16x9") is not None:
+                        eff_font_size = max(16, round(int(cap_step["size_px_16x9"]) * scale))
                 if typo.get("caption_fade_in_ms") is not None:
                     eff_fade_in = int(typo["caption_fade_in_ms"])
                 if typo.get("caption_fade_out_ms") is not None:
@@ -218,7 +222,7 @@ def build_captions_for_brand(
                     resolved_px = (
                         font_size
                         if font_size is not None
-                        else (eff_font_size if eff_font_size is not None else round(52 * scale))
+                        else (eff_font_size if eff_font_size is not None else round(46 * scale))
                     )
                     eff_letter_spacing = round(
                         float(typo["caption_letter_spacing_em"]) * resolved_px, 2
