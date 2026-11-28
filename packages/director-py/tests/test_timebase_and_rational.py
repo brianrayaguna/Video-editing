@@ -169,3 +169,34 @@ def test_otio_bridge_uses_exact_rational_frames(tmp_path: Path) -> None:
     clip = tl.find_clips()[0]
     assert clip.source_range.duration.value == 300.0
     assert abs(clip.source_range.duration.rate - (30000.0 / 1001.0)) < 1e-6
+
+
+def test_platform_target_rejects_unsupported_fps_and_prefers_plan_timebase() -> None:
+    from vedit.mastering.ffmpeg_master import _resolve_target_timebase
+
+    targets = load_platform_targets()
+    bad = dict(targets["youtube_16x9_1080p"])
+    bad["fps"] = 31.5
+    with pytest.raises(ValueError, match="Unsupported platform fps"):
+        PlatformTarget.model_validate(bad)
+
+    pt_30 = PlatformTarget.model_validate(targets["youtube_16x9_1080p"])
+    plan_ntsc = EditPlan(
+        schema_version="1.0",
+        job_id="tb_pref",
+        project_id="p1",
+        brand_id="editorial_explainer",
+        platform_target_id="youtube_16x9_1080p",
+        render_strategy="hybrid",
+        duration_s=10.01,
+        fps=29.97,
+        timebase={"num": 30000, "den": 1001},
+        width=1920,
+        height=1080,
+        assets=[],
+        video_tracks=[],
+        overlay_compositions=[],
+        audio_tracks=[],
+    )
+    resolved = _resolve_target_timebase(pt_30, plan_ntsc)
+    assert (resolved.num, resolved.den) == (30000, 1001)

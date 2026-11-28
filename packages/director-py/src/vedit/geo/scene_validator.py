@@ -196,7 +196,7 @@ def validate_map_scene(
     base_dir: Path | None = None,
     check_hq_tiles: bool = True,
 ) -> dict[str, Any]:
-    """Validate declarative map_scene.json against Geoverum craft and sharpness guardrails.
+    """Validate declarative map_scene.json against brand craft and sharpness guardrails.
 
     `base_dir` resolves a relative `vectors_file` so geometry-dependent checks can run.
     """

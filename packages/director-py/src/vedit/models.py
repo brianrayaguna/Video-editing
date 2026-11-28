@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SAFE_SLUG_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
 _HEX_SHA_PATTERN = r"^[0-9a-fA-F]{16,64}$"
@@ -66,6 +66,19 @@ class TimebaseSpec(StrictModel):
     den: int = Field(ge=1, default=1)
 
 
+_ALLOWED_PLATFORM_FPS: tuple[float, ...] = (
+    23.976,
+    24.0,
+    25.0,
+    29.97,
+    30.0,
+    48.0,
+    50.0,
+    59.94,
+    60.0,
+)
+
+
 class PlatformTarget(StrictModel):
     platform_id: str = Field(min_length=1)
     display_name: str | None = None
@@ -79,6 +92,16 @@ class PlatformTarget(StrictModel):
     audio: AudioMasteringSpec
     safe_zone: SafeZoneMargins
     notes: str | None = None
+
+    @field_validator("fps")
+    @classmethod
+    def _validate_supported_fps(cls, value: float) -> float:
+        for allowed in _ALLOWED_PLATFORM_FPS:
+            if abs(float(value) - allowed) < 1e-4:
+                return int(allowed) if allowed.is_integer() else allowed
+        raise ValueError(
+            f"Unsupported platform fps {value!r}; expected one of {_ALLOWED_PLATFORM_FPS}"
+        )
 
 
 class TranscriptWord(StrictModel):

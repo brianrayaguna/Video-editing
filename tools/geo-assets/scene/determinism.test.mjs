@@ -65,7 +65,21 @@ test("computeMapFrameStateKey deduplicates settled static map holds and refuses 
   );
 
   // Continuously animated layers force null even when camera is frozen.
-  for (const type of ["flag_fill", "weather_clouds_rain", "radar_rings", "map_sprites", "model_3d"]) {
+  for (const type of [
+    "flag_fill",
+    "weather_clouds_rain",
+    "radar_rings",
+    "map_sprites",
+    "model_3d",
+    "endpoint_dots",
+    "migrant_swarm",
+    "crimson_x",
+    "cloud_system",
+    "wind_streamlines",
+    "dust_storm_plume",
+    "landmark_silhouette",
+    "unknown_custom_animated_layer",
+  ]) {
     const animatedLayer = { type, start_s: 0, end_s: 5 };
     assert.equal(
       computeMapFrameStateKey({ cam, layers: [settledLabel, animatedLayer], t: 2.0, prevT: 1.9667, blurAmt: 0, subN: 1 }),
@@ -74,17 +88,29 @@ test("computeMapFrameStateKey deduplicates settled static map holds and refuses 
     );
   }
 
-  // Polygon with animated flag_fill property forces null.
+  // Dynamic properties on otherwise static-safe types disqualify dedup.
+  for (const dynamicLayer of [
+    { type: "polygon", flag_fill: "id", start_s: 0, end_s: 5 },
+    { type: "polygon", rim_glint: true, start_s: 0, end_s: 5 },
+    { type: "flag_pin", wave: true, start_s: 0, end_s: 5 },
+    { type: "glow_label", text: "X", typewriter_s: 1.2, start_s: 0, end_s: 5 },
+    { type: "glow_label", text: "X", fly_through: true, start_s: 0, end_s: 5 },
+  ]) {
+    assert.equal(
+      computeMapFrameStateKey({ cam, layers: [dynamicLayer], t: 2.0, prevT: 1.9667, blurAmt: 0, subN: 1 }),
+      null
+    );
+  }
+
+  // Polygon default hatch draw settles at 0.75s, never at 0.5s.
+  const plainPoly = { type: "polygon", start_s: 0, end_s: 5 };
   assert.equal(
-    computeMapFrameStateKey({
-      cam,
-      layers: [{ type: "polygon", flag_fill: "id", start_s: 0, end_s: 5 }],
-      t: 2.0,
-      prevT: 1.9667,
-      blurAmt: 0,
-      subN: 1,
-    }),
+    computeMapFrameStateKey({ cam, layers: [plainPoly], t: 0.5, prevT: 0.4667, blurAmt: 0, subN: 1 }),
     null
+  );
+  assert.equal(
+    typeof computeMapFrameStateKey({ cam, layers: [plainPoly], t: 1.5, prevT: 1.4667, blurAmt: 0, subN: 1 }),
+    "string"
   );
 
   // Cut blur or optical shutter subframes force null.

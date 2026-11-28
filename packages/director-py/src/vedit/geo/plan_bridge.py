@@ -15,8 +15,10 @@ from vedit.models import (
     AudioTrackOp,
     EditPlan,
     PlatformTarget,
+    TimebaseSpec,
     VideoClipOp,
 )
+from vedit.timebase import RationalTime, Timebase
 
 _SAFE_ID_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 _RGBA_OVERLAY_TRANSITIONS = frozenset({"disc_sweep", "feathered_dark_wipe"})
@@ -114,9 +116,14 @@ def build_edit_plan_from_geo_acts(
     targets = load_platform_targets(repo_root=root)
     if resolved_plat_id not in targets:
         raise ValueError(f"Unknown platform target: {resolved_plat_id!r}")
-    target = PlatformTarget.model_validate(targets[resolved_plat_id])
-    if target.width != width or target.height != height or float(target.fps) != fps:
-        target = target.model_copy(update={"width": width, "height": height, "fps": fps})
+    target_data = dict(targets[resolved_plat_id])
+    tb = Timebase.from_fps(fps)
+    tb_spec = TimebaseSpec(num=tb.num, den=tb.den)
+    target_data["width"] = width
+    target_data["height"] = height
+    target_data["fps"] = fps
+    target_data["timebase"] = {"num": tb.num, "den": tb.den}
+    target = PlatformTarget.model_validate(target_data)
 
     audio_dur = _probe_duration_s(audio_p)
     assets: list[AssetRef] = []
@@ -160,6 +167,8 @@ def build_edit_plan_from_geo_acts(
 
         act_kind = str(act.get("kind") or act.get("mode") or act.get("type") or "map").lower()
         content_type = "diagram" if act_kind in {"cutaway_2d", "blueprint_paper"} else "map"
+        start_f = RationalTime.from_seconds(acc_s, tb).value
+        dur_f = max(1, RationalTime.from_seconds(act_dur, tb).value)
         video_tracks.append(
             VideoClipOp(
                 clip_id=f"clip_{idx:02d}_{_sanitize_slug(act_id, f'act_{idx:02d}')}",
@@ -167,6 +176,9 @@ def build_edit_plan_from_geo_acts(
                 timeline_start_s=round(acc_s, 4),
                 timeline_duration_s=round(act_dur, 4),
                 source_start_s=0.0,
+                start_frame=start_f,
+                duration_frames=dur_f,
+                source_start_frame=0,
                 role="a_roll",
                 content_type=content_type,  # type: ignore[arg-type]
                 reframed_to_target=True,
@@ -212,6 +224,7 @@ def build_edit_plan_from_geo_acts(
         render_strategy="hybrid",
         duration_s=round(target_dur, 4),
         fps=fps,
+        timebase=tb_spec,
         width=width,
         height=height,
         assets=assets,

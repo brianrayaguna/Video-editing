@@ -102,3 +102,42 @@ def test_load_audio_themes_supports_brand_override_file(tmp_path: Path) -> None:
     loaded = load_audio_themes(brand_dir=brand_dir)
     assert "finance" in loaded
     assert loaded["finance"]["keywords"] == ("inflation", "yield", "bond")
+
+
+def test_plan_and_fetch_thematic_audio_applies_brand_dir_override(tmp_path: Path) -> None:
+    from vedit.geo_production import plan_and_fetch_thematic_audio
+
+    brand_dir = tmp_path / "custom_brand"
+    brand_dir.mkdir()
+    (brand_dir / "audio_themes.json").write_text(
+        json.dumps(
+            {
+                "orbital_doc": {
+                    "keywords": ["perihelion", "lagrange"],
+                    "curious_query": "deep space synth drone",
+                    "tension_query": "dark orchestral pulse",
+                    "ambience_query": "low frequency hum",
+                    "ambience_gain_db": -26.0,
+                    "foley": {},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _EmptyCatalog:
+        def search(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return []
+
+    scene = {"acts": [{"act_id": "a1", "duration_s": 5.0}]}
+    transcript = {"text": "The spacecraft reached perihelion near the lagrange point."}
+    out_dir = tmp_path / "audio_out"
+    res = plan_and_fetch_thematic_audio(
+        scene,
+        transcript,
+        out_dir,
+        brand_dir=brand_dir,
+        catalog=_EmptyCatalog(),
+    )
+    assert res["theme"] == "orbital_doc"
+    assert res["ambience_gain_db"] == -26.0

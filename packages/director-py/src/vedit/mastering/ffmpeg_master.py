@@ -32,7 +32,7 @@ from vedit.models import (
     PlatformTarget,
     VideoClipOp,
 )
-from vedit.timebase import Timebase
+from vedit.timebase import RationalTime, Timebase
 
 _LOUDNORM_JSON_RE = re.compile(r"\{[^{}]*\"input_i\"[^{}]*\}", re.S)
 
@@ -95,14 +95,37 @@ def _is_finite_loudnorm_val(raw: str) -> bool:
         return False
 
 
+def _op_seconds(frame_val: int | None, fallback_s: float, tb: Timebase) -> float:
+    if frame_val is not None:
+        return RationalTime(int(frame_val), tb).to_seconds()
+    return float(fallback_s)
+
+
 def _build_track_chain(
     input_index: int,
     track: AudioTrackOp,
     label: str,
+    *,
+    tb: Timebase | None = None,
 ) -> str:
-    delay_ms = max(0, round(track.timeline_start_s * 1000))
+    start_s = (
+        _op_seconds(track.start_frame, track.timeline_start_s, tb)
+        if tb
+        else track.timeline_start_s
+    )
+    src_s = (
+        _op_seconds(track.source_start_frame, track.source_start_s, tb)
+        if tb
+        else track.source_start_s
+    )
+    dur_s = (
+        _op_seconds(track.duration_frames, track.timeline_duration_s, tb)
+        if tb
+        else track.timeline_duration_s
+    )
+    delay_ms = max(0, round(start_s * 1000))
     parts = [
-        f"atrim=start={track.source_start_s:.4f}:duration={track.timeline_duration_s:.4f}",
+        f"atrim=start={src_s:.4f}:duration={dur_s:.4f}",
         "asetpts=PTS-STARTPTS",
         "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
     ]
@@ -206,6 +229,11 @@ def _build_audio_mix_graph(
     carve_strength: float | None = None
     amb_carve_strength: float | None = None
 
+    plan_tb = (
+        Timebase(plan.timebase.num, plan.timebase.den)
+        if plan.timebase is not None
+        else Timebase.from_fps(plan.fps)
+    )
     effective_tracks = list(plan.audio_tracks) + _derive_split_edit_audio_tracks(plan, assets_by_id)
     for idx, track in enumerate(effective_tracks):
         src_path = assets_by_id.get(track.asset_id)
@@ -215,7 +243,7 @@ def _build_audio_mix_graph(
             )
         input_args.extend(["-i", str(src_path)])
         label = f"trk_{idx}"
-        chains.append(_build_track_chain(idx, track, label))
+        chains.append(_build_track_chain(idx, track, label, tb=plan_tb))
         if track.audio_group in ("voiceover", "program_mix"):
             vo_labels.append(f"[{label}]")
         elif track.audio_group == "music":
@@ -470,7 +498,12 @@ def master_audio_mix(
     )
 
 
-def _resolve_target_timebase(platform_target: PlatformTarget) -> Timebase:
+def _resolve_target_timebase(
+    platform_target: PlatformTarget,
+    plan: EditPlan | None = None,
+) -> Timebase:
+    if plan is not None and plan.timebase is not None:
+        return Timebase(plan.timebase.num, plan.timebase.den)
     if platform_target.timebase is not None:
         return Timebase(platform_target.timebase.num, platform_target.timebase.den)
     return Timebase.from_fps(platform_target.fps)
@@ -482,9 +515,10 @@ def _video_codec_args(
     preset: str = "fast",
     use_hardware_encoder: bool = False,
     crf: int | None = None,
+    timebase: Timebase | None = None,
 ) -> list[str]:
     vspec = platform_target.video
-    tb = _resolve_target_timebase(platform_target)
+    tb = timebase or _resolve_target_timebase(platform_target)
     fps = tb.fps_float
     gop_frames = max(1, round(fps * vspec.gop_seconds))
     target_mbps = (
@@ -937,15 +971,18 @@ def assemble_hybrid_deliverable(
         overlay_blend_modes = resolve_segment_blend_modes(plan, overlay_segments)
     width = platform_target.width
     height = platform_target.height
-    tb = _resolve_target_timebase(platform_target)
-    fps = platform_target.fps
+    tb = _resolve_target_timebase(platform_target, plan)
+    fps = tb.fps_float
     fps_rate = tb.ffmpeg_rate_str
     fps_tb = tb.ffmpeg_timebase_str
 
     input_args: list[str] = []
     chains: list[str] = []
-    clip_nodes: list[tuple[str, float, str]] = []
-    ordered_clips = sorted(plan.video_tracks, key=lambda c: c.timeline_start_s)
+    clip_nodes: list[tuple[str, float, int, str]] = []
+    ordered_clips = sorted(
+        plan.video_tracks,
+        key=lambda c: _op_seconds(c.start_frame, c.timeline_start_s, tb),
+    )
     cursor_s = 0.0
     gap_idx = 0
     for idx, clip in enumerate(ordered_clips):
@@ -953,15 +990,25 @@ def assemble_hybrid_deliverable(
         if src is None or not src.is_file():
             raise MasteringError(f"Missing video asset for clip {clip.clip_id}: {src}")
 
+        clip_start_s = _op_seconds(clip.start_frame, clip.timeline_start_s, tb)
+        clip_dur_s = _op_seconds(clip.duration_frames, clip.timeline_duration_s, tb)
+        clip_src_s = _op_seconds(clip.source_start_frame, clip.source_start_s, tb)
+        clip_dur_frames = (
+            int(clip.duration_frames)
+            if clip.duration_frames is not None
+            else max(1, RationalTime.from_seconds(clip_dur_s, tb).value)
+        )
+
         # Preserve timeline alignment when a gap exists before this clip.
-        gap_s = round(clip.timeline_start_s - cursor_s, 4)
+        gap_s = round(clip_start_s - cursor_s, 4)
         if gap_s > 0.02:
             gap_lbl = f"vgap_{gap_idx}"
             gap_idx += 1
+            gap_frames = max(1, RationalTime.from_seconds(gap_s, tb).value)
             chains.append(
                 f"color=c=black:s={width}x{height}:r={fps_rate}:d={gap_s:.4f},format=yuv420p[{gap_lbl}]"
             )
-            clip_nodes.append((f"[{gap_lbl}]", gap_s, "hard_cut"))
+            clip_nodes.append((f"[{gap_lbl}]", gap_s, gap_frames, "hard_cut"))
 
         input_args.extend(["-i", str(src)])
         lbl = f"vclip_{idx}"
@@ -969,7 +1016,7 @@ def assemble_hybrid_deliverable(
         scaled_w = max(width, round(width * scale_val / 2) * 2)
         scaled_h = max(height, round(height * scale_val / 2) * 2)
         vf_parts = [
-            f"trim=start={clip.source_start_s:.4f}:duration={clip.timeline_duration_s:.4f}",
+            f"trim=start={clip_src_s:.4f}:duration={clip_dur_s:.4f}",
             "setpts=PTS-STARTPTS",
             f"fps={fps_rate}",
             f"scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase:flags=lanczos",
@@ -982,25 +1029,19 @@ def assemble_hybrid_deliverable(
         if clip.color_grade is not None:
             vf_parts.extend(_build_color_grade_filters(clip.color_grade))
         trans = (clip.transition_in or "hard_cut").lower().strip()
-        if (
-            idx == 0
-            and trans in ("clean_fade", "clean_crossfade")
-            and clip.timeline_duration_s >= 0.4
-        ):
-            fade_d = min(0.28, round(clip.timeline_duration_s * 0.15, 3))
+        if idx == 0 and trans in ("clean_fade", "clean_crossfade") and clip_dur_s >= 0.4:
+            fade_d = min(0.28, round(clip_dur_s * 0.15, 3))
             vf_parts.append(f"fade=t=in:st=0:d={fade_d:.3f}")
         chains.append(f"[{idx}:v]{','.join(vf_parts)}[{lbl}]")
-        clip_nodes.append((f"[{lbl}]", clip.timeline_duration_s, trans))
-        cursor_s = clip.timeline_start_s + clip.timeline_duration_s
+        clip_nodes.append((f"[{lbl}]", clip_dur_s, clip_dur_frames, trans))
+        cursor_s = clip_start_s + clip_dur_s
 
     if len(clip_nodes) == 1:
         chains.append(f"{clip_nodes[0][0]}copy[v_base]")
-    elif any(_xfade_spec(trans) for _, _, trans in clip_nodes[1:]):
+    elif any(_xfade_spec(trans) for _, _, _, trans in clip_nodes[1:]):
         fps_exact = tb.fps_float
-        cur_lbl, cur_dur, _ = clip_nodes[0]
-        cur_frames = max(1, round(cur_dur * fps_exact))
-        for step_idx, (nxt_lbl, nxt_dur, trans) in enumerate(clip_nodes[1:], start=1):
-            nxt_frames = max(1, round(nxt_dur * fps_exact))
+        cur_lbl, cur_dur, cur_frames, _ = clip_nodes[0]
+        for step_idx, (nxt_lbl, nxt_dur, nxt_frames, trans) in enumerate(clip_nodes[1:], start=1):
             out_lbl = "[v_base]" if step_idx == len(clip_nodes) - 1 else f"[vx_{step_idx}]"
             spec = _xfade_spec(trans)
             if spec is not None and cur_dur >= 0.35 and nxt_dur >= 0.35:
@@ -1040,7 +1081,7 @@ def assemble_hybrid_deliverable(
             cur_frames += nxt_frames
             cur_dur = round(cur_frames / fps_exact, 4)
     else:
-        concat_tags = "".join(lbl for lbl, _, _ in clip_nodes)
+        concat_tags = "".join(lbl for lbl, _, _, _ in clip_nodes)
         chains.append(f"{concat_tags}concat=n={len(clip_nodes)}:v=1:a=0[v_base]")
 
     final_v_label = "[v_base]"
@@ -1235,6 +1276,7 @@ def assemble_hybrid_deliverable(
             preset=encode_preset,
             use_hardware_encoder=use_hardware_encoder,
             crf=crf,
+            timebase=tb,
         )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1342,13 +1384,15 @@ def master_full_hf_deliverable(
                 str(platform_target.audio.channels),
             ]
 
-        tb = _resolve_target_timebase(platform_target)
+        tb = _resolve_target_timebase(platform_target, plan)
         vf = (
             f"[0:v]fps={tb.ffmpeg_rate_str},format=yuv420p,"
             f"setparams=colorspace={vspec.color_space}:"
             f"color_primaries={vspec.color_primaries}:color_trc={vspec.color_trc}:range=tv[v_tagged]"
         )
-        video_encode_args = _video_codec_args(platform_target, preset=encode_preset)
+        video_encode_args = _video_codec_args(
+            platform_target, preset=encode_preset, timebase=tb
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
             "ffmpeg",

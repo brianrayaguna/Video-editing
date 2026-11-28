@@ -680,6 +680,8 @@ def measure_spectral_translation(media_path: Path) -> dict[str, float] | None:
 
 _ASS_TIME_RE = re.compile(r"^(\d+):(\d{2}):(\d{2})\.(\d{2,3})$")
 _ASS_TAG_RE = re.compile(r"\{[^}]*\}")
+_ASS_AN_RE = re.compile(r"\\an([1-9])")
+_ASS_POS_RE = re.compile(r"\\pos\(\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)\s*\)")
 
 
 def _parse_ass_timestamp(raw: str) -> float | None:
@@ -757,7 +759,8 @@ def parse_ass_caption_boxes(
                 end_s = _parse_ass_timestamp(row.get("end", ""))
                 if start_s is None or end_s is None or end_s <= start_s:
                     continue
-                clean_text = _ASS_TAG_RE.sub("", row.get("text", "")).strip()
+                raw_text = row.get("text", "")
+                clean_text = _ASS_TAG_RE.sub("", raw_text).strip()
                 if not clean_text:
                     continue
                 style_cfg = styles.get(row.get("style", "Default")) or next(
@@ -781,23 +784,54 @@ def parse_ass_caption_boxes(
                 margin_r = m_r_ev if m_r_ev > 0 else style_cfg["margin_r"]
                 n_lines = max(1, clean_text.count("\\N") + clean_text.count("\\n") + 1)
                 box_h_px = max(24.0, style_cfg["fontsize"] * 1.45 * n_lines)
-                align = int(style_cfg["alignment"])
 
-                if align in (7, 8, 9):
-                    top_px = margin_v
-                    bot_px = top_px + box_h_px
-                elif align in (4, 5, 6):
-                    mid_px = play_y * 0.5
-                    top_px = mid_px - box_h_px * 0.5
-                    bot_px = mid_px + box_h_px * 0.5
+                an_match = _ASS_AN_RE.search(raw_text)
+                align = int(an_match.group(1)) if an_match else int(style_cfg["alignment"])
+                pos_match = _ASS_POS_RE.search(raw_text)
+                if pos_match is not None:
+                    px_x = float(pos_match.group(1))
+                    px_y = float(pos_match.group(2))
+                    est_w = max(
+                        play_x * 0.25,
+                        min(play_x * 0.85, len(clean_text) * style_cfg["fontsize"] * 0.55),
+                    )
+                    if align in (7, 8, 9):
+                        top_px = px_y
+                        bot_px = px_y + box_h_px
+                    elif align in (4, 5, 6):
+                        top_px = px_y - box_h_px * 0.5
+                        bot_px = px_y + box_h_px * 0.5
+                    else:
+                        bot_px = px_y
+                        top_px = px_y - box_h_px
+                    if align in (1, 4, 7):
+                        left_px = px_x
+                        right_px = px_x + est_w
+                    elif align in (3, 6, 9):
+                        right_px = px_x
+                        left_px = px_x - est_w
+                    else:
+                        left_px = px_x - est_w * 0.5
+                        right_px = px_x + est_w * 0.5
+                    top_n = max(0.0, min(0.95, top_px / play_y))
+                    bot_n = max(top_n + 0.02, min(1.0, bot_px / play_y))
+                    left_n = max(0.0, min(0.9, left_px / play_x))
+                    right_n = max(left_n + 0.05, min(1.0, right_px / play_x))
                 else:
-                    bot_px = play_y - margin_v
-                    top_px = bot_px - box_h_px
-
-                top_n = max(0.0, min(0.95, top_px / play_y))
-                bot_n = max(top_n + 0.02, min(1.0, bot_px / play_y))
-                left_n = max(0.0, min(0.45, margin_l / play_x))
-                right_n = max(left_n + 0.1, min(1.0, 1.0 - (margin_r / play_x)))
+                    if align in (7, 8, 9):
+                        top_px = margin_v
+                        bot_px = top_px + box_h_px
+                    elif align in (4, 5, 6):
+                        mid_px = play_y * 0.5
+                        top_px = mid_px - box_h_px * 0.5
+                        bot_px = mid_px + box_h_px * 0.5
+                    else:
+                        bot_px = play_y - margin_v
+                        top_px = bot_px - box_h_px
+                    top_n = max(0.0, min(0.95, top_px / play_y))
+                    bot_n = max(top_n + 0.02, min(1.0, bot_px / play_y))
+                    left_n = max(0.0, min(0.45, margin_l / play_x))
+                    right_n = max(left_n + 0.1, min(1.0, 1.0 - (margin_r / play_x)))
                 boxes.append(
                     {
                         "label": f"ass_cue_{len(boxes) + 1}",
@@ -868,13 +902,36 @@ def _measure_roi_wcag_contrast(
     width: int,
     height: int,
     rect: NormRect,
+    *,
+    base_rgb: bytes | None = None,
 ) -> float:
     x0 = max(0, min(width - 2, int(rect.left * width)))
     x1 = max(x0 + 2, min(width, int(math.ceil(rect.right * width))))
     y0 = max(0, min(height - 2, int(rect.top * height)))
     y1 = max(y0 + 2, min(height, int(math.ceil(rect.bottom * height))))
 
-    lums: list[float] = []
+    # When base_rgb is available, measure changed overlay pixels directly against their base.
+    if base_rgb is not None:
+        pair_ratios: list[float] = []
+        for y in range(y0, y1):
+            row_off = y * width * 3
+            for x in range(x0, x1):
+                off = row_off + x * 3
+                diff = (
+                    abs(rgb[off] - base_rgb[off])
+                    + abs(rgb[off + 1] - base_rgb[off + 1])
+                    + abs(rgb[off + 2] - base_rgb[off + 2])
+                ) / 3.0
+                if diff > 12.0:
+                    l_fg = _rgb_rel_luma(rgb[off], rgb[off + 1], rgb[off + 2])
+                    l_bg = _rgb_rel_luma(base_rgb[off], base_rgb[off + 1], base_rgb[off + 2])
+                    pair_ratios.append((max(l_fg, l_bg) + 0.05) / (min(l_fg, l_bg) + 0.05))
+        if pair_ratios:
+            pair_ratios.sort()
+            p85_idx = min(len(pair_ratios) - 1, int(0.85 * (len(pair_ratios) - 1)))
+            return round(pair_ratios[p85_idx], 2)
+
+    interior_lums: list[float] = []
     border_lums: list[float] = []
     for y in range(y0, y1):
         row_off = y * width * 3
@@ -882,9 +939,12 @@ def _measure_roi_wcag_contrast(
         for x in range(x0, x1):
             off = row_off + x * 3
             lum = _rgb_rel_luma(rgb[off], rgb[off + 1], rgb[off + 2])
-            lums.append(lum)
             if is_border_y or x == x0 or x == x1 - 1:
                 border_lums.append(lum)
+            else:
+                interior_lums.append(lum)
+
+    lums = interior_lums if len(interior_lums) >= 4 else (interior_lums + border_lums)
     if len(lums) < 4:
         return 21.0
 
@@ -892,15 +952,14 @@ def _measure_roi_wcag_contrast(
     n = len(lums)
     p02 = lums[max(0, int(0.02 * (n - 1)))]
     p98 = lums[min(n - 1, int(0.98 * (n - 1)))]
-    ratio_span = (p98 + 0.05) / (p02 + 0.05)
 
     if border_lums:
         border_lums.sort()
         b_med = border_lums[len(border_lums) // 2]
         r_hi = (max(p98, b_med) + 0.05) / (min(p98, b_med) + 0.05)
         r_lo = (max(p02, b_med) + 0.05) / (min(p02, b_med) + 0.05)
-        return round(max(ratio_span, r_hi, r_lo), 2)
-    return round(ratio_span, 2)
+        return round(max(r_hi, r_lo), 2)
+    return round((p98 + 0.05) / (p02 + 0.05), 2)
 
 
 def _measure_safe_zone_intrusion(
@@ -966,7 +1025,12 @@ def audit_rendered_frame_contrast(
     targets: list[dict[str, Any]] = []
     if plan is not None:
         for ov in plan.overlay_compositions:
-            rect = resolve_overlay_rect(ov.safe_band, platform.safe_zone)
+            explicit_box = ov.props.get("box") if isinstance(ov.props, dict) else None
+            rect = resolve_overlay_rect(
+                ov.safe_band,
+                platform.safe_zone,
+                explicit_box=explicit_box if isinstance(explicit_box, dict) else None,
+            )
             mid_s = round(ov.timeline_start_s + ov.timeline_duration_s * 0.5, 3)
             targets.append({"label": ov.overlay_id, "t_s": mid_s, "rect": rect})
     if captions_ass_path is not None:
@@ -978,6 +1042,7 @@ def audit_rendered_frame_contrast(
         targets = [targets[int(i * step)] for i in range(max_samples)]
 
     frame_cache: dict[float, bytes | None] = {}
+    base_cache: dict[float, bytes | None] = {}
     ratios: list[float] = []
     low_findings: list[dict[str, Any]] = []
     for target in targets:
@@ -987,7 +1052,16 @@ def audit_rendered_frame_contrast(
         rgb = frame_cache[t_s]
         if rgb is None:
             continue
-        ratio = _measure_roi_wcag_contrast(rgb, scale_w, scale_h, target["rect"])
+        base_rgb = None
+        if base_video_path is not None and base_video_path.is_file():
+            if t_s not in base_cache:
+                base_cache[t_s] = _decode_raw_frame(
+                    base_video_path, t_s, scale_w, scale_h, pix_fmt="rgb24"
+                )
+            base_rgb = base_cache[t_s]
+        ratio = _measure_roi_wcag_contrast(
+            rgb, scale_w, scale_h, target["rect"], base_rgb=base_rgb
+        )
         ratios.append(ratio)
         if ratio < min_contrast:
             low_findings.append({"label": target["label"], "t_s": t_s, "ratio": ratio})
@@ -1013,10 +1087,37 @@ def audit_rendered_frame_contrast(
     if overlay_alpha_path is None and base_video_path is None:
         metrics["safe_zone_pixel_diff_skipped"] = "no_base_or_alpha_stream"
     else:
-        sample_times = sorted(frame_cache.keys()) or [0.5]
+        all_times = sorted(frame_cache.keys())
+        if not all_times:
+            probe_dur = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=nw=1:nk=1",
+                    str(media_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            try:
+                dur_est = max(0.4, float((probe_dur.stdout or "1.0").strip()))
+            except ValueError:
+                dur_est = 1.0
+            all_times = [round(dur_est * frac, 3) for frac in (0.15, 0.5, 0.85)]
+        max_sz_samples = 8
+        if len(all_times) > max_sz_samples:
+            step = len(all_times) / max_sz_samples
+            sample_times = [all_times[int(i * step)] for i in range(max_sz_samples)]
+        else:
+            sample_times = all_times
         max_intrusion = 0.0
         worst_t = sample_times[0]
-        for t_s in sample_times[:4]:
+        for t_s in sample_times:
             if overlay_alpha_path is not None and overlay_alpha_path.is_file():
                 alpha_buf = _decode_raw_frame(
                     overlay_alpha_path, t_s, scale_w, scale_h, pix_fmt="rgba"
@@ -1030,7 +1131,7 @@ def audit_rendered_frame_contrast(
                 comp_buf = frame_cache.get(t_s) or _decode_raw_frame(
                     media_path, t_s, scale_w, scale_h, pix_fmt="rgb24"
                 )
-                base_buf = _decode_raw_frame(
+                base_buf = base_cache.get(t_s) or _decode_raw_frame(
                     base_video_path, t_s, scale_w, scale_h, pix_fmt="rgb24"
                 )
                 if comp_buf is None or base_buf is None:

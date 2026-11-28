@@ -1,8 +1,9 @@
 /**
  * Conservative static-hold frame deduplication helpers for declarative map scenes.
  *
- * A frame is only eligible for buffer reuse when the camera, cut-blur, shutter
- * state, and every active layer are provably stationary across `prevT -> t`.
+ * Uses a strict default-deny allowlist: a frame is only eligible for buffer reuse
+ * when the camera, cut-blur, shutter state, and every active layer belong to the
+ * static-safe allowlist and are provably stationary across `prevT -> t`.
  */
 
 export const CONTINUOUSLY_ANIMATED_LAYER_TYPES = new Set([
@@ -11,6 +12,13 @@ export const CONTINUOUSLY_ANIMATED_LAYER_TYPES = new Set([
   "radar_rings",
   "map_sprites",
   "model_3d",
+  "endpoint_dots",
+  "migrant_swarm",
+  "crimson_x",
+  "cloud_system",
+  "wind_streamlines",
+  "dust_storm_plume",
+  "landmark_silhouette",
   "counter_odometer",
   "void_wipe",
   "cable_3d",
@@ -18,6 +26,11 @@ export const CONTINUOUSLY_ANIMATED_LAYER_TYPES = new Set([
   "country_block_3d",
   "curved_arc_arrow",
   "route_arrow",
+  "route",
+  "measurement_arrow",
+  "parchment_sheet",
+  "human_silhouette_row",
+  "prohibition_pins",
   "pulse_beacon",
   "seismic_ripples",
   "water_flow",
@@ -27,14 +40,76 @@ export const CONTINUOUSLY_ANIMATED_LAYER_TYPES = new Set([
   "dashed_distance",
 ]);
 
+export const STATIC_HOLD_SAFE_LAYER_TYPES = new Set([
+  "glow_label",
+  "pin_label",
+  "curved_pointer_label",
+  "polygon",
+  "flag_pin",
+  "region_outline",
+  "border_line",
+  "vignette",
+  "tint",
+]);
+
+const DYNAMIC_PROP_KEYS = [
+  "flag_fill",
+  "pulse",
+  "pulse_speed",
+  "wave",
+  "rim_glint",
+  "light_sweep",
+  "flashes",
+  "lift_px",
+  "fly_through",
+  "count_to",
+  "typewriter_s",
+  "move_to_coord",
+  "sub_pill",
+  "angle_end",
+  "tracking_from_em",
+  "slide_from_x_px",
+  "split_at_s",
+  "animate",
+  "animation",
+  "animated",
+  "keyframes",
+  "orbit_speed",
+  "flow_speed",
+  "wave_speed",
+];
+
 function isLayerVisibleAt(layer, t) {
   const start = Number(layer.start_s ?? layer.t_start ?? 0);
   const end = layer.end_s != null ? Number(layer.end_s) : layer.t_end != null ? Number(layer.t_end) : Infinity;
   return t >= start && t <= end;
 }
 
+function resolveSettleInSeconds(layer, type) {
+  const explicitFade = Math.max(
+    0,
+    Number(layer.fade_in_s ?? layer.entrance_s ?? layer.draw_duration_s ?? layer.reveal_s ?? 0.4)
+  );
+  const drawDelay = Math.max(0, Number(layer.draw_delay_s ?? 0));
+  const drawDur = Math.max(0, Number(layer.draw_duration_s ?? 0));
+  let settle = Math.max(explicitFade, drawDelay + drawDur);
+
+  if (type === "polygon") {
+    const hatchDelay = Math.max(0, Number(layer.hatch_delay_s ?? 0));
+    const hatchDraw = layer.hatch_draw_s != null ? Number(layer.hatch_draw_s) : 0.75;
+    const liftDelay = Math.max(0, Number(layer.lift_delay_s ?? 0));
+    const liftDur = layer.lift_duration_s != null ? Number(layer.lift_duration_s) : 0.55;
+    settle = Math.max(settle, hatchDelay + hatchDraw, liftDelay + liftDur);
+  } else if (type === "glow_label" || type === "pin_label" || type === "curved_pointer_label") {
+    const countDur = Math.max(0, Number(layer.count_duration_s ?? 0));
+    const trackDur = Math.max(0, Number(layer.tracking_duration_s ?? 0));
+    settle = Math.max(settle, countDur, trackDur);
+  }
+  return settle;
+}
+
 /**
- * Return `true` iff `layer` has identical visual output at `prevT` and `t`.
+ * Return `true` iff `layer` is provably stationary with identical output at `prevT` and `t`.
  */
 export function isLayerStaticAtFrame(layer, t, prevT) {
   if (!layer || typeof layer !== "object") return true;
@@ -45,32 +120,20 @@ export function isLayerStaticAtFrame(layer, t, prevT) {
   if (visNow !== visPrev) return false;
 
   const type = String(layer.type || "");
-  if (CONTINUOUSLY_ANIMATED_LAYER_TYPES.has(type)) return false;
-
-  // Any explicit animated flags or dynamic properties disqualify static dedup.
-  if (
-    layer.flag_fill ||
-    layer.pulse ||
-    layer.animate ||
-    layer.animation ||
-    layer.animated ||
-    layer.keyframes ||
-    layer.orbit_speed ||
-    layer.flow_speed ||
-    layer.wave_speed
-  ) {
+  if (CONTINUOUSLY_ANIMATED_LAYER_TYPES.has(type) || !STATIC_HOLD_SAFE_LAYER_TYPES.has(type)) {
     return false;
+  }
+
+  for (const key of DYNAMIC_PROP_KEYS) {
+    if (layer[key]) return false;
   }
 
   const start = Number(layer.start_s ?? layer.t_start ?? 0);
   const end = layer.end_s != null ? Number(layer.end_s) : layer.t_end != null ? Number(layer.t_end) : Infinity;
-  const fadeIn = Math.max(
-    0,
-    Number(layer.fade_in_s ?? layer.entrance_s ?? layer.draw_duration_s ?? layer.reveal_s ?? 0.35)
-  );
-  const fadeOut = Math.max(0, Number(layer.fade_out_s ?? layer.exit_s ?? 0.3));
+  const settleIn = resolveSettleInSeconds(layer, type);
+  const fadeOut = Math.max(0, Number(layer.fade_out_s ?? layer.exit_s ?? 0.35));
 
-  const settledStart = start + fadeIn + 1e-4;
+  const settledStart = start + settleIn + 1e-4;
   const settledEnd = Number.isFinite(end) ? end - fadeOut - 1e-4 : Infinity;
 
   if (prevT < settledStart || t < settledStart) return false;
@@ -85,7 +148,7 @@ function quant(v) {
 
 /**
  * Compute a deterministic state key for a map frame, or `null` when the frame
- * must be freshly rendered (blur, shutter subframes, or any animated layer).
+ * must be freshly rendered (blur, shutter subframes, or any non-static layer).
  */
 export function computeMapFrameStateKey({ cam, layers, t, prevT, blurAmt = 0, subN = 1 }) {
   if (!cam || prevT == null || !Number.isFinite(t) || !Number.isFinite(prevT)) {

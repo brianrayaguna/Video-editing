@@ -207,3 +207,49 @@ def test_safe_zone_pixel_intrusion_detected_when_base_video_provided(tmp_path: P
     all_codes = {i.code for i in [*errs, *warns]}
     assert "SAFE_ZONE_PIXEL_INTRUSION" in all_codes
     assert metrics["safe_zone_pixel_intrusion_ratio"] > 0.05
+
+
+def test_ass_override_tags_and_explicit_overlay_box_are_honored(tmp_path: Path) -> None:
+    from vedit.mastering.qc_audit import (
+        audit_rendered_frame_contrast,
+        parse_ass_caption_boxes,
+    )
+
+    ass_path = tmp_path / "override.ass"
+    ass_path.write_text(
+        "[Script Info]\n"
+        "PlayResX: 360\n"
+        "PlayResY: 640\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        "Style: Default,Inter,28,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        "-1,0,0,0,100,100,0,0,1,2,0,2,20,20,160,1\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+        "Dialogue: 0,0:00:00.10,0:00:00.90,Default,,0,0,0,,{\\an8\\pos(180,80)}TOP OVERRIDE\n",
+        encoding="utf-8",
+    )
+    boxes = parse_ass_caption_boxes(ass_path, 360, 640)
+    assert len(boxes) == 1
+    assert boxes[0]["rect"].top < 0.2
+    assert boxes[0]["rect"].bottom < 0.3
+
+    # Paint a localized low-contrast box in the upper half and verify explicit_box catches it.
+    mp4 = _make_synthetic_clip(
+        tmp_path / "explicit.mp4",
+        bg_hex="0x666666",
+        box=(90, 120, 180, 40, "0x767676"),
+    )
+    platform = _small_platform()
+    plan = _sample_plan(mp4, safe_band="fullscreen")
+    plan.overlay_compositions[0].props["box"] = {
+        "top": 0.16,
+        "bottom": 0.28,
+        "left": 0.2,
+        "right": 0.8,
+    }
+    _errs, warns, metrics = audit_rendered_frame_contrast(mp4, platform, plan=plan)
+    assert any(w.code == "PIXEL_CONTRAST_LOW" for w in warns)
+    assert metrics["pixel_contrast_min_ratio"] < 4.5

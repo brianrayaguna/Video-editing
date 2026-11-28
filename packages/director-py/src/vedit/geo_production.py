@@ -32,7 +32,9 @@ def _transcript_text(transcript: dict[str, Any] | None) -> str:
     if segs:
         return " ".join(str(s.get("text") or "") for s in segs)
     words = transcript.get("words") or []
-    return " ".join(str(w.get("word") or w.get("text") or "") for w in words)
+    if words:
+        return " ".join(str(w.get("word") or w.get("text") or "") for w in words)
+    return str(transcript.get("text") or "")
 
 
 def classify_audio_theme(
@@ -144,6 +146,7 @@ def plan_and_fetch_thematic_audio(
     out_dir: Path,
     *,
     repo_root: Path | None = None,
+    brand_dir: Path | None = None,
     catalog: Any | None = None,
     seed_key: str | None = None,
 ) -> dict[str, Any]:
@@ -154,8 +157,9 @@ def plan_and_fetch_thematic_audio(
     out_dir.mkdir(parents=True, exist_ok=True)
     sfx_out.mkdir(parents=True, exist_ok=True)
 
-    theme = classify_audio_theme(transcript, scene)
-    cfg = _THEME_PROFILES[theme]
+    themes = load_audio_themes(brand_dir=brand_dir)
+    theme = classify_audio_theme(transcript, scene, brand_dir=brand_dir)
+    cfg = themes.get(theme) or _THEME_PROFILES[theme]
     pivot_s = detect_narrative_pivot(transcript, scene)
     seed = seed_key or f"{theme}:{len(scene.get('acts') or [])}"
 
@@ -331,6 +335,7 @@ def master_geo_acts(
     from vedit.director.verifier import verify_edit_plan
     from vedit.geo.plan_bridge import build_edit_plan_from_geo_acts
     from vedit.models import BrandStylePolicy
+    from vedit.timebase import Timebase
 
     root = repo_root or find_repo_root()
     plan, target_model, disc_cuts = build_edit_plan_from_geo_acts(
@@ -343,7 +348,12 @@ def master_geo_acts(
     )
     width = plan.width
     height = plan.height
-    fps = int(round(plan.fps))
+    tb = (
+        Timebase(plan.timebase.num, plan.timebase.den)
+        if plan.timebase is not None
+        else Timebase.from_fps(plan.fps)
+    )
+    fps_exact = tb.fps_float
     target_dur = plan.duration_s
     audio_p = audio_file.expanduser().resolve()
     out_p = out_file.expanduser().resolve()
@@ -366,6 +376,10 @@ def master_geo_acts(
         verification_passed = bool(vrep["passed"])
         verification_errors = list(vrep["errors"])
         verification_warnings = list(vrep["warnings"])
+    elif policy_path is not None and strict_verify:
+        raise FileNotFoundError(
+            f"Unknown brand_id {plan.brand_id!r}: missing policy at {policy_path}"
+        )
     else:
         schema_errs = validate_against_contract(
             plan.model_dump(exclude_none=True), "edit_plan.schema.json", repo_root=root
@@ -403,7 +417,10 @@ def master_geo_acts(
                     "-f",
                     "lavfi",
                     "-i",
-                    f"color=c=black@0.0:s={width}x{height}:r={fps}:d={6 / fps:.3f}",
+                    (
+                        f"color=c=black@0.0:s={width}x{height}:"
+                        f"r={tb.ffmpeg_rate_str}:d={6 / fps_exact:.4f}"
+                    ),
                     "-vf",
                     disc_vf,
                     "-frames:v",
@@ -419,7 +436,7 @@ def master_geo_acts(
                 stderr=subprocess.PIPE,
             )
             for cut_t in disc_cuts:
-                transition_overlays.append((disc_mov, max(0.0, cut_t - (3.0 / fps))))
+                transition_overlays.append((disc_mov, max(0.0, cut_t - (3.0 / fps_exact))))
 
         external_caption_concat: tuple[Path, int] | None = None
         ass_cap_for_master: Path | None = None
@@ -447,7 +464,7 @@ def master_geo_acts(
                         "--height",
                         str(height),
                         "--fps",
-                        str(fps),
+                        f"{fps_exact:.6g}",
                         "--duration",
                         f"{target_dur:.3f}",
                     ],
@@ -518,7 +535,12 @@ def master_geo_acts(
 
     audit_payload: dict[str, Any] | None = None
     if audit_out is not None or platform_id is not None:
-        qc = audit_mastered_deliverable(out_p, target_model)
+        qc = audit_mastered_deliverable(
+            out_p,
+            target_model,
+            plan=plan,
+            captions_ass_path=cap_p,
+        )
         audit_payload = qc.to_dict()
         if audit_out is not None:
             ap = audit_out.expanduser().resolve()
