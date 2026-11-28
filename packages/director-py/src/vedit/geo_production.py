@@ -10,9 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from vedit.contracts import find_repo_root, load_platform_targets
+from vedit.contracts import find_repo_root
 from vedit.mastering.qc_audit import audit_mastered_deliverable
-from vedit.models import PlatformTarget
 
 _PIVOT_RE = re.compile(
     r"\b("
@@ -389,74 +388,69 @@ def master_geo_acts(
     contact_sheet: Path | None = None,
     audit_out: Path | None = None,
     platform_id: str | None = None,
+    brand_id: str | None = None,
+    strict_verify: bool = False,
     crf: int = 17,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Assemble baked map/cutaway acts with disc_sweep, HTML/ASS captions, audio, and BT.709."""
-    root = repo_root or find_repo_root()
-    spec = json.loads(scene_file.expanduser().resolve().read_text(encoding="utf-8"))
-    acts = spec.get("acts") or []
-    if not acts:
-        raise ValueError("map_scene.json contains no acts to master.")
+    """Assemble baked map/cutaway acts through the canonical EditPlan and ffmpeg_master spine."""
+    import vedit.mastering.ffmpeg_master as ffmpeg_master
+    from vedit.contracts import validate_against_contract
+    from vedit.director.verifier import verify_edit_plan
+    from vedit.geo.plan_bridge import build_edit_plan_from_geo_acts
+    from vedit.models import BrandStylePolicy
 
-    width = int(spec.get("width", 1080))
-    height = int(spec.get("height", 1920))
-    fps = int(round(float(spec.get("fps", 30))))
-    acts_dir_p = acts_dir.expanduser().resolve()
+    root = repo_root or find_repo_root()
+    plan, target_model, disc_cuts = build_edit_plan_from_geo_acts(
+        scene_file,
+        acts_dir,
+        audio_file,
+        platform_id=platform_id,
+        brand_id=brand_id,
+        repo_root=root,
+    )
+    width = plan.width
+    height = plan.height
+    fps = int(round(plan.fps))
+    target_dur = plan.duration_s
     audio_p = audio_file.expanduser().resolve()
     out_p = out_file.expanduser().resolve()
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    act_paths: list[Path] = []
-    disc_cuts: list[float] = []
-    acc_s = 0.0
-    for idx, act in enumerate(acts):
-        out_name = str(act.get("output_file") or f"{act.get('act_id', f'act_{idx}')}.mp4")
-        p = acts_dir_p / out_name
-        if not p.is_file():
-            raise FileNotFoundError(f"Missing baked act video: {p}")
-        act_paths.append(p)
-        if idx > 0 and act.get("transition_in") in {"disc_sweep", "feathered_dark_wipe"}:
-            disc_cuts.append(round(acc_s, 3))
-        acc_s += float(act.get("duration_s") or 0.0)
-
-    # Probe audio duration so master matches program_mix cleanly
-    dur_proc = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(audio_p),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+    # Pre-master verification against brand policy when a brand is resolved, else schema contract.
+    verification_passed = True
+    verification_errors: list[dict[str, Any]] = []
+    verification_warnings: list[dict[str, Any]] = []
+    policy_path = (
+        root / "profiles" / "brands" / plan.brand_id / "brand_style_policy.json"
+        if plan.brand_id != "unbranded"
+        else None
     )
-    audio_dur = float(dur_proc.stdout.strip())
-    target_dur = min(acc_s, audio_dur) if acc_s > 0 else audio_dur
+    if policy_path is not None and policy_path.is_file():
+        policy = BrandStylePolicy.model_validate(
+            json.loads(policy_path.read_text(encoding="utf-8"))
+        )
+        vrep = verify_edit_plan(plan, policy, target_model, repo_root=root).to_dict()
+        verification_passed = bool(vrep["passed"])
+        verification_errors = list(vrep["errors"])
+        verification_warnings = list(vrep["warnings"])
+    else:
+        schema_errs = validate_against_contract(
+            plan.model_dump(exclude_none=True), "edit_plan.schema.json", repo_root=root
+        )
+        if schema_errs:
+            verification_passed = False
+            verification_errors = [
+                {"severity": "error", "code": "EDIT_PLAN_SCHEMA_INVALID", "message": e}
+                for e in schema_errs
+            ]
+
+    if strict_verify and not verification_passed:
+        raise ValueError(f"EditPlan verification failed: {verification_errors}")
 
     with tempfile.TemporaryDirectory(prefix="vedit_geo_master_") as td:
         tdp = Path(td)
-        # Stage static-only font binaries so libass never falls back to system fonts
-        # or trips on variable-font axes.
-        staged_fonts = tdp / "libass_fonts"
-        staged_fonts.mkdir(parents=True, exist_ok=True)
-        src_fonts_dir = root / "assets" / "geo" / "fonts"
-        if src_fonts_dir.is_dir():
-            for fp in src_fonts_dir.iterdir():
-                if fp.is_file() and fp.suffix.lower() in {".ttf", ".otf"}:
-                    if "variable" not in fp.stem.lower():
-                        (staged_fonts / fp.name).symlink_to(fp)
-        fonts_esc = str(staged_fonts).replace("\\", "\\\\").replace(":", "\\:")
-        cmd: list[str] = ["ffmpeg", "-hide_banner", "-y"]
-        for p in act_paths:
-            cmd.extend(["-i", str(p)])
-
-        disc_input_indices: list[tuple[int, float]] = []
+        transition_overlays: list[tuple[Path, float]] = []
         if disc_cuts:
             disc_mov = tdp / "disc_sweep.mov"
             rad = round(max(width, height) * 0.64)
@@ -493,15 +487,11 @@ def master_geo_acts(
                 stderr=subprocess.PIPE,
             )
             for cut_t in disc_cuts:
-                disc_input_indices.append((len(act_paths) + len(disc_input_indices), cut_t))
-                cmd.extend(["-i", str(disc_mov)])
+                transition_overlays.append((disc_mov, max(0.0, cut_t - (3.0 / fps))))
 
-        audio_idx = len(act_paths) + len(disc_input_indices)
-        cmd.extend(["-i", str(audio_p)])
-
-        html_cap_meta: dict[str, Any] | None = None
-        cap_input_idx: int | None = None
-        caption_renderer_used: str = "none"
+        external_caption_concat: tuple[Path, int] | None = None
+        ass_cap_for_master: Path | None = None
+        caption_renderer_used = "none"
         cap_p = (
             captions_file.expanduser().resolve()
             if captions_file is not None and captions_file.expanduser().is_file()
@@ -537,138 +527,35 @@ def master_geo_acts(
                     try:
                         parsed_meta = json.loads(render_proc.stdout.strip().splitlines()[-1])
                         if parsed_meta.get("ok") and Path(parsed_meta["concat_file"]).is_file():
-                            html_cap_meta = parsed_meta
-                            cap_input_idx = audio_idx + 1
-                            cmd.extend(
-                                [
-                                    "-f",
-                                    "concat",
-                                    "-safe",
-                                    "0",
-                                    "-i",
-                                    str(parsed_meta["concat_file"]),
-                                ]
+                            external_caption_concat = (
+                                Path(parsed_meta["concat_file"]),
+                                int(parsed_meta.get("y_top", 0)),
                             )
                             caption_renderer_used = "html"
                     except (ValueError, KeyError):
-                        html_cap_meta = None
-            if html_cap_meta is None:
+                        external_caption_concat = None
+            if external_caption_concat is None:
+                ass_cap_for_master = cap_p
                 caption_renderer_used = "libass"
 
-        chains: list[str] = []
-        v_tags: list[str] = []
-        for idx in range(len(act_paths)):
-            tag = f"[v{idx}]"
-            chains.append(
-                f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,fps={fps},settb=1/{fps},"
-                f"setpts=PTS-STARTPTS{tag}"
-            )
-            v_tags.append(tag)
-
-        if len(v_tags) == 1:
-            cur_v = v_tags[0]
-        else:
-            chains.append(f"{''.join(v_tags)}concat=n={len(v_tags)}:v=1:a=0[vcat]")
-            cur_v = "[vcat]"
-
-        for d_i, (inp_idx, cut_t) in enumerate(disc_input_indices):
-            d_tag = f"[d{d_i}]"
-            out_tag = f"[vo{d_i}]"
-            shift_s = max(0.0, cut_t - (3.0 / fps))
-            chains.append(f"[{inp_idx}:v]setpts=PTS-STARTPTS+{shift_s:.3f}/TB{d_tag}")
-            chains.append(f"{cur_v}{d_tag}overlay=eof_action=pass:shortest=0{out_tag}")
-            cur_v = out_tag
-
-        if html_cap_meta is not None and cap_input_idx is not None:
-            y_top = int(html_cap_meta.get("y_top", 0))
-            chains.append(
-                f"[{cap_input_idx}:v]fps={fps},settb=1/{fps},setpts=PTS-STARTPTS,format=rgba[cap_v]"
-            )
-            chains.append(
-                f"{cur_v}[cap_v]overlay=x=0:y={y_top}:eof_action=pass:shortest=0[vcap]"
-            )
-            cur_v = "[vcap]"
-
-        post_filters: list[str] = []
-        if credit_ass_file is not None and credit_ass_file.expanduser().is_file():
-            c_raw = str(credit_ass_file.expanduser().resolve())
-            c_esc = c_raw.replace("\\", "\\\\").replace(":", "\\:")
-            post_filters.append(f"ass='{c_esc}':fontsdir='{fonts_esc}'")
-        if cap_p is not None and html_cap_meta is None:
-            a_raw = str(cap_p)
-            a_esc = a_raw.replace("\\", "\\\\").replace(":", "\\:")
-            post_filters.append(f"ass='{a_esc}':fontsdir='{fonts_esc}'")
-        post_filters.append("format=yuv420p")
-        chains.append(f"{cur_v}{','.join(post_filters)}[vout]")
-
-        tmp_mp4 = tdp / "master_pre_vui.mp4"
-        cmd.extend(
-            [
-                "-filter_complex",
-                ";".join(chains),
-                "-map",
-                "[vout]",
-                "-map",
-                f"{audio_idx}:a:0",
-                "-t",
-                f"{target_dur:.3f}",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "medium",
-                "-crf",
-                str(crf),
-                "-pix_fmt",
-                "yuv420p",
-                "-colorspace",
-                "bt709",
-                "-color_primaries",
-                "bt709",
-                "-color_trc",
-                "bt709",
-                "-color_range",
-                "tv",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-ar",
-                "48000",
-                "-ac",
-                "2",
-                "-movflags",
-                "+faststart",
-                str(tmp_mp4),
-            ]
+        cred_p = (
+            credit_ass_file.expanduser().resolve()
+            if credit_ass_file is not None and credit_ass_file.expanduser().is_file()
+            else None
         )
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if proc.returncode != 0:
-            tail = (proc.stderr or "").strip().splitlines()[-12:]
-            raise RuntimeError(f"ffmpeg geo master failed: {' | '.join(tail)}")
-
-        # Stamp explicit BT.709 VUI headers into the H.264 bitstream losslessly.
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-y",
-                "-i",
-                str(tmp_mp4),
-                "-c",
-                "copy",
-                "-bsf:v",
-                (
-                    "h264_metadata=colour_primaries=1:transfer_characteristics=1:"
-                    "matrix_coefficients=1:video_full_range_flag=0"
-                ),
-                "-movflags",
-                "+faststart",
-                str(out_p),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+        ffmpeg_master.assemble_hybrid_deliverable(
+            plan,
+            target_model,
+            out_p,
+            transition_overlays=transition_overlays or None,
+            external_caption_concat=external_caption_concat,
+            mastered_audio_path=audio_p,
+            captions_ass_path=ass_cap_for_master,
+            credit_ass_path=cred_p,
+            use_ass_fastpath=False,
+            encode_preset="medium",
+            crf=crf,
+            stamp_vui_metadata=True,
         )
 
     sheet_out: str | None = None
@@ -699,9 +586,6 @@ def master_geo_acts(
 
     audit_payload: dict[str, Any] | None = None
     if audit_out is not None or platform_id is not None:
-        plat = platform_id or ("shorts_9x16_1080p" if height > width else "youtube_16x9_1080p")
-        targets = load_platform_targets()
-        target_model = PlatformTarget.model_validate(targets[plat])
         qc = audit_mastered_deliverable(out_p, target_model)
         audit_payload = qc.to_dict()
         if audit_out is not None:
@@ -712,8 +596,13 @@ def master_geo_acts(
     return {
         "ok": True if audit_payload is None else bool(audit_payload.get("passed", False)),
         "master_file": str(out_p),
+        "edit_plan_job_id": plan.job_id,
+        "brand_id": plan.brand_id,
+        "verification_passed": verification_passed,
+        "verification_errors": verification_errors,
+        "verification_warnings": verification_warnings,
         "duration_s": round(target_dur, 3),
-        "acts_count": len(act_paths),
+        "acts_count": len(plan.video_tracks),
         "disc_sweep_cuts": disc_cuts,
         "caption_renderer": caption_renderer_used,
         "contact_sheet": sheet_out,

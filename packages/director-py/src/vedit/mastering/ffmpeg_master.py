@@ -474,6 +474,7 @@ def _video_codec_args(
     *,
     preset: str = "fast",
     use_hardware_encoder: bool = False,
+    crf: int | None = None,
 ) -> list[str]:
     vspec = platform_target.video
     fps = platform_target.fps
@@ -525,6 +526,17 @@ def _video_codec_args(
             max_bps,
             "-bufsize",
             buf_bps,
+        ]
+    elif crf is not None and vspec.codec == "h264" and not use_hardware_encoder:
+        args = [
+            "-c:v",
+            "libx264",
+            "-preset",
+            preset,
+            "-crf",
+            str(int(crf)),
+            "-pix_fmt",
+            vspec.pixel_format,
         ]
     else:
         args = [
@@ -892,12 +904,17 @@ def assemble_hybrid_deliverable(
     overlay_video_path: Path | None = None,
     overlay_segments: list[tuple[float, float, Path]] | None = None,
     overlay_blend_modes: list[str | None] | None = None,
+    transition_overlays: list[tuple[Path, float]] | None = None,
+    external_caption_concat: tuple[Path, int] | None = None,
     mastered_audio_path: Path | None = None,
     captions_ass_path: Path | None = None,
+    credit_ass_path: Path | None = None,
     fonts_dir: Path | None = None,
     use_ass_fastpath: bool = True,
     encode_preset: Literal["ultrafast", "veryfast", "fast", "medium", "slow"] = "fast",
     use_hardware_encoder: bool = False,
+    crf: int | None = None,
+    stamp_vui_metadata: bool = False,
     loudness_profile: str | None = None,
     auto_shot_match: bool = False,
 ) -> HybridDeliverableResult:
@@ -1074,19 +1091,56 @@ def assemble_hybrid_deliverable(
         final_v_label = f"[{comp_lbl}]"
         used_overlay = True
 
+    for t_k, (tr_path, shift_s) in enumerate(transition_overlays or []):
+        tr_resolved = tr_path.expanduser().resolve()
+        if not tr_resolved.is_file():
+            raise MasteringError(f"Transition overlay not found: {tr_resolved}")
+        tr_idx = next_input_idx
+        next_input_idx += 1
+        input_args.extend(["-i", str(tr_resolved)])
+        tr_lbl = f"v_tr_{t_k}"
+        out_tr_lbl = f"v_trcomp_{t_k}"
+        chains.append(
+            f"[{tr_idx}:v]setpts=PTS-STARTPTS+{max(0.0, shift_s):.4f}/TB[{tr_lbl}];"
+            f"{final_v_label}[{tr_lbl}]overlay=eof_action=pass:shortest=0,format=yuv420p[{out_tr_lbl}]"
+        )
+        final_v_label = f"[{out_tr_lbl}]"
+        used_overlay = True
+
+    if external_caption_concat is not None:
+        concat_path, y_top = external_caption_concat
+        concat_resolved = concat_path.expanduser().resolve()
+        if not concat_resolved.is_file():
+            raise MasteringError(f"External caption concat file not found: {concat_resolved}")
+        cap_idx = next_input_idx
+        next_input_idx += 1
+        input_args.extend(["-f", "concat", "-safe", "0", "-i", str(concat_resolved)])
+        chains.append(
+            f"[{cap_idx}:v]fps={fps},setpts=PTS-STARTPTS,format=rgba[v_extcap_in];"
+            f"{final_v_label}[v_extcap_in]overlay=x=0:y={int(y_top)}:"
+            "eof_action=pass:shortest=0,format=yuv420p[v_extcap]"
+        )
+        final_v_label = "[v_extcap]"
+        used_overlay = True
+
     ass_overlays, _ = partition_overlays_for_hybrid(plan) if use_ass_fastpath else ([], [])
     ext_captions_ass: Path | None = None
     if captions_ass_path is not None:
         ext_captions_ass = captions_ass_path.expanduser().resolve()
         if not ext_captions_ass.is_file():
             raise MasteringError(f"Captions ASS file not found: {ext_captions_ass}")
+    ext_credit_ass: Path | None = None
+    if credit_ass_path is not None:
+        ext_credit_ass = credit_ass_path.expanduser().resolve()
+        if not ext_credit_ass.is_file():
+            raise MasteringError(f"Credit ASS file not found: {ext_credit_ass}")
 
     audio_result: MasteredAudioResult | None = None
     with tempfile.TemporaryDirectory(prefix="vedit_master_") as tmp_dir:
         tmp_path = Path(tmp_dir)
         staged_fonts = (
             _stage_plan_fonts_dir(plan, tmp_path / "fonts", extra_fonts_dir=fonts_dir)
-            if (ass_overlays or ext_captions_ass is not None)
+            if (ass_overlays or ext_captions_ass is not None or ext_credit_ass is not None)
             else None
         )
 
@@ -1104,6 +1158,16 @@ def assemble_hybrid_deliverable(
                 sub_filter = f"ass='{escaped_ass}'"
             chains.append(f"{final_v_label}{sub_filter},format=yuv420p[v_ass]")
             final_v_label = "[v_ass]"
+
+        if ext_credit_ass is not None:
+            escaped_cred = escape_ffmpeg_filter_path(ext_credit_ass)
+            if staged_fonts is not None:
+                escaped_fonts = escape_ffmpeg_filter_path(staged_fonts)
+                cred_filter = f"ass='{escaped_cred}':fontsdir='{escaped_fonts}'"
+            else:
+                cred_filter = f"ass='{escaped_cred}'"
+            chains.append(f"{final_v_label}{cred_filter},format=yuv420p[v_cred]")
+            final_v_label = "[v_cred]"
 
         if ext_captions_ass is not None:
             escaped_cap = escape_ffmpeg_filter_path(ext_captions_ass)
@@ -1159,9 +1223,17 @@ def assemble_hybrid_deliverable(
             platform_target,
             preset=encode_preset,
             use_hardware_encoder=use_hardware_encoder,
+            crf=crf,
         )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        need_vui_stamp = (
+            stamp_vui_metadata
+            and vspec.codec == "h264"
+            and vspec.color_space == "bt709"
+            and vspec.container == "mp4"
+        )
+        encode_target = tmp_path / "pre_vui.mp4" if need_vui_stamp else output_path
         cmd = [
             "ffmpeg",
             "-hide_banner",
@@ -1174,11 +1246,36 @@ def assemble_hybrid_deliverable(
             *audio_encode_args,
             "-t",
             f"{plan.duration_s:.4f}",
-            str(output_path),
+            str(encode_target),
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             raise MasteringError(f"Hybrid deliverable encode failed: {proc.stderr}")
+        if need_vui_stamp:
+            vui_proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-y",
+                    "-i",
+                    str(encode_target),
+                    "-c",
+                    "copy",
+                    "-bsf:v",
+                    (
+                        "h264_metadata=colour_primaries=1:transfer_characteristics=1:"
+                        "matrix_coefficients=1:video_full_range_flag=0"
+                    ),
+                    "-movflags",
+                    "+faststart",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if vui_proc.returncode != 0:
+                raise MasteringError(f"BT.709 VUI remux failed: {vui_proc.stderr}")
 
     return HybridDeliverableResult(
         output_path=output_path,

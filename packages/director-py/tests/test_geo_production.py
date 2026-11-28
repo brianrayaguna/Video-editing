@@ -272,3 +272,110 @@ def test_master_geo_acts_applies_disc_sweep_bt709_and_passes_audit(tmp_path: Pat
     assert cli_res.exit_code == 0, cli_res.output
     payload = json.loads(cli_res.stdout)
     assert payload["ok"] is True and cli_out.is_file()
+
+
+def test_geo_plan_bridge_builds_canonical_edit_plan_without_hardcoded_brand(tmp_path: Path) -> None:
+    from vedit.contracts import validate_against_contract
+    from vedit.geo.plan_bridge import build_edit_plan_from_geo_acts, resolve_geo_brand_id
+
+    acts_dir = tmp_path / "acts"
+    acts_dir.mkdir()
+    _make_act_clip(acts_dir / "act01.mp4", "#083847", duration_s=1.2)
+    _make_act_clip(acts_dir / "act02.mp4", "#154957", duration_s=1.3)
+    audio_wav = _make_norm_audio(tmp_path / "mix.wav", duration_s=2.5)
+
+    scene_path = tmp_path / "map_scene.json"
+    scene_spec = {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "acts": [
+            {"act_id": "act01", "output_file": "act01.mp4", "duration_s": 1.2},
+            {
+                "act_id": "act02",
+                "output_file": "act02.mp4",
+                "duration_s": 1.3,
+                "transition_in": "disc_sweep",
+            },
+        ],
+    }
+    scene_path.write_text(json.dumps(scene_spec), encoding="utf-8")
+
+    # Neutral resolution: zero hardcoded "geoverum" fallback when unbranded.
+    assert resolve_geo_brand_id(scene_spec, scene_path) is None
+
+    # Discovers enclosing project.json brand_id when present.
+    (tmp_path / "project.json").write_text(
+        json.dumps({"brand_id": "custom_news"}), encoding="utf-8"
+    )
+    assert resolve_geo_brand_id(scene_spec, scene_path) == "custom_news"
+
+    plan, target, disc_cuts = build_edit_plan_from_geo_acts(
+        scene_path,
+        acts_dir,
+        audio_wav,
+        platform_id="shorts_9x16_1080p",
+    )
+    assert target.platform_id == "shorts_9x16_1080p"
+    assert disc_cuts == [1.2]
+    assert len(plan.video_tracks) == 2
+    # Must omit xfade disc_sweep on VideoClipOp so RGBA transition overlay is not double-applied.
+    assert plan.video_tracks[1].transition_in is None
+    errors = validate_against_contract(plan.model_dump(exclude_none=True), "edit_plan.schema.json")
+    assert errors == [], errors
+
+
+def test_master_geo_acts_delegates_to_assemble_hybrid_deliverable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import vedit.mastering.ffmpeg_master as fm
+
+    acts_dir = tmp_path / "acts"
+    acts_dir.mkdir()
+    _make_act_clip(acts_dir / "act01.mp4", "#083847", duration_s=1.5)
+    _make_act_clip(acts_dir / "act02.mp4", "#154957", duration_s=1.5)
+    audio_wav = _make_norm_audio(tmp_path / "mix.wav", duration_s=3.0)
+
+    scene_path = tmp_path / "map_scene.json"
+    scene_path.write_text(
+        json.dumps(
+            {
+                "width": 1080,
+                "height": 1920,
+                "fps": 30,
+                "acts": [
+                    {"act_id": "act01", "output_file": "act01.mp4", "duration_s": 1.5},
+                    {
+                        "act_id": "act02",
+                        "output_file": "act02.mp4",
+                        "duration_s": 1.5,
+                        "transition_in": "disc_sweep",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    called: list[dict[str, object]] = []
+    real_assemble = fm.assemble_hybrid_deliverable
+
+    def spy_assemble(*args, **kwargs):
+        called.append({"args": args, "kwargs": kwargs})
+        return real_assemble(*args, **kwargs)
+
+    monkeypatch.setattr(fm, "assemble_hybrid_deliverable", spy_assemble)
+    out_mp4 = tmp_path / "out" / "master_unified.mp4"
+    res = master_geo_acts(
+        scene_path,
+        acts_dir,
+        audio_wav,
+        out_mp4,
+        platform_id="shorts_9x16_1080p",
+    )
+    assert res["ok"] is True, res
+    assert len(called) == 1, "master_geo_acts must route through assemble_hybrid_deliverable"
+    assert res["edit_plan_job_id"]
+    assert res["verification_passed"] is True
+    assert called[0]["kwargs"].get("transition_overlays")
+    assert called[0]["kwargs"].get("stamp_vui_metadata") is True
