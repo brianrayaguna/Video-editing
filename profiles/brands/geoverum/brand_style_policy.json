@@ -131,7 +131,7 @@
         "caption_fade_out_ms": 0,
         "caption_gap_ms": 67,
         "caption_letter_spacing_em": 0.01,
-        "max_words_per_caption_group": 4,
+        "max_words_per_caption_group": 2,
         "default_caption_band": "lower_third",
         "caption_font_family": "Inter, sans-serif",
         "caption_font_px_9x16": 46,

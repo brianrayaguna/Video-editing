@@ -555,6 +555,7 @@ def test_geoverum_policy_and_templates_single_source_invariants() -> None:
     assert typo["caption_font_family"] == "Inter, sans-serif"
     assert typo["caption_font_px_9x16"] == 46
     assert typo["caption_fade_in_ms"] == 110
+    assert typo["max_words_per_caption_group"] == 2
     assert typo["type_scale"]["hero"]["weight"] == 900
     assert typo["type_scale"]["caption"]["size_px_9x16"] == 46
     assert typo["type_scale"]["caption"]["size_px_16x9"] == 42

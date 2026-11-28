@@ -289,7 +289,7 @@ def test_build_geoverum_ass_captions_locks_bottom_band_and_speed() -> None:
         {"segments": [{"start": 59.999, "end": 61.0, "text": r"Test {tag} \N word"}]}
     )
     assert "0:00:60.00" not in edge_ass
-    assert "0:01:00.00,0:01:01.00" in edge_ass
+    assert "0:01:00.00," in edge_ass and ",0:01:01.00," in edge_ass
     assert r"\{tag\}" in edge_ass
     assert r"\N" not in edge_ass.split("{\\fad(110,0)\\blur1.1}", 1)[1]
 
@@ -317,6 +317,11 @@ def test_build_captions_for_brand_geoverum_uses_46px_portrait_and_42px_landscape
     txt_9x16 = out_9x16.read_text(encoding="utf-8")
     assert "Style: Default,Inter,46,&H00FAF7F5,&H00FAF7F5,&H1F261D07," in txt_9x16
     assert ",525,1\n" in txt_9x16
+    dialogue_lines = [ln for ln in txt_9x16.splitlines() if ln.startswith("Dialogue:")]
+    assert len(dialogue_lines) >= 2
+    for ln in dialogue_lines:
+        cue_text = ln.split("}", 1)[-1].strip()
+        assert 1 <= len(cue_text.split()) <= 2, f"Expected <=2 words per cue, got {cue_text!r}"
 
     out_16x9 = tmp_path / "cap_16x9.ass"
     build_captions_for_brand(tr_file, out_16x9, width=1920, height=1080, brand="geoverum")

@@ -123,7 +123,7 @@ def build_geoverum_ass_captions(
     width: int = 1080,
     height: int = 1920,
     speed: float = 1.0,
-    max_words: int = 4,
+    max_words: int = 2,
     font_size: int | None = None,
     margin_v: int | None = None,
     fade_in_ms: int = 110,
@@ -192,7 +192,7 @@ def build_captions_for_brand(
 
     is_portrait = height > width
     scale = min(width, height) / 1080.0
-    eff_max_words = 4
+    eff_max_words = 2
     eff_font_size: int | None = round(46 * scale) if is_portrait else round(42 * scale)
     eff_margin_v: int | None = round(525 * (height / 1920.0)) if is_portrait else None
     eff_fade_in = 110

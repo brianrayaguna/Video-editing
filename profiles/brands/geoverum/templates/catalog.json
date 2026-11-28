@@ -8,10 +8,10 @@
       "overlay_kind": "caption_rail",
       "supported_aspects": ["9:16", "16:9"],
       "render_mode": "parameterized_html",
-      "description": "Plain true-centered 2-4 word documentary caption (x=50%, y~70% on 9:16, lower-third on 16:9). Configurable opacity fade-in and hard-cut or brief fade-out, proportional sizing.",
+      "description": "Plain true-centered 1-2 word documentary caption (max 2 words, x=50%, y~72.7% on 9:16, lower-third on 16:9). Configurable opacity fade-in and hard-cut or brief fade-out, proportional sizing.",
       "safe_band": "lower_third",
       "variables": [
-        { "id": "text", "type": "string", "label": "Caption phrase (2-4 words)" },
+        { "id": "text", "type": "string", "label": "Caption phrase (max 2 words)" },
         { "id": "fg_color", "type": "color", "token_ref": "palette_roles.ink", "default": "#F5F7FA" },
         { "id": "bg_color", "type": "color", "token_ref": "palette_roles.ground", "default": "#071D26" },
         { "id": "accent_color", "type": "color", "token_ref": "palette_roles.accent", "default": "#F7DC28" },
